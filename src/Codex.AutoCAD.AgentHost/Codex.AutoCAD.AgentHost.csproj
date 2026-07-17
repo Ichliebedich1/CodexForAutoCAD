@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>Codex.AutoCAD.AgentHost</AssemblyName>
+    <RootNamespace>Codex.AutoCAD.AgentHost</RootNamespace>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Codex.AutoCAD.AppServer\Codex.AutoCAD.AppServer.csproj" />
+    <ProjectReference Include="..\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj" />
+    <ProjectReference Include="..\Codex.AutoCAD.Ipc\Codex.AutoCAD.Ipc.csproj" />
+    <ProjectReference Include="..\Codex.AutoCAD.Security\Codex.AutoCAD.Security.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>Codex.AutoCAD.Ipc.Specs</AssemblyName>
+    <RootNamespace>Codex.AutoCAD.Ipc.Specs</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Codex.AutoCAD.Ipc\Codex.AutoCAD.Ipc.csproj" />
+  </ItemGroup>
+</Project>

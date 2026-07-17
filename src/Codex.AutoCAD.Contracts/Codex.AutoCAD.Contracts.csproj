@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0</TargetFrameworks>
+    <TargetFrameworks Condition="'$(EnableAutoCad2016)' == 'true'">net45;net8.0</TargetFrameworks>
+    <AssemblyName>Codex.AutoCAD.Contracts</AssemblyName>
+    <RootNamespace>Codex.AutoCAD.Contracts</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+</Project>

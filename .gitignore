@@ -1,0 +1,17 @@
+**/bin/
+**/obj/
+.vs/
+.idea/
+*.user
+*.suo
+*.nupkg
+artifacts/
+packages/
+TestResults/
+*.dwg
+*.dwt
+*.dws
+*.bak
+*.sv$
+*.log
+local.settings.json

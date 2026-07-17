@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>x64</Platforms>
+    <Prefer32Bit>false</Prefer32Bit>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>Codex.AutoCAD.Host.2025</AssemblyName>
+    <RootNamespace>Codex.AutoCAD.Host</RootNamespace>
+    <AutoCAD2025Dir Condition="'$(AutoCAD2025Dir)' == ''">D:\Autodesk\Auto CAD\AutoCAD2025\AutoCAD 2025</AutoCAD2025Dir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="AcCoreMgd">
+      <HintPath>$(AutoCAD2025Dir)\accoremgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcDbMgd">
+      <HintPath>$(AutoCAD2025Dir)\acdbmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcMgd">
+      <HintPath>$(AutoCAD2025Dir)\acmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="ValidateAutoCAD2025References" BeforeTargets="ResolveReferences">
+    <Error
+      Condition="!Exists('$(AutoCAD2025Dir)\accoremgd.dll') Or !Exists('$(AutoCAD2025Dir)\acdbmgd.dll') Or !Exists('$(AutoCAD2025Dir)\acmgd.dll')"
+      Text="未找到 AutoCAD 2025 托管 API。请通过 /p:AutoCAD2025Dir=&quot;...&quot; 指定包含 accoremgd.dll、acdbmgd.dll、acmgd.dll 的目录。" />
+  </Target>
+</Project>
