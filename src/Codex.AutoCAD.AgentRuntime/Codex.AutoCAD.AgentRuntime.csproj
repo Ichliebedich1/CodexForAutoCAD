@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>Codex.AutoCAD.AgentRuntime</AssemblyName>
+    <RootNamespace>Codex.AutoCAD.AgentRuntime</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Codex.AutoCAD.AppServer\Codex.AutoCAD.AppServer.csproj" />
+  </ItemGroup>
+</Project>

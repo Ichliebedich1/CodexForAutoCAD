@@ -6,4 +6,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj" />
+  </ItemGroup>
 </Project>

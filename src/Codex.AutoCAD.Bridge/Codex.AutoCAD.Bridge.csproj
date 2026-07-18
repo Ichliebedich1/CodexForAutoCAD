@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>Codex.AutoCAD.Bridge</AssemblyName>
+    <RootNamespace>Codex.AutoCAD.Bridge</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj" />
+    <ProjectReference Include="..\Codex.AutoCAD.Ipc\Codex.AutoCAD.Ipc.csproj" />
+  </ItemGroup>
+</Project>

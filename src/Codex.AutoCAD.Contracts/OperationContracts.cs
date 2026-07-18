@@ -20,6 +20,12 @@ public sealed class CreateLineOperation : CadOperation
     public CadPoint3 End { get; set; } = new();
 
     public string Layer { get; set; } = "0";
+
+    /// <summary>由受信 AutoCAD 宿主解析的目标图层 Handle；模型不能提供。</summary>
+    public string LayerHandle { get; set; } = string.Empty;
+
+    /// <summary>由受信 AutoCAD 宿主解析的目标空间/布局 BlockTableRecord Handle；模型不能提供。</summary>
+    public string OwnerSpaceHandle { get; set; } = string.Empty;
 }
 
 public sealed class EraseEntitiesOperation : CadOperation
@@ -28,7 +34,7 @@ public sealed class EraseEntitiesOperation : CadOperation
 
     public override CadRiskLevel MinimumRisk => CadRiskLevel.DestructiveWrite;
 
-    public string[] Handles { get; set; } = Array.Empty<string>();
+    public string[] Handles { get; set; } = new string[0];
 }
 
 public sealed class TransformEntitiesOperation : CadOperation
@@ -37,7 +43,7 @@ public sealed class TransformEntitiesOperation : CadOperation
 
     public override CadRiskLevel MinimumRisk => CadRiskLevel.ReversibleWrite;
 
-    public string[] Handles { get; set; } = Array.Empty<string>();
+    public string[] Handles { get; set; } = new string[0];
 
     public CadPoint3 Translation { get; set; } = new();
 
@@ -60,9 +66,15 @@ public sealed class CadOperationBatch
 
     public string SelectionSnapshotHash { get; set; } = string.Empty;
 
+    /// <summary>
+    /// 指示执行是否依赖获批时的选中图元状态。目标已有图元的操作必须为 true；
+    /// 纯创建计划使用显式空选择摘要并设为 false。
+    /// </summary>
+    public bool RequiresSelectionRevalidation { get; set; }
+
     public CadRiskLevel DeclaredRisk { get; set; } = CadRiskLevel.ReversibleWrite;
 
-    public CadOperation[] Operations { get; set; } = Array.Empty<CadOperation>();
+    public CadOperation[] Operations { get; set; } = new CadOperation[0];
 }
 
 public sealed class CadOperationDiff
@@ -75,7 +87,7 @@ public sealed class CadOperationDiff
 
     public CadExtents3? AffectedExtents { get; set; }
 
-    public string[] PartialPreviewReasons { get; set; } = Array.Empty<string>();
+    public string[] PartialPreviewReasons { get; set; } = new string[0];
 }
 
 public sealed class CadPreviewResult

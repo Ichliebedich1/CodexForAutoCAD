@@ -5,6 +5,8 @@ public static class ProtocolConstants
     public const int CurrentVersion = 1;
     public const int MaximumOperationsPerBatch = 5_000;
     public const int MaximumEntityHandlesPerOperation = 10_000;
+    public const int MaximumEntityHandlesPerBatch = 50_000;
+    public const int MaximumPlanCanonicalBytes = 2 * 1024 * 1024;
     public const int MaximumContextEntities = 10_000;
     public const int MaximumMessageBytes = 8 * 1024 * 1024;
 }

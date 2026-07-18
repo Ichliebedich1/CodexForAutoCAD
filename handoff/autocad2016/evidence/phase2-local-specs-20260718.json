@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 2,
+  "recordedDate": "2026-07-18",
+  "recordedAtLocal": "2026-07-18T17:05:49.4113105+08:00",
+  "source": "local Release gate, focused Bridge lifecycle, and Bridge stress executions",
+  "scope": "uncommitted-phase2-local-tests",
+  "gitHead": "2d2ad3738095794c8374e916559c0c5d13702ba1",
+  "worktreeCommitted": false,
+  "autoCadLiveEvidence": false,
+  "dotnetSdk": "8.0.319",
+  "releaseBuild": {
+    "solution": "Codex.AutoCAD.sln",
+    "configuration": "Release",
+    "maximumCpuCount": 1,
+    "buildServersDisabled": true,
+    "exitCode": 0,
+    "warnings": 0,
+    "errors": 0
+  },
+  "results": {
+    "contractsSpecs": {
+      "passed": 15,
+      "total": 15
+    },
+    "ipcSpecs": {
+      "passed": 11,
+      "total": 11,
+      "includesSequenceOverflowSpec": true
+    },
+    "securitySpecs": {
+      "passed": 19,
+      "total": 19
+    },
+    "appServerSpecs": {
+      "passed": 7,
+      "total": 7
+    },
+    "bridgeSpecs": {
+      "passed": 29,
+      "total": 29,
+      "namedPipeRunOutsideRestrictedSandbox": true,
+      "currentWorktreeEvidence": true
+    },
+    "agentRuntimeSpecs": {
+      "passed": 31,
+      "total": 31
+    },
+    "chatSpecs": {
+      "passed": 9,
+      "total": 9
+    },
+    "aggregate": {
+      "projects": 7,
+      "passed": 121,
+      "total": 121,
+      "dynamicSummaryParsed": true
+    },
+    "bridgeLifecycleFocused": {
+      "passed": 5,
+      "total": 5,
+      "coverage": [
+        "ShutdownTimeout invalid boundaries",
+        "synchronously blocking handler does not block the receive loop",
+        "cancellation-ignoring handler does not block concurrent DisposeAsync",
+        "late handler fault is recorded in TerminalError without UnobservedTaskException",
+        "non-cooperative stream and sendGate delay secret clearing until transport quiescence"
+      ]
+    },
+    "stress": {
+      "bridge": {
+        "iterations": 20,
+        "specsPerIteration": 29,
+        "passed": 580,
+        "total": 580,
+        "currentWorktreeEvidence": true,
+        "newDotnetProcessesAfterRun": 0
+      },
+      "ipcHistorical": {
+        "iterations": 20,
+        "specsPerIteration": 11,
+        "passed": 220,
+        "total": 220,
+        "currentGateEvidence": false,
+        "note": "Retained from the earlier local record; it was not rerun as part of the current 121-spec gate and is not used for the current conclusion."
+      }
+    }
+  },
+  "gateResults": {
+    "solutionComposition": {
+      "passed": true,
+      "coreProjectsIncluded": true,
+      "autoCadHostsExcludedFromDefaultBuild": true
+    },
+    "host2025ForbiddenApiScan": {
+      "passed": true,
+      "scope": "lexical source scan with dangerous and allowed sample self-tests",
+      "semanticOrIlProof": false
+    },
+    "agentHostDoctor": {
+      "passed": true,
+      "ok": true,
+      "reportedState": "Running",
+      "processExitedNaturally": true,
+      "codexHomeMode": "global-user-profile",
+      "perSessionIsolationVerified": false
+    },
+    "gitDiffCheck": {
+      "unstagedExitCode": 0,
+      "stagedExitCode": 0,
+      "passed": true,
+      "lineEndingNoticesObserved": true
+    },
+    "basicSecretScan": {
+      "passed": true,
+      "scope": "private-key, OpenAI token, GitHub token, and AWS access-key patterns"
+    },
+    "processResidueAfterGate": {
+      "dotnetProcessCount": 0,
+      "agentHostProcessCount": 0,
+      "forcedTerminationUsed": false
+    }
+  },
+  "previousEvidence": {
+    "currentEvidence": false,
+    "supersededBy": "the 121/121 current-worktree gate and 580/580 Bridge stress evidence in this record",
+    "specAggregate": {
+      "passed": 107,
+      "total": 107
+    },
+    "agentRuntimeSpecs": {
+      "passed": 29,
+      "total": 29
+    },
+    "bridgeSpecs": {
+      "passed": 25,
+      "total": 25
+    },
+    "bridgeStress": {
+      "iterations": 20,
+      "specsPerIteration": 25,
+      "passed": 500,
+      "total": 500
+    }
+  },
+  "limitations": [
+    "The tested Phase 2 source is local and uncommitted.",
+    "This record is not AutoCAD live evidence and does not establish AutoCAD 2016 runtime support.",
+    "The AgentHost doctor used the global user-profile CODEX_HOME; per-session CODEX_HOME, MCP/plugin, environment, and credential isolation remain unverified.",
+    "The Host.2025 forbidden-API result is a lexical source scan, not semantic analysis, IL auditing, or runtime interception.",
+    "No Host.2016 NETLOAD, palette, selection read, authenticated Bridge, approval, or CAD write E2E was executed by this gate.",
+    "No CAD read or write behavior is established by this record."
+  ],
+  "redaction": {
+    "cadTrustedDirectorySettingIncluded": false,
+    "userNamesIncluded": false,
+    "networkPathsIncluded": false,
+    "localFilePathsIncluded": false,
+    "drawingPathsIncluded": false,
+    "licenseDataIncluded": false
+  },
+  "conclusion": "The current uncommitted Phase 2 worktree passed the Release build, all seven spec projects at 121/121, Bridge stress at 580/580, AgentHost doctor, both git diff checks, and the basic secret scan with no dotnet or AgentHost residue. This is local managed-core evidence only, not AutoCAD live or AutoCAD 2016 support evidence."
+}

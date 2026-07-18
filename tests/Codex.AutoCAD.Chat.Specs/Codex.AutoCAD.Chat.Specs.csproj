@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2025\Chat\AgentEvents.cs" Link="Chat\AgentEvents.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2025\Chat\ChatModels.cs" Link="Chat\ChatModels.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2025\Chat\ChatSessionState.cs" Link="Chat\ChatSessionState.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2025\Chat\IAgentBridgeClient.cs" Link="Chat\IAgentBridgeClient.cs" />
+  </ItemGroup>
+</Project>
