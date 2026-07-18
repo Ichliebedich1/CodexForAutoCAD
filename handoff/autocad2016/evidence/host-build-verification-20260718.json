@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-07-18",
+  "source": "sanitized Host.2016 P0 build-verification summary",
+  "scope": "host2016-reproducible-build-and-static-gate",
+  "baselineCommit": "2d2ad3738095794c8374e916559c0c5d13702ba1",
+  "evidenceCaptureWorktreeCommitted": false,
+  "candidate": {
+    "configuration": "Release",
+    "targetFramework": ".NET Framework 4.5",
+    "architecture": "x64",
+    "sha256": "E8535C11AA09F93C405EBB7DFB46199EEDC27EE046959B4CC86395A06998B440",
+    "status": "compiled-candidate-not-runtime-verified-by-this-script",
+    "netLoadVerified": false,
+    "runtimeToCandidateBindingVerified": false,
+    "outputFileCount": 1,
+    "pdbProduced": false,
+    "autodeskAssembliesCopiedToOutput": false
+  },
+  "verifierResult": {
+    "Ok": true,
+    "Status": "compiled-candidate-not-runtime-verified-by-this-script",
+    "NetLoadVerified": false
+  },
+  "reproducibility": {
+    "powerShell7": {
+      "version": "7.6.3",
+      "passed": true,
+      "firstBuildSha256": "E8535C11AA09F93C405EBB7DFB46199EEDC27EE046959B4CC86395A06998B440",
+      "independentRebuildSha256": "E8535C11AA09F93C405EBB7DFB46199EEDC27EE046959B4CC86395A06998B440"
+    },
+    "windowsPowerShell": {
+      "version": "5.1.19041.6456",
+      "passed": true,
+      "firstBuildSha256": "E8535C11AA09F93C405EBB7DFB46199EEDC27EE046959B4CC86395A06998B440",
+      "independentRebuildSha256": "E8535C11AA09F93C405EBB7DFB46199EEDC27EE046959B4CC86395A06998B440"
+    },
+    "parallelVerificationProcessCount": 2,
+    "parallelRunsPassed": true,
+    "parallelVerificationRootsDistinct": true,
+    "candidateSha256ConsistentAcrossPrimaryRuns": true,
+    "projectLocalObjModified": false,
+    "hostSourceTreeModified": false
+  },
+  "toolchain": {
+    "resolvedDotNetSdk": "8.0.319",
+    "msbuild": {
+      "version": "17.14.40.60911",
+      "sha256": "0F7DABA445BA37B652AE4180270AB3EFF27ACBBE5D411D3B05DAD51AAB16404C",
+      "authenticodeStatus": "Valid",
+      "publisher": "Microsoft Corporation"
+    },
+    "dotnetHost": {
+      "sha256": "4377F10C78400F0370B88156773DE9843C07F14E65B3232005EC3179EF38D463",
+      "authenticodeStatus": "Valid",
+      "publisher": "Microsoft Corporation"
+    },
+    "ildasm": {
+      "version": "4.8.3928.0",
+      "sha256": "8A9BDFC5F3B8234309D1A4FDA44298F9CCD64CB5D72E6E5EB546F3D76A528A22",
+      "authenticodeStatus": "Valid",
+      "publisher": "Microsoft Corporation"
+    }
+  },
+  "reviewedInputs": {
+    "verificationScriptSha256": "CF1B23D376EE28520B4AF5C7FC15C0F02631E42DA62C90170FD8D441BC01C1B5",
+    "hostProjectSha256": "93C091263A089C84AE76C91C1E57CCC02D858EEF897762F655594234A1F0F7CE",
+    "hostNuGetConfigSha256": "BD61267F69CD5DF2F0996DA881F7BA3531AB4442DC2D6EB861536EC4AB0D0B8E",
+    "hostNuGetConfigRepositoryRelativePath": "src/Codex.AutoCAD.Host.2016/NuGet.Config",
+    "configuredOfflineFeedRelativeValue": "..\\..\\third_party\\nuget",
+    "restoreConfigFileDeclaredInHostProject": true,
+    "hostConfigClearsInheritedPackageSources": true,
+    "repositoryRootNuGetConfigPresent": false,
+    "targetAutodeskAssembliesVerified": true,
+    "offlineReferencePackageLockedAndSignatureVerified": true,
+    "evaluatedProjectGraphAllowlistVerified": true
+  },
+  "ilMetadataGate": {
+    "memberReferenceCount": 31,
+    "methodDefinitionCount": 7,
+    "registrationAttributesVerified": true,
+    "commands": [
+      {
+        "globalName": "CODEXCADDOCTOR",
+        "flags": 0
+      },
+      {
+        "globalName": "CODEXCAD",
+        "flags": 0
+      }
+    ]
+  },
+  "negativeVerification": {
+    "saveMemberRejected": true,
+    "dxfOutMemberRejected": true,
+    "quitMemberRejected": true,
+    "invokeMemberRejected": true,
+    "commentOnlyRegistrationSpoofRejectedByAssemblyMetadataGate": true,
+    "directoryBuildPropsAndTargetsInjectionExcluded": true,
+    "maliciousRepositoryRootNuGetConfigInjectionExcluded": true,
+    "unexpectedSourceOrReferenceInjectionExcluded": true
+  },
+  "environmentIsolation": {
+    "dotnetAndNuGetProcessEnvironmentRestoredExactly": true,
+    "isolatedOutputAndIntermediateDirectoriesUsed": true,
+    "projectLocalObjUnchanged": true,
+    "outputContainsOnlyReviewedDll": true
+  },
+  "nugetScopeIsolation": {
+    "dependencyRestoreMode": "host-project-local-signed-package-locked",
+    "hostRestoreUsesProjectLocalConfig": true,
+    "hostOfflineFeedDoesNotApplyAtRepositoryRoot": true,
+    "mainSolutionExcludesHost2016": true,
+    "mainSolutionOrdinaryRestorePassed": true,
+    "mainSolutionReleaseBuildPassed": true,
+    "mainSolutionBuildWarningCount": 0,
+    "mainSolutionBuildErrorCount": 0,
+    "mainSolutionRestoreMentionedHostConfig": false,
+    "mainSolutionRestoreMentionedHostOfflineFeed": false,
+    "defaultNuGetSourcesContainHostOfflineFeed": false,
+    "hostTreeModifiedByMainSolutionRestoreOrBuild": false
+  },
+  "runtimeSeparation": {
+    "priorDiagnosticCandidateSha256FromTestingContext": "2E621C5D7AAF7F3F59C5CBD65C8E899712FA93F1E3ED5758F7E7A0ECDBFB0C85",
+    "priorDiagnosticCandidateCopyHashStillMatches": true,
+    "priorDiagnosticCandidateCopyOverwritten": false,
+    "priorRuntimeToCandidateBindingVerified": false,
+    "newCandidateSha256": "E8535C11AA09F93C405EBB7DFB46199EEDC27EE046959B4CC86395A06998B440",
+    "newCandidateNetLoadVerified": false,
+    "newCandidateLoadedIntoCad": false,
+    "runtimeToNewCandidateBindingVerified": false,
+    "cadProcessStartedOrRestartedByVerification": false,
+    "cadCommandsSentByVerification": false
+  },
+  "jsonCrossCheck": {
+    "auditPassed": true,
+    "errors": []
+  },
+  "redaction": {
+    "userNamesIncluded": false,
+    "localMachinePathsIncluded": false,
+    "networkPathsIncluded": false,
+    "drawingPathsIncluded": false,
+    "enterpriseTrustDirectoryValuesIncluded": false,
+    "licenseDataIncluded": false
+  },
+  "conclusion": "The Host.2016 Release candidate is reproducibly compiled and passes the reviewed static gates. The new E853...B440 candidate has not been NETLOAD-verified, and full AutoCAD 2016 support is not established."
+}

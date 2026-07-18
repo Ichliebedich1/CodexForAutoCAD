@@ -1,0 +1,37 @@
+Codex for AutoCAD 2016 - AutoCAD 命令行采集模板
+===================================================
+
+采集日期：
+操作人：
+机器代号（不要填写真实姓名或资产编号）：
+
+请在 AutoCAD 2016 命令行执行下列命令/变量，并将显示结果粘贴到冒号后。
+
+ACADVER：
+VERNUM：
+SECURELOAD：
+TRUSTEDPATHS：不采集（可能包含敏感本地或网络路径）
+APPAUTOLOAD：
+DBMOD（打开脱敏测试图纸后）：
+
+产品完整名称（“关于 AutoCAD”中可见）：
+产品更新/Service Pack：
+界面语言：
+AutoCAD 位数：
+显示缩放：
+
+第一次 NETLOAD 的 DLL 受控代号与 SHA-256（不要填写完整路径）：
+第一次 NETLOAD 的完整输出：
+
+CODEXCAD 命令输出：
+CODEXCADDOCTOR 命令输出：
+
+是否存在以下企业限制（是/否/未知）：
+AppLocker：
+WDAC：
+EDR/杀毒拦截：
+禁止未签名 DLL：
+禁止启动子进程：
+禁止当前用户命名管道：
+
+注意：不要粘贴 API Key、访问令牌、许可证序列号、真实图纸路径、内部服务器地址或未脱敏图纸内容。

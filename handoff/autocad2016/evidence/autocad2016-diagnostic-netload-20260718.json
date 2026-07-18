@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-07-18",
+  "source": "user-provided AutoCAD command-line transcript",
+  "scope": "diagnostic-host-runtime",
+  "gitCommit": "2d2ad3738095794c8374e916559c0c5d13702ba1",
+  "target": {
+    "product": "AutoCAD 2016 Simplified Chinese",
+    "acadSeries": "R20.1",
+    "acadExeFileVersion": "R20.1.49.0.0",
+    "architecture": "x64",
+    "hostTargetFramework": ".NET Framework 4.5",
+    "clr": "4.0.30319.42000",
+    "acMgdAssemblyVersion": "20.1.0.0",
+    "acDbMgdAssemblyVersion": "20.1.0.0"
+  },
+  "runtime": {
+    "existingCadProcessReused": true,
+    "netloadSucceeded": true,
+    "commandsObserved": [
+      "CODEXCADDOCTOR",
+      "CODEXCAD"
+    ],
+    "acadver": "20.1s (LMS Tech)",
+    "vernum": "unavailable (InvalidInput)",
+    "secureload": 1,
+    "appautoload": 14,
+    "dbmodBefore": 21,
+    "dbmodDuringDoctor": 21,
+    "dbmodAfter": 21,
+    "writeCapability": "disabled",
+    "automaticSave": "disabled",
+    "paletteEnabled": false,
+    "agentEnabled": false,
+    "cadWriteEnabled": false
+  },
+  "artifactBinding": {
+    "candidateDllSha256FromTestingContext": "2E621C5D7AAF7F3F59C5CBD65C8E899712FA93F1E3ED5758F7E7A0ECDBFB0C85",
+    "loadedDllPathCaptured": false,
+    "loadedDllSha256": null,
+    "runtimeToCandidateBindingVerified": false,
+    "runtimeToLaterBuildArtifactBindingVerified": false,
+    "note": "The candidate hash is retained from testing context only. The AutoCAD transcript did not capture a DLL path or hash, so it is not verified as the loaded DLL identity. A later local rebuild hash is also not runtime identity evidence."
+  },
+  "redaction": {
+    "cadTrustedDirectorySettingIncluded": false,
+    "userNamesIncluded": false,
+    "networkPathsIncluded": false,
+    "localFilePathsIncluded": false,
+    "drawingPathsIncluded": false,
+    "licenseDataIncluded": false
+  },
+  "conclusion": "Diagnostic compile and NETLOAD compatibility candidate only; full AutoCAD 2016 support is not established."
+}

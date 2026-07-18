@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-07-18",
+  "source": "sanitized environment collector summaries",
+  "scope": "environment-and-toolchain-gate",
+  "collectorSchemaVersion": 4,
+  "runs": [
+    {
+      "shell": "PowerShell 7",
+      "invocation": "no-argument auto-discovery",
+      "collectedAt": "2026-07-18T14:57:00+08:00",
+      "collectionSucceeded": true,
+      "installationCount": 1,
+      "buildReadyInstallationCount": 1,
+      "msbuildCandidateCount": 2
+    },
+    {
+      "shell": "Windows PowerShell 5.1",
+      "invocation": "no-argument auto-discovery",
+      "collectedAt": "2026-07-18T15:01:50+08:00",
+      "collectionSucceeded": true,
+      "installationCount": 1,
+      "buildReadyInstallationCount": 1,
+      "msbuildCandidateCount": 2
+    }
+  ],
+  "msbuildGate": {
+    "allCandidatesHaveValidAuthenticode": true,
+    "allCandidatesAreMicrosoftPublisher": true,
+    "allCandidatesMajorVersionAtLeast17": true,
+    "sha256CapturedByCollector": true
+  },
+  "safety": {
+    "cadStartedByCollector": false,
+    "registryModified": false,
+    "drawingModified": false,
+    "cadTrustedDirectorySettingCollected": false
+  },
+  "redaction": {
+    "userNamesIncluded": false,
+    "networkPathsIncluded": false,
+    "localFilePathsIncluded": false,
+    "licenseDataIncluded": false
+  },
+  "conclusion": "Environment discovery and build-toolchain gates passed; this does not establish Host compilation or NETLOAD support by itself."
+}

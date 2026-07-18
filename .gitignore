@@ -15,3 +15,12 @@ TestResults/
 *.sv$
 *.log
 local.settings.json
+# One reviewed offline compile-time package; all other NuGet packages remain ignored.
+!third_party/
+!third_party/nuget/
+!third_party/nuget/Microsoft.NETFramework.ReferenceAssemblies.net45.1.0.3.nupkg
+# Generated handoff archives and top-level manifests.
+CodexForAutoCAD-2016-source-handoff-*.bundle
+CodexForAutoCAD-2016-source-handoff-*.zip
+CodexForAutoCAD-2016-source-handoff-*.zip.sha256.txt
+/HANDOFF_MANIFEST.json
