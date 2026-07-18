@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-07-18",
+  "scope": "autocad2016-net45-net8-auth-compat",
+  "baselineCommit": "da27d585bfba141dc0885e27e57e42e5842f138c",
+  "stageCommitBinding": "The Git commit containing this evidence file and the exact reviewed inputs below is the stage commit.",
+  "evidenceState": "static-and-cross-runtime-auth-gate-passed",
+  "claimBoundary": "This proves only the shared net45/net8 authentication bytes and local fail-closed authentication behavior. It does not prove a live AutoCAD-to-AgentHost bridge or AutoCAD 2016 product support.",
+  "toolchain": {
+    "dotNetSdk": "8.0.319",
+    "dotnetAuthenticode": "Valid Microsoft Corporation signature",
+    "powerShellRuns": [
+      {
+        "version": "7.6.3",
+        "passed": true
+      },
+      {
+        "version": "5.1.19041.6456",
+        "passed": true
+      }
+    ],
+    "verifierSha256": "3E95EA32C0773FB15686B4FC794605FFE39B52C064898ECA057FEF173999128C",
+    "verifierEncoding": "UTF-8 with BOM for Windows PowerShell 5.1 compatibility"
+  },
+  "restore": {
+    "authCompatIsolatedRestoreOffline": true,
+    "managedCoreRegressionRestoreOffline": false,
+    "managedCoreRegressionOutputsIsolated": true,
+    "isolatedPackageCachePerBuild": true,
+    "package": "Microsoft.NETFramework.ReferenceAssemblies.net45 1.0.3",
+    "packageSha256": "23A9F94EA3E2CB88CD8341AF75B811C6FB5CB82516FC696E95ED4620279128E3",
+    "authorSignatureVerified": true,
+    "repositorySignatureVerified": true,
+    "defaultIpcTargetFramework": "net8.0",
+    "autoCad2016ConditionalTargetFrameworks": "net45;net8.0"
+  },
+  "reproducibility": {
+    "isolatedBuildsPerPowerShellRun": 2,
+    "pathMappedGeneratedInputs": true,
+    "allSixPrimaryArtifactsBitForBitEqualWithinEachRun": true,
+    "allSixPrimaryArtifactHashesEqualAcrossPowerShell7AndPowerShell51": true,
+    "artifactHashes": {
+      "net45Contracts": "C94E378021FDB91BE492962576818F0AAC08A39370A52C6531B31966D241BFDA",
+      "net8Contracts": "BC44BEBFB815044EEF185A37FD1F0BA2F304E255618DF8E631D151C4D0FA823B",
+      "net45Ipc": "8EDEDF21D6B0685052F51CD108FE86353AE10209F6D97B3AFEC71FF2E8641616",
+      "net8Ipc": "BE77DDF6AF2415AF67B36ACC014D67A55B0606F288D388398474D6278BA366D0",
+      "net45Specs": "64F105B193064FFB7E04903DEF8DAD867AD0D96C2C6498A52973260CFE6053B4",
+      "net8Specs": "036867AA4DE24592258A1E2C0302E2403E2F758F68A523F805C4FFBC06086609"
+    },
+    "projectLocalObjModifiedByEntireGate": false,
+    "projectLocalObjRootCount": 15,
+    "projectLocalObjScope": "all csproj entries in Codex.AutoCAD.sln",
+    "reviewedInputsModifiedByVerifier": false
+  },
+  "knownVector": {
+    "protocolVersion": 1,
+    "canonicalLengthRule": "decimal UTF-16 code-unit count prefixes followed by strict UTF-8 encoding",
+    "canonicalHex": "313A31383A6D73672DCEB12DF09F9880363A636F72722DE4B8AD31323A73657373696F6E2D32303136323A343231313A6361642E636F6E7465787432343A7B2274657874223A22E4B8ADE69687F09F9880222C226C696E65223A317D33323A3030313132323333343435353636373738383939414142424343444445454646",
+    "hmacSha256": "46FFA5506FD595BA64CEAD67EDBAF8707E1A585988BC80298EBF569F69B38400",
+    "independentlyCalculatedWithPythonStandardLibrary": true,
+    "net45OutputMatched": true,
+    "net8OutputMatched": true
+  },
+  "specs": {
+    "net45": "17/17",
+    "net8": "17/17",
+    "bridgeRegression": "29/29",
+    "bridgeRegressionRuntimeArtifactHashes": {
+      "Codex.AutoCAD.Bridge.Specs.dll": "B041DF99A06E7CDD05C4EA1C174BBB40F1119F1BA1F83211A593A6BEAC3AD0F7",
+      "Codex.AutoCAD.Bridge.dll": "C70A3A70F905F8B61D867B41AF5B58906B3E561BAD04119ED7C1C8150F90C96D",
+      "Codex.AutoCAD.Ipc.dll": "29411B6370C34CB0568E6B5542553E71D0B103B1F650BF7AA9918AF5C9706C9F",
+      "Codex.AutoCAD.Contracts.dll": "291BCBCD39AFB279907E1B30AA2E31E93ADE119E8CD154EFC280C847E4E1E08E",
+      "Codex.AutoCAD.Bridge.Specs.deps.json": "0F8B68ACD4E53B344869729B115405669D8C6A7C617AD889ED8EC3492EF44463",
+      "Codex.AutoCAD.Bridge.Specs.runtimeconfig.json": "28329CF08F6505E73806B17558B187C02F0C1C516FE47EBFB7A013D082AAA306"
+    },
+    "bridgeProjectOutputSha256": "C70A3A70F905F8B61D867B41AF5B58906B3E561BAD04119ED7C1C8150F90C96D",
+    "bridgeRuntimeCopyMatchesProjectOutput": true,
+    "managedCoreReleaseBuildWarnings": 0,
+    "managedCoreReleaseBuildErrors": 0,
+    "covered": [
+      "exact 32-byte session secret",
+      "HMAC-SHA256 canonical envelope",
+      "strict sequence increment by one",
+      "initial sequence gap rejection",
+      "nonce replay and bounded-history rejection",
+      "invalid MAC does not advance sequence or nonce state",
+      "null signed fields are rejected and do not alias empty strings",
+      "malformed Unicode is rejected",
+      "private secret copy is zeroed on dispose"
+    ]
+  },
+  "reviewedInputs": {
+    "global.json": "9C220AE43B10F3CB50512CB72A26A7E4AAF1549050068340E2655A050B9BF900",
+    "Codex.AutoCAD.sln": "368757CD03260DD7973E74D1D1169C0F87AC501B5F4AF6CEA633A97F7CEF11E7",
+    "Directory.Build.props": "C9CE8238F2F1B010BC5954B1844126B7DCEE021B9658EE7EF7600355933CE266",
+    "src/Codex.AutoCAD.Contracts/AgentBridgeContracts.cs": "68775FFAF1617AD0A2B6E8E0F1D3F85B44E882301158437F53EDE50631954B0C",
+    "src/Codex.AutoCAD.Contracts/ApprovalContracts.cs": "63DE5B7EC81C8CB8D3526C9B37447FBD26F01A2EF3E40811E45BAA0FC58BD0EE",
+    "src/Codex.AutoCAD.Contracts/CadContractValidator.cs": "D3BAFE2D90EE728E4763DFB8C165552D811A0619FC7B3311FC2900659C4B50A5",
+    "src/Codex.AutoCAD.Contracts/Codex.AutoCAD.Contracts.csproj": "91D0FF1667768CFA8F060DEEB61B134E7D44868905937D1B671B0BD00A45DB33",
+    "src/Codex.AutoCAD.Contracts/ContextContracts.cs": "60596BA02FEF97910EF713A8E64DC0E1EC659855177F44EEA3E6E0292208E4BC",
+    "src/Codex.AutoCAD.Contracts/Geometry.cs": "7AEF699AA52766122B358A7B01234C5A776DD90AA291D3CC91A7009E985D583C",
+    "src/Codex.AutoCAD.Contracts/IpcContracts.cs": "55143A3B8280166420F2BD4AD84954C5F3EE118A9541187C906D50162A0EE6B2",
+    "src/Codex.AutoCAD.Contracts/OperationContracts.cs": "A856AAC5C84ECFAFF51901FA7407C897D8C2B6401F9A25A2A5CFA5CAA892AF7C",
+    "src/Codex.AutoCAD.Contracts/ProtocolConstants.cs": "0305FB897BD73FA1AA65EF4F160C8150FE474C7742E7E039DF2AF7D1BA66C2DB",
+    "src/Codex.AutoCAD.Ipc/Codex.AutoCAD.Ipc.csproj": "E84A7E88DA91E2DC982DF5BE3750A5AF5D193536B18644CAC1CEBF2C44C11F61",
+    "src/Codex.AutoCAD.Ipc/IpcAuthentication.cs": "D8545E11CDCE24A01B4F9A101E04BBC5983E08B7BB0E9B473DDA60AE8A56BE07",
+    "src/Codex.AutoCAD.Bridge/AuthenticatedPipeConnection.cs": "BD4CB0A6A3A2480A07999701E6D00101AD7A3103A33ED3BC613C4BB6EAE39151",
+    "src/Codex.AutoCAD.Bridge/BridgeConnectionOptions.cs": "3C58192B64BA4BB2D39D1E1064307AE10CFDBBC0DF187A0AC5AE44594B57CC4A",
+    "src/Codex.AutoCAD.Bridge/BridgeProtocol.cs": "E3FCECE3BF16BD2217590AAB25E4F61A53EDF35C41069E60F0A2CB986DBC18C0",
+    "src/Codex.AutoCAD.Bridge/Codex.AutoCAD.Bridge.csproj": "0E0A8E065BA197D90652A0B76E580E75E7053E7C732F05BB017E2BFDFF5D7D63",
+    "src/Codex.AutoCAD.Bridge/LengthPrefixedFrameCodec.cs": "B289BAE6A16BD886E83FAE7C81F3A977BA0DB66BFEEDE893B87A702A290A183B",
+    "src/Codex.AutoCAD.Bridge/NamedPipeBridge.cs": "211D503BE488B98855BA190A6BDBF062372B42A908B3972621F3212DB6A7C350",
+    "tests/Codex.AutoCAD.Ipc.Specs/Codex.AutoCAD.Ipc.Specs.csproj": "EF3F31BA4239B23D0987E5D4B6DFBC3F79638A0AD39DE23B3BA7E98F55096D9C",
+    "tests/Codex.AutoCAD.Ipc.Specs/Program.cs": "195A179559FF0796458B43EDEC944468F5FD13DF620E643D94565BB8908187EC",
+    "tests/Codex.AutoCAD.Bridge.Specs/Codex.AutoCAD.Bridge.Specs.csproj": "EE7548E310C1CBE4D18199BACD7D3FB9D6CBC62AC40C561C494B8BF9E1E28340",
+    "tests/Codex.AutoCAD.Bridge.Specs/Program.cs": "53C7DD374E8279615481B7BC32B596BCD015515E07362DE0A9A1F4CFFD064175",
+    "src/Codex.AutoCAD.Host.2016/NuGet.Config": "BD61267F69CD5DF2F0996DA881F7BA3531AB4442DC2D6EB861536EC4AB0D0B8E",
+    "third_party/nuget/Microsoft.NETFramework.ReferenceAssemblies.net45.1.0.3.nupkg": "23A9F94EA3E2CB88CD8341AF75B811C6FB5CB82516FC696E95ED4620279128E3",
+    "scripts/verify-autocad2016-auth-compat.ps1": "3E95EA32C0773FB15686B4FC794605FFE39B52C064898ECA057FEF173999128C"
+  },
+  "runtime": {
+    "autoCadProcessSetChanged": false,
+    "autoCadStartedOrRestarted": false,
+    "cadCommandsSent": false,
+    "netLoadAttempted": false,
+    "netLoadVerified": false,
+    "agentHostLiveBridgeVerified": false,
+    "runtimeToCadCandidateBindingVerified": false
+  },
+  "limitations": [
+    "The Host.2016 and Palette assemblies are not yet wired to this authentication library.",
+    "AgentHost secret bootstrap, pipe endpoint, concrete IAgentBridgeClient, live handshake, hard request timeout, disconnect handling, and result identity binding remain incomplete.",
+    "The full current-worktree verify-phase2 gate is intentionally red because the strengthened Host.2025 scan now detects eight unverified CAD database write calls in a separate uncommitted prototype.",
+    "No AutoCAD process was started or operated and no DWG was read, written, or saved."
+  ]
+}

@@ -6,5 +6,12 @@
     <RootNamespace>Codex.AutoCAD.Contracts</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
+    <AutomaticallyUseReferenceAssemblyPackages Condition="'$(EnableAutoCad2016)' == 'true'">false</AutomaticallyUseReferenceAssemblyPackages>
   </PropertyGroup>
+  <ItemGroup Condition="'$(EnableAutoCad2016)' == 'true'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net45" Version="[1.0.3]">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime;build;native;contentfiles;analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
 </Project>

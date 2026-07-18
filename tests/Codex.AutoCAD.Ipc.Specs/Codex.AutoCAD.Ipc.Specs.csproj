@@ -1,10 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework Condition="'$(EnableAutoCad2016)' != 'true'">net8.0</TargetFramework>
+    <TargetFrameworks Condition="'$(EnableAutoCad2016)' == 'true'">net45;net8.0</TargetFrameworks>
     <AssemblyName>Codex.AutoCAD.Ipc.Specs</AssemblyName>
     <RootNamespace>Codex.AutoCAD.Ipc.Specs</RootNamespace>
+    <AutomaticallyUseReferenceAssemblyPackages Condition="'$(EnableAutoCad2016)' == 'true'">false</AutomaticallyUseReferenceAssemblyPackages>
   </PropertyGroup>
+  <ItemGroup Condition="'$(EnableAutoCad2016)' == 'true'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net45" Version="[1.0.3]">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime;build;native;contentfiles;analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Codex.AutoCAD.Ipc\Codex.AutoCAD.Ipc.csproj" />
   </ItemGroup>

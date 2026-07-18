@@ -47,7 +47,7 @@ public sealed class AuthenticatedPipeConnection : IAsyncDisposable
     public AuthenticatedPipeConnection(
         Stream stream,
         string sessionId,
-        ReadOnlySpan<byte> sessionSecret,
+        byte[] sessionSecret,
         BridgeConnectionOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(stream);
@@ -61,6 +61,11 @@ public sealed class AuthenticatedPipeConnection : IAsyncDisposable
             throw new ArgumentException(
                 $"SessionId不能为空且不能超过{IpcSessionGuard.MaximumIdentifierCharacters}个字符。",
                 nameof(sessionId));
+        }
+
+        if (sessionSecret is null)
+        {
+            throw new ArgumentNullException(nameof(sessionSecret));
         }
 
         if (sessionSecret.Length != IpcSessionSecret.SizeInBytes)

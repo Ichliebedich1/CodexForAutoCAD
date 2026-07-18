@@ -11,41 +11,107 @@ public static class IpcSessionSecret
 
     public static byte[] Generate()
     {
-        return RandomNumberGenerator.GetBytes(SizeInBytes);
+        var secret = new byte[SizeInBytes];
+        using (var random = RandomNumberGenerator.Create())
+        {
+            random.GetBytes(secret);
+        }
+
+        return secret;
+    }
+}
+
+/// <summary>
+/// Protocol v1 canonical encoding. Length prefixes are decimal UTF-16 code-unit counts
+/// (the value returned by <see cref="string.Length"/>), while the completed canonical
+/// string is encoded as strict UTF-8. This rule is frozen for net45/net8 interoperability.
+/// </summary>
+public static class IpcCanonicalEnvelopeEncoding
+{
+    public static byte[] GetBytes(IpcEnvelope envelope)
+    {
+        if (envelope is null)
+        {
+            throw new ArgumentNullException(nameof(envelope));
+        }
+
+        var builder = new StringBuilder();
+        Append(builder, envelope.ProtocolVersion.ToString(CultureInfo.InvariantCulture));
+        Append(builder, RequireSignedString(envelope.MessageId, nameof(envelope.MessageId)));
+        Append(builder, RequireSignedString(envelope.CorrelationId, nameof(envelope.CorrelationId)));
+        Append(builder, RequireSignedString(envelope.SessionId, nameof(envelope.SessionId)));
+        Append(builder, envelope.Sequence.ToString(CultureInfo.InvariantCulture));
+        Append(builder, RequireSignedString(envelope.MessageType, nameof(envelope.MessageType)));
+        Append(builder, RequireSignedString(envelope.PayloadJson, nameof(envelope.PayloadJson)));
+        Append(builder, RequireSignedString(envelope.Nonce, nameof(envelope.Nonce)));
+        return new UTF8Encoding(false, true).GetBytes(builder.ToString());
+    }
+
+    private static string RequireSignedString(string? value, string fieldName)
+    {
+        if (value is null)
+        {
+            throw new ArgumentException("IPC签名字段不能为null；可选字段必须使用显式空字符串。", fieldName);
+        }
+
+        return value;
+    }
+
+    private static void Append(StringBuilder builder, string value)
+    {
+        builder.Append(value.Length.ToString(CultureInfo.InvariantCulture));
+        builder.Append(':');
+        builder.Append(value);
     }
 }
 
 public sealed class IpcEnvelopeAuthenticator : IDisposable
 {
-    private const int Sha256HexLength = 64;
-    private readonly object _sync = new();
+    private const int Sha256Bytes = 32;
+    private const int Sha256HexLength = Sha256Bytes * 2;
+    private readonly object _sync = new object();
     private readonly byte[] _sessionSecret;
     private bool _disposed;
 
-    public IpcEnvelopeAuthenticator(ReadOnlySpan<byte> sessionSecret)
+    public IpcEnvelopeAuthenticator(byte[] sessionSecret)
     {
-        if (sessionSecret.Length < IpcSessionSecret.SizeInBytes)
+        if (sessionSecret is null)
         {
-            throw new ArgumentException("IPC会话密钥至少需要256位。", nameof(sessionSecret));
+            throw new ArgumentNullException(nameof(sessionSecret));
         }
 
-        _sessionSecret = sessionSecret.ToArray();
+        if (sessionSecret.Length != IpcSessionSecret.SizeInBytes)
+        {
+            throw new ArgumentException("IPC会话密钥必须恰好为256位。", nameof(sessionSecret));
+        }
+
+        _sessionSecret = (byte[])sessionSecret.Clone();
     }
 
     public string Sign(IpcEnvelope envelope)
     {
-        ArgumentNullException.ThrowIfNull(envelope);
+        if (envelope is null)
+        {
+            throw new ArgumentNullException(nameof(envelope));
+        }
+
         lock (_sync)
         {
             ThrowIfDisposed();
-            using var hmac = new HMACSHA256(_sessionSecret);
-            return Convert.ToHexString(hmac.ComputeHash(BuildCanonicalBytes(envelope)));
+            using (var hmac = new HMACSHA256(_sessionSecret))
+            {
+                return HexCodec.EncodeUpper(hmac.ComputeHash(IpcCanonicalEnvelopeEncoding.GetBytes(envelope)));
+            }
         }
     }
 
     public bool Verify(IpcEnvelope envelope)
     {
-        ArgumentNullException.ThrowIfNull(envelope);
+        if (envelope is null)
+        {
+            throw new ArgumentNullException(nameof(envelope));
+        }
+
         lock (_sync)
         {
             ThrowIfDisposed();
@@ -54,19 +120,32 @@ public sealed class IpcEnvelopeAuthenticator : IDisposable
                 return false;
             }
 
-            byte[] supplied;
-            try
-            {
-                supplied = Convert.FromHexString(envelope.Mac);
-            }
-            catch (FormatException)
+            var supplied = new byte[Sha256Bytes];
+            if (!HexCodec.TryDecode(envelope.Mac, supplied))
             {
                 return false;
             }
 
-            using var hmac = new HMACSHA256(_sessionSecret);
-            var expected = hmac.ComputeHash(BuildCanonicalBytes(envelope));
-            return supplied.Length == expected.Length && CryptographicOperations.FixedTimeEquals(supplied, expected);
+            try
+            {
+                using (var hmac = new HMACSHA256(_sessionSecret))
+                {
+                    var expected = hmac.ComputeHash(IpcCanonicalEnvelopeEncoding.GetBytes(envelope));
+                    return FixedTime.Equals(supplied, expected);
+                }
+            }
+            catch (EncoderFallbackException)
+            {
+                return false;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+            finally
+            {
+                Array.Clear(supplied, 0, supplied.Length);
+            }
         }
     }
 
@@ -79,36 +158,97 @@ public sealed class IpcEnvelopeAuthenticator : IDisposable
                 return;
             }
 
-            CryptographicOperations.ZeroMemory(_sessionSecret);
+            Array.Clear(_sessionSecret, 0, _sessionSecret.Length);
             _disposed = true;
         }
     }
 
-    private static byte[] BuildCanonicalBytes(IpcEnvelope envelope)
-    {
-        var builder = new StringBuilder();
-        Append(builder, envelope.ProtocolVersion.ToString(CultureInfo.InvariantCulture));
-        Append(builder, envelope.MessageId);
-        Append(builder, envelope.CorrelationId);
-        Append(builder, envelope.SessionId);
-        Append(builder, envelope.Sequence.ToString(CultureInfo.InvariantCulture));
-        Append(builder, envelope.MessageType);
-        Append(builder, envelope.PayloadJson);
-        Append(builder, envelope.Nonce);
-        return Encoding.UTF8.GetBytes(builder.ToString());
-    }
-
-    private static void Append(StringBuilder builder, string? value)
-    {
-        value ??= string.Empty;
-        builder.Append(value.Length.ToString(CultureInfo.InvariantCulture));
-        builder.Append(':');
-        builder.Append(value);
-    }
-
     private void ThrowIfDisposed()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(IpcEnvelopeAuthenticator));
+        }
+    }
+
+    private static class HexCodec
+    {
+        private const string UpperHex = "0123456789ABCDEF";
+
+        public static string EncodeUpper(byte[] bytes)
+        {
+            var characters = new char[bytes.Length * 2];
+            for (var index = 0; index < bytes.Length; index++)
+            {
+                var value = bytes[index];
+                characters[index * 2] = UpperHex[value >> 4];
+                characters[(index * 2) + 1] = UpperHex[value & 0x0F];
+            }
+
+            return new string(characters);
+        }
+
+        public static bool TryDecode(string value, byte[] destination)
+        {
+            if (value.Length != destination.Length * 2)
+            {
+                return false;
+            }
+
+            for (var index = 0; index < destination.Length; index++)
+            {
+                var high = DecodeNibble(value[index * 2]);
+                var low = DecodeNibble(value[(index * 2) + 1]);
+                if (high < 0 || low < 0)
+                {
+                    Array.Clear(destination, 0, destination.Length);
+                    return false;
+                }
+
+                destination[index] = (byte)((high << 4) | low);
+            }
+
+            return true;
+        }
+
+        private static int DecodeNibble(char character)
+        {
+            if (character >= '0' && character <= '9')
+            {
+                return character - '0';
+            }
+
+            if (character >= 'A' && character <= 'F')
+            {
+                return character - 'A' + 10;
+            }
+
+            if (character >= 'a' && character <= 'f')
+            {
+                return character - 'a' + 10;
+            }
+
+            return -1;
+        }
+    }
+
+    private static class FixedTime
+    {
+        public static bool Equals(byte[] left, byte[] right)
+        {
+#if NET8_0_OR_GREATER
+            return CryptographicOperations.FixedTimeEquals(left, right);
+#else
+            var difference = left.Length ^ right.Length;
+            var count = Math.Min(left.Length, right.Length);
+            for (var index = 0; index < count; index++)
+            {
+                difference |= left[index] ^ right[index];
+            }
+
+            return difference == 0;
+#endif
+        }
     }
 }
 
@@ -127,6 +267,25 @@ public enum IpcValidationCode
     InvalidMetadata = 10
 }
 
+public interface IIpcClock
+{
+    DateTimeOffset GetUtcNow();
+}
+
+public sealed class SystemIpcClock : IIpcClock
+{
+    public static readonly SystemIpcClock Instance = new SystemIpcClock();
+
+    private SystemIpcClock()
+    {
+    }
+
+    public DateTimeOffset GetUtcNow()
+    {
+        return DateTimeOffset.UtcNow;
+    }
+}
+
 public sealed class IpcSessionGuardOptions
 {
     public const int DefaultMaximumNonceHistoryEntries = 16 * 1024;
@@ -134,11 +293,11 @@ public sealed class IpcSessionGuardOptions
     public static readonly TimeSpan DefaultNonceRetention = TimeSpan.FromMinutes(5);
     public static readonly TimeSpan AbsoluteMaximumNonceRetention = TimeSpan.FromHours(1);
 
-    public int MaximumNonceHistoryEntries { get; init; } = DefaultMaximumNonceHistoryEntries;
+    public int MaximumNonceHistoryEntries { get; set; } = DefaultMaximumNonceHistoryEntries;
 
-    public TimeSpan NonceRetention { get; init; } = DefaultNonceRetention;
+    public TimeSpan NonceRetention { get; set; } = DefaultNonceRetention;
 
-    public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
+    public IIpcClock Clock { get; set; } = SystemIpcClock.Instance;
 
     internal void Validate()
     {
@@ -156,7 +315,10 @@ public sealed class IpcSessionGuardOptions
                 $"Nonce保留时间必须大于零且不超过{AbsoluteMaximumNonceRetention}。");
         }
 
-        ArgumentNullException.ThrowIfNull(TimeProvider);
+        if (Clock is null)
+        {
+            throw new ArgumentNullException(nameof(Clock));
+        }
     }
 }
 
@@ -165,20 +327,21 @@ public sealed class IpcSessionGuard : IDisposable
     public const int MaximumIdentifierCharacters = 256;
     public const int MaximumNonceCharacters = 128;
 
-    private readonly object _sync = new();
+    private readonly object _sync = new object();
     private readonly string _sessionId;
     private readonly IpcEnvelopeAuthenticator _authenticator;
-    private readonly Dictionary<string, DateTimeOffset> _usedNonces = new(StringComparer.Ordinal);
-    private readonly Queue<NonceHistoryEntry> _nonceExpirations = new();
+    private readonly Dictionary<string, DateTimeOffset> _usedNonces =
+        new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
+    private readonly Queue<NonceHistoryEntry> _nonceExpirations = new Queue<NonceHistoryEntry>();
     private readonly int _maximumNonceHistoryEntries;
     private readonly TimeSpan _nonceRetention;
-    private readonly TimeProvider _timeProvider;
+    private readonly IIpcClock _clock;
     private long _lastAcceptedSequence;
     private bool _disposed;
 
     public IpcSessionGuard(
         string sessionId,
-        ReadOnlySpan<byte> sessionSecret,
+        byte[] sessionSecret,
         IpcSessionGuardOptions? options = null)
     {
         if (string.IsNullOrWhiteSpace(sessionId) || sessionId.Length > MaximumIdentifierCharacters)
@@ -192,15 +355,19 @@ public sealed class IpcSessionGuard : IDisposable
         _authenticator = new IpcEnvelopeAuthenticator(sessionSecret);
         _maximumNonceHistoryEntries = options.MaximumNonceHistoryEntries;
         _nonceRetention = options.NonceRetention;
-        _timeProvider = options.TimeProvider;
+        _clock = options.Clock;
     }
 
     public IpcValidationCode ValidateAndAccept(IpcEnvelope envelope)
     {
-        ArgumentNullException.ThrowIfNull(envelope);
+        if (envelope is null)
+        {
+            throw new ArgumentNullException(nameof(envelope));
+        }
+
         lock (_sync)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
+            ThrowIfDisposed();
             if (envelope.ProtocolVersion != ProtocolConstants.CurrentVersion)
             {
                 return IpcValidationCode.InvalidProtocol;
@@ -213,14 +380,23 @@ public sealed class IpcSessionGuard : IDisposable
 
             if (!IsRequiredIdentifier(envelope.MessageId)
                 || !IsOptionalIdentifier(envelope.CorrelationId)
-                || !IsRequiredIdentifier(envelope.MessageType))
+                || !IsRequiredIdentifier(envelope.MessageType)
+                || envelope.PayloadJson is null)
             {
                 return IpcValidationCode.InvalidMetadata;
             }
 
-            if (Encoding.UTF8.GetByteCount(envelope.PayloadJson ?? string.Empty) > ProtocolConstants.MaximumMessageBytes)
+            try
             {
-                return IpcValidationCode.MessageTooLarge;
+                if (new UTF8Encoding(false, true).GetByteCount(envelope.PayloadJson ?? string.Empty)
+                    > ProtocolConstants.MaximumMessageBytes)
+                {
+                    return IpcValidationCode.MessageTooLarge;
+                }
+            }
+            catch (EncoderFallbackException)
+            {
+                return IpcValidationCode.InvalidMetadata;
             }
 
             if (envelope.Sequence <= 0
@@ -240,7 +416,7 @@ public sealed class IpcSessionGuard : IDisposable
                 return IpcValidationCode.InvalidNonce;
             }
 
-            var now = _timeProvider.GetUtcNow();
+            var now = _clock.GetUtcNow();
             RemoveExpiredNonces(now);
             if (_usedNonces.ContainsKey(envelope.Nonce))
             {
@@ -284,20 +460,29 @@ public sealed class IpcSessionGuard : IDisposable
 
     private static bool IsRequiredIdentifier(string? value)
     {
-        return !string.IsNullOrWhiteSpace(value) && value.Length <= MaximumIdentifierCharacters;
+        return value is not null
+            && !string.IsNullOrWhiteSpace(value)
+            && value.Length <= MaximumIdentifierCharacters;
     }
 
     private static bool IsOptionalIdentifier(string? value)
     {
-        return string.IsNullOrEmpty(value) || value.Length <= MaximumIdentifierCharacters;
+        return value is not null && value.Length <= MaximumIdentifierCharacters;
     }
 
     private void RemoveExpiredNonces(DateTimeOffset now)
     {
-        while (_nonceExpirations.TryPeek(out var entry) && entry.ExpiresAt <= now)
+        while (_nonceExpirations.Count > 0)
         {
+            var entry = _nonceExpirations.Peek();
+            if (entry.ExpiresAt > now)
+            {
+                break;
+            }
+
             _nonceExpirations.Dequeue();
-            if (_usedNonces.TryGetValue(entry.Nonce, out var currentExpiration)
+            DateTimeOffset currentExpiration;
+            if (_usedNonces.TryGetValue(entry.Nonce, out currentExpiration)
                 && currentExpiration == entry.ExpiresAt)
             {
                 _usedNonces.Remove(entry.Nonce);
@@ -305,5 +490,24 @@ public sealed class IpcSessionGuard : IDisposable
         }
     }
 
-    private readonly record struct NonceHistoryEntry(string Nonce, DateTimeOffset ExpiresAt);
+    private void ThrowIfDisposed()
+    {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(IpcSessionGuard));
+        }
+    }
+
+    private sealed class NonceHistoryEntry
+    {
+        public NonceHistoryEntry(string nonce, DateTimeOffset expiresAt)
+        {
+            Nonce = nonce;
+            ExpiresAt = expiresAt;
+        }
+
+        public string Nonce { get; }
+
+        public DateTimeOffset ExpiresAt { get; }
+    }
 }
