@@ -19,7 +19,7 @@
       {
         "version": "5.1.19041.6456",
         "positiveGatePassed": true,
-        "negativeGateRejectedUnsafePrototype": "not-repeated; identical scanner input was exercised by PowerShell 7"
+        "negativeGateRejectedUnsafePrototype": true
       }
     ]
   },
@@ -99,6 +99,7 @@
   "negativeCase": {
     "expectedRejected": true,
     "powerShell7ExitCode": 1,
+    "powerShell51ExitCode": 1,
     "failureStage": "host-forbidden-api-scan",
     "releaseBuildWarnings": 0,
     "releaseBuildErrors": 0,
