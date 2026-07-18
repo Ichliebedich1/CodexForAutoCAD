@@ -1,13 +1,14 @@
-# AutoCAD 2016 实机测试记录
+﻿# AutoCAD 2016 实机测试记录
 
 ## 证据来源与适用边界
 
-本报告严格分开四类证据：
+本报告严格分开五类证据：
 
 1. **用户实机命令记录**：用户在目标机已打开的原版 AutoCAD 2016 命令行中手工执行 `NETLOAD`、`CODEXCADDOCTOR`、`CODEXCAD` 和 `DBMOD`。
 2. **环境采集器证据**：schema v4 只读采集；不启动 AutoCAD、不读取 `TRUSTEDPATHS` 内容。
 3. **Host.2016 静态/构建门禁**：隔离 Release 重编译和签名、版本、引用、禁止 API 等验证；脚本不执行 NETLOAD。
 4. **Phase 2 本地规格证据**：七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘密扫描的本地阶段快照；未进入 AutoCAD，提交状态以 Git 历史为准。
+5. **Host.2016 Palette 静态/构建与实机证据**：独立 Palette solution/project 的隔离 Release 门禁，以及冻结候选哈希绑定后的人工 NETLOAD、只读 UI 和生命周期记录；不得继承诊断 Host 的运行时结论。
 
 本次实机命令记录没有回显所加载 DLL 的路径或现场 SHA-256。因此：
 
@@ -62,9 +63,14 @@
 - 运行时与后续本地构建产物身份绑定：未验证
 - 当前可重复构建候选 DLL SHA-256：`E8535C11AA09F93C405EBB7DFB46199EEDC27EE046959B4CC86395A06998B440`
 - 当前可重复构建候选 `NetLoadVerified`：`false`
+- Palette 独立候选 DLL SHA-256：`90620EA354AAE9A3C2B2E11C3FA60274F1EF9B0753734AF7AAB67BDAA0E01DFE`
+- Palette 冻结候选代号：`autocad2016-palette-frozen-90620EA3`；冻结副本为只读，大小 `16384` 字节
+- Palette 模块人工 NETLOAD/命令观察：已观察到预期加载消息，且 `CODEX16PAL`、`CODEX16PALINFO`、`CODEX16PALRESET` 可执行
+- Palette 冻结候选 `NetLoadVerified`：`true`；用户已明确确认 NETLOAD 文件选择器选择了完整冻结候选路径
+- Palette 运行时与冻结候选身份绑定：`true`；加载前记录、加载后复算 SHA-256 均为 `90620E...01DFE`，并取得用户对所选完整冻结路径的明确确认
 - 旧诊断候选副本是否被当前构建覆盖：否；副本哈希仍为 `2E621...0C85`
 - AgentHost 版本/SHA-256：未测
-- 显示缩放：未记录
+- 显示缩放：当前会话 `96 x 96 DPI`；125% 与 150% 未测
 
 不要填写真实姓名、许可证序列号、API Key、内部服务器地址、`TRUSTEDPATHS` 内容或真实图纸路径。
 
@@ -100,8 +106,14 @@
 | L01 | 手工 NETLOAD 无绑定错误 | 通过 | 用户命令记录显示诊断薄宿主已加载且命令已注册 | NETLOAD 路径/哈希未回显；不能绑定到后续本地 DLL |
 | L02 | CODEXCADDOCTOR | 通过 | net45、x64、CLR 4.0.30319.42000、AcMgd/AcDbMgd 20.1.0.0、ACADVER 20.1s | VERNUM 返回 `unavailable (InvalidInput)` |
 | D01 | 诊断命令前后 DBMOD 不变 | 通过 | `21 -> 21`，命令内 DBMOD 也为 21 | 只覆盖诊断命令，不代表选择上下文已验证 |
-| U01 | 打开/停靠/浮动/隐藏/重开 | 未测 | | 诊断提交未接入 Palette |
-| U02 | 中文输入与 DPI | 未测 | | 100%/125%/150% 均未测 |
+| U01 | 打开/停靠/浮动/隐藏/重开 | 通过 | 用户明确确认左停靠、右停靠、浮动、点 X 隐藏及 `CODEX16PAL` 重开均正常；最终 INFO visible=true | 当前会话为 96 DPI；125%/150% 仍待测 |
+| U02 | 中文输入与换行 | 通过 | 用户使用中文输入法实际输入固定两行，并明确确认显示与换行正常 | 输入仅保留在控件内，不发送、不写图、不保存 |
+| U03 | 当前 96 DPI 会话的 DPI、DIP/物理尺寸记录 | 通过 | 首次 `300 x 866` physical/DIP；RESET 后 `370 x 366`；均为 `96 x 96 DPI` | 不代表 125%/150% 已通过 |
+| U04 | RESET 释放并重建 | 通过 | 已连续观察 generation/reset/release `1/0/0 -> 2/1/1 -> 3/2/2 -> 4/3/3`，每次 RESET 后 INFO 均可执行 | 证明多次释放重建计数准确；完整退出生命周期仍待测 |
+| U05 | RESET 后不存在重复事件订阅 | 未测 | 最新有效样本中 StateChanged `13 -> 15`、SizeChanged `17 -> 18` | 事件计数变化不能单独证明所有处理器均未重复；仍缺退出生命周期验证 |
+| U06 | Agent/选择读取/CAD 写入/插件自动保存保持禁用 | 通过 | 两次 INFO 均显示 Agent、Selection read、CAD write、Automatic save 为 disabled | 不代表 AutoCAD 自身定时 `.sv$` 自动保存被禁用 |
+| U07 | Palette INFO/RESET 干净窗口内 DBMOD 精确不变 | 通过 | 有效隔离复测的四次命令行与两次 INFO 共六个 DBMOD 均为 `4` | 先前两轮受原生自动保存/选择提示污染的样本保留为无效记录，不用于通过结论 |
+| U08 | 冻结 Palette DLL 与运行时身份绑定 | 通过 | 冻结 DLL 加载前/后哈希均为 `90620E...01DFE`，用户明确确认 NETLOAD 选择了完整冻结候选路径 | 提交证据不保存本机完整路径 |
 | R01 | AgentHost 离线安全降级 | 未测 | | Agent 尚未接入 Host.2016 |
 | R02 | 两轮只读对话与上下文记忆 | 未测 | | |
 | C01 | 选择 Line/Circle/Polyline/Text/Block | 未测 | | 选择上下文尚未获得 2016 实机证据 |
@@ -145,30 +157,105 @@
 
 以上新增结论属于本次静态/构建候选 `E853...B440`；证据采集时尚未绑定到新的阶段提交，且至今没有 NETLOAD 证据。首次诊断基线 `2d2ad37` 和用户旧命令记录仍只证明首次诊断候选可加载；后续提交状态应以 Git 历史为准，任何 Host.2016 修改都必须重新执行门禁并对冻结候选重新人工 NETLOAD，不能继承旧运行时结论。
 
+## Host.2016 Palette 静态、构建与实机复核
+
+Palette 阶段必须使用独立永久模块，不覆盖当前进程已经加载的诊断程序集：
+
+- solution：`Codex.AutoCAD.2016.Palette.sln`
+- project：`src/Codex.AutoCAD.Host.2016.Palette/Codex.AutoCAD.Host.2016.Palette.csproj`
+- assembly：`Codex.AutoCAD.Host.2016.Palette.dll`
+- 命令面：`CODEX16PAL`、`CODEX16PALINFO`、`CODEX16PALRESET`
+- 验证脚本：`scripts/verify-autocad2016-palette.ps1`
+- 脱敏证据：`handoff/autocad2016/evidence/palette-build-verification-20260718.json`
+
+静态/构建门禁已完成；这些结果仍不是 AutoCAD 运行时证据：
+
+- PowerShell 7.6.3 与 Windows PowerShell 5.1.19041.6456：完整门禁均通过。
+- 在安全门禁提交 `e039738` 上重新执行两套 PowerShell 门禁：均通过，冻结候选代号为 `autocad2016-palette-frozen-90620EA3`。
+- MSBuild、dotnet host、ildasm 及 AutoCAD 2016 原版程序集签名/版本：通过。
+- verifier SHA-256：`9E255CD47B183AD3C4DEC68D096BCDADB456EDCA570DCB4603C87E510B23AA18`。
+- solution SHA-256：`29CBFCAE5ADD3256BB3D3C21446E58AC247D508336EA18646A64467A562E1C22`。
+- project SHA-256：`9C990A405103F5CDCD8ED855DA68DD616FFD1CB78795BBD2CA9E41EF0154D344`；六个 Compile 源文件均已精确锁定。
+- 两套 PowerShell 各自的隔离 Release 首次构建与独立重建逐字节一致；四个 DLL SHA-256 均为 `90620E...01DFE`。
+- 输出仅一个 16384 字节 DLL、无 PDB、无复制 Autodesk/System DLL：通过。
+- evaluated Compile/Reference/Import/Package/Target 图精确允许清单：通过。
+- 精确 IL 门禁：`37` 个 MethodDef、`117` 个 MemberRef、`8` 个输出程序集引用；ExtensionApplication、CommandClass 和三个 flags `0` 的 CommandMethod 属性通过。
+- CAD 数据库/选择/事务、保存、命令字符串、Process、IPC、文件、网络、注册表、运行时反射、后台线程、Agent 耦合及文档身份访问均 fail-closed；危险样本和注释伪装负测通过。
+- verifier 没有启动、重启、发送命令或写入 AutoCAD；状态为 `compiled-palette-candidate-not-runtime-verified-by-this-script`，`NetLoadVerified=false`。
+
+2026-07-18 首次人工运行取得以下**部分运行时观察**；在该次记录形成时，特定冻结候选身份尚未绑定，且 `DBMOD` 不变门禁失败，因此当时不能验收：
+
+- 用户复用原本打开的 AutoCAD 2016 进程，人工 `NETLOAD` 后观察到预期 Palette 模块加载消息，并成功运行 `CODEX16PAL`、`CODEX16PALINFO`、`CODEX16PALRESET`；在完整冻结路径确认前，这只能作为模块级观察，不能写成特定候选 `NetLoadVerified=true`。
+- 冻结 DLL 在加载前记录、加载后于 CAD 外复算均为 SHA-256 `90620EA354AAE9A3C2B2E11C3FA60274F1EF9B0753734AF7AAB67BDAA0E01DFE`，大小仍为 `16384` 字节且保持只读；所选完整路径仍等待用户明确确认后才能把运行时身份绑定置为通过。
+- 首次 INFO：created/visible 为 true，generation `1`，DPI `96 x 96`，physical/DIP `300 x 866`；RESET 后 INFO：generation `2`、reset `1`、release `1`，DPI `96 x 96`，physical/DIP `370 x 366`。
+- 两次 INFO 均显示 Agent、选择读取、CAD 写入和插件自动保存为 disabled；匿名文档事件只记录计数，没有输出图纸名称或路径。
+- 加载前命令误输入为 `CODEX16PAINFO`，缺少字母 `L`；其“未知命令”结果仅记录为输入错误，不作为加载前命令面证据。
+- `DBMOD` 实测为：NETLOAD 前命令行 `4`，第一次 INFO 内 `5`，第二次 INFO 内 `5`，最终命令行 `5`。`4 -> 5` 新增对象数据库修改位，变化发生区间包含 NETLOAD、AutoCAD 原生定时自动保存、Palette 打开和其他现场交互，原因尚未隔离，因此 `dbmodUnchanged=false`；该门禁按失败记录，但不能把原因直接归于 Palette。
+- `CODEX16PAL` 后和 `CODEX16PALRESET` 后各出现一次“指定对角点或 [栏选/圈围/圈交]”窗口选择提示。命令记录没有证明其来源；两次提示均作为污染事件记录，不能解释为 Palette 发起选择，也不能忽略。
+- `.sv$` 的本地路径和文件名不进入 Git。精确源码及 IL 门禁证明候选不包含保存 API；AutoCAD 原生定时自动保存消息与“插件主动保存”必须分开解释。
+
+2026-07-19 的第一次隔离复测仍被 AutoCAD 原生定时自动保存污染：
+
+- 新建未保存空白临时图后，首次命令行和 INFO 内 `DBMOD` 均为 `4`；随后出现原生 `.sv$` 自动保存，下一次命令行 `DBMOD` 变为 `5`。
+- RESET 后 generation/reset/release 从 `2/1/1` 精确变为 `3/2/2`，但其余命令行和 INFO 内 `DBMOD` 均为 `5`。
+- 因自动保存位于观察窗口内，该轮按预定规则作废；既不算 Palette 通过，也不把变化归因于 Palette。
+
+随后同一 AutoCAD 进程完成了有效的干净隔离复测：
+
+- 使用另一个未保存空白临时图，测试窗口内没有原生自动保存、窗口选择提示、第三方加载消息或其他交互。
+- 四次命令行 `DBMOD` 与两次 INFO 内部 `DBMOD` 共六个读数全部为 `4`，对象数据库修改位始终为 `0`。
+- RESET 前后 generation/reset/release 从 `3/2/2` 精确变为 `4/3/3`；created/visible 均为 true，DPI 为 `96 x 96`，physical/DIP 均为 `300 x 866`。
+- 该轮满足既定判定规则，证明当前已加载 Palette 模块的 `CODEX16PALINFO`/`CODEX16PALRESET` 路径在有效观察窗口内没有修改图纸数据库。
+- 该次干净复测首先建立模块级零写入观察；随后用户于 2026-07-19 明确确认 NETLOAD 文件选择器选择了完整冻结候选路径，因此特定 `90620E...01DFE` 候选现已建立运行时身份绑定并可设置 `NetLoadVerified=true`。
+
+当前已打开 AutoCAD 2016 进程中的最小决定性 DBMOD 复测已按以下协议通过；该协议保留用于后续回归：
+
+```text
+DBMOD
+CODEX16PALINFO
+DBMOD
+CODEX16PALRESET
+DBMOD
+CODEX16PALINFO
+DBMOD
+```
+
+判定规则：
+
+1. 首个 `DBMOD` 的对象数据库修改位必须为 `0`，即数值必须为偶数；若为奇数，样本在测试开始前已经无法检测新增对象修改，直接作废。
+2. 四次命令行 `DBMOD` 与两次 INFO 内部 `DBMOD` 必须六值完全相同；任一变化即失败。
+3. 第一次和第二次 INFO 之间，generation、reset、release 必须各精确增加 `1`；不得据此单独宣称所有事件处理器均无重复。
+4. 测试窗口内若出现 `.sv$` 自动保存、窗口选择提示、第三方自动加载消息、其他命令或任何画布/停靠/文本交互，样本作废并重新选择安静窗口复测；不得修改 AutoCAD 自动保存设置来制造通过结果。本次最终有效样本未出现这些污染事件。
+5. 复测只隔离已加载模块的 INFO/RESET 行为；冻结候选身份由加载前/后相同 SHA-256 与用户对完整冻结路径的明确确认单独建立，`runtimeToCandidateBindingVerified=true`。
+
+上述 DBMOD 窗口结束后，用户又单独完成左停靠、右停靠、浮动、点 X 隐藏、`CODEX16PAL` 重开及两行中文/IME 输入，并明确确认显示与换行正常。最终 INFO 为 generation/reset/release `4/3/3`、StateChanged `25`、SizeChanged `29`、DPI `96 x 96`，INFO 内及随后命令行 `DBMOD` 均为 `4`。
+
+当前 96 DPI/100% 的 UI 与 IME 矩阵已通过。125%/150% DPI 及 AutoCAD 退出生命周期允许在后续受控独立会话补测；不得从当前单一进程推断为全部通过。
+
 ## Phase 2 本地规格证据
 
 | 组件 | 配置 | 结果 | 适用边界 |
 | --- | --- | --- | --- |
 | 解决方案构建 | Release | `0` warning / `0` error | 本地阶段快照；不是 AutoCAD 内构建证据 |
 | Contracts Specs | Release | `15/15` | 本地契约规格 |
-| IPC Specs | Release | `11/11` | 包含 sequence overflow；不是 Host.2016 live handshake |
+| IPC Specs | Release | `17/17` | 包含固定认证向量、严格 sequence、nonce 和防重放；不是 Host.2016 live handshake |
 | Security Specs | Release | `19/19` | 本地审批/安全规格；不是 CAD 实机审批 |
 | AppServer Specs | Release | `7/7` | 本地进程协议规格 |
 | Bridge Specs | Release | `29/29` | 本地命名管道/生命周期规格；尚未接入 Host.2016 |
 | AgentRuntime Specs | Release | `31/31` | 本地假进程/代理边界；不是 CAD live |
 | Chat Specs | Release | `9/9` | 本地 UI/会话逻辑规格 |
-| 七个 Specs 合计 | Release | `121/121` | 本地阶段快照；提交状态以 Git 历史为准 |
+| 七个 Specs 合计 | Release | `127/127` | 本地阶段快照；提交状态以 Git 历史为准 |
 | Bridge 压力复跑 | Release | `20 x 29 = 580/580` | 当前本地稳定性证据；不是 CAD E2E |
 | AgentHost doctor | Release | 通过且无残留进程 | 不等于 Host.2016 已连接 AgentHost |
-| diff/秘密扫描 | 工作树 | 通过 | 仅为本地清洁与泄密门禁 |
+| diff/秘密扫描 | 隔离提交候选 | 通过 | `e039738` 的正向候选通过；当前未提交写入原型会被门禁按预期拒绝 |
 
-Release 构建、七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘密扫描均已通过，但仍是**非 CAD live** 的本地阶段快照。提交状态以 Git 历史为准；不得将这些能力归入旧诊断提交 `2d2ad37`，也不得据此宣称 Host.2016 的 Agent/Bridge 集成通过。
+Release 构建、七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘密扫描均已有通过证据，但仍是**非 CAD live** 的本地阶段快照。认证兼容阶段提交为 `7358764`；Host 禁写门禁阶段提交为 `e039738`。当前工作树中的未提交 Host.2025 写入原型会在 `127/127` 后被增强门禁稳定拒绝 `8` 处，因此不能把当前 dirty 工作树称为全绿，也不得据此宣称 Host.2016 的 Agent/Bridge 集成通过。
 
 ## 问题与缺口
 
-本轮没有在诊断命令中观察到程序集绑定错误或 DBMOD 变化。尚未完成：
+旧诊断薄宿主轮次没有观察到程序集绑定错误，且 `DBMOD 21 -> 21`。Palette 的早期污染样本观察到 `DBMOD 4 -> 5`，但后续有效隔离复测的六个读数全部为 `4`，因此 INFO/RESET 的模块级 DBMOD 门禁现已通过。尚未完成：
 
-- 运行时 DLL 路径/哈希的现场身份绑定。
+- 旧诊断薄宿主历史轮次的运行时 DLL 路径/哈希绑定仍未取得；本项不再适用于已绑定的 Palette 冻结候选。
 - 当前可重复构建候选 `E853...B440` 的冻结产物人工 NETLOAD 与命令复验。
 - Palette/DPI/文档生命周期实机验证。
 - 只读选择上下文及零修改证明。
@@ -176,6 +263,7 @@ Release 构建、七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘�
 - Host.2016 认证 Bridge live handshake、HMAC、防重放和 fail-closed。
 - 一次审批、锁内重校验、单事务写入及不自动保存的实机闭环。
 - `.bundle`、签名、企业策略、普通用户安装/回滚和干净机验证。
+- Palette 冻结候选 `90620E...01DFE` 已取得绑定后的人工 NETLOAD、连续 RESET、当前 96 DPI UI/IME 和干净临时图 DBMOD 不变证据；仍缺 125%/150% DPI 和退出生命周期。
 
 ## 测试结论
 
@@ -183,10 +271,13 @@ Release 构建、七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘�
 - 是否达到“2016 只读候选”：**否**；选择上下文、文档切换和 Palette 生命周期未验证。
 - 是否达到“2016 CAD 写入候选”：**否**；审批、锁内重校验和事务写入未获得 2016 实机证据。
 - 是否达到“完整支持 AutoCAD 2016”：**否**。
-- 是否允许进入下一阶段：是；只允许按阶段进入 Palette 与只读上下文，验证后单独提交。
+- Palette 静态/构建门禁是否通过：**是**。
+- Palette INFO/RESET 的干净 DBMOD 门禁是否通过：**是**；有效样本六个读数全部为 `4`。
+- Palette 完整运行时阶段是否通过：**否**；冻结候选身份、当前 96 DPI UI/IME 与零写入门禁已通过，但 125%/150% DPI 和退出生命周期仍未完成。
+- 是否允许提交当前 Palette 检查点：**是**；只允许以“已绑定的 96 DPI Palette 运行时候选检查点”单独提交，不得表述为完整 Palette 验收或完整 AutoCAD 2016 支持。
 - 是否允许发布：否。
 
-最终表述：目标机 AutoCAD 2016 已证明可加载 `net45/x64` 诊断薄宿主，且所记录诊断命令未改变 DBMOD。因为运行时 DLL 身份未绑定，且 Palette、Agent、CAD 读取/写入及完整安全闭环没有实机证据，AutoCAD 2016 完整支持仍未成立。
+最终表述：目标机 AutoCAD 2016 已证明可加载 `net45/x64` 诊断薄宿主；已绑定的独立 Palette 冻结候选也通过当前 96 DPI 的打开、停靠、浮动、隐藏重开、中文 IME 与干净 DBMOD 验证。诊断宿主历史身份、125%/150% DPI、退出生命周期、Agent、CAD 读取/写入及完整安全闭环仍不完整，因此 AutoCAD 2016 完整支持仍未成立。
 
 ## 证据文件
 
@@ -194,3 +285,4 @@ Release 构建、七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘�
 - `handoff/autocad2016/evidence/environment-collector-20260718.json`
 - `handoff/autocad2016/evidence/host-build-verification-20260718.json`
 - `handoff/autocad2016/evidence/phase2-local-specs-20260718.json`
+- `handoff/autocad2016/evidence/palette-build-verification-20260718.json`（静态门禁、冻结候选身份绑定、当前 96 DPI UI/IME 及最新有效样本六个 `DBMOD=4` 均通过；125%/150% DPI 与退出生命周期延期）
