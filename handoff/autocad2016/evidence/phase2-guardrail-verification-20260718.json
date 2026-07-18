@@ -1,0 +1,145 @@
+﻿{
+  "schemaVersion": 1,
+  "recordedDate": "2026-07-18",
+  "recordedAtLocal": "2026-07-18T20:34:45.1154087+08:00",
+  "scope": "phase2-host-forbidden-api-guardrail",
+  "baselineCommit": "7358764769597461cf28d479dab0962a8299f1df",
+  "stageCommitBinding": "The Git commit containing this evidence file also contains the exact verifier and disabled Host.2025 command source identified below.",
+  "evidenceState": "dual-powershell-positive-and-negative-gates-passed",
+  "claimBoundary": "This establishes a fail-closed source and evaluated Compile-closure guardrail for the committed Host.2025 safety baseline. It is not semantic or IL proof, does not compile the Host.2025 project, does not validate AutoCAD 2016 runtime behavior, and does not validate CAD writing.",
+  "toolchain": {
+    "dotNetSdk": "8.0.319",
+    "configuration": "Release",
+    "powerShellRuns": [
+      {
+        "version": "7.6.3",
+        "positiveGatePassed": true,
+        "negativeGateRejectedUnsafePrototype": true
+      },
+      {
+        "version": "5.1.19041.6456",
+        "positiveGatePassed": true,
+        "negativeGateRejectedUnsafePrototype": "not-repeated; identical scanner input was exercised by PowerShell 7"
+      }
+    ]
+  },
+  "verifier": {
+    "path": "scripts/verify-phase2.ps1",
+    "sha256": "BDA45FD65EAA7B85877099040EDB6D2B23382DC743971296C5579B49B93D5937",
+    "encoding": "UTF-8 with BOM",
+    "lineEnding": "CRLF",
+    "bareLfCount": 0,
+    "powerShell51PathCompatibilityFixVerified": true,
+    "parserErrors": 0
+  },
+  "committedSafetyBaseline": {
+    "path": "src/Codex.AutoCAD.Host.2025/CodexCadCommands.cs",
+    "sha256": "2CA85509E30C2DAAB1CD114695065D4C952530246BA8D1DBCB49AE15E6A2A434",
+    "encoding": "UTF-8 with BOM",
+    "lineEnding": "CRLF",
+    "behavior": "CODEXCAD remains available; CODEXCADLINE only reports that writing is disabled pending approval, lock-time revalidation, single-transaction and no-auto-save verification.",
+    "cadDatabaseWriteCalls": 0,
+    "automaticSaveCalls": 0
+  },
+  "scanner": {
+    "hostProject": "src/Codex.AutoCAD.Host.2025/Codex.AutoCAD.Host.2025.csproj",
+    "evaluatedCompileClosureUsed": true,
+    "compileItemsMustRemainInsideHostRoot": true,
+    "emptyCompileClosureRejected": true,
+    "explicitCompileMutationRejected": true,
+    "customImportAndInlineBuildTaskInjectionRejected": true,
+    "forbiddenCategoryCount": 8,
+    "buildInjectionCategoryCount": 3,
+    "requiredDetectionSampleCount": 26,
+    "allowedSampleCount": 4,
+    "covered": [
+      "CAD database write APIs and method groups",
+      "CAD command injection, system-variable mutation, save, export and exit APIs",
+      "process and shell launch",
+      "reflection, dynamic assembly and native loading",
+      "dangerous Autodesk, process, IPC, network, reflection, interop and registry type aliases",
+      "named pipes and shared memory",
+      "network clients and listeners",
+      "file and registry writes"
+    ],
+    "lexicalOnly": true,
+    "semanticOrIlProof": false,
+    "host2016Covered": false
+  },
+  "positiveCase": {
+    "disposableWorktree": true,
+    "detachedBaselineCommit": "7358764769597461cf28d479dab0962a8299f1df",
+    "exactChangedInputs": [
+      "scripts/verify-phase2.ps1",
+      "src/Codex.AutoCAD.Host.2025/CodexCadCommands.cs"
+    ],
+    "powerShell7ExitCode": 0,
+    "powerShell51ExitCode": 0,
+    "releaseBuildWarnings": 0,
+    "releaseBuildErrors": 0,
+    "specs": {
+      "contracts": "15/15",
+      "ipc": "17/17",
+      "security": "19/19",
+      "appServer": "7/7",
+      "bridge": "29/29",
+      "agentRuntime": "31/31",
+      "chat": "9/9",
+      "aggregate": "127/127"
+    },
+    "forbiddenApiSelfTestPassed": true,
+    "evaluatedCompileFindingCount": 0,
+    "agentHostDoctorPassed": true,
+    "agentHostResidualProcessCount": 0,
+    "unstagedDiffCheckPassed": true,
+    "stagedDiffCheckPassed": true,
+    "basicSecretScanPassed": true,
+    "consoleLogPersisted": false
+  },
+  "negativeCase": {
+    "expectedRejected": true,
+    "powerShell7ExitCode": 1,
+    "failureStage": "host-forbidden-api-scan",
+    "releaseBuildWarnings": 0,
+    "releaseBuildErrors": 0,
+    "specsBeforeFailure": "127/127",
+    "unsafePrototypeExcludedFromStageCommit": true,
+    "lineWriteWorkflowSha256": "9CB34AA5493271B7376CDBE426A8D131C7268C1DCAD9AD5356BED49264A3EB6D",
+    "workingTreeCodexCadCommandsSha256": "E5F5A27F1886FB2D9FB7BA45D33F79D121F2D59B59BCB43B739B3E121CBB1A60",
+    "findingCount": 8,
+    "findingsByApi": {
+      "OpenMode.ForWrite": 2,
+      "AppendEntity": 2,
+      "AddNewlyCreatedDBObject": 3,
+      "UpgradeOpen": 1
+    },
+    "agentHostDoctorExecuted": false,
+    "gitDiffChecksExecutedAfterFailure": false,
+    "basicSecretScanExecutedAfterFailure": false
+  },
+  "runtimeAndSideEffects": {
+    "autoCadProcessStartedOrRestarted": false,
+    "cadCommandsSent": false,
+    "netLoadAttempted": false,
+    "drawingReadOrWritten": false,
+    "automaticSaveAttempted": false,
+    "doctorUsedGlobalUserProfile": true,
+    "perSessionCodexHomeIsolationVerified": false
+  },
+  "limitations": [
+    "The scanner is a layered source guardrail, not a C# semantic analyzer or final IL allowlist.",
+    "Host.2025 is excluded from the managed-core solution build, so the disabled command source was evaluated and scanned but not compiled by this gate.",
+    "Future verified CAD-writing code requires a dedicated narrow executor verifier and explicit allowlist instead of weakening this blanket pre-write guardrail.",
+    "The current user Host.2025 selection and line-writing prototype remains in the working tree and intentionally causes the main-worktree negative gate to fail.",
+    "No AutoCAD 2016 Palette, selection, Agent bridge, approval or transaction behavior is established by this evidence."
+  ],
+  "redaction": {
+    "trustedPathsIncluded": false,
+    "userNamesIncluded": false,
+    "localMachinePathsIncluded": false,
+    "networkPathsIncluded": false,
+    "drawingPathsOrNamesIncluded": false,
+    "licenseDataIncluded": false,
+    "secretsIncluded": false
+  }
+}

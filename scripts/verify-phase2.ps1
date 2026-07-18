@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet("Debug", "Release")]
     [string] $Configuration = "Release",
@@ -215,6 +215,19 @@ function Assert-PinnedSdk {
     Write-Host ".NET SDK 固定版本验证通过：$actual" -ForegroundColor Green
 }
 
+function Test-IsFullyQualifiedWindowsPath {
+    param([string] $Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $false
+    }
+
+    return [regex]::IsMatch(
+        $Path,
+        "^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+(?:[\\/]|$))"
+    )
+}
+
 function Resolve-CodexExecutablePath {
     param([string] $RequestedPath)
 
@@ -242,7 +255,7 @@ function Resolve-CodexExecutablePath {
     }
 
     foreach ($candidate in @($candidates | Select-Object -Unique)) {
-        if ([IO.Path]::IsPathFullyQualified($candidate) -and
+        if ((Test-IsFullyQualifiedWindowsPath -Path $candidate) -and
             [IO.Path]::GetExtension($candidate) -ieq ".exe" -and
             (Test-Path -LiteralPath $candidate -PathType Leaf)) {
             return [IO.Path]::GetFullPath($candidate)
@@ -254,21 +267,44 @@ function Resolve-CodexExecutablePath {
 
 function Assert-NoForbiddenHostApi {
     $hostRoot = Join-Path $repoRoot "src\Codex.AutoCAD.Host.2025"
+    $hostProject = Join-Path $hostRoot "Codex.AutoCAD.Host.2025.csproj"
     $forbiddenRules = [ordered]@{
-        "CAD 命令、保存、导出或退出" = "(?i)(?:SendStringToExecute|ExecuteInCommandContextAsync|SetSystemVariable|\.\s*(?:Save|SaveAs|DwgOut|DxfOut|CloseAndSave|CloseAndDiscard)\s*\(|\bApplication\s*\.\s*(?:Quit|Invoke)\s*\(|\b(?:QSAVE|NETLOAD|ARXLOAD)\b|\.\s*Command(?:Async)?\s*\()"
+        "CAD 命令、保存、导出或退出" = "(?i)(?:SendStringToExecute|ExecuteInCommandContextAsync|SetSystemVariable|\.\s*(?:Save|SaveAs|DwgOut|DxfOut|CloseAndSave|CloseAndDiscard)\b|\bApplication\s*\.\s*(?:Quit|Invoke)\b|\b(?:QSAVE|NETLOAD|ARXLOAD)\b|\.\s*Command(?:Async)?\s*\()"
+        "CAD 数据库写入" = "(?i)(?:OpenMode\s*\.\s*ForWrite|\.\s*(?:UpgradeOpen|DowngradeOpen|AppendEntity|AddNewlyCreatedDBObject|Erase|WblockCloneObjects|DeepCloneObjects|TransformBy)\b)"
         "进程或 Shell" = "(?i)(?:System\s*\.\s*Diagnostics\s*\.\s*Process|\bProcessStartInfo\b|\bProcess\b|ShellExecute|CreateProcess|cmd(?:\.exe)?|powershell(?:\.exe)?)"
-        "动态或原生加载" = "(?i)(?:Assembly\s*\.\s*(?:Load|LoadFrom|LoadFile|UnsafeLoadFrom)\s*\(|AppDomain\s*\.\s*CurrentDomain\s*\.\s*Load\s*\(|NativeLibrary|LoadLibrary|GetProcAddress|DllImport|GetDelegateForFunctionPointer)"
+        "反射、动态或原生加载" = "(?i)(?:System\s*\.\s*Reflection|\b(?:MethodInfo|ConstructorInfo|PropertyInfo|FieldInfo|BindingFlags)\b|\.\s*(?:GetMethod|GetMethods|GetConstructor|GetConstructors|GetProperty|GetProperties|GetField|GetFields|InvokeMember)\s*\(|\bActivator\s*\.\s*CreateInstance\s*\(|\.\s*DynamicInvoke\s*\(|Assembly\s*\.\s*(?:Load|LoadFrom|LoadFile|UnsafeLoadFrom)\s*\(|AppDomain\s*\.\s*CurrentDomain\s*\.\s*Load\s*\(|NativeLibrary|LoadLibrary|GetProcAddress|DllImport|LibraryImport|GetDelegateForFunctionPointer|\bdelegate\s*\*\s*unmanaged)"
+        "危险 API 类型别名" = "(?im)^\s*(?:global\s+)?using\s+(?:(?:static\s+)(?:global::)?(?:Autodesk\s*\.\s*AutoCAD|System\s*\.\s*(?:Diagnostics|IO\s*\.\s*Pipes|Net|Reflection|Runtime\s*\.\s*InteropServices)|Microsoft\s*\.\s*Win32)|(?:\w+\s*=\s*)(?:global::)?(?:Autodesk\s*\.\s*AutoCAD|System\s*\.\s*(?:Diagnostics|IO\s*\.\s*Pipes|Net|Reflection|Runtime\s*\.\s*InteropServices)|Microsoft\s*\.\s*Win32))\b"
         "直接 IPC" = "(?i)(?:System\s*\.\s*IO\s*\.\s*Pipes|NamedPipe\w*|AnonymousPipe\w*|PipeStream|MemoryMappedFile|\\\\\.\\pipe\\)"
         "直接网络" = "(?i)(?:System\s*\.\s*Net|HttpClient|WebRequest|WebClient|HttpListener|Socket|TcpClient|UdpClient)"
-        "文件或注册表写入" = "(?i)(?:\b(?:FileStream|StreamWriter|BinaryWriter|FileInfo|DirectoryInfo)\b|System\s*\.\s*IO\s*\.\s*File\b|File\s*\.\s*(?:Open|Create|Write|Append|Delete|Move|Copy)\w*\s*\(|Directory\s*\.\s*(?:Create|Delete|Move)\w*\s*\(|Microsoft\s*\.\s*Win32|Registry(?:Key)?)"
+        "文件或注册表写入" = "(?i)(?:\b(?:FileStream|StreamWriter|BinaryWriter|FileInfo|DirectoryInfo)\b|System\s*\.\s*IO\s*\.\s*File\b|File\s*\.\s*(?:Open|Create|Write|Append|Delete|Move|Copy)\w*\b|Directory\s*\.\s*(?:Create|Delete|Move)\w*\b|Microsoft\s*\.\s*Win32|Registry(?:Key)?)"
     }
     $requiredDetections = [ordered]@{
         "Database.Save" = "database.Save(""drawing.dwg"", version);"
         "Database.DxfOut" = "database.DxfOut(""drawing.dxf"", precision, version);"
         "Application.Quit" = "Application.Quit();"
         "Application.Invoke" = "Application.Invoke(action);"
+        "Document.SendStringToExecute" = "document.SendStringToExecute(command, true, false, false);"
+        "Application.SetSystemVariable" = "Application.SetSystemVariable(""FILEDIA"", 0);"
+        "OpenMode.ForWrite" = "transaction.GetObject(id, OpenMode.ForWrite);"
+        "DBObject.UpgradeOpen" = "layer.UpgradeOpen();"
+        "DBObject.DowngradeOpen" = "layer.DowngradeOpen();"
+        "BlockTableRecord.AppendEntity" = "space.AppendEntity(entity);"
+        "Transaction.AddNewlyCreatedDBObject" = "transaction.AddNewlyCreatedDBObject(entity, true);"
+        "DBObject.Erase" = "entity.Erase();"
+        "Database.WblockCloneObjects" = "database.WblockCloneObjects(ids, ownerId, mapping, DuplicateRecordCloning.Ignore, false);"
+        "Database.DeepCloneObjects" = "database.DeepCloneObjects(ids, ownerId, mapping, false);"
+        "Entity.TransformBy" = "entity.TransformBy(matrix);"
         "FileStream instance Write" = "using var output = new FileStream(path, FileMode.Create); output.Write(buffer);"
         "Process.Start" = "Process.Start(startInfo);"
+        "Assembly.LoadFrom" = "Assembly.LoadFrom(path);"
+        "MethodInfo.Invoke" = "type.GetMethod(name).Invoke(target, arguments);"
+        "LibraryImport" = "[LibraryImport(""kernel32"")] static partial nint LoadLibrary(string path);"
+        "Autodesk type alias" = "using OM = Autodesk.AutoCAD.DatabaseServices.OpenMode;"
+        "Process static alias" = "using static System.Diagnostics.Process;"
+        "NamedPipeClientStream" = "using var pipe = new NamedPipeClientStream(""."", name, PipeDirection.InOut);"
+        "MemoryMappedFile" = "using var map = MemoryMappedFile.CreateOrOpen(name, capacity);"
+        "HttpClient" = "using var client = new HttpClient();"
+        "Registry write" = "Registry.CurrentUser.CreateSubKey(path);"
     }
     foreach ($sample in $requiredDetections.GetEnumerator()) {
         $detected = $false
@@ -286,6 +322,7 @@ function Assert-NoForbiddenHostApi {
     $allowedSamples = @(
         "panel.Dispatcher.Invoke(action);",
         "database.TransactionManager.StartTransaction();",
+        "transaction.GetObject(id, OpenMode.ForRead);",
         "using var stream = new MemoryStream(); stream.Write(buffer);"
     )
     foreach ($sample in $allowedSamples) {
@@ -297,10 +334,67 @@ function Assert-NoForbiddenHostApi {
     }
     Write-Host "AutoCAD Host 禁用 API 规则自检通过。" -ForegroundColor Green
 
-    $sourceFiles = @(
-        Get-ChildItem -LiteralPath $hostRoot -Recurse -File -Filter "*.cs" |
-            Where-Object { $_.FullName -notmatch "[\\/](?:bin|obj)[\\/]" }
+    $buildControlFiles = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
+    foreach ($candidate in @(
+        $hostProject,
+        (Join-Path $repoRoot "Directory.Build.props"),
+        (Join-Path $repoRoot "Directory.Build.targets")
+    )) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            $buildControlFiles.Add((Get-Item -LiteralPath $candidate))
+        }
+    }
+    foreach ($candidate in @(
+        Get-ChildItem -LiteralPath $hostRoot -Recurse -File -ErrorAction Stop |
+            Where-Object { $_.Name -in @("Directory.Build.props", "Directory.Build.targets") }
+    )) {
+        $buildControlFiles.Add($candidate)
+    }
+
+    $buildInjectionRules = [ordered]@{
+        "Compile 项显式注入或移除" = "(?i)<\s*Compile\b"
+        "关闭默认 Compile 闭包" = "(?i)<\s*EnableDefaultCompileItems\s*>\s*false\s*<"
+        "自定义导入或内联构建任务" = "(?i)(?:<\s*Import\b|<\s*UsingTask\b|CodeTaskFactory|RoslynCodeTaskFactory|WriteLinesToFile|WriteCodeFragment|<\s*Exec\b)"
+    }
+    foreach ($rule in $buildInjectionRules.GetEnumerator()) {
+        foreach ($match in @($buildControlFiles | Select-String -Pattern ([string]$rule.Value) -AllMatches)) {
+            throw "AutoCAD Host 编译闭包门禁失败：$($rule.Key)，文件 $($match.Path):$($match.LineNumber)。"
+        }
+    }
+
+    $evaluatedCompileOutput = @(
+        & $dotnetCommand @("msbuild", $hostProject, "-nologo", "-verbosity:quiet", "-getItem:Compile") 2>&1 |
+            ForEach-Object { [string] $_ }
     )
+    if ($LASTEXITCODE -ne 0) {
+        throw "无法求值 AutoCAD Host Compile 项，退出码：$LASTEXITCODE。"
+    }
+    try {
+        $evaluatedCompile = ($evaluatedCompileOutput -join [Environment]::NewLine) | ConvertFrom-Json
+    }
+    catch {
+        throw "无法解析 AutoCAD Host Compile 项 JSON：$($_.Exception.Message)"
+    }
+
+    $hostRootPrefix = [IO.Path]::GetFullPath($hostRoot).TrimEnd(
+        [IO.Path]::DirectorySeparatorChar,
+        [IO.Path]::AltDirectorySeparatorChar
+    ) + [IO.Path]::DirectorySeparatorChar
+    $sourceFiles = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
+    foreach ($compileItem in @($evaluatedCompile.Items.Compile)) {
+        $fullPath = [IO.Path]::GetFullPath([string] $compileItem.FullPath)
+        if (-not $fullPath.StartsWith($hostRootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "AutoCAD Host Compile 项越出受审源码根：$fullPath"
+        }
+        if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+            throw "AutoCAD Host Compile 项不存在：$fullPath"
+        }
+        $sourceFiles.Add((Get-Item -LiteralPath $fullPath))
+    }
+    if ($sourceFiles.Count -eq 0) {
+        throw "AutoCAD Host Compile 项为空，禁止跳过源码扫描。"
+    }
+
     $findings = [System.Collections.Generic.List[object]]::new()
     foreach ($rule in $forbiddenRules.GetEnumerator()) {
         foreach ($match in @($sourceFiles | Select-String -Pattern ([string]$rule.Value) -AllMatches)) {
@@ -322,7 +416,7 @@ function Assert-NoForbiddenHostApi {
         throw "AutoCAD Host 禁用 API 扫描失败，共发现 $($findings.Count) 处。"
     }
 
-    Write-Host "AutoCAD Host 词法禁用 API 扫描通过（命令/保存/导出/退出、进程、动态加载、IPC、网络、文件写入、注册表）。" -ForegroundColor Green
+    Write-Host "AutoCAD Host 受审 Compile 闭包及词法禁用 API 扫描通过（CAD 数据库写入、命令/保存/导出/退出、进程、反射/动态加载、IPC、网络、文件写入、注册表）。" -ForegroundColor Green
 }
 
 function Assert-NoLikelySecret {
