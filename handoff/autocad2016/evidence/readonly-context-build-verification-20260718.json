@@ -1,0 +1,269 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-07-18",
+  "recordedAtLocal": "2026-07-18T23:07:32.6908812+08:00",
+  "source": "sanitized AutoCAD 2016 read-only selection context static and reproducible-build gate",
+  "scope": "host2016-read-only-context-compiled-candidate-stage",
+  "baselineCommit": "792fe71d0294dc6bb3510637a4479fde4abe363e",
+  "branch": "codex/selection2016-readonly",
+  "evidenceState": "static-and-reproducible-build-gate-passed-runtime-pending",
+  "worktreeCommitted": true,
+  "candidate": {
+    "solution": "Codex.AutoCAD.2016.ReadOnlyContext.sln",
+    "project": "src/Codex.AutoCAD.Host.2016.ReadOnlyContext/Codex.AutoCAD.Host.2016.ReadOnlyContext.csproj",
+    "assemblyName": "Codex.AutoCAD.Host.2016.ReadOnlyContext",
+    "configuration": "Release",
+    "targetFramework": ".NET Framework 4.5",
+    "architecture": "x64",
+    "sha256": "AB3132CF7B0102F9A9B168A76170D074114051D1759391DF9F3C5C6969BAE6B8",
+    "sizeBytes": 31744,
+    "frozenCandidateId": "autocad2016-readonly-context-frozen-AB3132CF",
+    "frozenAfterDualPowerShellVerification": true,
+    "frozenCopyReadOnly": true,
+    "frozenPathCommitted": false,
+    "status": "compiled-read-only-context-candidate-not-runtime-verified-by-this-script",
+    "netLoadVerified": false,
+    "runtimeToCandidateBindingVerified": false,
+    "outputFileCount": 1,
+    "pdbProduced": false,
+    "autodeskAssembliesCopiedToOutput": false
+  },
+  "reproducibility": {
+    "powerShell7": {
+      "version": "7.6.3 Core",
+      "ruleSelfTestPassed": true,
+      "fullVerificationPassed": true,
+      "firstBuildSha256": "AB3132CF7B0102F9A9B168A76170D074114051D1759391DF9F3C5C6969BAE6B8",
+      "independentRebuildSha256": "AB3132CF7B0102F9A9B168A76170D074114051D1759391DF9F3C5C6969BAE6B8",
+      "bitForBitMatch": true
+    },
+    "windowsPowerShell": {
+      "version": "5.1.19041.6456 Desktop",
+      "ruleSelfTestPassed": true,
+      "fullVerificationPassed": true,
+      "firstBuildSha256": "AB3132CF7B0102F9A9B168A76170D074114051D1759391DF9F3C5C6969BAE6B8",
+      "independentRebuildSha256": "AB3132CF7B0102F9A9B168A76170D074114051D1759391DF9F3C5C6969BAE6B8",
+      "bitForBitMatch": true
+    },
+    "isolatedBuildCount": 4,
+    "candidateSha256ConsistentAcrossAllRuns": true,
+    "projectLocalObjModified": false,
+    "hostSourceModifiedByVerifier": false
+  },
+  "toolchain": {
+    "resolvedDotNetSdk": "8.0.319",
+    "msbuild": {
+      "version": "17.14.40.60911",
+      "sha256": "0F7DABA445BA37B652AE4180270AB3EFF27ACBBE5D411D3B05DAD51AAB16404C",
+      "authenticodeStatus": "Valid"
+    },
+    "dotnetHost": {
+      "sha256": "4377F10C78400F0370B88156773DE9843C07F14E65B3232005EC3179EF38D463",
+      "authenticodeStatus": "Valid"
+    },
+    "ildasm": {
+      "version": "4.8.3928.0",
+      "sha256": "F4ACDCD59B8CF35680AB3BA6E75887B0A63D083F075E135E7F9F41CAA1D7E6EB",
+      "authenticodeStatus": "Valid"
+    }
+  },
+  "targetAutoCad": {
+    "acadSeries": "R20.1",
+    "acadExeFileVersion": "R20.1.49.0.0",
+    "architecture": "x64",
+    "acadExeSha256": "0BEDEE78AF75BAABCC6731DDDA853F76E3053D270ACE9A87BACDABFF5D0A0187",
+    "autodeskSignaturesValid": true,
+    "managedAssemblies": [
+      {
+        "name": "accoremgd.dll",
+        "fileVersion": "20.1.49.0.0",
+        "assemblyVersion": "20.1.0.0",
+        "sha256": "80860722FB2D40209D63E4720BE9D5018A5A4F27FE23F844DFE2951CA35E30B0"
+      },
+      {
+        "name": "acdbmgd.dll",
+        "fileVersion": "20.1.49.0.0",
+        "assemblyVersion": "20.1.0.0",
+        "sha256": "9C27F4A71E4DFAEC393B53AB15A657FA37CA9F8A7B09E0522894AB3B354603BB"
+      },
+      {
+        "name": "acmgd.dll",
+        "fileVersion": "20.1.49.0.0",
+        "assemblyVersion": "20.1.0.0",
+        "sha256": "CCE13839886E827C392637D4F6B670E4CA7780E1A02B660E41D049E9C492B97F"
+      }
+    ]
+  },
+  "reviewedInputs": {
+    "verifierSha256": "EA17F1F9009195DE50177B30C5DBD0F9F50429FE5283D1E0AF0B9798946AC291",
+    "verifierLineCount": 540,
+    "verifierSizeBytes": 28635,
+    "verifierUtf8Bom": true,
+    "solutionSha256": "302DF36EB87701CC6D834C9C3FC73504C5DBAA4A40FF4626523B80087591D30B",
+    "projectSha256": "93D8FE21095218A587F56E1D0056CA3E929BC5FF8FFE12D43A973CE0940634DA",
+    "nuGetConfigSha256": "26299200D114FA22041CFC6F17EC31099989244638FACCFE342B8B75D7523E50",
+    "packageLockSha256": "1DB305BC7AAFBF0C8873457DDA8950688DC30923C373DC4CDA209016449A59C6",
+    "sourceHashes": {
+      "ReadOnlyContextExtension.cs": "1A7A38DA9514E5D473051FFB861A147AD3723502F0F055EA6EFCC9D30050B2CB",
+      "ReadOnlyContextCommands.cs": "46C33FD5044E7393CB5EBC17F5142DEBCA02FC5D88A4BA5C36D0F22087BC11B3",
+      "ReadOnlyContextRuntime.cs": "56540EDD31CEDA369E1BEA0B3CD32BC5F35AE08BD2A2ADF08616911FAA18E1E6",
+      "ReadOnlySelectionCapture.cs": "4B8F26D87D96CC064ED91D16FAAA6A1CF1521400A6B75A2FE27A1A6E7E9BFC0C",
+      "ReadOnlyContextSnapshot.cs": "311CE546CE734EAD306582CBB347BEEBE85B351DC8450234BBABC113BB474D0E",
+      "CanonicalSelectionHash.cs": "4832D767782340EF3F5CEE08B4428A4036221CD53F3A0BD6859E5B1124967488",
+      "Properties/AssemblyInfo.cs": "0C2C708FAEBD998ACE17FF04841A994F63C63E6ABED907096D0986ECC49E4EAC"
+    },
+    "specProjectSha256": "FF31566444906D0E97ED97354C98740AB2B95D4C7BFE86089BB1908645FE94E1",
+    "specProgramSha256": "9A9AD853E2713BCE1D1C928CBF0810C4EE131543B56272285598A6EDAA15BDBF",
+    "referenceEncoderSha256": "B7FEEA76ACDBC2562B1F36707AB750F29CF0ABC5A4899DF7B3D55ECFE938AB43",
+    "projectLocalNuGetConfig": true,
+    "projectLocalPackageLock": true,
+    "repositoryRootNuGetConfigRequired": false,
+    "offlineFeedRelativeValue": "..\\..\\third_party\\nuget"
+  },
+  "specs": {
+    "passed": 25,
+    "total": 25,
+    "emptySelectionRejected": true,
+    "lineGoldenVectorFrozen": true,
+    "mixedSixKindVectorFrozen": true,
+    "unicodeVectorFrozen": true,
+    "independentReferenceEncoderAgrees": true,
+    "inputOrderCanonical": true,
+    "numericHandleOrderingVerified": true,
+    "duplicateHandlesRejected": true,
+    "everyExportedFieldHashBound": true,
+    "positiveAndNegativeZeroDiffer": true,
+    "finiteEdgeValuesAccepted": true,
+    "nonFiniteValuesRejected": true,
+    "dangerousUnicodeRejected": true,
+    "entityVertexTextNameAndCanonicalLimitsVerified": true,
+    "cultureInvariantAcrossZhCnTrTrAndFrFr": true,
+    "snapshotDefensiveCopiesVerified": true,
+    "lowercaseSha256Verified": true
+  },
+  "readOnlyCaptureGate": {
+    "supportedEntityKinds": [
+      "Line",
+      "Circle",
+      "Polyline",
+      "DBText",
+      "MText",
+      "BlockReference"
+    ],
+    "maximumEntities": 64,
+    "maximumPolylineVertices": 256,
+    "maximumTextUtf16CodeUnits": 2048,
+    "maximumCanonicalBytes": 65536,
+    "selectionSource": "Editor.SelectImplied",
+    "transactionFactory": "StartOpenCloseTransaction",
+    "getObjectCallSiteCount": 1,
+    "getObjectOpenMode": "ForRead",
+    "openErased": false,
+    "transactionCommitCalled": false,
+    "documentLockTaken": false,
+    "partialCapturePublished": false,
+    "dbmodBeforeAndAfterRequired": true,
+    "dbmodExactEqualityRequired": true,
+    "activeDocumentIdentityRechecked": true,
+    "documentEpochRechecked": true,
+    "documentSwitchAndCloseClearCache": true,
+    "documentNamesOrPathsRead": false,
+    "autodeskObjectsRetainedAfterCapture": false,
+    "allDtosInternal": true,
+    "canonicalFormat": "binary-v1-explicit-little-endian-strict-utf8-ieee754-bits",
+    "hashFormat": "lowercase-sha256",
+    "truncationAllowed": false,
+    "exportedStateHashCoversOnlyWhitelistedFields": true,
+    "suitableAsCompleteCadWriteRevalidationHash": false
+  },
+  "ilMetadataGate": {
+    "normalizedIlSha256": "84718C560AE997F119EF97A21DB14D52F38635FCE52322AF87DBC5E8605DA5EF",
+    "methodDefinitionCount": 181,
+    "memberReferenceCount": 154,
+    "typeDefinitionCount": 22,
+    "fieldDefinitionCount": 83,
+    "assemblyReferences": [
+      "mscorlib",
+      "Acdbmgd",
+      "accoremgd",
+      "System"
+    ],
+    "publicTypes": [
+      "Codex.AutoCAD.Host2016.ReadOnlyContext.ReadOnlyContextExtension",
+      "Codex.AutoCAD.Host2016.ReadOnlyContext.ReadOnlyContextCommands"
+    ],
+    "commandAttributesVerified": true,
+    "commands": [
+      {
+        "globalName": "CODEX16CTX",
+        "flags": 2
+      },
+      {
+        "globalName": "CODEX16CTXINFO",
+        "flags": 0
+      },
+      {
+        "globalName": "CODEX16CTXCLEAR",
+        "flags": 0
+      }
+    ],
+    "getObjectIlSequenceVerified": "ldarg.0; ldarg.1; ldc.i4.0; ldc.i4.0; callvirt Transaction.GetObject; ret",
+    "documentActivatedAddCount": 1,
+    "documentActivatedRemoveCount": 1,
+    "documentToBeDestroyedAddCount": 1,
+    "documentToBeDestroyedRemoveCount": 1,
+    "moduleRefCount": 0,
+    "implMapCount": 0,
+    "pinvokeCount": 0
+  },
+  "failClosedGate": {
+    "exactCompileReferenceImportPackageAllowlistVerified": true,
+    "singleDllOutputVerified": true,
+    "noPdbOrBuildPathLeakVerified": true,
+    "forWriteUpgradeCommitAbortEraseAppendRejected": true,
+    "documentLockSaveAndCommandInjectionRejected": true,
+    "setSystemVariableAndSetImpliedSelectionRejected": true,
+    "documentDatabaseAndXrefPathAccessRejected": true,
+    "runtimeReflectionAndUnapprovedEntityKindsRejected": true,
+    "processIpcNetworkFileRegistryRejected": true,
+    "nativeAndBackgroundExecutionRejected": true,
+    "rulePositiveAndNegativeSelfTestsPassed": true,
+    "likelySecretScanPassed": true
+  },
+  "runtime": {
+    "existingCadProcessReused": false,
+    "netloadAttempted": false,
+    "netloadSucceeded": false,
+    "netLoadVerified": false,
+    "runtimeToCandidateBindingVerified": false,
+    "commandsObserved": [],
+    "sixEntityKindsVerifiedInAutoCad2016": false,
+    "dbmodUnchangedVerifiedInAutoCad2016": false,
+    "entityCountUnchangedVerifiedInAutoCad2016": false,
+    "documentSwitchCacheClearVerifiedInAutoCad2016": false,
+    "candidateSaveApiPresent": false,
+    "automaticSaveRuntimeVerified": false
+  },
+  "verificationSideEffects": {
+    "cadProcessStartedOrRestarted": false,
+    "cadCommandsSent": false,
+    "drawingReadOrWritten": false,
+    "automaticSaveAttempted": false
+  },
+  "redaction": {
+    "cadTrustedDirectorySettingIncluded": false,
+    "userNamesIncluded": false,
+    "networkPathsIncluded": false,
+    "localMachinePathsIncluded": false,
+    "drawingPathsOrNamesIncluded": false,
+    "licenseDataIncluded": false
+  },
+  "limitations": [
+    "This record proves a reproducible net45/x64 compiled candidate against the target machine original R20.1 managed assemblies; it is not AutoCAD runtime evidence.",
+    "The candidate has not been manually NETLOADed, so NetLoadVerified and runtime-to-candidate binding remain false.",
+    "SelectImplied behavior, native getter side effects, MText.Text semantics, dynamic block effective names, xref classification, DBMOD stability, entity-count stability, and document-event cache clearing still require real AutoCAD 2016 validation.",
+    "The exported state hash covers only the explicit read-only whitelist and must not be reused as complete CAD write approval revalidation.",
+    "AgentHost, authenticated IPC, approval, CAD writing, saving, and complete AutoCAD 2016 product support remain outside this candidate stage."
+  ],
+  "conclusion": "The AutoCAD 2016 read-only selection context sidecar passed its exact project, source, dependency, output, Specs, IL, fail-closed API, secret-scan, and reproducible-build gates under PowerShell 7 and Windows PowerShell 5.1. The frozen AB3132...E6B8 DLL remains NetLoadVerified=false and must not be described as runtime support until the user manually NETLOADs that exact candidate in the existing AutoCAD 2016 process and completes the six-entity, DBMOD, entity-count, and document-lifecycle checks."
+}
