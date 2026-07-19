@@ -95,7 +95,7 @@
 - MSBuild candidates：`2`；二者均为有效 Microsoft Authenticode 签名、主版本 `>=17`，并由采集器记录 SHA-256。
 - `TRUSTEDPATHS`：未采集。
 - AutoCAD：采集器未启动。
-- schema v5 PowerShell 7/5.1 发现 fixture：均为 `10/10`。
+- schema v5 PowerShell 7/5.1 历史发现 fixture：均为 `10/10`；2026-07-20 跟进失败注入回归均为 `24/24`，覆盖 release-root probe、根键读取、子键枚举和属性读取失败。
 - schema v5 PowerShell 7/5.1 真实只读采集：均为安装 `1`、BuildReady `1`；
   `AcadLocation=1`、`InstallLocation=0`、`Location=1`、注册表读取失败 `0`。
 - schema v5 完整 Phase 2 非 CAD 回归：两套 PowerShell 均为 Release
@@ -347,6 +347,7 @@ Release 构建、七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘�
 - `handoff/autocad2016/evidence/autocad2016-diagnostic-netload-20260718.json`
 - `handoff/autocad2016/evidence/environment-collector-20260718.json`
 - `handoff/autocad2016/evidence/environment-collector-hardening-20260719.json`
+- `handoff/autocad2016/evidence/environment-collector-failure-regression-20260720.json`
 - `handoff/autocad2016/evidence/host-build-verification-20260718.json`
 - `handoff/autocad2016/evidence/phase2-local-specs-20260718.json`
 - `handoff/autocad2016/evidence/phase2-guardrail-verification-20260718.json`（增强门禁当前口径为 IPC `17/17`、七个 Specs `127/127`；旧 `121/121` 只允许作为历史快照）

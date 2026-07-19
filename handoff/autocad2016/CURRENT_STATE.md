@@ -1,6 +1,6 @@
 # AutoCAD 2016 当前状态索引
 
-最后更新：2026-07-19（北京时间）
+最后更新：2026-07-20（北京时间）
 
 本文件是项目的长期“当前状态索引”。它不替代 `README_FIRST.md`、
 `COMPANY_PC_RUNBOOK.md`、测试报告、证据 JSON 或 Git 历史；只把当前成立的结论、
@@ -20,21 +20,26 @@ NETLOAD 证据的能力一律视为未支持。
 
 ### 环境采集器发现加固
 
-- 阶段基线：`c9280f334c4bad76ca25692b021d43723ff15c53`；阶段提交应由包含
-  schema v5 采集器、脱敏 evidence 和本节更新的同一 Git 提交记录。
+- 阶段基线：`c9280f334c4bad76ca25692b021d43723ff15c53`；schema v5 发现加固已
+  单独提交为 `a011dd1d368c43350ca2b080a594e3873dcac0a3`。2026-07-20 的失败注入
+  回归以该提交为基线，仍作为独立跟进阶段记录。
 - 注册表安装位置白名单现同时支持 `AcadLocation`、`InstallLocation` 和 `Location`；
   `Location` 单独存在、安装位于 Program Files 之外且值直接指向 `acad.exe` 的 fixture
   已纳入回归。
-- PowerShell 7.6.3 与 Windows PowerShell 5.1.19041.6456 的纯发现自测均为
-  `10/10`；测试不读取或修改真实 Autodesk 注册表。
+- 原 schema v5 发现自测在 PowerShell 7.6.3 与 Windows PowerShell
+  5.1.19041.6456 下均为 `10/10`。2026-07-20 跟进自测扩展为双 Shell
+  `24/24`，通过注入访问器真实触发 release-root probe、根键读取、子键枚举和属性读取
+  四类失败，并证明有效兄弟键不会因单个属性读取失败被丢弃；fixture 不读取或修改真实
+  Autodesk 注册表。
 - 两套 PowerShell 又分别完成真实目标机只读采集：schema `5`、安装 `1`、可构建安装
   `1`、`AcadLocation=1`、`Location=1`、注册表读取失败 `0`。新增
   `DiscoveryDiagnostics` 只保存计数，不保存路径、键值或异常文本。
 - 同一隔离阶段的完整 Phase 2 回归在两套 PowerShell 下均通过：Release
   `0 warning / 0 error`、七个 Specs `145/145`、Host 禁止 API、AgentHost doctor、
   diff 和秘密扫描均通过。它仍是非 CAD live 证据。
-- 脱敏证据：
-  `handoff/autocad2016/evidence/environment-collector-hardening-20260719.json`。
+- 脱敏证据：历史 schema v5 阶段见
+  `handoff/autocad2016/evidence/environment-collector-hardening-20260719.json`；失败分支
+  跟进见 `handoff/autocad2016/evidence/environment-collector-failure-regression-20260720.json`。
 - 全过程未启动、唤醒或操作 AutoCAD，未查询 `TRUSTEDPATHS`，未修改系统或 AutoCAD
   设置。
 

@@ -193,13 +193,62 @@ function ConvertTo-AutoCadRegistryHintsFromRecords {
     return @($results | Sort-Object RegistryKey, ValueName, CandidatePath -Unique)
 }
 
-function Get-AutoCadRegistryHints {
-    param([ref]$Diagnostics)
+function New-DefaultAutoCadRegistryAccessor {
+    return [pscustomobject]@{
+        TestPath = {
+            param([string]$Path)
+            Test-Path -LiteralPath $Path -ErrorAction Stop
+        }
+        GetItem = {
+            param([string]$Path)
+            Get-Item -LiteralPath $Path -ErrorAction Stop
+        }
+        GetChildItems = {
+            param([string]$Path)
+            @(Get-ChildItem -LiteralPath $Path -ErrorAction Stop)
+        }
+        GetItemProperty = {
+            param([string]$Path)
+            Get-ItemProperty -LiteralPath $Path -ErrorAction Stop
+        }
+    }
+}
 
-    $autoCadRoots = @(
-        'HKLM:\SOFTWARE\Autodesk\AutoCAD',
-        'HKLM:\SOFTWARE\WOW6432Node\Autodesk\AutoCAD'
+function Get-RequiredRegistryOperation {
+    param(
+        [Parameter(Mandatory = $true)][object]$RegistryAccessor,
+        [Parameter(Mandatory = $true)][string]$Name
     )
+
+    $operation = Get-OptionalPropertyValue -InputObject $RegistryAccessor -Name $Name
+    if ($operation -isnot [scriptblock]) {
+        throw ("Registry accessor operation '{0}' must be a script block." -f $Name)
+    }
+
+    return $operation
+}
+
+function Get-AutoCadRegistryHints {
+    param(
+        [ref]$Diagnostics,
+        [AllowNull()][object]$RegistryAccessor,
+        [AllowEmptyCollection()][string[]]$AutoCadRoots
+    )
+
+    if ($null -eq $RegistryAccessor) {
+        $RegistryAccessor = New-DefaultAutoCadRegistryAccessor
+    }
+    if (-not $PSBoundParameters.ContainsKey('AutoCadRoots')) {
+        $AutoCadRoots = @(
+            'HKLM:\SOFTWARE\Autodesk\AutoCAD',
+            'HKLM:\SOFTWARE\WOW6432Node\Autodesk\AutoCAD'
+        )
+    }
+
+    $testPathOperation = Get-RequiredRegistryOperation -RegistryAccessor $RegistryAccessor -Name 'TestPath'
+    $getItemOperation = Get-RequiredRegistryOperation -RegistryAccessor $RegistryAccessor -Name 'GetItem'
+    $getChildItemsOperation = Get-RequiredRegistryOperation -RegistryAccessor $RegistryAccessor -Name 'GetChildItems'
+    $getItemPropertyOperation = Get-RequiredRegistryOperation -RegistryAccessor $RegistryAccessor -Name 'GetItemProperty'
 
     $records = @()
     $releaseRootsPresent = 0
@@ -210,11 +259,11 @@ function Get-AutoCadRegistryHints {
     $keysRead = 0
     $propertyReadFailureCount = 0
 
-    foreach ($autoCadRoot in $autoCadRoots) {
+    foreach ($autoCadRoot in @($AutoCadRoots)) {
         $releaseRoot = Join-Path $autoCadRoot 'R20.1'
         $releaseRootExists = $false
         try {
-            $releaseRootExists = Test-Path -LiteralPath $releaseRoot -ErrorAction Stop
+            $releaseRootExists = [bool](& $testPathOperation $releaseRoot)
         }
         catch {
             $releaseRootProbeFailureCount++
@@ -227,14 +276,14 @@ function Get-AutoCadRegistryHints {
 
         $keys = @()
         try {
-            $keys += Get-Item -LiteralPath $releaseRoot -ErrorAction Stop
+            $keys += & $getItemOperation $releaseRoot
         }
         catch {
             $releaseRootReadFailureCount++
         }
 
         try {
-            $keys += @(Get-ChildItem -LiteralPath $releaseRoot -ErrorAction Stop)
+            $keys += @(& $getChildItemsOperation $releaseRoot)
         }
         catch {
             $childEnumerationFailureCount++
@@ -243,7 +292,7 @@ function Get-AutoCadRegistryHints {
         foreach ($key in $keys) {
             $keysInspected++
             try {
-                $properties = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction Stop
+                $properties = & $getItemPropertyOperation $key.PSPath
                 $keysRead++
             }
             catch {
@@ -261,7 +310,7 @@ function Get-AutoCadRegistryHints {
     $hints = @(ConvertTo-AutoCadRegistryHintsFromRecords -Records $records)
     if ($PSBoundParameters.ContainsKey('Diagnostics')) {
         $Diagnostics.Value = [pscustomobject]@{
-            RegistryRootsConfigured = $autoCadRoots.Count
+            RegistryRootsConfigured = @($AutoCadRoots).Count
             ReleaseRootsPresent = $releaseRootsPresent
             ReleaseRootProbeFailureCount = $releaseRootProbeFailureCount
             ReleaseRootReadFailureCount = $releaseRootReadFailureCount
@@ -644,9 +693,13 @@ function Assert-DiscoverySelfTest {
     if (-not $Condition) {
         throw ("AutoCAD 2016 discovery self-test failed: {0}" -f $Message)
     }
+
+    $script:DiscoverySelfTestAssertionCount++
 }
 
 function Invoke-AutoCad2016DiscoverySelfTest {
+    $script:DiscoverySelfTestAssertionCount = 0
+
     $records = @(
         [pscustomobject]@{
             RegistryKey = 'fixture-acad-location'
@@ -693,7 +746,80 @@ function Invoke-AutoCad2016DiscoverySelfTest {
     ))
     Assert-DiscoverySelfTest -Condition ($ignored.Count -eq 0) -Message 'empty registry values must not become candidates.'
 
-    Write-Host 'AutoCAD 2016 environment discovery self-test passed (10/10).'
+    $probeFailureDiagnostics = $null
+    $probeFailureHints = @(Get-AutoCadRegistryHints `
+        -AutoCadRoots @('C:\FixtureRegistry\ProbeFailure') `
+        -RegistryAccessor ([pscustomobject]@{
+            TestPath = { param([string]$Path) throw 'fixture release-root probe failure' }
+            GetItem = { param([string]$Path) throw 'unexpected GetItem call after probe failure' }
+            GetChildItems = { param([string]$Path) throw 'unexpected GetChildItems call after probe failure' }
+            GetItemProperty = { param([string]$Path) throw 'unexpected GetItemProperty call after probe failure' }
+        }) `
+        -Diagnostics ([ref]$probeFailureDiagnostics))
+    Assert-DiscoverySelfTest -Condition ($probeFailureHints.Count -eq 0) -Message 'a release-root probe failure must not publish registry hints.'
+    Assert-DiscoverySelfTest -Condition ($probeFailureDiagnostics.ReleaseRootProbeFailureCount -eq 1) -Message 'a release-root probe failure must be counted.'
+    Assert-DiscoverySelfTest -Condition ($probeFailureDiagnostics.ReleaseRootsPresent -eq 0) -Message 'a failed release-root probe must not be reported as present.'
+
+    $rootReadFailureDiagnostics = $null
+    $rootReadFailureHints = @(Get-AutoCadRegistryHints `
+        -AutoCadRoots @('C:\FixtureRegistry\ReadFailure') `
+        -RegistryAccessor ([pscustomobject]@{
+            TestPath = { param([string]$Path) $true }
+            GetItem = { param([string]$Path) throw 'fixture release-root read failure' }
+            GetChildItems = { param([string]$Path) throw 'fixture child enumeration failure' }
+            GetItemProperty = { param([string]$Path) throw 'unexpected GetItemProperty call without keys' }
+        }) `
+        -Diagnostics ([ref]$rootReadFailureDiagnostics))
+    Assert-DiscoverySelfTest -Condition ($rootReadFailureHints.Count -eq 0) -Message 'root and child read failures must not publish registry hints.'
+    Assert-DiscoverySelfTest -Condition ($rootReadFailureDiagnostics.ReleaseRootsPresent -eq 1) -Message 'a successfully probed release root must remain observable when reads fail.'
+    Assert-DiscoverySelfTest -Condition ($rootReadFailureDiagnostics.ReleaseRootReadFailureCount -eq 1) -Message 'a release-root item read failure must be counted.'
+    Assert-DiscoverySelfTest -Condition ($rootReadFailureDiagnostics.ChildEnumerationFailureCount -eq 1) -Message 'a child enumeration failure must be counted independently.'
+    Assert-DiscoverySelfTest -Condition ($rootReadFailureDiagnostics.KeysInspected -eq 0) -Message 'failed root and child reads must not fabricate inspected keys.'
+
+    $propertyReadFailureDiagnostics = $null
+    $propertyReadFailureHints = @(Get-AutoCadRegistryHints `
+        -AutoCadRoots @('C:\FixtureRegistry\PropertyFailure') `
+        -RegistryAccessor ([pscustomobject]@{
+            TestPath = { param([string]$Path) $true }
+            GetItem = {
+                param([string]$Path)
+                [pscustomobject]@{ Name = 'fixture-root-key'; PSPath = 'fixture-root-key' }
+            }
+            GetChildItems = {
+                param([string]$Path)
+                @(
+                    [pscustomobject]@{ Name = 'fixture-good-key'; PSPath = 'fixture-good-key' },
+                    [pscustomobject]@{ Name = 'fixture-bad-key'; PSPath = 'fixture-bad-key' }
+                )
+            }
+            GetItemProperty = {
+                param([string]$Path)
+                if ($Path -eq 'fixture-bad-key') {
+                    throw 'fixture property read failure'
+                }
+                if ($Path -eq 'fixture-root-key') {
+                    return [pscustomobject]@{ AcadLocation = 'C:\Fixture\Root' }
+                }
+                if ($Path -eq 'fixture-good-key') {
+                    return [pscustomobject]@{ Location = 'C:\Fixture\Good\acad.exe' }
+                }
+                throw ("unexpected fixture key: {0}" -f $Path)
+            }
+        }) `
+        -Diagnostics ([ref]$propertyReadFailureDiagnostics))
+    Assert-DiscoverySelfTest -Condition ($propertyReadFailureHints.Count -eq 2) -Message 'a failed sibling property read must not discard valid registry hints.'
+    Assert-DiscoverySelfTest -Condition ($propertyReadFailureDiagnostics.PropertyReadFailureCount -eq 1) -Message 'a property read failure must be counted.'
+    Assert-DiscoverySelfTest -Condition ($propertyReadFailureDiagnostics.KeysInspected -eq 3) -Message 'all returned keys must be counted as inspected.'
+    Assert-DiscoverySelfTest -Condition ($propertyReadFailureDiagnostics.KeysRead -eq 2) -Message 'only successfully read keys must be counted as read.'
+    Assert-DiscoverySelfTest -Condition ($propertyReadFailureDiagnostics.AcadLocationHintCount -eq 1) -Message 'valid AcadLocation data must survive a sibling property read failure.'
+    Assert-DiscoverySelfTest -Condition ($propertyReadFailureDiagnostics.LocationHintCount -eq 1) -Message 'valid Location data must survive a sibling property read failure.'
+
+    $expectedAssertionCount = 24
+    if ($script:DiscoverySelfTestAssertionCount -ne $expectedAssertionCount) {
+        throw ("AutoCAD 2016 discovery self-test assertion count mismatch: {0}/{1}." -f $script:DiscoverySelfTestAssertionCount, $expectedAssertionCount)
+    }
+
+    Write-Host ("AutoCAD 2016 environment discovery self-test passed ({0}/{1})." -f $script:DiscoverySelfTestAssertionCount, $expectedAssertionCount)
 }
 
 if ($RunDiscoverySelfTest) {

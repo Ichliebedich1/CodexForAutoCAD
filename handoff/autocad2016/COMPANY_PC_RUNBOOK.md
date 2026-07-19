@@ -9,8 +9,9 @@
 - 首次已提交诊断基线：`2d2ad3738095794c8374e916559c0c5d13702ba1`。
 - 目标机：原版 AutoCAD 2016 简体中文，R20.1，x64；托管 API 程序集版本 `20.1.0.0`。
 - 当前环境采集器为 schema v5，注册表安装位置同时识别 `AcadLocation`、
-  `InstallLocation` 和 `Location`；PowerShell 7/5.1 发现自测均为 `10/10`，目标机真实
-  只读采集均得到安装 `1`、可构建安装 `1`、注册表读取失败 `0`。
+  `InstallLocation` 和 `Location`；历史 PowerShell 7/5.1 发现自测均为 `10/10`，
+  2026-07-20 跟进失败注入回归均为 `24/24`，覆盖 probe、根键读取、子键枚举和属性读取
+  失败；目标机真实只读复采仍均得到安装 `1`、可构建安装 `1`、注册表读取失败 `0`。
 - Host.2016：`net45/x64` 诊断薄宿主已用目标机原版程序集真实编译。
 - 实机：用户已在原本打开的 AutoCAD 2016 进程中手工 `NETLOAD`，`CODEXCADDOCTOR`/`CODEXCAD` 可运行，`DBMOD 21 -> 21`。
 - 当前可重复构建候选：PowerShell 7.6.3 与 Windows PowerShell 5.1 验证均通过，独立双构建及两路并行验证均产生 SHA-256 `E8535C11AA09F93C405EBB7DFB46199EEDC27EE046959B4CC86395A06998B440`。该候选**尚未 NETLOAD**，验证结果必须保持 `NetLoadVerified=false`。
@@ -57,7 +58,7 @@ Git 历史中必须包含首次诊断基线 `2d2ad3738095794c8374e916559c0c5d137
 - 具有有效 Microsoft 签名的 MSBuild 候选数：`2`
 - 采集时间：`2026-07-18T14:57:00+08:00`
 
-Windows PowerShell 5.1 无参数自动发现也通过，最新历史采集时间为 `2026-07-18T15:01:50+08:00`。2026-07-19 的 schema v5 加固复验又在两套 PowerShell 下通过：发现自测 `10/10`、目标安装 `1`、可构建安装 `1`、`AcadLocation=1`、`Location=1`、注册表读取失败 `0`。以上只证明采集/工具链门禁，不替代编译或 NETLOAD。
+Windows PowerShell 5.1 无参数自动发现也通过，最新历史采集时间为 `2026-07-18T15:01:50+08:00`。2026-07-19 的 schema v5 加固复验又在两套 PowerShell 下通过：发现自测 `10/10`、目标安装 `1`、可构建安装 `1`、`AcadLocation=1`、`Location=1`、注册表读取失败 `0`。2026-07-20 跟进将自测扩展为双 Shell `24/24`，实际触发四类注册表失败分支；使用生产默认访问器的两次真实只读复采仍为目标安装 `1`、可构建安装 `1`、`AcadLocation=1`、`Location=1`、读取失败 `0`。以上只证明采集/工具链门禁，不替代编译或 NETLOAD。
 
 新目标机、AutoCAD 更新、Build Tools 更新或怀疑环境漂移时，以普通用户重新运行：
 
@@ -299,6 +300,7 @@ canonical bytes `738`；用户清除状态 `cleared-user-command`、clear count 
 - 证据 JSON 不含 `TRUSTEDPATHS`、用户名、真实图纸路径、网络路径、许可证数据或 API Key。
 - 当前诊断阶段只能称为“AutoCAD 2016 诊断编译/NETLOAD 兼容候选”，不得称为完整支持。
 - 当前采集器加固证据见 `handoff/autocad2016/evidence/environment-collector-hardening-20260719.json`；它只保存 schema、计数、布尔结果和必要哈希，不保存原始注册表路径或值。
+- 失败分支跟进证据见 `handoff/autocad2016/evidence/environment-collector-failure-regression-20260720.json`；原始本地采集报告仅以 SHA-256 绑定，不提交路径、键值或异常文本。
 - 当前 Host.2016 可重复构建证据见 `handoff/autocad2016/evidence/host-build-verification-20260718.json`；该文件明确新候选未 NETLOAD，并且不包含本机路径、用户名、图纸路径或企业受信目录内容。
 - 跨运行时 Bootstrap 原语证据见 `handoff/autocad2016/evidence/auth-bootstrap-verification-20260719.json`；该文件只保存脱敏计数、哈希和布尔边界，所有 live AgentHost、传输机密性及 CAD 集成项保持 `false`。
 - 只读选择上下文证据见 `handoff/autocad2016/evidence/readonly-context-build-verification-20260718.json`；文件同时记录静态/可重复构建门禁和 2026-07-19 的冻结候选实机检查点。Selection/context hash、图纸名称和路径不进入 Git；冻结 DLL SHA-256 正常入库，实体总数与插件自动保存 runtime 布尔值保持 `false`。

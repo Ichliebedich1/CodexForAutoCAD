@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-07-20",
+  "scope": "autocad2016-environment-discovery-failure-regression",
+  "baselineCommit": "a011dd1d368c43350ca2b080a594e3873dcac0a3",
+  "stageCommitBinding": "The Git commit containing this evidence file also contains the exact collector failure-injection regression described here.",
+  "collector": {
+    "path": "scripts/collect-autocad2016-environment.ps1",
+    "sha256": "CA39FD4DE0C44730ADEB502D8950856FA25BB8A074B9C72D4FBB658064993EDE",
+    "reportSchemaVersion": 5,
+    "supportedRegistryValueNames": [
+      "AcadLocation",
+      "InstallLocation",
+      "Location"
+    ],
+    "productionRegistryAccessUsesDefaultReadOnlyAccessor": true,
+    "testRegistryAccessUsesInjectedScriptBlockAccessor": true
+  },
+  "discoverySelfTests": {
+    "powerShell7": {
+      "version": "7.6.3",
+      "result": "24/24",
+      "passed": true
+    },
+    "windowsPowerShell51": {
+      "version": "5.1.19041.6456",
+      "result": "24/24",
+      "passed": true
+    },
+    "coveredFailureBranches": [
+      "release-root-probe-failure",
+      "release-root-item-read-failure",
+      "child-key-enumeration-failure",
+      "key-property-read-failure"
+    ],
+    "validSiblingHintsSurvivePropertyReadFailure": true,
+    "failureDiagnosticsContainCountsOnly": true,
+    "autoCadProcessStartedOrRestartedByTest": false,
+    "cadCommandsSent": false,
+    "registryModified": false
+  },
+  "realTargetReadOnlyCollection": {
+    "powerShell7Passed": true,
+    "windowsPowerShell51Passed": true,
+    "powerShell7RawEvidenceSha256": "7734078CCAE88428DB8605B78081DFD67723D1EF6179DDA5024274656F4F5444",
+    "windowsPowerShell51RawEvidenceSha256": "F2D542BD212DD2841BB7EB45E0A2EF2FE1B5EA573291DC1DE4C05F53F40F8EDE",
+    "rawEvidenceCommitted": false,
+    "collectorSchemaVersion": 5,
+    "collectionSucceeded": true,
+    "autoCad2016InstallationCount": 1,
+    "readyForHost2016BuildCount": 1,
+    "releaseRootsPresent": 1,
+    "keysInspected": 4,
+    "keysRead": 4,
+    "acadLocationHintCount": 1,
+    "installLocationHintCount": 0,
+    "locationHintCount": 1,
+    "releaseRootProbeFailureCount": 0,
+    "releaseRootReadFailureCount": 0,
+    "childEnumerationFailureCount": 0,
+    "propertyReadFailureCount": 0,
+    "autoCadProcessStartedOrRestartedByCollector": false,
+    "cadCommandsSent": false,
+    "systemOrAutoCadSettingsModified": false,
+    "trustedPathsQueried": false
+  },
+  "phase2Regression": {
+    "powerShell7Passed": true,
+    "releaseBuildWarnings": 0,
+    "releaseBuildErrors": 0,
+    "specs": {
+      "contracts": "15/15",
+      "ipc": "35/35",
+      "security": "19/19",
+      "appServer": "7/7",
+      "bridge": "29/29",
+      "agentRuntime": "31/31",
+      "chat": "9/9",
+      "aggregate": "145/145"
+    },
+    "hostForbiddenApiScanPassed": true,
+    "agentHostDoctorPassed": true,
+    "gitDiffChecksPassed": true,
+    "basicSecretScanPassed": true,
+    "claimBoundary": "This is a non-CAD local regression gate. It does not prove Host.2016 NETLOAD, a live CAD Bridge, CAD analysis, approval, or writing."
+  },
+  "claimBoundary": "The injected fixtures prove that each registry read failure branch is counted and fails closed without fabricating hints. The real target runs prove that the production accessor still discovers one build-ready AutoCAD 2016 installation under both PowerShell runtimes. This evidence does not prove Host compilation, NETLOAD, Agent/Bridge integration, or CAD behavior.",
+  "redaction": {
+    "trustedPathsIncluded": false,
+    "userNamesIncluded": false,
+    "localMachinePathsIncluded": false,
+    "networkPathsIncluded": false,
+    "drawingPathsOrNamesIncluded": false,
+    "licenseDataIncluded": false,
+    "secretsIncluded": false,
+    "rawRegistryKeysOrValuesIncluded": false,
+    "rawExceptionTextIncluded": false
+  }
+}
