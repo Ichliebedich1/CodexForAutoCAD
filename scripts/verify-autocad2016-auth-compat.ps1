@@ -1406,8 +1406,38 @@ $solutionProjectPaths = @(
         [IO.Path]::GetFullPath((Join-Path $repoRoot $match.Groups["Path"].Value))
     }
 ) | Sort-Object -Unique
-if ($solutionProjectPaths.Count -ne 15) {
-    throw "主解决方案项目清单必须精确包含15个项目，实际：$($solutionProjectPaths.Count)。"
+$expectedSolutionProjectPaths = @(
+    "src\Codex.AutoCAD.AgentHost\Codex.AutoCAD.AgentHost.csproj",
+    "src\Codex.AutoCAD.AgentLauncher\Codex.AutoCAD.AgentLauncher.csproj",
+    "src\Codex.AutoCAD.AgentRuntime\Codex.AutoCAD.AgentRuntime.csproj",
+    "src\Codex.AutoCAD.AppServer\Codex.AutoCAD.AppServer.csproj",
+    "src\Codex.AutoCAD.Bridge\Codex.AutoCAD.Bridge.csproj",
+    "src\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj",
+    "src\Codex.AutoCAD.Host.2025\Codex.AutoCAD.Host.2025.csproj",
+    "src\Codex.AutoCAD.Ipc\Codex.AutoCAD.Ipc.csproj",
+    "src\Codex.AutoCAD.Security\Codex.AutoCAD.Security.csproj",
+    "tests\Codex.AutoCAD.AgentLauncher.FakeAgentHost\Codex.AutoCAD.AgentLauncher.FakeAgentHost.csproj",
+    "tests\Codex.AutoCAD.AgentLauncher.Specs\Codex.AutoCAD.AgentLauncher.Specs.csproj",
+    "tests\Codex.AutoCAD.AgentRuntime.Specs\Codex.AutoCAD.AgentRuntime.Specs.csproj",
+    "tests\Codex.AutoCAD.AppServer.Specs\Codex.AutoCAD.AppServer.Specs.csproj",
+    "tests\Codex.AutoCAD.Bridge.Specs\Codex.AutoCAD.Bridge.Specs.csproj",
+    "tests\Codex.AutoCAD.Chat.Specs\Codex.AutoCAD.Chat.Specs.csproj",
+    "tests\Codex.AutoCAD.Contracts.Specs\Codex.AutoCAD.Contracts.Specs.csproj",
+    "tests\Codex.AutoCAD.Ipc.Specs\Codex.AutoCAD.Ipc.Specs.csproj",
+    "tests\Codex.AutoCAD.Security.Specs\Codex.AutoCAD.Security.Specs.csproj"
+) | ForEach-Object { [IO.Path]::GetFullPath((Join-Path $repoRoot $_)) } |
+    Sort-Object -Unique
+$solutionProjectDifference = @(
+    Compare-Object -ReferenceObject $expectedSolutionProjectPaths `
+        -DifferenceObject $solutionProjectPaths
+)
+if ($solutionProjectPaths.Count -ne $expectedSolutionProjectPaths.Count -or
+    $solutionProjectDifference.Count -ne 0) {
+    $detail = @(
+        $solutionProjectDifference |
+            ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" }
+    ) -join "; "
+    throw "主解决方案项目清单必须精确匹配18个批准项目；实际：$($solutionProjectPaths.Count)；差异：$detail"
 }
 $projectObjRoots = @(
     foreach ($projectPath in $solutionProjectPaths) {

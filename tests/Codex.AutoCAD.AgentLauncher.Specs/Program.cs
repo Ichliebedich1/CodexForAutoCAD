@@ -1,0 +1,621 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using Microsoft.Win32.SafeHandles;
+using Codex.AutoCAD.AgentLauncher;
+
+var arguments = ParseArguments(args);
+var fixture = new FakeAgentHostFixture(arguments.FakeAgentHostPath);
+try
+{
+    var specs = new[]
+    {
+        new SpecCase("REAL_AGENTHOST_SUCCESS", "真实AgentHost完成认证bootstrap doctor且无残留", () => RealAgentHostSucceeds(arguments.AgentHostPath)),
+        new SpecCase("REAL_AGENTHOST_REPEAT_5", "连续五次真实引导均成功且无残留", () => RepeatedRealAgentHostSucceeds(arguments.AgentHostPath)),
+        new SpecCase("INVALID_EXECUTABLE_PATHS", "相对路径、真实非EXE与缺失文件均失败关闭", () => InvalidExecutablePathsFailClosed(fixture)),
+        new SpecCase("EXECUTABLE_SHA256_MISMATCH", "批准SHA-256不匹配时拒绝启动", () => ExecutableSha256MismatchFails(fixture.CreateMode("success"))),
+        new SpecCase("TIMEOUT_TERMINATES_UNCONFIRMED", "启动截止触发失败关闭，随后在有界清理窗口内终止未确认子进程", () => TimeoutTerminatesChild(fixture.CreateMode("hang"))),
+        new SpecCase("CONFIRMATION_THEN_HANG_TIMEOUT", "有效确认后仍挂起时由启动截止触发失败关闭并执行有界终止清理", () => ValidConfirmationThenHangTerminatesChild(fixture.CreateMode("confirmhang"))),
+        new SpecCase("CALLER_THREAD_NONBLOCKING", "启动核心不在调用线程同步阻塞", () => CallerThreadIsNotBlocked(fixture.CreateMode("hang"))),
+        new SpecCase("CANCELLATION_TERMINATES_UNCONFIRMED", "取消未确认引导时子进程被终止", () => CancellationTerminatesChild(fixture.CreateMode("hang"))),
+        new SpecCase("EARLY_EXIT_REJECTED", "子进程提前异常退出被识别", () => EarlyExitIsReported(fixture.CreateMode("exit42"))),
+        new SpecCase("MALFORMED_CONFIRMATION_REJECTED", "畸形确认帧被拒绝", () => MalformedConfirmationFails(fixture.CreateMode("garbage"))),
+        new SpecCase("IDENTITY_MISMATCH_REJECTED", "确认身份不匹配被拒绝", () => IdentityMismatchFails(fixture.CreateMode("identity"))),
+        new SpecCase("TRAILING_DUPLICATE_REJECTED", "确认尾随字节与第二帧均被拒绝", () => TrailingAndDuplicateConfirmationFail(fixture)),
+        new SpecCase("CHILD_CLEARS_INHERITANCE", "子端领取句柄后清除继承位", () => ChildClearsInheritance(fixture.CreateMode("inherit"))),
+        new SpecCase("HANDLE_ALLOWLIST_CANARY", "启动句柄白名单排除父进程可继承canary", () => HandleAllowListExcludesCanary(fixture.CreateMode("canary"))),
+        new SpecCase("STDERR_BOUNDED", "stderr持续排空、严格受限且失败时不公开原文", () => StandardErrorIsBounded(fixture))
+    };
+
+    var failed = 0;
+    foreach (var spec in specs)
+    {
+        try
+        {
+            spec.Run();
+            Console.WriteLine("PASS " + spec.Id + " " + spec.Name);
+        }
+        catch (Exception exception)
+        {
+            failed++;
+            Console.Error.WriteLine(
+                "FAIL " + spec.Id + " " + spec.Name + ": " + exception.Message);
+        }
+    }
+
+    Console.WriteLine((specs.Length - failed) + "/" + specs.Length + " specs passed");
+    return failed == 0 ? 0 : 1;
+}
+finally
+{
+    fixture.Dispose();
+}
+
+static void RealAgentHostSucceeds(string agentHostPath)
+{
+    var options = CreateOptions(agentHostPath);
+    var result = AgentHostBootstrapDoctor.RunAsync(
+            options,
+            CancellationToken.None)
+        .GetAwaiter()
+        .GetResult();
+    True(result.ProcessId > 0, "Process id was not captured.");
+    Equal(32, result.BootstrapId.Length);
+    Equal(32, result.SessionId.Length);
+    True(result.PipeName.StartsWith("codex-autocad-", StringComparison.Ordinal), "Pipe name is invalid.");
+    Equal(options.ExpectedExecutableSha256, result.ExecutableSha256);
+    ProcessMustBeGone(result.ProcessId);
+}
+
+static void RepeatedRealAgentHostSucceeds(string agentHostPath)
+{
+    for (var index = 0; index < 5; index++)
+    {
+        RealAgentHostSucceeds(agentHostPath);
+    }
+}
+
+static void InvalidExecutablePathsFailClosed(FakeAgentHostFixture fixture)
+{
+    const string validPlaceholderSha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    var nonExecutablePath = fixture.CreateNonExecutable();
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => Run(new AgentHostBootstrapOptions("relative.exe", validPlaceholderSha256)));
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => Run(new AgentHostBootstrapOptions("\\\\server\\share\\AgentHost.exe", validPlaceholderSha256)));
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => Run(new AgentHostBootstrapOptions(
+            nonExecutablePath,
+            ComputeFileSha256(nonExecutablePath))));
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => Run(new AgentHostBootstrapOptions(
+            Path.Combine(Path.GetTempPath(), "missing.exe"),
+            validPlaceholderSha256)));
+}
+
+static void TimeoutTerminatesChild(string fakePath)
+{
+    var options = CreateOptions(fakePath);
+    options.StartupTimeout = TimeSpan.FromMilliseconds(350);
+    var stopwatch = Stopwatch.StartNew();
+    ExpectFailure(AgentBootstrapLaunchFailure.Timeout, () => Run(options));
+    stopwatch.Stop();
+    True(
+        stopwatch.Elapsed < TimeSpan.FromSeconds(8),
+        "Timeout cleanup exceeded its bounded deadline: " + stopwatch.Elapsed + ".");
+    ProcessNameMustBeGone(fakePath);
+}
+
+static void ExecutableSha256MismatchFails(string fakePath)
+{
+    const string mismatchedSha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    var actualSha256 = ComputeFileSha256(fakePath);
+    True(
+        !string.Equals(actualSha256, mismatchedSha256, StringComparison.Ordinal),
+        "The fake AgentHost unexpectedly matched the mismatch sentinel.");
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.IdentityMismatch,
+        () => Run(new AgentHostBootstrapOptions(fakePath, mismatchedSha256)));
+    ProcessNameMustBeGone(fakePath);
+}
+
+static void ValidConfirmationThenHangTerminatesChild(string fakePath)
+{
+    var options = CreateOptions(fakePath);
+    options.StartupTimeout = TimeSpan.FromMilliseconds(500);
+    var stopwatch = Stopwatch.StartNew();
+    ExpectFailure(AgentBootstrapLaunchFailure.Timeout, () => Run(options));
+    stopwatch.Stop();
+    True(
+        stopwatch.Elapsed < TimeSpan.FromSeconds(8),
+        "Confirmation-then-hang cleanup exceeded its bounded deadline: "
+            + stopwatch.Elapsed + ".");
+    ProcessNameMustBeGone(fakePath);
+}
+
+static void CancellationTerminatesChild(string fakePath)
+{
+    var options = CreateOptions(fakePath);
+    options.StartupTimeout = TimeSpan.FromSeconds(10);
+    using (var cancellation = new CancellationTokenSource())
+    {
+        cancellation.CancelAfter(250);
+        var stopwatch = Stopwatch.StartNew();
+        ExpectFailure(
+            AgentBootstrapLaunchFailure.Cancellation,
+            () => AgentHostBootstrapDoctor.RunAsync(options, cancellation.Token)
+                .GetAwaiter()
+                .GetResult());
+        stopwatch.Stop();
+        True(
+            stopwatch.Elapsed < TimeSpan.FromSeconds(8),
+            "Cancellation cleanup exceeded its bounded deadline: " + stopwatch.Elapsed + ".");
+    }
+
+    ProcessNameMustBeGone(fakePath);
+}
+
+static void CallerThreadIsNotBlocked(string fakePath)
+{
+    var options = CreateOptions(fakePath);
+    options.StartupTimeout = TimeSpan.FromSeconds(10);
+    using (var cancellation = new CancellationTokenSource())
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var launchTask = AgentHostBootstrapDoctor.RunAsync(options, cancellation.Token);
+        stopwatch.Stop();
+        True(
+            stopwatch.Elapsed < TimeSpan.FromMilliseconds(250),
+            "RunAsync synchronously blocked the caller for " + stopwatch.Elapsed + ".");
+        cancellation.Cancel();
+        ExpectFailure(
+            AgentBootstrapLaunchFailure.Cancellation,
+            () => launchTask.GetAwaiter().GetResult());
+    }
+
+    ProcessNameMustBeGone(fakePath);
+}
+
+static void EarlyExitIsReported(string fakePath)
+{
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.ChildExitedWithError,
+        () => Run(CreateOptions(fakePath)));
+    ProcessNameMustBeGone(fakePath);
+}
+
+static void MalformedConfirmationFails(string fakePath)
+{
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.ConfirmationInvalid,
+        () => Run(CreateOptions(fakePath)));
+    ProcessNameMustBeGone(fakePath);
+}
+
+static void IdentityMismatchFails(string fakePath)
+{
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.IdentityMismatch,
+        () => Run(CreateOptions(fakePath)));
+    ProcessNameMustBeGone(fakePath);
+}
+
+static void TrailingAndDuplicateConfirmationFail(FakeAgentHostFixture fixture)
+{
+    foreach (var mode in new[] { "trailing", "double" })
+    {
+        var fakePath = fixture.CreateMode(mode);
+        ExpectFailure(
+            AgentBootstrapLaunchFailure.ConfirmationInvalid,
+            () => Run(CreateOptions(fakePath)));
+        ProcessNameMustBeGone(fakePath);
+    }
+}
+
+static void ChildClearsInheritance(string fakePath)
+{
+    var result = Run(CreateOptions(fakePath));
+    ProcessMustBeGone(result.ProcessId);
+}
+
+static void HandleAllowListExcludesCanary(string fakePath)
+{
+    const string handleVariable = "CODEX_AUTOCAD_TEST_CANARY_HANDLE";
+    const string pathVariable = "CODEX_AUTOCAD_TEST_CANARY_PATH";
+    var previousHandle = Environment.GetEnvironmentVariable(handleVariable);
+    var previousPath = Environment.GetEnvironmentVariable(pathVariable);
+    using (var canary = new InheritableCanaryFile())
+    {
+        try
+        {
+            Environment.SetEnvironmentVariable(
+                handleVariable,
+                canary.HandleValue.ToString(CultureInfo.InvariantCulture));
+            Environment.SetEnvironmentVariable(pathVariable, canary.Path);
+            var result = Run(CreateOptions(fakePath));
+            ProcessMustBeGone(result.ProcessId);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(handleVariable, previousHandle);
+            Environment.SetEnvironmentVariable(pathVariable, previousPath);
+        }
+    }
+}
+
+static void StandardErrorIsBounded(FakeAgentHostFixture fixture)
+{
+    var fakePath = fixture.CreateMode("stderr");
+    var options = CreateOptions(fakePath);
+    options.MaximumStandardErrorBytes = 1024;
+    var result = Run(options);
+    Equal(1024, result.StandardErrorBytes);
+    True(result.StandardErrorTruncated, "stderr truncation was not reported.");
+    ProcessMustBeGone(result.ProcessId);
+
+    const string marker = "CODEX_RAW_STDERR_MUST_NOT_ESCAPE";
+    var failingPath = fixture.CreateMode("stderrfail");
+    var failingOptions = CreateOptions(failingPath);
+    failingOptions.MaximumStandardErrorBytes = 64;
+    var failure = ExpectFailure(
+        AgentBootstrapLaunchFailure.ChildExitedWithError,
+        () => Run(failingOptions));
+    True(
+        failure.Message.IndexOf("stderrBytes=64", StringComparison.Ordinal) >= 0,
+        "The bounded stderr byte count was not reported.");
+    True(
+        failure.Message.IndexOf("stderrTruncated=true", StringComparison.Ordinal) >= 0,
+        "The stderr truncation flag was not reported.");
+    True(
+        failure.ToString().IndexOf(marker, StringComparison.Ordinal) < 0,
+        "Raw stderr escaped through the public failure.");
+    ProcessNameMustBeGone(failingPath);
+}
+
+static AgentHostBootstrapOptions CreateOptions(string executablePath)
+{
+    return new AgentHostBootstrapOptions(
+        executablePath,
+        ComputeFileSha256(executablePath));
+}
+
+static string ComputeFileSha256(string path)
+{
+    using (var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+    using (var sha256 = SHA256.Create())
+    {
+        var hash = sha256.ComputeHash(input);
+        try
+        {
+            var characters = new char[hash.Length * 2];
+            const string hex = "0123456789ABCDEF";
+            for (var index = 0; index < hash.Length; index++)
+            {
+                characters[index * 2] = hex[hash[index] >> 4];
+                characters[index * 2 + 1] = hex[hash[index] & 0x0f];
+            }
+
+            return new string(characters);
+        }
+        finally
+        {
+            Array.Clear(hash, 0, hash.Length);
+        }
+    }
+}
+
+static AgentBootstrapDoctorResult Run(AgentHostBootstrapOptions options)
+{
+    return AgentHostBootstrapDoctor.RunAsync(options, CancellationToken.None)
+        .GetAwaiter()
+        .GetResult();
+}
+
+static AgentBootstrapLaunchException ExpectFailure(
+    AgentBootstrapLaunchFailure expected,
+    Action action)
+{
+    try
+    {
+        action();
+        throw new InvalidOperationException("Expected launch failure " + expected + ".");
+    }
+    catch (AgentBootstrapLaunchException exception)
+    {
+        Equal(expected, exception.Failure);
+        return exception;
+    }
+}
+
+static void ProcessMustBeGone(int processId)
+{
+    try
+    {
+        using (var process = Process.GetProcessById(processId))
+        {
+            if (!process.HasExited)
+            {
+                throw new InvalidOperationException("AgentHost process is still running: " + processId + ".");
+            }
+        }
+    }
+    catch (ArgumentException)
+    {
+    }
+}
+
+static void ProcessNameMustBeGone(string executablePath)
+{
+    var processName = Path.GetFileNameWithoutExtension(executablePath);
+    var deadline = DateTime.UtcNow.AddSeconds(2);
+    do
+    {
+        var processes = Process.GetProcessesByName(processName);
+        try
+        {
+            if (processes.Length == 0)
+            {
+                return;
+            }
+        }
+        finally
+        {
+            foreach (var process in processes)
+            {
+                process.Dispose();
+            }
+        }
+
+        Thread.Sleep(25);
+    } while (DateTime.UtcNow < deadline);
+
+    throw new InvalidOperationException("Fake AgentHost process remains: " + processName + ".");
+}
+
+static Arguments ParseArguments(string[] values)
+{
+    string? agentHost = null;
+    string? fakeAgentHost = null;
+    for (var index = 0; index < values.Length - 1; index += 2)
+    {
+        if (string.Equals(values[index], "--agent-host", StringComparison.Ordinal))
+        {
+            agentHost = values[index + 1];
+        }
+        else if (string.Equals(values[index], "--fake-agent-host", StringComparison.Ordinal))
+        {
+            fakeAgentHost = values[index + 1];
+        }
+    }
+
+    if (string.IsNullOrWhiteSpace(agentHost) || string.IsNullOrWhiteSpace(fakeAgentHost))
+    {
+        throw new ArgumentException("--agent-host and --fake-agent-host are required.");
+    }
+
+    return new Arguments(Path.GetFullPath(agentHost), Path.GetFullPath(fakeAgentHost));
+}
+
+static void True(bool condition, string message)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException(message);
+    }
+}
+
+static void Equal<T>(T expected, T actual)
+{
+    if (!EqualityComparer<T>.Default.Equals(expected, actual))
+    {
+        throw new InvalidOperationException("Expected " + expected + ", actual " + actual + ".");
+    }
+}
+
+sealed class FakeAgentHostFixture : IDisposable
+{
+    private readonly string sourceExecutable;
+    private readonly string root;
+    private readonly Dictionary<string, string> modes = new Dictionary<string, string>(StringComparer.Ordinal);
+    private string? nonExecutablePath;
+
+    internal FakeAgentHostFixture(string sourceExecutable)
+    {
+        this.sourceExecutable = Path.GetFullPath(sourceExecutable);
+        root = Path.Combine(Path.GetTempPath(), "CodexAgentLauncherSpecs-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        foreach (var source in Directory.GetFiles(Path.GetDirectoryName(this.sourceExecutable)!))
+        {
+            File.Copy(source, Path.Combine(root, Path.GetFileName(source)), true);
+        }
+    }
+
+    internal string CreateMode(string mode)
+    {
+        string? existing;
+        if (modes.TryGetValue(mode, out existing))
+        {
+            return existing!;
+        }
+
+        var target = Path.Combine(root, "CodexLauncherFake-" + mode + ".exe");
+        File.Copy(sourceExecutable, target, true);
+        modes.Add(mode, target);
+        return target;
+    }
+
+    internal string CreateNonExecutable()
+    {
+        if (nonExecutablePath != null)
+        {
+            return nonExecutablePath;
+        }
+
+        nonExecutablePath = Path.Combine(root, "CodexLauncherNotExecutable.dll");
+        File.WriteAllBytes(nonExecutablePath, new byte[] { 0x43, 0x44, 0x58, 0x00 });
+        return nonExecutablePath;
+    }
+
+    public void Dispose()
+    {
+        foreach (var path in modes.Values)
+        {
+            EnsureProcessNameIsGone(path);
+        }
+
+        if (Directory.Exists(root))
+        {
+            DeleteDirectoryWithRetry(root);
+        }
+    }
+
+    private static void DeleteDirectoryWithRetry(string path)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        Exception? lastFailure = null;
+        do
+        {
+            try
+            {
+                Directory.Delete(path, true);
+                return;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return;
+            }
+            catch (IOException exception)
+            {
+                lastFailure = exception;
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                lastFailure = exception;
+            }
+
+            Thread.Sleep(50);
+        } while (stopwatch.Elapsed < TimeSpan.FromSeconds(5));
+
+        throw new IOException(
+            "Fake AgentHost fixture directory cleanup exceeded its bounded retry window.",
+            lastFailure);
+    }
+
+    private static void EnsureProcessNameIsGone(string executablePath)
+    {
+        var processName = Path.GetFileNameWithoutExtension(executablePath);
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        do
+        {
+            var processes = Process.GetProcessesByName(processName);
+            try
+            {
+                if (processes.Length == 0)
+                {
+                    return;
+                }
+            }
+            finally
+            {
+                foreach (var process in processes)
+                {
+                    process.Dispose();
+                }
+            }
+
+            Thread.Sleep(25);
+        } while (DateTime.UtcNow < deadline);
+
+        throw new InvalidOperationException("Fake AgentHost process remains: " + processName + ".");
+    }
+}
+
+sealed class InheritableCanaryFile : IDisposable
+{
+    private const uint HandleFlagInherit = 1;
+    private readonly FileStream stream;
+
+    internal InheritableCanaryFile()
+    {
+        Path = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            "CodexAgentLauncherCanary-" + Guid.NewGuid().ToString("N") + ".tmp");
+        stream = new FileStream(
+            Path,
+            FileMode.CreateNew,
+            FileAccess.ReadWrite,
+            FileShare.ReadWrite | FileShare.Delete);
+        if (!SetHandleInformation(
+                stream.SafeFileHandle,
+                HandleFlagInherit,
+                HandleFlagInherit))
+        {
+            throw new InvalidOperationException(
+                "Making the parent canary handle inheritable failed.",
+                new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
+        }
+    }
+
+    internal string Path { get; }
+
+    internal long HandleValue
+    {
+        get { return stream.SafeFileHandle.DangerousGetHandle().ToInt64(); }
+    }
+
+    public void Dispose()
+    {
+        stream.Dispose();
+        try
+        {
+            File.Delete(Path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetHandleInformation(
+        SafeFileHandle handle,
+        uint mask,
+        uint flags);
+}
+
+sealed class Arguments
+{
+    internal Arguments(string agentHostPath, string fakeAgentHostPath)
+    {
+        AgentHostPath = agentHostPath;
+        FakeAgentHostPath = fakeAgentHostPath;
+    }
+
+    internal string AgentHostPath { get; }
+
+    internal string FakeAgentHostPath { get; }
+}
+
+sealed class SpecCase
+{
+    internal SpecCase(string id, string name, Action run)
+    {
+        Id = id;
+        Name = name;
+        Run = run;
+    }
+
+    internal string Id { get; }
+
+    internal string Name { get; }
+
+    internal Action Run { get; }
+}

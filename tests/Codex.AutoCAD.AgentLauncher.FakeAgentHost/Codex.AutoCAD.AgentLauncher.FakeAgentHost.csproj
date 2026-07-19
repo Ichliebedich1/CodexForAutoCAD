@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>Codex.AutoCAD.AgentLauncher.FakeAgentHost</AssemblyName>
+    <RootNamespace>Codex.AutoCAD.AgentLauncher.FakeAgentHost</RootNamespace>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Codex.AutoCAD.AgentLauncher\Codex.AutoCAD.AgentLauncher.csproj" />
+  </ItemGroup>
+</Project>

@@ -2,7 +2,7 @@
 
 ## 证据来源与适用边界
 
-本报告严格分开六类证据：
+本报告严格分开七类证据：
 
 1. **用户实机命令记录**：用户在目标机已打开的原版 AutoCAD 2016 命令行中手工执行 `NETLOAD`、`CODEXCADDOCTOR`、`CODEXCAD` 和 `DBMOD`。
 2. **环境采集器证据**：schema v4 只读采集；不启动 AutoCAD、不读取 `TRUSTEDPATHS` 内容。
@@ -10,6 +10,7 @@
 4. **Phase 2 本地规格证据**：七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘密扫描的本地阶段快照；未进入 AutoCAD，提交状态以 Git 历史为准。
 5. **Host.2016 Palette 静态/构建与实机证据**：独立 Palette solution/project 的隔离 Release 门禁，以及冻结候选哈希绑定后的人工 NETLOAD、只读 UI 和生命周期记录；不得继承诊断 Host 的运行时结论。
 6. **Host.2016 ReadOnlyContext 静态/构建与实机证据**：独立 Selection sidecar 的双 PowerShell 可重复构建门禁，以及冻结候选哈希绑定后的人工 NETLOAD、六类只读选择、清除和文档激活缓存失效记录；不得继承 Palette 或诊断 Host 的运行时结论。
+7. **真实 AgentHost 有界安全引导证据**：PowerShell 7/5.1 下的真实进程外 bootstrap-doctor、受限继承句柄、批准 EXE 哈希、确认身份、启动截止 fail-closed 中止及随后最多 `5` 秒有界终止清理、取消、句柄 allowlist、stderr 限界和无残留进程验证；不声称终止严格发生在配置的启动截止内，没有进入 AutoCAD，不得替代 Host.2016 live Bridge 或 CAD 实机证据。
 
 以下身份缺口只适用于首次诊断薄宿主的历史实机命令记录；Palette 与 ReadOnlyContext 均有各自独立的冻结候选身份绑定，三者不得互相继承：
 
@@ -24,7 +25,7 @@
 - ReadOnlyContext 冻结候选 SHA-256 为 `AB3132CF7B0102F9A9B168A76170D074114051D1759391DF9F3C5C6969BAE6B8`，已由双 PowerShell 可重复构建、只读冻结副本及用户对精确冻结 DLL 的人工 NETLOAD 建立独立身份绑定。
 - Selection/context hash 按策略不入库且不持久化；这不等于 DLL SHA-256 不入库。证据中正常保留冻结 DLL SHA-256、规范化字节数和六类计数。
 
-当前证据分别证明 `net45/x64` 诊断薄宿主可加载、独立 Palette 冻结候选在 96 DPI 下通过有界 UI/DBMOD 检查点，以及独立 ReadOnlyContext 冻结候选通过六类只读选择、清除和文档激活缓存失效检查点。真实 AgentHost、认证 IPC、正式侧边栏集成、审批和 CAD 写入仍未获得实机通过证据，不能据此宣称完整支持 AutoCAD 2016。
+当前证据分别证明 `net45/x64` 诊断薄宿主可加载、独立 Palette 冻结候选在 96 DPI 下通过有界 UI/DBMOD 检查点、独立 ReadOnlyContext 冻结候选通过六类只读选择/清除/文档激活缓存失效检查点，以及真实进程外 AgentHost 的有界安全引导门禁通过。长运行认证 Bridge、正式侧边栏集成、审批和 CAD 写入仍未获得 AutoCAD 2016 实机通过证据，不能据此宣称完整支持 AutoCAD 2016。
 
 ## 用户实机命令记录摘要
 
@@ -79,7 +80,11 @@
 - ReadOnlyContext 运行时检查点：六类各 `1`、selected `6`、generation `2`、canonical bytes `738`、捕获 `DBMOD 4 -> 4`；显式清除后 selected `0`、clearCount `14`、`DBMOD 4 -> 4`
 - Selection/context hash：按策略脱敏且不持久化；冻结 DLL SHA-256 正常记录
 - 旧诊断候选副本是否被当前构建覆盖：否；副本哈希仍为 `2E621...0C85`
-- AgentHost 版本/SHA-256：未测
+- AgentHost 有界 bootstrap-doctor：PowerShell 7.6.3 与 Windows PowerShell 5.1.19041.6456 均通过；未进入 AutoCAD
+- AgentHost EXE SHA-256：`002BBA9D48BBDFE8E8256C0D6D17E88C63AE4A0A34499CC3CF756A2CE1749706`
+- AgentHost DLL SHA-256：`852BD92C18A72E8F5A8DFEF01C42F5560CD1C0764AF5909E7074149371786033`
+- net45 Launcher SHA-256：`597D99E87FE06BA59DCBB70DE498390B92B97C18C63CF2AEAF7E66978F3AF849`
+- net8 Launcher SHA-256：`84E0E2A710F9D119160A74584802198CF3286E5F4482C2017E6C624EBD3C1FE9`
 - 显示缩放：当前会话 `96 x 96 DPI`；125% 与 150% 未测
 
 不要填写真实姓名、许可证序列号、API Key、内部服务器地址、`TRUSTEDPATHS` 内容或真实图纸路径。
@@ -283,24 +288,57 @@ ReadOnlyContext 阶段使用独立 Selection sidecar，不覆盖当前进程已�
 
 进入正式侧边栏 UI 之前必须先通知用户，并冻结 Codex 与 Kimi 共同遵守的上下文展示、命令面、错误语义、审批边界和兼容契约；未完成该共同契约决策门，不开始正式 UI 集成。
 
+## 真实 AgentHost 有界安全引导复核
+
+本阶段验证真实进程外 AgentHost 的 bootstrap-doctor，不加载 Host.2016，也不向 AutoCAD
+发送命令。阶段入口为 `scripts/verify-autocad2016-agent-bootstrap-stage.ps1`；它自动调用
+双 PowerShell 的 bootstrap、认证兼容和 Phase2 组成门禁，解析并哈希 raw evidence/log，
+再生成脱敏的 `handoff/autocad2016/evidence/agent-bootstrap-verification-20260719.json`。
+单独的 `scripts/verify-autocad2016-agent-bootstrap.ps1` 只作为组成门禁和聚焦诊断入口。
+
+- PowerShell 7.6.3 与 Windows PowerShell 5.1.19041.6456 的完整门禁均通过。
+- net45 与 net8 Launcher Specs 均为精确强制 ID 集 `15/15`；验证器拒绝缺失、未知、
+  重复或两个运行时同时删除同一强制 ID。
+- 每个 shell 完成两次隔离 Release 构建；`122` 个编译输入被递归快照，`106` 个可运行
+  输出文件按相对路径、长度和 SHA-256 逐字节一致，并在 Specs 执行后再次复核未变化。
+- 真实 AgentHost bootstrap-doctor 成功，连续 `5` 次重复通过；批准 EXE SHA-256 不匹配、
+  非 EXE、提前退出、畸形/重复确认 frame 和确认 PID/创建时间不匹配均 fail-closed。
+- Bootstrap 密钥和 frame 只通过受限继承的 stdin 交付，确认只通过 stdout 返回，stderr
+  使用独立句柄；命令行和环境变量不携带 bootstrap 材料。
+- 子进程领取句柄后清除继承位，父进程 allowlist canary 未进入子进程；stderr 只公开
+  有界字节数和截断标志，不公开原始文本。
+- 未确认超时和有效确认后继续挂起均由启动截止触发 fail-closed 中止，随后在最多
+  `5` 秒有界清理窗口内证明子进程终止；调用方取消也执行有界终止清理。这里不声称
+  终止严格发生在配置的启动截止内；相关进程基线/终态为 `0 -> 0`。
+- AgentHost EXE SHA-256 为 `002BBA9D48BBDFE8E8256C0D6D17E88C63AE4A0A34499CC3CF756A2CE1749706`；
+  DLL 为 `852BD92C18A72E8F5A8DFEF01C42F5560CD1C0764AF5909E7074149371786033`；net45/net8
+  Launcher 分别为 `597D99E8...F849` 和 `84E0E2A7...1FE9`。
+- 本轮 `AutoCadStartedOrRestarted=false`、`CadCommandsSent=false`、`NetLoadVerified=false`、
+  `CadRuntimeIntegrated=false`。
+
+证据边界：完整传输机密性、外部进程复制符合条件句柄的对抗性、刻意替换 EXE 的
+suspended-launch TOCTOU 动态攻击、pending-bootstrap 原子消费、长运行
+`IAgentBridgeClient`、Host.2016 live handshake、断线/离线/超时 Bridge fail-closed、CAD
+审批/写入和完整 AutoCAD 2016 支持仍未验证。
+
 ## Phase 2 本地规格证据
 
 | 组件 | 配置 | 结果 | 适用边界 |
 | --- | --- | --- | --- |
 | 解决方案构建 | Release | `0` warning / `0` error | 本地阶段快照；不是 AutoCAD 内构建证据 |
 | Contracts Specs | Release | `15/15` | 本地契约规格 |
-| IPC Specs | Release | `17/17` | 包含固定认证向量、严格 sequence、nonce 和防重放；不是 Host.2016 live handshake |
+| IPC Specs | Release | `35/35` | 包含固定认证向量、严格 sequence、nonce、防重放和 bootstrap 原语边界；不是 Host.2016 live handshake |
 | Security Specs | Release | `19/19` | 本地审批/安全规格；不是 CAD 实机审批 |
 | AppServer Specs | Release | `7/7` | 本地进程协议规格 |
 | Bridge Specs | Release | `29/29` | 本地命名管道/生命周期规格；尚未接入 Host.2016 |
-| AgentRuntime Specs | Release | `31/31` | 本地假进程/代理边界；不是 CAD live |
+| AgentRuntime Specs | Release | `31/31` | 本地代理线程/回合与工具边界；不是 CAD live |
 | Chat Specs | Release | `9/9` | 本地 UI/会话逻辑规格 |
-| 七个 Specs 合计 | Release | `127/127` | 本地阶段快照；提交状态以 Git 历史为准 |
+| 七个 Specs 合计 | Release | `145/145` | 本地阶段快照；提交状态以 Git 历史为准 |
 | Bridge 压力复跑 | Release | `20 x 29 = 580/580` | 当前本地稳定性证据；不是 CAD E2E |
 | AgentHost doctor | Release | 通过且无残留进程 | 不等于 Host.2016 已连接 AgentHost |
 | diff/秘密扫描 | 隔离提交候选 | 通过 | `e039738` 的正向候选通过；当前未提交写入原型会被门禁按预期拒绝 |
 
-Release 构建、七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘密扫描均已有通过证据，但仍是**非 CAD live** 的本地阶段快照。认证兼容阶段提交为 `7358764`；Host 禁写门禁阶段提交为 `e039738`。当前工作树中的未提交 Host.2025 写入原型会在 `127/127` 后被增强门禁稳定拒绝 `8` 处，因此不能把当前 dirty 工作树称为全绿，也不得据此宣称 Host.2016 的 Agent/Bridge 集成通过。
+Release 构建、七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘密扫描均已有通过证据，但仍是**非 CAD live** 的本地阶段快照。认证兼容阶段提交为 `7358764`；Host 禁写门禁阶段提交为 `e039738`。当前 AgentHost 阶段在隔离 Worktree 中通过 `145/145` 回归；主工作树的其他用户修改不属于本阶段，也不得据此宣称 Host.2016 的 Agent/Bridge 集成通过。
 
 ## 问题与缺口
 
@@ -311,7 +349,7 @@ Release 构建、七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘�
 - Palette 的 125%/150% DPI 与 AutoCAD 退出生命周期实机验证。
 - ReadOnlyContext 的命令前后实体总数独立计量、动态块 effective name、xref 分类、DocumentToBeDestroyed/文档关闭清缓存及事件泄漏验证。
 - ReadOnlyContext 与正式 Host.2016/侧边栏 UI 的集成；进入该阶段前必须先通知用户并冻结 Codex/Kimi 共同契约。
-- 真实 AgentHost 启动、秘密交付、停止/超时和退出清理。
+- 有界 AgentHost bootstrap-doctor 已通过；仍缺长运行 `IAgentBridgeClient`、pending-bootstrap 原子消费、外部句柄复制抵抗和刻意 suspended-launch TOCTOU 动态攻击验证。
 - Host.2016 认证 Bridge live handshake、HMAC、防重放和 fail-closed。
 - 一次审批、锁内重校验、单事务写入及不自动保存的实机闭环。
 - 插件自动保存行为的运行时验证；候选无保存 API，且现场未观察插件保存，不等于 `automaticSaveRuntimeVerified=true`，也不等于 AutoCAD 自身 `.sv$` 被禁用。
@@ -322,6 +360,7 @@ Release 构建、七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘�
 
 - 是否达到“2016 诊断编译/NETLOAD 兼容候选”：**是**；仅限提交 `2d2ad37` 的诊断薄宿主和当前用户命令记录。
 - 是否达到“2016 独立只读 Selection sidecar 检查点”：**是**；仅限冻结候选 `AB3132...E6B8` 的六类 implied selection、显式清除、`DBMOD 4 -> 4` 和 DocumentActivated 缓存失效。
+- 是否达到“真实 AgentHost 有界安全引导检查点”：**是**；仅限受限继承句柄 bootstrap-doctor、批准 EXE 哈希、确认身份、启动截止 fail-closed 中止及随后最多 `5` 秒有界清理、取消、stderr 限界和无残留进程，不包含长运行 Bridge 或 CAD 集成。
 - 是否达到“2016 完整只读产品候选”：**否**；正式侧边栏 UI、Agent/Bridge 集成、实体总数、文档关闭/泄漏及其余运行时矩阵仍未完成。
 - 是否达到“2016 CAD 写入候选”：**否**；审批、锁内重校验和事务写入未获得 2016 实机证据。
 - 是否达到“完整支持 AutoCAD 2016”：**否**。
@@ -334,7 +373,7 @@ Release 构建、七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘�
 - 是否允许单独提交当前 ReadOnlyContext 检查点：**是**；只能表述为“已绑定的独立只读 Selection sidecar 检查点”，不得表述为正式 UI/Agent 集成、CAD 写入或完整 AutoCAD 2016 支持。
 - 是否允许发布：否。
 
-最终表述：目标机 AutoCAD 2016 已证明可加载 `net45/x64` 诊断薄宿主；已绑定的独立 Palette 冻结候选通过当前 96 DPI 的打开、停靠、浮动、隐藏重开、中文 IME 与干净 DBMOD 验证；已绑定的独立 ReadOnlyContext 冻结候选通过六类只读 implied selection、显式清除、`DBMOD 4 -> 4` 和 DocumentActivated 缓存失效检查点。诊断宿主历史身份、125%/150% DPI、退出/关闭生命周期、实体总数、正式 UI/Agent/Bridge、CAD 写入和完整安全闭环仍不完整，因此 AutoCAD 2016 完整支持仍未成立。
+最终表述：目标机 AutoCAD 2016 已证明可加载 `net45/x64` 诊断薄宿主；已绑定的独立 Palette 冻结候选通过当前 96 DPI 的打开、停靠、浮动、隐藏重开、中文 IME 与干净 DBMOD 验证；已绑定的独立 ReadOnlyContext 冻结候选通过六类只读 implied selection、显式清除、`DBMOD 4 -> 4` 和 DocumentActivated 缓存失效检查点；真实进程外 AgentHost 的有界安全引导门禁也已通过。诊断宿主历史身份、125%/150% DPI、退出/关闭生命周期、实体总数、长运行认证 Bridge、正式 UI、CAD 写入和完整安全闭环仍不完整，因此 AutoCAD 2016 完整支持仍未成立。
 
 ## 证据文件
 
@@ -345,3 +384,4 @@ Release 构建、七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘�
 - `handoff/autocad2016/evidence/phase2-guardrail-verification-20260718.json`（增强门禁当前口径为 IPC `17/17`、七个 Specs `127/127`；旧 `121/121` 只允许作为历史快照）
 - `handoff/autocad2016/evidence/palette-build-verification-20260718.json`（静态门禁、冻结候选身份绑定、当前 96 DPI UI/IME 及最新有效样本六个 `DBMOD=4` 均通过；125%/150% DPI 与退出生命周期延期）
 - `handoff/autocad2016/evidence/readonly-context-build-verification-20260718.json`（双 PowerShell 可重复构建、Specs `25/25`、冻结 DLL 身份绑定、六类只读捕获、显式清除、`DBMOD 4 -> 4` 及独立文档激活缓存失效检查点）
+- `handoff/autocad2016/evidence/agent-bootstrap-verification-20260719.json`（最终编排器自动绑定双 PowerShell raw evidence/log；net45/net8 `15/15`、受限继承句柄、批准 EXE 哈希、确认身份、启动截止 fail-closed 中止及随后最多 `5` 秒有界清理、stderr 限界、可重复输出树及 `0 -> 0` 残留进程；长运行 Bridge、外部句柄复制抵抗、刻意 TOCTOU 攻击和 CAD 集成保持未验证）

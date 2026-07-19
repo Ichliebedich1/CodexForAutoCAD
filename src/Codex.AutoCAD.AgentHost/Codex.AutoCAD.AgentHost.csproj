@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Codex.AutoCAD.AppServer\Codex.AutoCAD.AppServer.csproj" />
+    <ProjectReference Include="..\Codex.AutoCAD.AgentLauncher\Codex.AutoCAD.AgentLauncher.csproj" />
     <ProjectReference Include="..\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj" />
     <ProjectReference Include="..\Codex.AutoCAD.Ipc\Codex.AutoCAD.Ipc.csproj" />
     <ProjectReference Include="..\Codex.AutoCAD.Security\Codex.AutoCAD.Security.csproj" />

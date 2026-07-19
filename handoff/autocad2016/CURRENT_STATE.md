@@ -52,9 +52,44 @@ NETLOAD 证据的能力一律视为未支持。
 - 已验证发送 payload 只能尝试写一次，部分写入或 Flush 失败都会永久消费；接收
   payload 禁止转发；端点角色由材料来源固定；入站 Guard 与出站 Authenticator 各只能
   领取一次；认证后解析使用内部 frame 副本以避免调用者 TOCTOU。
-- 该检查点只证明内存/Stream 协议原语。它没有启动或操作 AutoCAD，也没有证明真实
-  AgentHost 密钥交付、传输机密性、PID/启动身份绑定、硬超时、进程生命周期或 live
-  Bridge；这些项目在 evidence 中保持 `false`。
+- 该检查点自身只证明内存/Stream 协议原语。后续“真实进程外 AgentHost 安全引导”
+  检查点已补齐有界的真实密钥交付、确认身份、启动截止 fail-closed 中止和最多 `5` 秒
+  有界终止清理证据，但长运行 live
+  Bridge 与 AutoCAD 集成仍不属于本原语检查点。
+
+### 真实进程外 AgentHost 安全引导
+
+- 阶段证据：`handoff/autocad2016/evidence/agent-bootstrap-verification-20260719.json`；
+  阶段提交以包含 Launcher、AgentHost、Specs、验证器、evidence 和本次文档更新的同一
+  Git 提交为准。
+- 最终阶段入口为 `scripts/verify-autocad2016-agent-bootstrap-stage.ps1`；它自动运行双
+  PowerShell 的 bootstrap、认证兼容与 Phase2 门禁，将 raw evidence/log 留在 ignored
+  `artifacts/`，并在 Git evidence 中只保存其 SHA-256、规范化比较结果、计数和限制。
+- PowerShell 7.6.3 与 Windows PowerShell 5.1.19041.6456 均通过同一完整门禁；每次
+  均完成两次隔离 Release 构建，完整可运行输出树 `106` 个文件按相对路径、长度和
+  SHA-256 逐字节一致，Specs 执行后再次复核未变化。
+- net45 与 net8 Launcher Specs 均为固定 ID 集 `15/15`；验证器拒绝缺失、重复、未知
+  或两个运行时同时删除的测试。
+- 真实 AgentHost bootstrap-doctor 已通过受限继承的 stdin/stdout/stderr 句柄完成认证；
+  命令行和环境变量不携带 bootstrap 密钥或 frame。子进程领取句柄后清除继承位，父进程
+  可继承 canary 句柄未进入子进程。
+- 启动前要求批准的 EXE SHA-256；父进程以 `CREATE_SUSPENDED` 创建后校验 PID、创建
+  FILETIME、映像路径、卷/文件 ID 和第二次 SHA-256，再恢复主线程。批准 SHA-256 不匹配
+  和确认 PID/创建时间不匹配均动态 fail-closed。
+- 未确认挂起、有效确认后继续挂起两条路径均由启动截止触发 fail-closed 中止，随后在
+  最多 `5` 秒有界清理窗口内证明子进程终止；取消路径也执行相同的有界终止清理。这里
+  不声称终止本身严格完成于配置的启动截止内。重复真实引导 `5` 次通过，相关进程
+  基线/终态均为 `0 -> 0`。stderr 始终排空且只公开受限字节数与
+  截断标志，失败异常不公开原始文本。
+- 冻结构建哈希：AgentHost EXE `002BBA9D...49706`，AgentHost DLL
+  `852BD92C...86033`，net45 Launcher `597D99E8...F849`，net8 Launcher
+  `84E0E2A7...1FE9`；完整值保存在阶段 evidence。
+- Phase 2 回归为 Release `0` warning / `0` error、七个既有 Specs `145/145`、
+  AgentHost doctor、Host 禁止 API、秘密扫描和 diff 通过；认证兼容回归在两个 PowerShell
+  下均保持 Bridge `29/29`、net45/net8 `35/35` 和固定向量一致。
+- 本检查点未启动、重启或操作 AutoCAD。它不证明长运行 `IAgentBridgeClient`、Host.2016
+  live handshake、外部进程复制句柄的对抗性、刻意替换 EXE 的 suspended-launch TOCTOU
+  动态攻击、CAD 审批/写入或完整 AutoCAD 2016 支持。
 
 ### 只读选择上下文运行时检查点
 
@@ -79,14 +114,16 @@ NETLOAD 证据的能力一律视为未支持。
 
 ## 当前活动阶段
 
-### 真实 AgentHost 引导准备与正式侧边栏决策门
+### Host.2016 认证 Bridge 与正式侧边栏决策门
 
 - 只读选择上下文已建立独立运行时检查点；它尚未与 Palette、AgentHost 或正式侧边栏
   合并，不能扩大为完整只读产品或 AutoCAD 2016 完整支持。
-- 下一条 live 链路必须使用本检查点的固定 bootstrap frame/KDF/HMAC 语义，但不得把
-  明文 frame 放入命令行、环境变量、日志或普通可旁观 IPC。
-- 真实启动设计仍需证明专用、独占、受限继承句柄、写端关闭、原子领取、PID/启动
-  身份绑定、硬超时和未确认子进程终止；在这些验证完成前 AgentHost live 状态为未通过。
+- 真实进程外 bootstrap-doctor 已建立安全引导检查点；下一条 live 链路必须复用已验证的
+  固定 frame/KDF/HMAC 和受限继承句柄语义，不得回退到命令行、环境变量、日志或普通
+  可旁观 IPC 交付密钥。
+- 当前尚未完成的是长运行 AgentHost 与具体 `IAgentBridgeClient`、Host.2016 认证 Bridge、
+  断线/离线/超时 fail-closed 和结果身份绑定；这些项目通过前不得把 bootstrap-doctor
+  扩大表述为 Agent/Bridge 已接入 CAD。
 - 在开始实现或合并正式侧边栏 UI 前，必须先通知用户，并冻结 Codex 与 Kimi 共同遵守的
   版本化契约，包括事件模型、请求/响应、只读上下文字段、审批状态、错误语义和兼容规则。
   决策门通过后，两端才可按同一契约并行开发；不得先各自实现再用 UI 隐式决定协议。
@@ -112,15 +149,16 @@ NETLOAD 证据的能力一律视为未支持。
 1. Palette 125% DPI。
 2. Palette 150% DPI。
 3. Palette 随 AutoCAD 正常退出的生命周期和残留检查。
-4. 后续真实 AgentHost 启动、live handshake、离线/断线/超时 fail-closed。
+4. Host.2016 与长运行 AgentHost 的 live handshake、离线/断线/超时 fail-closed。
 5. 最后才进入预览、拒绝、一次允许、锁内重校验和单事务写入实测。
 
 ## 下一步顺序
 
-1. 将已通过的只读选择检查点按验证后单独提交的纪律收口，不与 AgentHost 或 UI 混交。
-2. 实现专用继承句柄上的真实 AgentHost bootstrap、原子领取、进程身份和硬超时门禁。
-3. 接通 Host.2016 live handshake、离线/断线/超时 fail-closed，再请求对应实机验证。
-4. 在正式侧边栏 UI 开工前通知用户并冻结 Codex/Kimi 共同契约，再按契约并行开发。
+1. 将已通过的真实 AgentHost 安全引导检查点按验证后单独提交的纪律收口。
+2. 接通 Host.2016 与长运行 AgentHost 的认证 Bridge、结果身份绑定及离线/断线/超时
+   fail-closed，再请求对应实机验证。
+3. 在正式侧边栏 UI 开工前通知用户并冻结 Codex/Kimi 共同契约，再按契约并行开发。
+4. 将已验证的只读选择上下文按冻结契约接入正式宿主/UI。
 5. 最后才进入预览、拒绝、一次允许、锁内重校验和单事务写入闭环。
 
 ## 更新纪律

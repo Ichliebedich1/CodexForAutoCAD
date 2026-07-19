@@ -1,0 +1,661 @@
+﻿[CmdletBinding()]
+param(
+    [ValidateSet("Release")]
+    [string] $Configuration = "Release"
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$verificationScriptPath = $MyInvocation.MyCommand.Path
+$safeRepoRoot = $repoRoot.Replace("\", "/")
+$dotnetCommand = (Get-Command dotnet -ErrorAction Stop).Source
+$solutionPath = Join-Path $repoRoot "Codex.AutoCAD.sln"
+$launcherProject = Join-Path $repoRoot "src\Codex.AutoCAD.AgentLauncher\Codex.AutoCAD.AgentLauncher.csproj"
+$agentHostProject = Join-Path $repoRoot "src\Codex.AutoCAD.AgentHost\Codex.AutoCAD.AgentHost.csproj"
+$specProject = Join-Path $repoRoot "tests\Codex.AutoCAD.AgentLauncher.Specs\Codex.AutoCAD.AgentLauncher.Specs.csproj"
+$fakeProject = Join-Path $repoRoot "tests\Codex.AutoCAD.AgentLauncher.FakeAgentHost\Codex.AutoCAD.AgentLauncher.FakeAgentHost.csproj"
+$agentHostSource = Join-Path $repoRoot "src\Codex.AutoCAD.AgentHost\Program.cs"
+$ipcBootstrapSource = Join-Path $repoRoot "src\Codex.AutoCAD.Ipc\AgentBootstrap.cs"
+$globalJsonPath = Join-Path $repoRoot "global.json"
+$nugetConfig = Join-Path $repoRoot "src\Codex.AutoCAD.Host.2016\NuGet.Config"
+$offlinePackage = Join-Path $repoRoot "third_party\nuget\Microsoft.NETFramework.ReferenceAssemblies.net45.1.0.3.nupkg"
+$expectedSdk = "8.0.319"
+$runId = [Guid]::NewGuid().ToString("N")
+$stageRoot = Join-Path $repoRoot ("artifacts\autocad2016-agent-bootstrap-" + $runId)
+$evidencePath = Join-Path $stageRoot "verification.json"
+$requiredSpecIds = @(
+    "REAL_AGENTHOST_SUCCESS",
+    "REAL_AGENTHOST_REPEAT_5",
+    "INVALID_EXECUTABLE_PATHS",
+    "EXECUTABLE_SHA256_MISMATCH",
+    "TIMEOUT_TERMINATES_UNCONFIRMED",
+    "CONFIRMATION_THEN_HANG_TIMEOUT",
+    "CALLER_THREAD_NONBLOCKING",
+    "CANCELLATION_TERMINATES_UNCONFIRMED",
+    "EARLY_EXIT_REJECTED",
+    "MALFORMED_CONFIRMATION_REJECTED",
+    "IDENTITY_MISMATCH_REJECTED",
+    "TRAILING_DUPLICATE_REJECTED",
+    "CHILD_CLEARS_INHERITANCE",
+    "HANDLE_ALLOWLIST_CANARY",
+    "STDERR_BOUNDED"
+)
+
+$env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
+$env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+
+function Invoke-Captured {
+    param(
+        [Parameter(Mandatory = $true)][string] $FilePath,
+        [string[]] $Arguments = @(),
+        [Parameter(Mandatory = $true)][string] $Description
+    )
+
+    Write-Host ("`n==> " + $Description) -ForegroundColor Cyan
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $raw = & $FilePath @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
+    $lines = @($raw | ForEach-Object { [string] $_ })
+    foreach ($line in $lines) {
+        Write-Host $line
+    }
+
+    if ($exitCode -ne 0) {
+        throw "$Description 失败，退出码：$exitCode"
+    }
+
+    return $lines
+}
+
+function Get-Sha256 {
+    param([Parameter(Mandatory = $true)][string] $Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "缺少预期文件：$Path"
+    }
+
+    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()
+}
+
+function Get-SourceSnapshot {
+    param([Parameter(Mandatory = $true)][string[]] $Paths)
+
+    $snapshot = [ordered]@{}
+    foreach ($path in $Paths) {
+        $absolutePath = [IO.Path]::GetFullPath($path)
+        $relativePath = $absolutePath.Substring($repoRoot.Length + 1).Replace("\", "/")
+        $snapshot[$relativePath] = Get-Sha256 -Path $absolutePath
+    }
+
+    return $snapshot
+}
+
+function Get-CompiledInputPaths {
+    $paths = @(
+        foreach ($root in @(
+            (Join-Path $repoRoot "src"),
+            (Join-Path $repoRoot "tests")
+        )) {
+            foreach ($file in @(Get-ChildItem -LiteralPath $root -Recurse -File)) {
+                if ($file.FullName -match '[\\/](bin|obj|artifacts)[\\/]') {
+                    continue
+                }
+
+                $file.FullName
+            }
+        }
+
+        Get-ChildItem -LiteralPath $repoRoot -File | ForEach-Object { $_.FullName }
+        $globalJsonPath
+        $solutionPath
+        $nugetConfig
+        $offlinePackage
+        $verificationScriptPath
+    )
+
+    return @($paths | Sort-Object -Unique)
+}
+
+function Get-LocalBuildArtifactSnapshot {
+    $snapshot = [ordered]@{}
+    foreach ($root in @(
+        (Join-Path $repoRoot "src"),
+        (Join-Path $repoRoot "tests")
+    )) {
+        foreach ($file in @(Get-ChildItem -LiteralPath $root -Recurse -File)) {
+            if ($file.FullName -notmatch '[\\/](bin|obj)[\\/]') {
+                continue
+            }
+
+            $relativePath = $file.FullName.Substring($repoRoot.Length + 1).Replace("\", "/")
+            $snapshot[$relativePath] = [ordered]@{
+                Length = $file.Length
+                LastWriteUtcTicks = $file.LastWriteTimeUtc.Ticks
+                Sha256 = Get-Sha256 -Path $file.FullName
+            }
+        }
+    }
+
+    return $snapshot
+}
+
+function Get-RunnableOutputSnapshot {
+    param([Parameter(Mandatory = $true)][string] $Root)
+
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
+        throw "缺少完整可运行输出树：$Root"
+    }
+
+    $absoluteRoot = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+    $snapshot = [ordered]@{}
+    foreach ($file in @(Get-ChildItem -LiteralPath $absoluteRoot -Recurse -File | Sort-Object FullName)) {
+        $relativePath = $file.FullName.Substring($absoluteRoot.Length + 1).Replace("\", "/")
+        $snapshot[$relativePath] = [ordered]@{
+            Length = $file.Length
+            Sha256 = Get-Sha256 -Path $file.FullName
+        }
+    }
+
+    if ($snapshot.Count -eq 0) {
+        throw "完整可运行输出树为空：$Root"
+    }
+
+    return $snapshot
+}
+
+function Assert-RunnableOutputTreesEqual {
+    param(
+        [Parameter(Mandatory = $true)] $Left,
+        [Parameter(Mandatory = $true)] $Right
+    )
+
+    $leftPaths = @($Left.Keys)
+    $rightPaths = @($Right.Keys)
+    $pathDifference = @(Compare-Object -ReferenceObject $leftPaths -DifferenceObject $rightPaths)
+    if ($pathDifference.Count -ne 0) {
+        $detail = @($pathDifference | ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" }) -join "; "
+        throw "隔离双构建的完整可运行输出树文件集合不一致：$detail"
+    }
+
+    foreach ($relativePath in $leftPaths) {
+        $leftFile = $Left[$relativePath]
+        $rightFile = $Right[$relativePath]
+        if ($leftFile.Length -ne $rightFile.Length -or $leftFile.Sha256 -cne $rightFile.Sha256) {
+            throw "隔离双构建的完整可运行输出树内容不一致：$relativePath；$($leftFile.Sha256) != $($rightFile.Sha256)"
+        }
+    }
+}
+
+function Assert-SnapshotsEqual {
+    param(
+        [Parameter(Mandatory = $true)] $Before,
+        [Parameter(Mandatory = $true)] $After,
+        [Parameter(Mandatory = $true)][string] $Label
+    )
+
+    if (($Before | ConvertTo-Json -Depth 10 -Compress) -cne
+        ($After | ConvertTo-Json -Depth 10 -Compress)) {
+        throw "$Label 在隔离验证期间发生变化。"
+    }
+}
+
+function Assert-SolutionMembership {
+    $requiredProjects = @(
+        "src\Codex.AutoCAD.AgentLauncher\Codex.AutoCAD.AgentLauncher.csproj",
+        "src\Codex.AutoCAD.AgentHost\Codex.AutoCAD.AgentHost.csproj",
+        "tests\Codex.AutoCAD.AgentLauncher.Specs\Codex.AutoCAD.AgentLauncher.Specs.csproj",
+        "tests\Codex.AutoCAD.AgentLauncher.FakeAgentHost\Codex.AutoCAD.AgentLauncher.FakeAgentHost.csproj"
+    )
+    $solutionText = Get-Content -LiteralPath $solutionPath -Raw -Encoding UTF8
+    foreach ($project in $requiredProjects) {
+        $escaped = [regex]::Escape($project)
+        if ($solutionText -notmatch $escaped) {
+            throw "解决方案缺少 Agent bootstrap 项目：$project"
+        }
+    }
+}
+
+function Assert-SourceBoundary {
+    $launcherText = @(
+        Get-ChildItem -LiteralPath (Split-Path -Parent $launcherProject) -Filter "*.cs" -File |
+            Sort-Object FullName |
+            ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8 }
+    ) -join "`n"
+    $agentHostText = Get-Content -LiteralPath $agentHostSource -Raw -Encoding UTF8
+    $combined = $launcherText + "`n" + $agentHostText
+
+    $required = [ordered]@{
+        "精确继承句柄 allowlist" = "ProcThreadAttributeHandleList"
+        "扩展启动信息" = "ExtendedStartupInfoPresent"
+        "stdin 承载 bootstrap" = "hStdInput = childBootstrapRead"
+        "stdout 承载 confirmation" = "hStdOutput = childConfirmationWrite"
+        "stderr 独立捕获" = "hStdError = childStandardErrorWrite"
+        "子端清除继承位" = "ClearInheritFlag(safeHandle)"
+        "子端清除stderr继承位" = "ClearStandardErrorInheritance"
+        "认证键与frame同一机密句柄" = "WriteSingleBootstrapPacket"
+        "子端读取固定认证键" = "ReadSingleBootstrapPacket"
+        "确认帧 EOF" = "EnsureEndOfStream"
+        "认证后不可变快照" = "SnapshotEnvelope"
+        "PID创建时间绑定" = "ProcessCreationFileTime"
+        "进程映像绑定" = "QueryFullProcessImageName"
+        "卷和文件ID绑定" = "GetFileIdentity"
+        "批准SHA-256绑定" = "ExpectedSha256"
+        "挂起创建" = "CreateSuspended"
+        "硬终止" = "TerminateProcess"
+        "进程退出等待" = "WaitForSingleObject"
+        "单调绝对截止" = "deadlineTimestamp"
+        "专用截止监督线程" = "RunSupervisor"
+        "启动worker离开调用线程" = "Task.Run(() => RunWorkerAsync"
+        "启动门可中止等待" = "LaunchGate.Wait(controller.AbortToken)"
+        "终止失败毒化后续启动" = "AgentBootstrapLateFailureRegistry"
+        "仅本地驱动路径" = "absolute local-drive path"
+        "仅固定本地磁盘" = "DriveType.Fixed"
+        "AgentHost标准输入领取" = "OpenStandardInput()"
+        "AgentHost标准输出确认" = "OpenStandardOutput()"
+    }
+    foreach ($entry in $required.GetEnumerator()) {
+        if ($combined.IndexOf([string]$entry.Value, [StringComparison]::Ordinal) -lt 0) {
+            throw "Agent bootstrap 源码缺少门禁：$($entry.Key)"
+        }
+    }
+
+    $forbidden = [ordered]@{
+        "命令行 bootstrap handle" = "--bootstrap-handle"
+        "命令行 confirmation handle" = "--confirmation-handle"
+        "原始字符串句柄入口" = "OpenReadHandle"
+        "原始字符串写句柄入口" = "OpenWriteHandle"
+        "环境变量交付秘密" = "SetEnvironmentVariable"
+        "命名管道交付 bootstrap" = "NamedPipe"
+        "内存映射交付 bootstrap" = "MemoryMappedFile"
+        "ShellExecute" = "ShellExecute"
+        "AutoCAD 托管 API" = "Autodesk.AutoCAD"
+        "CAD 保存 API" = "SaveAs("
+    }
+    foreach ($entry in $forbidden.GetEnumerator()) {
+        if ($combined.IndexOf([string]$entry.Value, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            throw "Agent bootstrap 源码出现禁止边界：$($entry.Key)"
+        }
+    }
+
+    if ($launcherText -notmatch 'commandLine\.Append\(" bootstrap-doctor"\)') {
+        throw "CreateProcess 命令行必须只追加 bootstrap-doctor。"
+    }
+    if ($agentHostText -notmatch 'args\.Length\s*!=\s*1') {
+        throw "AgentHost bootstrap-doctor 必须拒绝任何附加命令行材料。"
+    }
+
+    return [ordered]@{
+        AuthenticationKeyAndFrameUseInheritedStandardInput = $true
+        ConfirmationUsesInheritedStandardOutput = $true
+        StandardErrorUsesSeparateHandle = $true
+        CommandLineBootstrapMaterialTokenFound = $false
+        EnvironmentBootstrapDeliveryApiTokenFound = $false
+        HandleAllowlistApiTokenFound = $true
+        ChildClearInheritedFlagTokenFound = $true
+        ConfirmationEofCheckTokenFound = $true
+        ConfirmationSnapshotTokenFound = $true
+        ProcessCreationTimeBindingTokenFound = $true
+        ProcessImageQueryTokenFound = $true
+        ExecutableVolumeAndFileIdTokenFound = $true
+        ExecutableSha256TokenFound = $true
+        CreateSuspendedTokenFound = $true
+        LocalFixedDriveChecksFound = $true
+        MonotonicDeadlineTokenFound = $true
+        DedicatedSupervisorTokenFound = $true
+        CallerOffloadTokenFound = $true
+        AbortableLaunchGateTokenFound = $true
+        LateFailurePoisonTokenFound = $true
+    }
+}
+
+function Invoke-IsolatedBuild {
+    param([Parameter(Mandatory = $true)][string] $Name)
+
+    $buildRoot = Join-Path $stageRoot $Name
+    $outputRoot = Join-Path $buildRoot "out"
+    $packageRoot = Join-Path $buildRoot "packages"
+    $cliHome = Join-Path $buildRoot "dotnet-home"
+    New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
+
+    $previousPathMap = $env:PathMap
+    $previousCliHome = $env:DOTNET_CLI_HOME
+    try {
+        $env:PathMap = ($buildRoot + "=/_build/," + $repoRoot + "=/_/")
+        $env:DOTNET_CLI_HOME = $cliHome
+
+        foreach ($restore in @(
+            [pscustomobject]@{ Project = $agentHostProject; Extra = @() },
+            [pscustomobject]@{ Project = $fakeProject; Extra = @() },
+            [pscustomobject]@{ Project = $specProject; Extra = @("-p:EnableAutoCad2016=true") }
+        )) {
+            $arguments = @(
+                "restore", $restore.Project,
+                "--configfile", $nugetConfig,
+                "--packages", $packageRoot,
+                "--force", "--no-cache",
+                "-p:UseArtifactsOutput=true",
+                ("-p:ArtifactsPath=" + $outputRoot)
+            ) + @($restore.Extra)
+            Invoke-Captured -FilePath $dotnetCommand -Arguments $arguments `
+                -Description ("隔离恢复 " + $Name + " " + (Split-Path -Leaf $restore.Project)) | Out-Null
+        }
+
+        foreach ($build in @(
+            [pscustomobject]@{ Project = $agentHostProject; Extra = @() },
+            [pscustomobject]@{ Project = $fakeProject; Extra = @() },
+            [pscustomobject]@{ Project = $specProject; Extra = @("-p:EnableAutoCad2016=true") }
+        )) {
+            $arguments = @(
+                "build", $build.Project,
+                "--configuration", $Configuration,
+                "--nologo", "--disable-build-servers", "--no-restore",
+                "-m:1", "-p:UseSharedCompilation=false",
+                "-p:UseArtifactsOutput=true",
+                ("-p:ArtifactsPath=" + $outputRoot),
+                "-p:ContinuousIntegrationBuild=true"
+            ) + @($build.Extra)
+            Invoke-Captured -FilePath $dotnetCommand -Arguments $arguments `
+                -Description ("隔离构建 " + $Name + " " + (Split-Path -Leaf $build.Project)) | Out-Null
+        }
+    }
+    finally {
+        $env:PathMap = $previousPathMap
+        $env:DOTNET_CLI_HOME = $previousCliHome
+    }
+
+    return [pscustomobject]@{
+        Root = $buildRoot
+        OutputRoot = $outputRoot
+        RunnableRoot = Join-Path $outputRoot "bin"
+        Net45Launcher = Join-Path $outputRoot "bin\Codex.AutoCAD.AgentLauncher\release_net45\Codex.AutoCAD.AgentLauncher.dll"
+        Net8Launcher = Join-Path $outputRoot "bin\Codex.AutoCAD.AgentLauncher\release_net8.0\Codex.AutoCAD.AgentLauncher.dll"
+        AgentHostDll = Join-Path $outputRoot "bin\Codex.AutoCAD.AgentHost\release_win-x64\Codex.AutoCAD.AgentHost.dll"
+        AgentHostExe = Join-Path $outputRoot "bin\Codex.AutoCAD.AgentHost\release_win-x64\Codex.AutoCAD.AgentHost.exe"
+        FakeHostDll = Join-Path $outputRoot "bin\Codex.AutoCAD.AgentLauncher.FakeAgentHost\release_win-x64\Codex.AutoCAD.AgentLauncher.FakeAgentHost.dll"
+        FakeHostExe = Join-Path $outputRoot "bin\Codex.AutoCAD.AgentLauncher.FakeAgentHost\release_win-x64\Codex.AutoCAD.AgentLauncher.FakeAgentHost.exe"
+        Net45Specs = Join-Path $outputRoot "bin\Codex.AutoCAD.AgentLauncher.Specs\release_net45\Codex.AutoCAD.AgentLauncher.Specs.exe"
+        Net8Specs = Join-Path $outputRoot "bin\Codex.AutoCAD.AgentLauncher.Specs\release_net8.0\Codex.AutoCAD.AgentLauncher.Specs.dll"
+    }
+}
+
+function Assert-SpecOutput {
+    param(
+        [Parameter(Mandatory = $true)][string[]] $Lines,
+        [Parameter(Mandatory = $true)][string] $RuntimeLabel
+    )
+
+    $summary = @($Lines | Where-Object { $_ -match '^\s*\d+/\d+ specs passed\s*$' })
+    $passes = @($Lines | Where-Object { $_ -match '^PASS\s+' })
+    $failures = @($Lines | Where-Object { $_ -match '^FAIL\s+' })
+    if ($summary.Count -ne 1) {
+        throw "$RuntimeLabel 必须且只能输出一条 Specs 汇总；实际：$($summary.Count)。"
+    }
+
+    $summaryMatch = [regex]::Match($summary[0], '^\s*(\d+)/(\d+) specs passed\s*$')
+    $passedCount = [int]$summaryMatch.Groups[1].Value
+    $totalCount = [int]$summaryMatch.Groups[2].Value
+    $parsedPasses = @(
+        foreach ($line in $passes) {
+            $match = [regex]::Match($line, '^PASS\s+([A-Z][A-Z0-9_]*)\s+(.+)$')
+            if (-not $match.Success) {
+                throw "$RuntimeLabel Specs PASS 行格式无效：$line"
+            }
+
+            [pscustomobject]@{
+                Id = $match.Groups[1].Value
+                Name = $match.Groups[2].Value.Trim()
+            }
+        }
+    )
+    $passIds = @($parsedPasses | ForEach-Object { $_.Id })
+    $duplicateIds = @(
+        $passIds | Group-Object | Where-Object { $_.Count -ne 1 } |
+            ForEach-Object { $_.Name }
+    )
+    $missingIds = @(
+        $requiredSpecIds | Where-Object { -not ($passIds -ccontains $_) }
+    )
+    $unknownIds = @(
+        $passIds | Where-Object { -not ($requiredSpecIds -ccontains $_) } |
+            Sort-Object -Unique
+    )
+    if ($totalCount -ne $requiredSpecIds.Count -or
+        $passedCount -ne $totalCount -or
+        $passes.Count -ne $totalCount -or
+        $parsedPasses.Count -ne $passes.Count -or
+        $duplicateIds.Count -ne 0 -or
+        $missingIds.Count -ne 0 -or
+        $unknownIds.Count -ne 0 -or
+        $failures.Count -ne 0) {
+        throw "$RuntimeLabel Specs 固定集合门禁失败；summary=$passedCount/$totalCount，required=$($requiredSpecIds.Count)，PASS=$($passes.Count)，duplicate=$($duplicateIds -join ','), missing=$($missingIds -join ','), unknown=$($unknownIds -join ','), FAIL=$($failures.Count)。"
+    }
+
+    return [pscustomobject]@{
+        Passed = $passedCount
+        Total = $totalCount
+        Ids = @($passIds | Sort-Object)
+    }
+}
+
+function Test-SpecPassed {
+    param(
+        [Parameter(Mandatory = $true)] $SpecResult,
+        [Parameter(Mandatory = $true)][string] $Id
+    )
+
+    return @($SpecResult.Ids | Where-Object { $_ -ceq $Id }).Count -eq 1
+}
+
+function Get-ProcessSnapshot {
+    return @(
+        Get-Process -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.ProcessName -ieq "Codex.AutoCAD.AgentHost" -or
+                $_.ProcessName -ieq "Codex.AutoCAD.AgentLauncher.FakeAgentHost" -or
+                $_.ProcessName -like "CodexLauncherFake-*"
+            } |
+            Select-Object @{Name="Name";Expression={$_.ProcessName}}, Id
+    ) | Sort-Object Name, Id
+}
+
+$sourcePaths = Get-CompiledInputPaths
+
+$previousNoLogo = $env:DOTNET_NOLOGO
+try {
+    $env:DOTNET_NOLOGO = "1"
+    $sourceBefore = Get-SourceSnapshot -Paths $sourcePaths
+    $localBuildArtifactsBefore = Get-LocalBuildArtifactSnapshot
+    $processBefore = @(Get-ProcessSnapshot)
+    if ($processBefore.Count -ne 0) {
+        $detail = @($processBefore | ForEach-Object { "$($_.Name):$($_.Id)" }) -join ", "
+        throw "验证前必须没有相关 AgentHost/FakeAgentHost 进程；实际：$detail"
+    }
+    $cadBefore = @(Get-Process -Name acad -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id | Sort-Object)
+
+    $actualSdk = (& $dotnetCommand --version).Trim()
+    if ($actualSdk -cne $expectedSdk) {
+        throw "需要 .NET SDK $expectedSdk，实际：$actualSdk"
+    }
+    if ((Get-Content -LiteralPath $globalJsonPath -Raw | ConvertFrom-Json).sdk.version -cne $expectedSdk) {
+        throw "global.json 未固定到 $expectedSdk。"
+    }
+
+    Invoke-Captured -FilePath $dotnetCommand -Arguments @("nuget", "verify", $offlinePackage, "--all") `
+        -Description "验证离线 net45 引用包签名" | Out-Null
+    Assert-SolutionMembership
+    $staticObservations = Assert-SourceBoundary
+
+    Invoke-Captured -FilePath "git" -Arguments @(
+        "-c", ("safe.directory=" + $safeRepoRoot), "-C", $repoRoot,
+        "diff", "--exit-code", "HEAD", "--", "src/Codex.AutoCAD.Ipc/AgentBootstrap.cs"
+    ) -Description "确认冻结 bootstrap 原语未被 launcher 阶段修改" | Out-Null
+
+    $buildA = Invoke-IsolatedBuild -Name "build-a"
+    $buildB = Invoke-IsolatedBuild -Name "build-b"
+    $buildATree = Get-RunnableOutputSnapshot -Root $buildA.RunnableRoot
+    $buildBTree = Get-RunnableOutputSnapshot -Root $buildB.RunnableRoot
+    Assert-RunnableOutputTreesEqual -Left $buildATree -Right $buildBTree
+    $artifacts = @(
+        "Net45Launcher", "Net8Launcher", "AgentHostDll", "AgentHostExe",
+        "FakeHostDll", "FakeHostExe", "Net45Specs", "Net8Specs"
+    )
+    $hashes = [ordered]@{}
+    foreach ($artifact in $artifacts) {
+        $left = [string]$buildA.$artifact
+        $right = [string]$buildB.$artifact
+        $leftHash = Get-Sha256 -Path $left
+        $rightHash = Get-Sha256 -Path $right
+        if ($leftHash -cne $rightHash) {
+            throw "隔离双构建不一致：$artifact，$leftHash != $rightHash"
+        }
+        $hashes[$artifact] = $leftHash
+    }
+
+    $specArguments = @(
+        "--agent-host", $buildA.AgentHostExe,
+        "--fake-agent-host", $buildA.FakeHostExe
+    )
+    $net8Output = Invoke-Captured -FilePath $dotnetCommand `
+        -Arguments (@($buildA.Net8Specs) + $specArguments) `
+        -Description "运行 net8 AgentHost bootstrap Specs"
+    $net8Specs = Assert-SpecOutput -Lines $net8Output -RuntimeLabel "net8"
+    $net45Output = Invoke-Captured -FilePath $buildA.Net45Specs `
+        -Arguments $specArguments `
+        -Description "运行 net45 AgentHost bootstrap Specs"
+    $net45Specs = Assert-SpecOutput -Lines $net45Output -RuntimeLabel "net45"
+    if ($net45Specs.Total -ne $net8Specs.Total -or
+        (($net45Specs.Ids | ConvertTo-Json -Compress) -cne
+         ($net8Specs.Ids | ConvertTo-Json -Compress))) {
+        throw "net45 与 net8 Specs 集合不一致；net45=$($net45Specs.Total)，net8=$($net8Specs.Total)。"
+    }
+
+    $buildATreeAfterSpecs = Get-RunnableOutputSnapshot -Root $buildA.RunnableRoot
+    $buildBTreeAfterSpecs = Get-RunnableOutputSnapshot -Root $buildB.RunnableRoot
+    Assert-SnapshotsEqual -Before $buildATree -After $buildATreeAfterSpecs `
+        -Label "build-a 完整可运行输出树"
+    Assert-SnapshotsEqual -Before $buildBTree -After $buildBTreeAfterSpecs `
+        -Label "build-b 完整可运行输出树"
+    Assert-RunnableOutputTreesEqual -Left $buildATreeAfterSpecs -Right $buildBTreeAfterSpecs
+    foreach ($artifact in $artifacts) {
+        $actualHash = Get-Sha256 -Path ([string]$buildA.$artifact)
+        if ($actualHash -cne $hashes[$artifact]) {
+            throw "Specs 执行后产物发生变化：$artifact；$actualHash != $($hashes[$artifact])"
+        }
+    }
+
+    Invoke-Captured -FilePath "git" -Arguments @(
+        "-c", ("safe.directory=" + $safeRepoRoot), "-C", $repoRoot, "diff", "--check"
+    ) -Description "检查未暂存差异格式" | Out-Null
+    Invoke-Captured -FilePath "git" -Arguments @(
+        "-c", ("safe.directory=" + $safeRepoRoot), "-C", $repoRoot, "diff", "--cached", "--check"
+    ) -Description "检查已暂存差异格式" | Out-Null
+
+    Assert-SnapshotsEqual -Before $sourceBefore -After (Get-SourceSnapshot -Paths $sourcePaths) `
+        -Label "Agent bootstrap 源码/项目输入"
+    Assert-SnapshotsEqual -Before $localBuildArtifactsBefore -After (Get-LocalBuildArtifactSnapshot) `
+        -Label "源码树本地 bin/obj"
+
+    $processAfter = @(Get-ProcessSnapshot)
+    if ($processAfter.Count -ne 0) {
+        $detail = @($processAfter | ForEach-Object { "$($_.Name):$($_.Id)" }) -join ", "
+        throw "验证后存在 AgentHost/FakeAgentHost 残留进程：$detail"
+    }
+    $cadAfter = @(Get-Process -Name acad -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id | Sort-Object)
+    if (($cadBefore -join ",") -cne ($cadAfter -join ",")) {
+        throw "验证期间 AutoCAD 进程集合发生变化。"
+    }
+
+    $runtimeEvidenceSpecMap = [ordered]@{
+        RealAgentHostBootstrapDoctorCompleted = "REAL_AGENTHOST_SUCCESS"
+        RepeatedRealAgentHostBootstrapCompleted = "REAL_AGENTHOST_REPEAT_5"
+        InvalidExecutablePathsFailClosed = "INVALID_EXECUTABLE_PATHS"
+        ApprovedExecutableSha256MismatchRejected = "EXECUTABLE_SHA256_MISMATCH"
+        StartupTimeoutTriggersFailClosedAbortAndBoundedCleanup = "TIMEOUT_TERMINATES_UNCONFIRMED"
+        ConfirmationThenHangTriggersFailClosedAbortAndBoundedCleanup = "CONFIRMATION_THEN_HANG_TIMEOUT"
+        CallerThreadNonBlockingVerified = "CALLER_THREAD_NONBLOCKING"
+        CancellationTerminatesUnconfirmedChild = "CANCELLATION_TERMINATES_UNCONFIRMED"
+        EarlyExitFailClosed = "EARLY_EXIT_REJECTED"
+        MalformedConfirmationRejected = "MALFORMED_CONFIRMATION_REJECTED"
+        ConfirmationIdentityMismatchRejected = "IDENTITY_MISMATCH_REJECTED"
+        TrailingAndDuplicateConfirmationRejected = "TRAILING_DUPLICATE_REJECTED"
+        ChildClearsInheritedFlags = "CHILD_CLEARS_INHERITANCE"
+        HandleAllowlistCanaryVerified = "HANDLE_ALLOWLIST_CANARY"
+        StandardErrorSeparateAndBounded = "STDERR_BOUNDED"
+    }
+    $runtimeEvidence = [ordered]@{}
+    foreach ($entry in $runtimeEvidenceSpecMap.GetEnumerator()) {
+        $runtimeEvidence[$entry.Key] = Test-SpecPassed `
+            -SpecResult $net8Specs -Id ([string]$entry.Value)
+    }
+
+    $evidence = [ordered]@{
+        SchemaVersion = 3
+        RecordedAtLocal = [DateTimeOffset]::Now.ToString("o")
+        Scope = "autocad2016-live-agenthost-inherited-handle-bootstrap-doctor"
+        Status = "live-agenthost-bootstrap-doctor-gate-passed"
+        PowerShellVersion = $PSVersionTable.PSVersion.ToString()
+        DotNetSdk = $actualSdk
+        Configuration = $Configuration
+        IsolatedBuildCount = 2
+        BitForBitMatch = $true
+        RunnableOutputTreeComparedByRelativePathAndSha256 = $true
+        RunnableOutputTreesRecheckedAfterSpecs = $true
+        RunnableOutputTreeFileCount = $buildATree.Count
+        RunnableOutputTreeExclusions = @()
+        CompiledInputFileCount = $sourceBefore.Count
+        ArtifactHashes = $hashes
+        Net45Specs = "$($net45Specs.Passed)/$($net45Specs.Total)"
+        Net8Specs = "$($net8Specs.Passed)/$($net8Specs.Total)"
+        RequiredRuntimeSpecIds = @($requiredSpecIds)
+        RuntimeSpecIds = @($net8Specs.Ids)
+        BootstrapPrimitiveSourceUnchanged = $true
+        StaticSourceObservations = $staticObservations
+        RuntimeEvidence = $runtimeEvidence
+        RelevantProcessBaselineCount = $processBefore.Count
+        RelevantProcessFinalCount = $processAfter.Count
+        NoNewResidualAgentProcesses = $true
+        ResidualAgentProcesses = $false
+        ExternalAuthenticationKeyDeliveryLiveVerified = $runtimeEvidence.RealAgentHostBootstrapDoctorCompleted
+        DedicatedInheritedHandleTransportLiveVerified = (
+            $runtimeEvidence.RealAgentHostBootstrapDoctorCompleted -and
+            $runtimeEvidence.HandleAllowlistCanaryVerified -and
+            $runtimeEvidence.ChildClearsInheritedFlags)
+        BootstrapTransportConfidentialityLiveVerified = $false
+        BootstrapTransportConfidentialityAgainstExternalHandleDuplicationVerified = $false
+        ChildProcessIdentityBindingLiveVerified = $false
+        ChildConfirmationPidAndCreationTimeBindingLiveVerified = $runtimeEvidence.ConfirmationIdentityMismatchRejected
+        ApprovedExecutableSha256EnforcementLiveVerified = $runtimeEvidence.ApprovedExecutableSha256MismatchRejected
+        ExecutableFileIdentityToctouRaceDynamicallyVerified = $false
+        SuspendedLaunchRaceDynamicallyVerified = $false
+        StartupDeadlineAbortAndBoundedTerminationCleanupLiveVerified = (
+            $runtimeEvidence.StartupTimeoutTriggersFailClosedAbortAndBoundedCleanup -and
+            $runtimeEvidence.ConfirmationThenHangTriggersFailClosedAbortAndBoundedCleanup -and
+            $runtimeEvidence.CancellationTerminatesUnconfirmedChild)
+        PendingBootstrapAtomicConsumptionLiveVerified = $false
+        SourceTreeBinOrObjModified = $false
+        AutoCadProcessSetChanged = $false
+        AutoCadStartedOrRestarted = $false
+        CadCommandsSent = $false
+        NetLoadAttempted = $false
+        NetLoadVerified = $false
+        AgentHostLiveBridgeVerified = $false
+        CadRuntimeIntegrated = $false
+        EvidenceBoundary = "This gate proves the exact mandatory net45/net8 Spec ID set, real out-of-process bootstrap-doctor authentication through restricted inherited standard handles, approved SHA-256 mismatch rejection, PID/creation-time confirmation rejection, startup-deadline fail-closed abort followed by at most five seconds of bounded termination cleanup (including confirmation-then-hang), cancellation cleanup, bounded stderr, handle-allowlist canary exclusion, complete runnable-output reproducibility before and after execution, and an empty relevant-process baseline/final state. It does not claim that termination finishes inside the configured startup deadline itself. Static source observations are not runtime proof. Deliberate executable replacement during the suspended-launch window, external handle-duplication resistance, the long-running authenticated Bridge, Host.2016/AutoCAD integration, CAD work, and complete AutoCAD 2016 support remain outside this evidence."
+    }
+    $evidence | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $evidencePath -Encoding UTF8
+
+    Write-Host "`nAutoCAD 2016 真实 AgentHost 安全引导门禁通过。" -ForegroundColor Green
+    Write-Host ("AGENT_BOOTSTRAP_EVIDENCE=" + $evidencePath)
+}
+finally {
+    $env:DOTNET_NOLOGO = $previousNoLogo
+}

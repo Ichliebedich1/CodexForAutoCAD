@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Codex.AutoCAD.AppServer;
 using Codex.AutoCAD.AgentHost;
+using Codex.AutoCAD.AgentLauncher;
 
 var exitCode = await AgentHostProgram.RunAsync(args);
 return exitCode;
@@ -10,6 +11,23 @@ internal static class AgentHostProgram
     public static async Task<int> RunAsync(string[] args)
     {
         var command = args.FirstOrDefault()?.ToLowerInvariant() ?? "doctor";
+        if (command == "bootstrap-doctor")
+        {
+            try
+            {
+                return RunBootstrapDoctor(args);
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(
+                    "bootstrap-doctor: "
+                    + exception.GetType().Name
+                    + ": "
+                    + exception.Message);
+                return 1;
+            }
+        }
+
         var workspacePath = GetOption(args, "--workspace")
             ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -41,6 +59,42 @@ internal static class AgentHostProgram
                 message = exception.Message
             });
             return 1;
+        }
+    }
+
+    private static int RunBootstrapDoctor(string[] args)
+    {
+        if (args.Length != 1)
+        {
+            throw new ArgumentException(
+                "bootstrap-doctor accepts no command-line bootstrap material.");
+        }
+
+        AgentBootstrapInheritedChannel.ClearStandardErrorInheritance();
+        using var bootstrapInput = AgentBootstrapInheritedChannel.OpenStandardInput();
+        using var confirmationOutput = AgentBootstrapInheritedChannel.OpenStandardOutput();
+        using var payload = AgentBootstrapInheritedChannel.ReadSingleBootstrapPacket(
+            bootstrapInput);
+        var bootstrapId = payload.CopyBootstrapId();
+        try
+        {
+            using var keys = payload.DeriveDirectionKeys();
+            using var authenticator = keys.CreateOutboundAuthenticator();
+            var identity = AgentBootstrapInheritedChannel.GetCurrentProcessIdentity();
+            var confirmation = AgentBootstrapConfirmationProtocol.CreateAgentConfirmation(
+                payload.SessionId,
+                bootstrapId,
+                identity.ProcessId,
+                identity.ProcessCreationFileTime,
+                authenticator);
+            AgentBootstrapConfirmationProtocol.WriteSingleFrame(
+                confirmationOutput,
+                confirmation);
+            return 0;
+        }
+        finally
+        {
+            Array.Clear(bootstrapId, 0, bootstrapId.Length);
         }
     }
 
@@ -139,7 +193,7 @@ internal static class AgentHostProgram
             ok = false,
             error = "unknown_command",
             command,
-            usage = "Codex.AutoCAD.AgentHost [doctor|run] [--workspace ABSOLUTE_PATH] [--codex PATH]"
+            usage = "Codex.AutoCAD.AgentHost [doctor|run|bootstrap-doctor]"
         });
         return 2;
     }
@@ -152,4 +206,5 @@ internal static class AgentHostProgram
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         }));
     }
+
 }
