@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-07-19",
+  "scope": "autocad2016-environment-discovery-hardening",
+  "baselineCommit": "c9280f334c4bad76ca25692b021d43723ff15c53",
+  "stageCommitBinding": "The Git commit containing this evidence file also contains the exact collector and documentation updates described here.",
+  "collector": {
+    "path": "scripts/collect-autocad2016-environment.ps1",
+    "sha256": "5643D57D8192BA23CED9412FDDB1F54C349F5ECA90603A7DC379E6ED95C59A60",
+    "reportSchemaVersion": 5,
+    "supportedRegistryValueNames": [
+      "AcadLocation",
+      "InstallLocation",
+      "Location"
+    ],
+    "locationOnlyNonProgramFilesFixtureCovered": true,
+    "directoryAndExecutableHintDeduplicationCovered": true,
+    "emptyRegistryValuesRejected": true,
+    "discoveryReadFailuresReportedAsRedactedCounts": true
+  },
+  "discoverySelfTests": {
+    "powerShell7": {
+      "version": "7.6.3",
+      "result": "10/10",
+      "passed": true
+    },
+    "windowsPowerShell51": {
+      "version": "5.1.19041.6456",
+      "result": "10/10",
+      "passed": true
+    },
+    "autoCadProcessStartedOrRestarted": false,
+    "cadCommandsSent": false,
+    "registryModified": false
+  },
+  "realTargetReadOnlyCollection": {
+    "powerShell7Passed": true,
+    "windowsPowerShell51Passed": true,
+    "collectorSchemaVersion": 5,
+    "collectionSucceeded": true,
+    "autoCad2016InstallationCount": 1,
+    "readyForHost2016BuildCount": 1,
+    "releaseRootsPresent": 1,
+    "keysInspected": 4,
+    "keysRead": 4,
+    "acadLocationHintCount": 1,
+    "installLocationHintCount": 0,
+    "locationHintCount": 1,
+    "releaseRootProbeFailureCount": 0,
+    "registryReadFailureCount": 0,
+    "trustedPathsQueried": false,
+    "autoCadProcessStartedOrRestarted": false,
+    "cadCommandsSent": false,
+    "systemOrAutoCadSettingsModified": false
+  },
+  "phase2Regression": {
+    "powerShell7Passed": true,
+    "windowsPowerShell51Passed": true,
+    "releaseBuildWarnings": 0,
+    "releaseBuildErrors": 0,
+    "specs": {
+      "contracts": "15/15",
+      "ipc": "35/35",
+      "security": "19/19",
+      "appServer": "7/7",
+      "bridge": "29/29",
+      "agentRuntime": "31/31",
+      "chat": "9/9",
+      "aggregate": "145/145"
+    },
+    "hostForbiddenApiScanPassed": true,
+    "agentHostDoctorPassed": true,
+    "gitDiffChecksPassed": true,
+    "basicSecretScanPassed": true,
+    "claimBoundary": "These are non-CAD local regression gates. They do not prove a Host.2016 live Agent/Bridge connection, CAD analysis, approval, or writing."
+  },
+  "redaction": {
+    "trustedPathsIncluded": false,
+    "userNamesIncluded": false,
+    "localMachinePathsIncluded": false,
+    "networkPathsIncluded": false,
+    "drawingPathsOrNamesIncluded": false,
+    "licenseDataIncluded": false,
+    "secretsIncluded": false,
+    "rawRegistryKeysOrValuesIncluded": false
+  }
+}

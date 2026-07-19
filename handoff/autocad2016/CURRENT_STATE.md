@@ -18,6 +18,26 @@ NETLOAD 证据的能力一律视为未支持。
 
 ## 已验证检查点
 
+### 环境采集器发现加固
+
+- 阶段基线：`c9280f334c4bad76ca25692b021d43723ff15c53`；阶段提交应由包含
+  schema v5 采集器、脱敏 evidence 和本节更新的同一 Git 提交记录。
+- 注册表安装位置白名单现同时支持 `AcadLocation`、`InstallLocation` 和 `Location`；
+  `Location` 单独存在、安装位于 Program Files 之外且值直接指向 `acad.exe` 的 fixture
+  已纳入回归。
+- PowerShell 7.6.3 与 Windows PowerShell 5.1.19041.6456 的纯发现自测均为
+  `10/10`；测试不读取或修改真实 Autodesk 注册表。
+- 两套 PowerShell 又分别完成真实目标机只读采集：schema `5`、安装 `1`、可构建安装
+  `1`、`AcadLocation=1`、`Location=1`、注册表读取失败 `0`。新增
+  `DiscoveryDiagnostics` 只保存计数，不保存路径、键值或异常文本。
+- 同一隔离阶段的完整 Phase 2 回归在两套 PowerShell 下均通过：Release
+  `0 warning / 0 error`、七个 Specs `145/145`、Host 禁止 API、AgentHost doctor、
+  diff 和秘密扫描均通过。它仍是非 CAD live 证据。
+- 脱敏证据：
+  `handoff/autocad2016/evidence/environment-collector-hardening-20260719.json`。
+- 全过程未启动、唤醒或操作 AutoCAD，未查询 `TRUSTEDPATHS`，未修改系统或 AutoCAD
+  设置。
+
 ### 诊断薄宿主
 
 - 提交：`2d2ad3738095794c8374e916559c0c5d13702ba1`。

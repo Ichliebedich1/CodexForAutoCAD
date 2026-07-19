@@ -10,7 +10,7 @@
 
 AutoCAD 2016 工作已完成目标机环境采集、独立诊断宿主建立、真实编译和首次实机加载：
 
-- 已在目标机采集到原版 AutoCAD 2016 R20.1 x64 及其 Autodesk 签名托管程序集，`AcMgd`/`AcDbMgd` 程序集版本均为 `20.1.0.0`。
+- 已在目标机采集到原版 AutoCAD 2016 R20.1 x64 及其 Autodesk 签名托管程序集，`AcMgd`/`AcDbMgd` 程序集版本均为 `20.1.0.0`。当前 schema v5 采集器同时识别 `AcadLocation`、`InstallLocation`、`Location`，双 PowerShell 真实只读采集均得到安装 `1`、可构建安装 `1`，注册表读取失败 `0`。
 - 已用目标机原版程序集完成 `Host.2016` 的 `net45/x64` 真实 Release 编译；Autodesk 引用为 `Private=false`，未复制进插件输出。
 - 用户已在**原本打开的 AutoCAD 2016 进程**中手工 `NETLOAD` 诊断薄宿主，`CODEXCADDOCTOR` 与 `CODEXCAD` 均可执行；诊断前后 `DBMOD` 为 `21 -> 21`，写入和自动保存均禁用。
 - 上述首次诊断宿主及其实机记录已经单独提交为 `2d2ad37`。
@@ -29,7 +29,7 @@ AutoCAD 2016 工作已完成目标机环境采集、独立诊断宿主建立、�
 
 | 范围 | 当前状态 | 证据边界 |
 | --- | --- | --- |
-| AutoCAD 2016 环境采集 | 已通过 | schema v4；目标安装 `1`、可构建安装 `1`；MSBuild `2` 个，均为有效 Microsoft 签名且受支持版本（当前 `>=17`），并记录 SHA-256 |
+| AutoCAD 2016 环境采集 | 已通过 | 当前 schema v5；目标安装 `1`、可构建安装 `1`；支持 `AcadLocation`/`InstallLocation`/`Location`，PS7/PS5.1 发现自测 `10/10`，真实采集读取失败 `0`；历史 schema v4 证据继续保留 |
 | Host.2016 已提交诊断薄宿主 | 已真实编译并由用户实机 NETLOAD | `2d2ad37`；只含诊断命令，不含 Palette/Agent/CAD 写入；现场未绑定 DLL 哈希 |
 | Host.2016 当前可重复构建候选 | 静态/构建门禁通过，尚未 NETLOAD | Release SHA-256 `E853...B440`；PS7/PS5.1、独立双构建、两路并行一致；项目局部签名锁定 NuGet 恢复；`NetLoadVerified=false` |
 | 诊断只读性 | 已通过当前命令记录 | `DBMOD 21 -> 21`；只覆盖 `CODEXCADDOCTOR`/`CODEXCAD` |
@@ -81,7 +81,7 @@ AutoCAD 2016 / .NET Framework 4.5 / x64
 
 ## 已完成的 AutoCAD 2016 阶段
 
-1. 已采集并锁定目标机 AutoCAD 2016 R20.1、x64、`acad.exe` 文件版本 `R20.1.49.0.0`、Autodesk 有效签名和托管 API 版本。
+1. 已采集并锁定目标机 AutoCAD 2016 R20.1、x64、`acad.exe` 文件版本 `R20.1.49.0.0`、Autodesk 有效签名和托管 API 版本；schema v5 又补齐 `Location` 注册表值、脱敏读取失败计数及双 PowerShell `10/10` 发现回归。
 2. 已建立独立 `src/Codex.AutoCAD.Host.2016`，目标 `net45/x64`。
 3. 已使用原版 2016 托管程序集真实编译最小 `IExtensionApplication` 诊断宿主。
 4. 已在用户当前打开的 AutoCAD 2016 中手工 `NETLOAD`，没有观察到程序集绑定错误。
@@ -129,6 +129,7 @@ AutoCAD 2016 / .NET Framework 4.5 / x64
 
 - `handoff/autocad2016/evidence/autocad2016-diagnostic-netload-20260718.json`：脱敏的用户实机诊断记录；明确未取得运行时 DLL 哈希绑定。
 - `handoff/autocad2016/evidence/environment-collector-20260718.json`：schema v4 环境采集器的脱敏计数与门禁结果。
+- `handoff/autocad2016/evidence/environment-collector-hardening-20260719.json`：schema v5 的 `Location` 发现加固、双 PowerShell `10/10` 自测、目标机双运行时只读采集和 `145/145` 非 CAD 回归证据。
 - `handoff/autocad2016/evidence/host-build-verification-20260718.json`：当前 Host.2016 P0 可重复构建、项目局部 NuGet 作用域、默认主解决方案恢复隔离、工具签名、IL 白名单、并行隔离及负向测试的脱敏证据；明确 `E853...B440` 尚未 NETLOAD，且旧候选副本未被覆盖。
 - `handoff/autocad2016/evidence/phase2-local-specs-20260718.json`：早期 `121/121` Phase 2 本地历史快照；明确不是当前增强门禁或 AutoCAD 运行证据。
 - `handoff/autocad2016/evidence/phase2-guardrail-verification-20260718.json`：已提交的增强门禁正向证据，记录 IPC `17/17`、七个 Specs `127/127`，以及不安全 Host.2025 原型被双 PowerShell 负向门禁拒绝。

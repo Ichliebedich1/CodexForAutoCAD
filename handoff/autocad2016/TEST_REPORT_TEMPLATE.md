@@ -5,7 +5,7 @@
 本报告严格分开六类证据：
 
 1. **用户实机命令记录**：用户在目标机已打开的原版 AutoCAD 2016 命令行中手工执行 `NETLOAD`、`CODEXCADDOCTOR`、`CODEXCAD` 和 `DBMOD`。
-2. **环境采集器证据**：schema v4 只读采集；不启动 AutoCAD、不读取 `TRUSTEDPATHS` 内容。
+2. **环境采集器证据**：历史 schema v4 与当前 schema v5 只读采集；不启动 AutoCAD、不读取 `TRUSTEDPATHS` 内容。schema v5 增加 `Location` 注册表来源和脱敏发现失败计数。
 3. **Host.2016 静态/构建门禁**：隔离 Release 重编译和签名、版本、引用、禁止 API 等验证；脚本不执行 NETLOAD。
 4. **Phase 2 本地规格证据**：七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘密扫描的本地阶段快照；未进入 AutoCAD，提交状态以 Git 历史为准。
 5. **Host.2016 Palette 静态/构建与实机证据**：独立 Palette solution/project 的隔离 Release 门禁，以及冻结候选哈希绑定后的人工 NETLOAD、只读 UI 和生命周期记录；不得继承诊断 Host 的运行时结论。
@@ -86,7 +86,7 @@
 
 ## 环境采集器结果
 
-2026-07-18 的 schema v4 采集器结果：
+2026-07-18 的 schema v4 历史采集器与 2026-07-19 的 schema v5 加固采集器结果：
 
 - PowerShell 7 无参数自动发现：通过；采集时间 `2026-07-18T14:57:00+08:00`。
 - Windows PowerShell 5.1 无参数自动发现：通过；最新采集时间 `2026-07-18T15:01:50+08:00`。
@@ -95,6 +95,12 @@
 - MSBuild candidates：`2`；二者均为有效 Microsoft Authenticode 签名、主版本 `>=17`，并由采集器记录 SHA-256。
 - `TRUSTEDPATHS`：未采集。
 - AutoCAD：采集器未启动。
+- schema v5 PowerShell 7/5.1 发现 fixture：均为 `10/10`。
+- schema v5 PowerShell 7/5.1 真实只读采集：均为安装 `1`、BuildReady `1`；
+  `AcadLocation=1`、`InstallLocation=0`、`Location=1`、注册表读取失败 `0`。
+- schema v5 完整 Phase 2 非 CAD 回归：两套 PowerShell 均为 Release
+  `0 warning / 0 error`、七个 Specs `145/145`、AgentHost doctor、Host 禁止 API、
+  diff 和秘密扫描通过。
 
 该结果证明环境发现和编译工具链门禁可用，不等于 Host 编译或 NETLOAD 通过。
 
@@ -340,6 +346,7 @@ Release 构建、七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘�
 
 - `handoff/autocad2016/evidence/autocad2016-diagnostic-netload-20260718.json`
 - `handoff/autocad2016/evidence/environment-collector-20260718.json`
+- `handoff/autocad2016/evidence/environment-collector-hardening-20260719.json`
 - `handoff/autocad2016/evidence/host-build-verification-20260718.json`
 - `handoff/autocad2016/evidence/phase2-local-specs-20260718.json`
 - `handoff/autocad2016/evidence/phase2-guardrail-verification-20260718.json`（增强门禁当前口径为 IPC `17/17`、七个 Specs `127/127`；旧 `121/121` 只允许作为历史快照）

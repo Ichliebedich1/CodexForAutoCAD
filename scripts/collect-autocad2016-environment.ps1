@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$OutputRoot,
-    [string[]]$AdditionalInstallDirectory = @()
+    [string[]]$AdditionalInstallDirectory = @(),
+    [switch]$RunDiscoverySelfTest
 )
 
 $ErrorActionPreference = 'Stop'
@@ -11,10 +12,6 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path $repoRoot 'artifacts'
 }
-
-$timestamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
-$outputDirectory = Join-Path $OutputRoot ("autocad2016-environment-{0}" -f $timestamp)
-New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
 
 function Get-OptionalPropertyValue {
     param(
@@ -163,58 +160,123 @@ function Get-SafeFileDetails {
     }
 }
 
-function Get-AutoCadRegistryHints {
-    $autoCadRoots = @(
-        'HKLM:\SOFTWARE\Autodesk\AutoCAD',
-        'HKLM:\SOFTWARE\WOW6432Node\Autodesk\AutoCAD'
-    )
+function ConvertTo-AutoCadRegistryHintsFromRecords {
+    param([object[]]$Records)
 
     $results = @()
-    foreach ($autoCadRoot in $autoCadRoots) {
-        $releaseRoot = Join-Path $autoCadRoot 'R20.1'
-        if (-not (Test-Path -LiteralPath $releaseRoot)) {
+    foreach ($record in @($Records)) {
+        $properties = Get-OptionalPropertyValue -InputObject $record -Name 'Properties'
+        if ($null -eq $properties) {
             continue
         }
 
-        $keys = @()
-        try {
-            $keys += Get-Item -LiteralPath $releaseRoot -ErrorAction Stop
-            $keys += @(Get-ChildItem -LiteralPath $releaseRoot -ErrorAction Stop)
-        }
-        catch {
-            continue
-        }
+        foreach ($valueName in @('AcadLocation', 'InstallLocation', 'Location')) {
+            $candidateValue = Get-OptionalPropertyValue -InputObject $properties -Name $valueName
+            foreach ($candidate in @($candidateValue)) {
+                if ([string]::IsNullOrWhiteSpace([string]$candidate)) {
+                    continue
+                }
 
-        foreach ($key in $keys) {
-            try {
-                $properties = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction Stop
-            }
-            catch {
-                continue
-            }
-
-            foreach ($valueName in @('AcadLocation', 'InstallLocation')) {
-                $candidateValue = Get-OptionalPropertyValue -InputObject $properties -Name $valueName
-                foreach ($candidate in @($candidateValue)) {
-                    if ([string]::IsNullOrWhiteSpace([string]$candidate)) {
-                        continue
-                    }
-
-                    $results += [pscustomobject]@{
-                        RegistryKey = $key.Name
-                        ReleaseKey = 'R20.1'
-                        ValueName = $valueName
-                        CandidatePath = [Environment]::ExpandEnvironmentVariables(([string]$candidate).Trim().Trim('"'))
-                        ProductName = Get-OptionalPropertyValue -InputObject $properties -Name 'ProductName'
-                        ProductRelease = Get-OptionalPropertyValue -InputObject $properties -Name 'Release'
-                        Language = Get-OptionalPropertyValue -InputObject $properties -Name 'Language'
-                    }
+                $results += [pscustomobject]@{
+                    RegistryKey = [string](Get-OptionalPropertyValue -InputObject $record -Name 'RegistryKey')
+                    ReleaseKey = 'R20.1'
+                    ValueName = $valueName
+                    CandidatePath = [Environment]::ExpandEnvironmentVariables(([string]$candidate).Trim().Trim('"'))
+                    ProductName = Get-OptionalPropertyValue -InputObject $properties -Name 'ProductName'
+                    ProductRelease = Get-OptionalPropertyValue -InputObject $properties -Name 'Release'
+                    Language = Get-OptionalPropertyValue -InputObject $properties -Name 'Language'
                 }
             }
         }
     }
 
-    @($results | Sort-Object RegistryKey, ValueName, CandidatePath -Unique)
+    return @($results | Sort-Object RegistryKey, ValueName, CandidatePath -Unique)
+}
+
+function Get-AutoCadRegistryHints {
+    param([ref]$Diagnostics)
+
+    $autoCadRoots = @(
+        'HKLM:\SOFTWARE\Autodesk\AutoCAD',
+        'HKLM:\SOFTWARE\WOW6432Node\Autodesk\AutoCAD'
+    )
+
+    $records = @()
+    $releaseRootsPresent = 0
+    $releaseRootProbeFailureCount = 0
+    $releaseRootReadFailureCount = 0
+    $childEnumerationFailureCount = 0
+    $keysInspected = 0
+    $keysRead = 0
+    $propertyReadFailureCount = 0
+
+    foreach ($autoCadRoot in $autoCadRoots) {
+        $releaseRoot = Join-Path $autoCadRoot 'R20.1'
+        $releaseRootExists = $false
+        try {
+            $releaseRootExists = Test-Path -LiteralPath $releaseRoot -ErrorAction Stop
+        }
+        catch {
+            $releaseRootProbeFailureCount++
+            continue
+        }
+        if (-not $releaseRootExists) {
+            continue
+        }
+        $releaseRootsPresent++
+
+        $keys = @()
+        try {
+            $keys += Get-Item -LiteralPath $releaseRoot -ErrorAction Stop
+        }
+        catch {
+            $releaseRootReadFailureCount++
+        }
+
+        try {
+            $keys += @(Get-ChildItem -LiteralPath $releaseRoot -ErrorAction Stop)
+        }
+        catch {
+            $childEnumerationFailureCount++
+        }
+
+        foreach ($key in $keys) {
+            $keysInspected++
+            try {
+                $properties = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction Stop
+                $keysRead++
+            }
+            catch {
+                $propertyReadFailureCount++
+                continue
+            }
+
+            $records += [pscustomobject]@{
+                RegistryKey = $key.Name
+                Properties = $properties
+            }
+        }
+    }
+
+    $hints = @(ConvertTo-AutoCadRegistryHintsFromRecords -Records $records)
+    if ($PSBoundParameters.ContainsKey('Diagnostics')) {
+        $Diagnostics.Value = [pscustomobject]@{
+            RegistryRootsConfigured = $autoCadRoots.Count
+            ReleaseRootsPresent = $releaseRootsPresent
+            ReleaseRootProbeFailureCount = $releaseRootProbeFailureCount
+            ReleaseRootReadFailureCount = $releaseRootReadFailureCount
+            ChildEnumerationFailureCount = $childEnumerationFailureCount
+            KeysInspected = $keysInspected
+            KeysRead = $keysRead
+            PropertyReadFailureCount = $propertyReadFailureCount
+            AcadLocationHintCount = @($hints | Where-Object { $_.ValueName -eq 'AcadLocation' }).Count
+            InstallLocationHintCount = @($hints | Where-Object { $_.ValueName -eq 'InstallLocation' }).Count
+            LocationHintCount = @($hints | Where-Object { $_.ValueName -eq 'Location' }).Count
+            TotalHintCount = $hints.Count
+        }
+    }
+
+    return $hints
 }
 
 function ConvertTo-InstallDirectory {
@@ -243,7 +305,8 @@ function ConvertTo-InstallDirectory {
 function Get-CandidateInstallDirectories {
     param(
         [object[]]$RegistryHints,
-        [string[]]$AdditionalDirectories
+        [string[]]$AdditionalDirectories,
+        [AllowEmptyCollection()][string[]]$ProgramRoots
     )
 
     $candidateMap = @{}
@@ -272,12 +335,17 @@ function Get-CandidateInstallDirectories {
         $candidateMap[$directory].Add('ExplicitParameter')
     }
 
-    $programRoots = @(
-        [Environment]::GetEnvironmentVariable('ProgramFiles'),
-        [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
-    ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Sort-Object -Unique
+    if (-not $PSBoundParameters.ContainsKey('ProgramRoots')) {
+        $ProgramRoots = @(
+            [Environment]::GetEnvironmentVariable('ProgramFiles'),
+            [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+        )
+    }
+    $ProgramRoots = @($ProgramRoots |
+        Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+        Sort-Object -Unique)
 
-    foreach ($programRoot in $programRoots) {
+    foreach ($programRoot in $ProgramRoots) {
         $autodeskRoot = Join-Path $programRoot 'Autodesk'
         if (-not (Test-Path -LiteralPath $autodeskRoot -PathType Container)) {
             continue
@@ -567,6 +635,76 @@ function Get-Net45ReferenceAssemblyEvidence {
     return @($results)
 }
 
+function Assert-DiscoverySelfTest {
+    param(
+        [Parameter(Mandatory = $true)][bool]$Condition,
+        [Parameter(Mandatory = $true)][string]$Message
+    )
+
+    if (-not $Condition) {
+        throw ("AutoCAD 2016 discovery self-test failed: {0}" -f $Message)
+    }
+}
+
+function Invoke-AutoCad2016DiscoverySelfTest {
+    $records = @(
+        [pscustomobject]@{
+            RegistryKey = 'fixture-acad-location'
+            Properties = [pscustomobject]@{ AcadLocation = 'C:\Fixture\Acad'; ProductName = 'Fixture A' }
+        },
+        [pscustomobject]@{
+            RegistryKey = 'fixture-install-location'
+            Properties = [pscustomobject]@{ InstallLocation = 'C:\Fixture\Install'; ProductName = 'Fixture B' }
+        },
+        [pscustomobject]@{
+            RegistryKey = 'fixture-location'
+            Properties = [pscustomobject]@{ Location = 'C:\Fixture\Location\acad.exe'; ProductName = 'Fixture C' }
+        }
+    )
+
+    $hints = @(ConvertTo-AutoCadRegistryHintsFromRecords -Records $records)
+    Assert-DiscoverySelfTest -Condition ($hints.Count -eq 3) -Message 'all three supported registry value names must produce hints.'
+    Assert-DiscoverySelfTest -Condition (@($hints | Where-Object { $_.ValueName -eq 'AcadLocation' }).Count -eq 1) -Message 'AcadLocation must be recognized.'
+    Assert-DiscoverySelfTest -Condition (@($hints | Where-Object { $_.ValueName -eq 'InstallLocation' }).Count -eq 1) -Message 'InstallLocation must be recognized.'
+    Assert-DiscoverySelfTest -Condition (@($hints | Where-Object { $_.ValueName -eq 'Location' }).Count -eq 1) -Message 'Location must be recognized.'
+
+    $locationOnlyHints = @(ConvertTo-AutoCadRegistryHintsFromRecords -Records @(
+        [pscustomobject]@{
+            RegistryKey = 'fixture-location-only'
+            Properties = [pscustomobject]@{ Location = 'C:\OutsideProgramFiles\AutoCAD 2016\acad.exe' }
+        }
+    ))
+    Assert-DiscoverySelfTest -Condition ($locationOnlyHints.Count -eq 1) -Message 'a Location-only non-Program-Files installation must remain discoverable.'
+    Assert-DiscoverySelfTest -Condition ($locationOnlyHints[0].ValueName -eq 'Location') -Message 'the Location-only discovery source must be preserved.'
+    Assert-DiscoverySelfTest -Condition ((ConvertTo-InstallDirectory -CandidatePath $locationOnlyHints[0].CandidatePath) -eq 'C:\OutsideProgramFiles\AutoCAD 2016') -Message 'a Location value pointing to acad.exe must normalize to its installation directory.'
+
+    $deduplicated = @(Get-CandidateInstallDirectories -RegistryHints @(
+        [pscustomobject]@{ CandidatePath = 'C:\Fixture\Same'; ReleaseKey = 'R20.1'; ValueName = 'AcadLocation' },
+        [pscustomobject]@{ CandidatePath = 'C:\Fixture\Same\acad.exe'; ReleaseKey = 'R20.1'; ValueName = 'Location' }
+    ) -AdditionalDirectories @('C:\Fixture\Same') -ProgramRoots @())
+    Assert-DiscoverySelfTest -Condition ($deduplicated.Count -eq 1) -Message 'equivalent directory and acad.exe hints must be deduplicated.'
+    Assert-DiscoverySelfTest -Condition ($deduplicated[0].DiscoverySources.Count -eq 3) -Message 'all deduplicated discovery sources must be retained.'
+
+    $ignored = @(ConvertTo-AutoCadRegistryHintsFromRecords -Records @(
+        [pscustomobject]@{
+            RegistryKey = 'fixture-empty-values'
+            Properties = [pscustomobject]@{ AcadLocation = ' '; InstallLocation = $null; Location = '' }
+        }
+    ))
+    Assert-DiscoverySelfTest -Condition ($ignored.Count -eq 0) -Message 'empty registry values must not become candidates.'
+
+    Write-Host 'AutoCAD 2016 environment discovery self-test passed (10/10).'
+}
+
+if ($RunDiscoverySelfTest) {
+    Invoke-AutoCad2016DiscoverySelfTest
+    return
+}
+
+$timestamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
+$outputDirectory = Join-Path $OutputRoot ("autocad2016-environment-{0}" -f $timestamp)
+New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
+
 $dotNetEvidence = Get-DotNetToolchainEvidence -RepositoryRoot $repoRoot
 $msBuildEvidence = @(Get-MSBuildToolchainEvidence)
 $net45ReferenceEvidence = @(Get-Net45ReferenceAssemblyEvidence -RepositoryRoot $repoRoot)
@@ -579,7 +717,8 @@ $msBuildTrusted = ($trustedMsBuildEvidence.Count -gt 0)
 $msBuildReady = ($supportedMsBuildEvidence.Count -gt 0)
 $net45ReferencesReady = (@($net45ReferenceEvidence | Where-Object { $_.Usable }).Count -gt 0)
 
-$registryHints = @(Get-AutoCadRegistryHints)
+$registryDiscoveryDiagnostics = $null
+$registryHints = @(Get-AutoCadRegistryHints -Diagnostics ([ref]$registryDiscoveryDiagnostics))
 $candidateDirectories = @(Get-CandidateInstallDirectories -RegistryHints $registryHints -AdditionalDirectories $AdditionalInstallDirectory)
 $installations = @()
 $rejectedCandidates = @()
@@ -596,6 +735,7 @@ foreach ($candidateDirectory in $candidateDirectories) {
     }
 
     $acadPaths = @()
+    $acadSearchFailed = $false
     $directAcadPath = Join-Path $candidateDirectory.InstallDirectory 'acad.exe'
     if (Test-Path -LiteralPath $directAcadPath -PathType Leaf) {
         $acadPaths = @((Get-Item -LiteralPath $directAcadPath -ErrorAction Stop).FullName)
@@ -607,6 +747,7 @@ foreach ($candidateDirectory in $candidateDirectories) {
         }
         catch {
             $acadPaths = @()
+            $acadSearchFailed = $true
         }
     }
 
@@ -614,7 +755,12 @@ foreach ($candidateDirectory in $candidateDirectories) {
         $rejectedCandidates += [pscustomobject]@{
             InstallDirectory = $candidateDirectory.InstallDirectory
             DiscoverySources = $candidateDirectory.DiscoverySources
-            Reason = 'acad.exe was not found.'
+            Reason = if ($acadSearchFailed) {
+                'acad.exe discovery failed because the candidate directory could not be read.'
+            }
+            else {
+                'acad.exe was not found.'
+            }
         }
         continue
     }
@@ -752,7 +898,7 @@ else {
 }
 
 $report = [pscustomobject]@{
-    SchemaVersion = 4
+    SchemaVersion = 5
     CollectedAt = (Get-Date).ToString('o')
     Purpose = 'Codex for AutoCAD 2016 compatibility probe'
     CollectionSucceeded = $collectionSucceeded
@@ -779,6 +925,7 @@ $report = [pscustomobject]@{
         'HKLM:\SOFTWARE\Autodesk\AutoCAD\R20.1',
         'HKLM:\SOFTWARE\WOW6432Node\Autodesk\AutoCAD\R20.1'
     )
+    DiscoveryDiagnostics = $registryDiscoveryDiagnostics
     AutoCadRegistryHints = $registryHints
     RejectedCandidates = $rejectedCandidates
     AutoCad2016Installations = $installations
@@ -795,6 +942,14 @@ $textPath = Join-Path $outputDirectory 'SUMMARY.txt'
     ('Collected at: {0}' -f $report.CollectedAt),
     ('AutoCAD 2016 R20.1 installations: {0}' -f $installations.Count),
     ('Installations ready for Host.2016 compilation: {0}' -f $readyInstallationCount),
+    ('Registry hints: AcadLocation={0}; InstallLocation={1}; Location={2}; read failures={3}' -f
+        $registryDiscoveryDiagnostics.AcadLocationHintCount,
+        $registryDiscoveryDiagnostics.InstallLocationHintCount,
+        $registryDiscoveryDiagnostics.LocationHintCount,
+        ($registryDiscoveryDiagnostics.ReleaseRootProbeFailureCount +
+            $registryDiscoveryDiagnostics.ReleaseRootReadFailureCount +
+            $registryDiscoveryDiagnostics.ChildEnumerationFailureCount +
+            $registryDiscoveryDiagnostics.PropertyReadFailureCount)),
     ('Detailed JSON: {0}' -f $jsonPath),
     '',
     'This collector did not start AutoCAD, send commands, or modify AutoCAD/system settings.',
