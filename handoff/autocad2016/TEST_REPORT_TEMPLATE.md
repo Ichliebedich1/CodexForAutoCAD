@@ -2,15 +2,16 @@
 
 ## 证据来源与适用边界
 
-本报告严格分开五类证据：
+本报告严格分开六类证据：
 
 1. **用户实机命令记录**：用户在目标机已打开的原版 AutoCAD 2016 命令行中手工执行 `NETLOAD`、`CODEXCADDOCTOR`、`CODEXCAD` 和 `DBMOD`。
 2. **环境采集器证据**：schema v4 只读采集；不启动 AutoCAD、不读取 `TRUSTEDPATHS` 内容。
 3. **Host.2016 静态/构建门禁**：隔离 Release 重编译和签名、版本、引用、禁止 API 等验证；脚本不执行 NETLOAD。
 4. **Phase 2 本地规格证据**：七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘密扫描的本地阶段快照；未进入 AutoCAD，提交状态以 Git 历史为准。
 5. **Host.2016 Palette 静态/构建与实机证据**：独立 Palette solution/project 的隔离 Release 门禁，以及冻结候选哈希绑定后的人工 NETLOAD、只读 UI 和生命周期记录；不得继承诊断 Host 的运行时结论。
+6. **Host.2016 ReadOnlyContext 静态/构建与实机证据**：独立 Selection sidecar 的双 PowerShell 可重复构建门禁，以及冻结候选哈希绑定后的人工 NETLOAD、六类只读选择、清除和文档激活缓存失效记录；不得继承 Palette 或诊断 Host 的运行时结论。
 
-本次实机命令记录没有回显所加载 DLL 的路径或现场 SHA-256。因此：
+以下身份缺口只适用于首次诊断薄宿主的历史实机命令记录；Palette 与 ReadOnlyContext 均有各自独立的冻结候选身份绑定，三者不得互相继承：
 
 - `candidateDllSha256FromTestingContext` 记录为 `2E621C5D7AAF7F3F59C5CBD65C8E899712FA93F1E3ED5758F7E7A0ECDBFB0C85`，仅表示测试上下文中的候选 DLL。
 - `loadedDllSha256` 必须记为未知。
@@ -19,8 +20,11 @@
 - 隔离验证脚本输出的临时 DLL 哈希只能证明当次构建产物，不能替代或追认已 NETLOAD DLL 的身份。
 - 当前 P0 可重复构建候选 SHA-256 为 `E8535C11AA09F93C405EBB7DFB46199EEDC27EE046959B4CC86395A06998B440`。该候选尚未 NETLOAD，`NetLoadVerified=false`，不得继承旧会话的运行时结论。
 - 旧诊断候选副本仍保持 SHA-256 `2E621C5D7AAF7F3F59C5CBD65C8E899712FA93F1E3ED5758F7E7A0ECDBFB0C85`，没有被本轮隔离验证覆盖；这仍不改变 `runtimeToCandidateBindingVerified=false` 的证据边界。
+- Palette 冻结候选 SHA-256 为 `90620EA354AAE9A3C2B2E11C3FA60274F1EF9B0753734AF7AAB67BDAA0E01DFE`，已由加载前/后相同哈希及用户对 NETLOAD 完整冻结路径的确认建立独立身份绑定。
+- ReadOnlyContext 冻结候选 SHA-256 为 `AB3132CF7B0102F9A9B168A76170D074114051D1759391DF9F3C5C6969BAE6B8`，已由双 PowerShell 可重复构建、只读冻结副本及用户对精确冻结 DLL 的人工 NETLOAD 建立独立身份绑定。
+- Selection/context hash 按策略不入库且不持久化；这不等于 DLL SHA-256 不入库。证据中正常保留冻结 DLL SHA-256、规范化字节数和六类计数。
 
-当前证据只证明 `net45/x64` 诊断薄宿主可以编译，并可在该目标机 AutoCAD 2016 中 NETLOAD。Palette、真实 AgentHost、认证 IPC、选择上下文和 CAD 写入均未获得实机通过证据，不能据此宣称完整支持 AutoCAD 2016。
+当前证据分别证明 `net45/x64` 诊断薄宿主可加载、独立 Palette 冻结候选在 96 DPI 下通过有界 UI/DBMOD 检查点，以及独立 ReadOnlyContext 冻结候选通过六类只读选择、清除和文档激活缓存失效检查点。真实 AgentHost、认证 IPC、正式侧边栏集成、审批和 CAD 写入仍未获得实机通过证据，不能据此宣称完整支持 AutoCAD 2016。
 
 ## 用户实机命令记录摘要
 
@@ -46,7 +50,7 @@
 
 ## 基本信息
 
-- 测试日期：2026-07-18
+- 测试日期：2026-07-18 至 2026-07-19
 - 证据采集时的首次诊断基线：`2d2ad3738095794c8374e916559c0c5d13702ba1`
 - 证据采集时工作树是否干净：否；后续阶段代码、证据和文档仍在生成
 - AutoCAD 产品：AutoCAD 2016 简体中文，原版目标机安装
@@ -68,6 +72,12 @@
 - Palette 模块人工 NETLOAD/命令观察：已观察到预期加载消息，且 `CODEX16PAL`、`CODEX16PALINFO`、`CODEX16PALRESET` 可执行
 - Palette 冻结候选 `NetLoadVerified`：`true`；用户已明确确认 NETLOAD 文件选择器选择了完整冻结候选路径
 - Palette 运行时与冻结候选身份绑定：`true`；加载前记录、加载后复算 SHA-256 均为 `90620E...01DFE`，并取得用户对所选完整冻结路径的明确确认
+- ReadOnlyContext 独立候选 DLL SHA-256：`AB3132CF7B0102F9A9B168A76170D074114051D1759391DF9F3C5C6969BAE6B8`
+- ReadOnlyContext 冻结候选代号：`autocad2016-readonly-context-frozen-20260719-main2036fd6-AB3132CF`；冻结副本为只读，大小 `31744` 字节
+- ReadOnlyContext 冻结候选 `NetLoadVerified`：`true`；用户在现有 AutoCAD 2016 进程中人工 NETLOAD 精确冻结 DLL
+- ReadOnlyContext 运行时与冻结候选身份绑定：`true`
+- ReadOnlyContext 运行时检查点：六类各 `1`、selected `6`、generation `2`、canonical bytes `738`、捕获 `DBMOD 4 -> 4`；显式清除后 selected `0`、clearCount `14`、`DBMOD 4 -> 4`
+- Selection/context hash：按策略脱敏且不持久化；冻结 DLL SHA-256 正常记录
 - 旧诊断候选副本是否被当前构建覆盖：否；副本哈希仍为 `2E621...0C85`
 - AgentHost 版本/SHA-256：未测
 - 显示缩放：当前会话 `96 x 96 DPI`；125% 与 150% 未测
@@ -92,8 +102,9 @@
 
 - 脱敏图纸代号：未记录；用户当前已打开图纸
 - 图纸路径哈希：未记录
-- 初始 DBMOD：`21`
-- 结束 DBMOD：`21`
+- 诊断样本 DBMOD：`21 -> 21`
+- ReadOnlyContext 捕获/显式清除样本 DBMOD：`4 -> 4`；这是同一选择检查点窗口
+- ReadOnlyContext 文档激活清缓存样本 DBMOD：原图清除后 `21`、目标图 `21`；这是另一独立样本，不得与前一项的 `4 -> 4` 合并解释
 - 初始实体数：未读取
 - 单位：未读取
 - 典型图元：未读取
@@ -111,20 +122,23 @@
 | U03 | 当前 96 DPI 会话的 DPI、DIP/物理尺寸记录 | 通过 | 首次 `300 x 866` physical/DIP；RESET 后 `370 x 366`；均为 `96 x 96 DPI` | 不代表 125%/150% 已通过 |
 | U04 | RESET 释放并重建 | 通过 | 已连续观察 generation/reset/release `1/0/0 -> 2/1/1 -> 3/2/2 -> 4/3/3`，每次 RESET 后 INFO 均可执行 | 证明多次释放重建计数准确；完整退出生命周期仍待测 |
 | U05 | RESET 后不存在重复事件订阅 | 未测 | 最新有效样本中 StateChanged `13 -> 15`、SizeChanged `17 -> 18` | 事件计数变化不能单独证明所有处理器均未重复；仍缺退出生命周期验证 |
-| U06 | Agent/选择读取/CAD 写入/插件自动保存保持禁用 | 通过 | 两次 INFO 均显示 Agent、Selection read、CAD write、Automatic save 为 disabled | 不代表 AutoCAD 自身定时 `.sv$` 自动保存被禁用 |
+| U06 | Palette 模块的 Agent/选择读取/CAD 写入/插件自动保存保持禁用 | 通过 | 两次 Palette INFO 均显示 Agent、Selection read、CAD write、Automatic save 为 disabled | 只描述 Palette 模块自身；不与后来独立 NETLOAD 的 ReadOnlyContext sidecar 冲突，也不代表 AutoCAD 自身 `.sv$` 自动保存被禁用 |
 | U07 | Palette INFO/RESET 干净窗口内 DBMOD 精确不变 | 通过 | 有效隔离复测的四次命令行与两次 INFO 共六个 DBMOD 均为 `4` | 先前两轮受原生自动保存/选择提示污染的样本保留为无效记录，不用于通过结论 |
 | U08 | 冻结 Palette DLL 与运行时身份绑定 | 通过 | 冻结 DLL 加载前/后哈希均为 `90620E...01DFE`，用户明确确认 NETLOAD 选择了完整冻结候选路径 | 提交证据不保存本机完整路径 |
 | R01 | AgentHost 离线安全降级 | 未测 | | Agent 尚未接入 Host.2016 |
 | R02 | 两轮只读对话与上下文记忆 | 未测 | | |
-| C01 | 选择 Line/Circle/Polyline/Text/Block | 未测 | | 选择上下文尚未获得 2016 实机证据 |
-| C02 | 只读选择操作 DBMOD 不变 | 未测 | | D01 不能替代本项 |
+| C01 | 选择 Line/Circle/Polyline/DBText/MText/BlockReference | 通过 | `status=published-read-only`；selected `6`，六类各 `1`，generation `2`，canonical bytes `738` | Selection/context hash 按策略不入库；DLL SHA-256 已入库并完成身份绑定 |
+| C02 | 只读选择操作 DBMOD 不变 | 通过 | 捕获前后 `4 -> 4`，`dbmodUnchanged=true` | 实体总数未独立计数，不能把本项扩大为实体数不变证明 |
+| C03 | 用户命令显式清除缓存 | 通过 | `status=cleared-user-command`；published=false、selected `0`、clearCount `14`、`DBMOD 4 -> 4` | 只证明显式清除路径 |
+| C04 | 文档激活时旧图缓存失效 | 通过 | 独立样本为 `status=cleared-document-activated`、DocumentActivated events `1`、旧缓存未跨图保留 | 原图清除后与目标图 DBMOD 均为 `21`；不得与 C02/C03 的 `4 -> 4` 混为同一样本 |
+| C05 | 捕获/清除前后实体总数不变 | 未测 | 未独立读取命令前后实体总数 | `entityCountUnchangedVerifiedInAutoCad2016=false`；DBMOD 不变不能替代本项 |
 | A01 | CAD 拒绝后零修改 | 未测 | | CAD 审批与写入尚未接入 2016 |
 | A02 | 一次允许仅执行展示计划 | 未测 | | |
 | A03 | 审批令牌重放失败 | 未测 | | |
 | A04 | 选择/图纸/图层/空间变化使旧计划失效 | 未测 | | |
 | A05 | Agent 中断不自动重试写入 | 未测 | | |
 | A06 | 成功写入后不自动保存 | 未测 | | 诊断命令未写入，不能证明写入后的行为 |
-| X01 | 切换/关闭图纸无事件泄漏 | 未测 | | |
+| X01 | 切换/关闭图纸无事件泄漏 | 未测 | 文档切换的缓存失效子项已由 C04 通过 | 文档关闭清缓存及事件泄漏仍未实测，不能把整项判为通过 |
 | X02 | 退出 AutoCAD 无残留进程/线程 | 未测 | | |
 
 结果只允许：通过、失败、阻塞、未测。
@@ -232,6 +246,43 @@ DBMOD
 
 当前 96 DPI/100% 的 UI 与 IME 矩阵已通过。125%/150% DPI 及 AutoCAD 退出生命周期允许在后续受控独立会话补测；不得从当前单一进程推断为全部通过。
 
+## Host.2016 ReadOnlyContext 静态、构建与实机复核
+
+ReadOnlyContext 阶段使用独立 Selection sidecar，不覆盖当前进程已经加载的诊断或 Palette 程序集：
+
+- solution：`Codex.AutoCAD.2016.ReadOnlyContext.sln`
+- project：`src/Codex.AutoCAD.Host.2016.ReadOnlyContext/Codex.AutoCAD.Host.2016.ReadOnlyContext.csproj`
+- assembly：`Codex.AutoCAD.Host.2016.ReadOnlyContext.dll`
+- 命令面：`CODEX16CTX`、`CODEX16CTXINFO`、`CODEX16CTXCLEAR`
+- 验证脚本：`scripts/verify-autocad2016-readonly-context.ps1`
+- 脱敏证据：`handoff/autocad2016/evidence/readonly-context-build-verification-20260718.json`
+
+静态、规格、IL、禁写和可重复构建门禁已完成：
+
+- PowerShell 7.6.3 与 Windows PowerShell 5.1.19041.6456 的完整门禁、规则正负自测均通过。
+- 四次隔离 Release 构建逐字节一致，DLL SHA-256 均为 `AB3132CF7B0102F9A9B168A76170D074114051D1759391DF9F3C5C6969BAE6B8`。
+- 冻结候选代号为 `autocad2016-readonly-context-frozen-20260719-main2036fd6-AB3132CF`；DLL 大小 `31744` 字节、只读，输出仅此一个 DLL，无 PDB 或复制的 Autodesk 程序集。
+- Specs `25/25` 通过，覆盖六类黄金向量、独立参考编码器、输入顺序规范化、数值句柄排序、重复句柄拒绝、全部导出字段哈希绑定、非有限数拒绝、Unicode/尺寸上限、文化无关和防御性复制。
+- 只允许 Line、Circle、Polyline、DBText、MText、BlockReference，最多 `64` 个实体、每条 Polyline 最多 `256` 个顶点、文本最多 `2048` 个 UTF-16 code units、canonical bytes 最多 `65536`；任何截断均不允许。
+- 选择只来自 `Editor.SelectImplied`；读取只使用 `StartOpenCloseTransaction` 和唯一一个 `GetObject(..., ForRead, false)` 调用；不取 DocumentLock、不 Commit、不发布部分结果。
+- 捕获前后要求 DBMOD 精确相等，并在发布前重校验活动文档身份与 document epoch；文档切换和关闭路径按设计清缓存。
+- IL 与 fail-closed 门禁拒绝 ForWrite、UpgradeOpen、Commit/Abort、Erase/Append、DocumentLock、Save、命令注入、SetSystemVariable、SetImpliedSelection、图纸/外参路径、反射、未批准实体、Process/IPC/网络/文件/注册表、native 和后台执行。
+- Selection/context hash 为小写 SHA-256，但按证据策略不持久化、不入库；证据只保留 canonical bytes 与六类计数。冻结 DLL SHA-256 正常入库，二者不得混淆。
+- 当前导出的只读状态哈希只覆盖显式白名单字段，不足以直接充当未来 CAD 写入审批的完整锁内重校验哈希。
+
+2026-07-19 的人工实机检查点使用现有 AutoCAD 2016 进程，用户精确 NETLOAD 上述冻结 DLL：
+
+- 运行时与候选身份绑定为 `true`，加载成功且三个命令均可执行；构建 verifier 本身仍不操作 CAD，其输出中的 `NetLoadVerified=false` 只描述脚本边界，不覆盖独立的用户实机证据。
+- 首次出现 `validation-no-implied-selection`，原因是前置 `DBMOD` 命令取消了 implied selection；该次按预期 fail-closed，分类为 `candidateFailure=false`，不是 DLL 运行失败。
+- 用户重新预选六个实体后，`CODEX16CTX` 得到 `status=published-read-only`、published=true、generation `2`、selected `6`，Line/Circle/Polyline/DBText/MText/BlockReference 各 `1`，canonical bytes `738`，DBMOD 精确 `4 -> 4`。
+- `CODEX16CTXCLEAR` 得到 `status=cleared-user-command`、published=false、selected `0`、clearCount `14`，DBMOD 精确 `4 -> 4`。
+- 文档切换是另一个独立样本：`status=cleared-document-activated`、DocumentActivated events `1`、旧图缓存未跨图保留；原图清除后 DBMOD 为 `21`，切换后目标图 DBMOD 为 `21`。这不能与捕获/清除样本的 `4 -> 4` 合并成同一时间线。
+- 图纸实体总数没有在命令前后独立计量，因此 `entityCountUnchangedVerifiedInAutoCad2016=false`；DBMOD 不变不能替代这一缺失证据。
+- 候选没有保存 API，现场也没有观察到插件调用保存；但 `automaticSaveRuntimeVerified=false`，不得把“插件未保存”扩大为 AutoCAD 自身 `.sv$` 自动保存已禁用或已验证。
+- 此检查点证明有界的只读选择、显式清除和 DocumentActivated 缓存失效；动态块 effective name、xref 分类、DocumentToBeDestroyed/文档关闭、事件泄漏、正式侧边栏 UI、Agent/Bridge、审批、写入和保存仍在边界之外。
+
+进入正式侧边栏 UI 之前必须先通知用户，并冻结 Codex 与 Kimi 共同遵守的上下文展示、命令面、错误语义、审批边界和兼容契约；未完成该共同契约决策门，不开始正式 UI 集成。
+
 ## Phase 2 本地规格证据
 
 | 组件 | 配置 | 结果 | 适用边界 |
@@ -253,31 +304,37 @@ Release 构建、七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘�
 
 ## 问题与缺口
 
-旧诊断薄宿主轮次没有观察到程序集绑定错误，且 `DBMOD 21 -> 21`。Palette 的早期污染样本观察到 `DBMOD 4 -> 5`，但后续有效隔离复测的六个读数全部为 `4`，因此 INFO/RESET 的模块级 DBMOD 门禁现已通过。尚未完成：
+旧诊断薄宿主轮次没有观察到程序集绑定错误，且 `DBMOD 21 -> 21`。Palette 的早期污染样本观察到 `DBMOD 4 -> 5`，但后续有效隔离复测的六个读数全部为 `4`，因此 INFO/RESET 的模块级 DBMOD 门禁现已通过。ReadOnlyContext 冻结候选也已通过六类只读选择、显式清除、DBMOD 不变和 DocumentActivated 缓存失效的有界检查点。尚未完成：
 
-- 旧诊断薄宿主历史轮次的运行时 DLL 路径/哈希绑定仍未取得；本项不再适用于已绑定的 Palette 冻结候选。
+- 旧诊断薄宿主历史轮次的运行时 DLL 路径/哈希绑定仍未取得；本项不再适用于已绑定的 Palette 与 ReadOnlyContext 冻结候选。
 - 当前可重复构建候选 `E853...B440` 的冻结产物人工 NETLOAD 与命令复验。
-- Palette/DPI/文档生命周期实机验证。
-- 只读选择上下文及零修改证明。
+- Palette 的 125%/150% DPI 与 AutoCAD 退出生命周期实机验证。
+- ReadOnlyContext 的命令前后实体总数独立计量、动态块 effective name、xref 分类、DocumentToBeDestroyed/文档关闭清缓存及事件泄漏验证。
+- ReadOnlyContext 与正式 Host.2016/侧边栏 UI 的集成；进入该阶段前必须先通知用户并冻结 Codex/Kimi 共同契约。
 - 真实 AgentHost 启动、秘密交付、停止/超时和退出清理。
 - Host.2016 认证 Bridge live handshake、HMAC、防重放和 fail-closed。
 - 一次审批、锁内重校验、单事务写入及不自动保存的实机闭环。
+- 插件自动保存行为的运行时验证；候选无保存 API，且现场未观察插件保存，不等于 `automaticSaveRuntimeVerified=true`，也不等于 AutoCAD 自身 `.sv$` 被禁用。
 - `.bundle`、签名、企业策略、普通用户安装/回滚和干净机验证。
 - Palette 冻结候选 `90620E...01DFE` 已取得绑定后的人工 NETLOAD、连续 RESET、当前 96 DPI UI/IME 和干净临时图 DBMOD 不变证据；仍缺 125%/150% DPI 和退出生命周期。
 
 ## 测试结论
 
 - 是否达到“2016 诊断编译/NETLOAD 兼容候选”：**是**；仅限提交 `2d2ad37` 的诊断薄宿主和当前用户命令记录。
-- 是否达到“2016 只读候选”：**否**；选择上下文、文档切换和 Palette 生命周期未验证。
+- 是否达到“2016 独立只读 Selection sidecar 检查点”：**是**；仅限冻结候选 `AB3132...E6B8` 的六类 implied selection、显式清除、`DBMOD 4 -> 4` 和 DocumentActivated 缓存失效。
+- 是否达到“2016 完整只读产品候选”：**否**；正式侧边栏 UI、Agent/Bridge 集成、实体总数、文档关闭/泄漏及其余运行时矩阵仍未完成。
 - 是否达到“2016 CAD 写入候选”：**否**；审批、锁内重校验和事务写入未获得 2016 实机证据。
 - 是否达到“完整支持 AutoCAD 2016”：**否**。
 - Palette 静态/构建门禁是否通过：**是**。
 - Palette INFO/RESET 的干净 DBMOD 门禁是否通过：**是**；有效样本六个读数全部为 `4`。
 - Palette 完整运行时阶段是否通过：**否**；冻结候选身份、当前 96 DPI UI/IME 与零写入门禁已通过，但 125%/150% DPI 和退出生命周期仍未完成。
 - 是否允许提交当前 Palette 检查点：**是**；只允许以“已绑定的 96 DPI Palette 运行时候选检查点”单独提交，不得表述为完整 Palette 验收或完整 AutoCAD 2016 支持。
+- ReadOnlyContext 静态/规格/IL/禁写/可重复构建门禁是否通过：**是**；双 PowerShell、Specs `25/25` 和四次相同 DLL SHA-256 均有证据。
+- ReadOnlyContext 有界实机检查点是否通过：**是**；冻结候选身份、六类捕获、显式清除、DBMOD 不变及 DocumentActivated 缓存失效均已验证。
+- 是否允许单独提交当前 ReadOnlyContext 检查点：**是**；只能表述为“已绑定的独立只读 Selection sidecar 检查点”，不得表述为正式 UI/Agent 集成、CAD 写入或完整 AutoCAD 2016 支持。
 - 是否允许发布：否。
 
-最终表述：目标机 AutoCAD 2016 已证明可加载 `net45/x64` 诊断薄宿主；已绑定的独立 Palette 冻结候选也通过当前 96 DPI 的打开、停靠、浮动、隐藏重开、中文 IME 与干净 DBMOD 验证。诊断宿主历史身份、125%/150% DPI、退出生命周期、Agent、CAD 读取/写入及完整安全闭环仍不完整，因此 AutoCAD 2016 完整支持仍未成立。
+最终表述：目标机 AutoCAD 2016 已证明可加载 `net45/x64` 诊断薄宿主；已绑定的独立 Palette 冻结候选通过当前 96 DPI 的打开、停靠、浮动、隐藏重开、中文 IME 与干净 DBMOD 验证；已绑定的独立 ReadOnlyContext 冻结候选通过六类只读 implied selection、显式清除、`DBMOD 4 -> 4` 和 DocumentActivated 缓存失效检查点。诊断宿主历史身份、125%/150% DPI、退出/关闭生命周期、实体总数、正式 UI/Agent/Bridge、CAD 写入和完整安全闭环仍不完整，因此 AutoCAD 2016 完整支持仍未成立。
 
 ## 证据文件
 
@@ -285,4 +342,6 @@ Release 构建、七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘�
 - `handoff/autocad2016/evidence/environment-collector-20260718.json`
 - `handoff/autocad2016/evidence/host-build-verification-20260718.json`
 - `handoff/autocad2016/evidence/phase2-local-specs-20260718.json`
+- `handoff/autocad2016/evidence/phase2-guardrail-verification-20260718.json`（增强门禁当前口径为 IPC `17/17`、七个 Specs `127/127`；旧 `121/121` 只允许作为历史快照）
 - `handoff/autocad2016/evidence/palette-build-verification-20260718.json`（静态门禁、冻结候选身份绑定、当前 96 DPI UI/IME 及最新有效样本六个 `DBMOD=4` 均通过；125%/150% DPI 与退出生命周期延期）
+- `handoff/autocad2016/evidence/readonly-context-build-verification-20260718.json`（双 PowerShell 可重复构建、Specs `25/25`、冻结 DLL 身份绑定、六类只读捕获、显式清除、`DBMOD 4 -> 4` 及独立文档激活缓存失效检查点）
