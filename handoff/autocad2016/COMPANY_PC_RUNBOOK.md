@@ -15,10 +15,11 @@
 - Palette 已建立独立运行时检查点：提交 `56115e4`，冻结 DLL SHA-256 `90620EA354AAE9A3C2B2E11C3FA60274F1EF9B0753734AF7AAB67BDAA0E01DFE`；用户已在原有 AutoCAD 2016 进程验证 100% DPI 下停靠、浮动、隐藏重开、释放重建、中文换行和干净样本 `DBMOD=4`。125%/150% DPI 与退出生命周期仍待验证。
 - 能力边界：诊断记录中的 Palette、Agent、认证 IPC、选择上下文和 CAD 写入仍为禁用/未测；独立 Palette 检查点提升 Palette 100% DPI 范围，独立 ReadOnlyContext 检查点提升六类选择读取与缓存清除范围。两者尚未合并为正式侧边栏，也不证明 Agent、审批或 CAD 写入。
 - 证据缺口：当时命令记录没有回显 DLL 路径或现场 SHA-256，因此不得把任何后续重编译产物的哈希写成“已 NETLOAD DLL 哈希”。
-- 当前 Phase 2 增强门禁：Release 构建 `0` warning / `0` error；Contracts `15/15`、IPC `35/35`、Security `19/19`、AppServer `7/7`、Bridge `29/29`、AgentRuntime `31/31`、Chat `9/9`，合计 `145/145`。此前 Bridge 压力复跑为 `20 x 29 = 580/580`；本次最终编排器重新绑定的是七个 Specs、AgentHost doctor、Host 禁止 API、diff 和秘密扫描，不把历史压力复跑计为本次执行。以上仍是**非 CAD live** 证据，不证明 Host.2016 已接入 Agent/Bridge。
+- 当前公共契约阶段 Phase 2 回归：Release 构建 `0` warning / `0` error；Contracts `27/27`、IPC `35/35`、Security `19/19`、AppServer `7/7`、Bridge `29/29`、AgentRuntime `31/31`、Chat `9/9`，合计 `157/157`。AgentHost 安全引导提交中的历史快照仍为 `145/145`，不得反向改写。此前 Bridge 压力复跑为 `20 x 29 = 580/580`；以上仍是**非 CAD live** 证据，不证明 Host.2016 已接入 Agent/Bridge。
 - 跨运行时认证与 Bootstrap 原语门禁已在 PowerShell 7.6.3 和 Windows PowerShell 5.1.19041.6456 下通过：SDK `8.0.319`，托管核心 Release `0` warning / `0` error，Bridge `29/29`，net45/net8 均为 `35/35`，双隔离主产物逐字节一致。该门禁没有启动或操作 AutoCAD，也没有验证真实 AgentHost 句柄交付、传输机密性、进程身份或硬超时。
 - 真实进程外 AgentHost 的有界 bootstrap-doctor 门禁已在 PowerShell 7.6.3 和 Windows PowerShell 5.1.19041.6456 下通过：net45/net8 Launcher 精确强制 ID 集均为 `15/15`，每套门禁两次隔离 Release 构建，`106` 个可运行输出文件逐字节一致并在 Specs 后复核未变化。受限继承句柄密钥交付、批准 EXE SHA-256、确认 PID/创建时间、启动截止触发 fail-closed 中止并随后进行最多 `5` 秒有界终止清理、取消、确认后挂起、句柄 canary、继承位清除、stderr 限界/脱敏和 `0 -> 0` 残留进程均通过。该检查点不声称终止严格发生在配置的启动截止内；没有启动或操作 AutoCAD。长运行 `IAgentBridgeClient`、外部句柄复制抵抗、刻意 suspended-launch TOCTOU 攻击、Host.2016 live Bridge 和 CAD 集成仍未验证。
 - 独立只读选择上下文已建立运行时检查点：阶段基线 `2036fd6`，分支 `codex/selection2016-readonly-v2`，冻结 DLL SHA-256 `AB3132CF7B0102F9A9B168A76170D074114051D1759391DF9F3C5C6969BAE6B8`，大小 `31744` 字节且冻结副本为只读。用户在原本打开的 AutoCAD 2016 中手工 NETLOAD 该候选，成功读取 Line、Circle、Polyline、DBText、MText、BlockReference 各 `1` 个，`selected=6`、canonical bytes `738`，捕获和用户清除均为 `DBMOD 4 -> 4`；文档激活事件清除了旧缓存。
+- CadContextJson v1 与 Host/Agent/UI 公共契约已经冻结：规范见 `MVP_PUBLIC_CONTRACT_V1.md`，固定向量为 `2225` 字节、SHA-256 `c5a03d4cb73f850209a71539fc70ddc2bcd6ec2f7f45627c7285fb53ec424423`。PowerShell 7/5.1 下 net45/net8 均 `27/27`，双隔离构建逐字节一致，Phase 2 `157/157`；统一 Host.2016、Palette JSON、live Bridge 和 AutoCAD 对话仍未验证。
 - 首次 `validation-no-implied-selection` 是前置 `DBMOD` 取消预选后触发的预期 fail-closed，不是加载或捕获失败。选择哈希按脱敏策略不进入仓库；实体总数和插件自动保存未单独取得运行时证据。
 
 除非需要验证启动/卸载生命周期，不要为了重复诊断而重启当前 AutoCAD 进程。
@@ -222,14 +223,14 @@ HMAC 不提供机密性；真实启动仍必须使用专用、独占、受限继
 明确的未验证项。
 
 - Release 解决方案构建：`0` warning / `0` error
-- Contracts Specs：`15/15`
+- Contracts Specs：`27/27`
 - IPC Specs：`35/35`
 - Security Specs：`19/19`
 - AppServer Specs：`7/7`
 - Bridge Specs：`29/29`
 - AgentRuntime Specs：`31/31`
 - Chat Specs：`9/9`
-- 七个 Specs 合计：`145/145`
+- 七个 Specs 合计：`157/157`
 - Bridge 压力复跑：`20 x 29 = 580/580`
 - AgentHost doctor：通过，退出后无残留进程
 - `git diff --check` 与秘密扫描：通过
@@ -288,9 +289,10 @@ canonical bytes `738`；用户清除状态 `cleared-user-command`、clear count 
 `DBMOD=21`，切换后目标图命令行 `DBMOD=21`，旧缓存未跨图纸保留。该结果不证明文档
 关闭生命周期、实体总数、插件自动保存、Agent 或 CAD 写入。
 
-在开始实现或合并正式侧边栏 UI 前，必须先通知用户，并冻结 Codex/Kimi 共同遵守的
-版本化事件、请求/响应、只读上下文、审批状态、错误语义和兼容契约。只有决策门明确通过，
-两端才可按同一契约并行开发；不得让任一侧 UI 原型反向定义协议。
+正式侧边栏公共契约决策门已经通过。Codex/Kimi 必须共同遵守
+`handoff/autocad2016/MVP_PUBLIC_CONTRACT_V1.md`：版本化事件、请求/响应、六类只读上下文、
+一次审批、错误闭集和兼容规则均已冻结。两端可以并行开发视觉 UI，但不得让任一侧 UI
+原型反向定义或扩展 v1；不兼容 wire 变化必须升级 v2。
 
 ## 9. CAD 审批与写入冒烟
 
@@ -330,3 +332,4 @@ canonical bytes `738`；用户清除状态 `cleared-user-command`、clear count 
 - 跨运行时 Bootstrap 原语证据见 `handoff/autocad2016/evidence/auth-bootstrap-verification-20260719.json`；该文件只保存脱敏计数、哈希和布尔边界，所有 live AgentHost、传输机密性及 CAD 集成项保持 `false`。
 - 真实 AgentHost 有界安全引导证据由 `scripts/verify-autocad2016-agent-bootstrap-stage.ps1` 自动生成到 `handoff/autocad2016/evidence/agent-bootstrap-verification-20260719.json`；该文件绑定双 PowerShell 的 bootstrap/auth raw evidence、Phase2 raw log 和四个验证器 SHA-256，只保存哈希、计数、动态通过项和明确未验证项，不保存 artifact 临时目录、用户名、PID、原始 stderr 或 CAD/图纸路径。
 - 只读选择上下文证据见 `handoff/autocad2016/evidence/readonly-context-build-verification-20260718.json`；文件同时记录静态/可重复构建门禁和 2026-07-19 的冻结候选实机检查点。Selection/context hash、图纸名称和路径不进入 Git；冻结 DLL SHA-256 正常入库，实体总数与插件自动保存 runtime 布尔值保持 `false`。
+- 公共契约规范见 `handoff/autocad2016/MVP_PUBLIC_CONTRACT_V1.md`；双 PowerShell、net45/net8 固定向量与 Phase 2 回归证据见 `handoff/autocad2016/evidence/cad-context-contract-v1-verification-20260719.json`。该证据的 `NetLoadVerified=false` 和 `RuntimeIntegrationVerified=false` 必须保持，直到统一 Host.2016 真实编译和人工 NETLOAD。

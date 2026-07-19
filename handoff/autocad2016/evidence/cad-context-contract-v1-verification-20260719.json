@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "recordedAtLocal": "2026-07-19T22:10:56.8774727+08:00",
+  "scope": "autocad2016-cad-context-json-v1-and-host-agent-ui-contract",
+  "status": "dual-powershell-cross-runtime-contract-gate-passed",
+  "configuration": "Release",
+  "dotNetSdk": "8.0.319",
+  "dotNetHostSha256": "4377F10C78400F0370B88156773DE9843C07F14E65B3232005EC3179EF38D463",
+  "offlinePackageSha256": "23A9F94EA3E2CB88CD8341AF75B811C6FB5CB82516FC696E95ED4620279128E3",
+  "powerShell7": {
+    "version": "7.6.3",
+    "edition": "Core",
+    "rawEvidenceSha256": "531A70E31E7717F2CA4D0FD453012751F16DD14E4B33B68FC3B5F15BE3A0F17A"
+  },
+  "windowsPowerShell51": {
+    "version": "5.1.19041.6456",
+    "edition": "Desktop",
+    "rawEvidenceSha256": "3E2D5C8DE0EB52634430B24E4A755A29C3307DE9F18ED2B65F179B19CF3312BB"
+  },
+  "normalizedEvidenceMatch": true,
+  "isolatedBuildCountPerShell": 2,
+  "bitForBitRebuild": true,
+  "artifactHashes": {
+    "net45Contracts": "429490ECF832790CF7EC85F6C7D05E0B927117F50412286F7DE1687BBD4F1053",
+    "net8Contracts": "747F7A696557FEA93886FD441AA2FAF5D9B68E08DDA07D3448BD26554BDFE166",
+    "net45Specs": "39A18B86630DC61F9F6560943F3596E3D852B50987C1BC4E0E6E8D1400674A1B",
+    "net8Specs": "D7BAF9353E1E5A2CE94B3D61D36ED2A5D98FAEA0164618BD950919982791A277"
+  },
+  "specs": {
+    "net45Contracts": "27/27",
+    "net8Contracts": "27/27",
+    "crossRuntimeOutputIdentical": true,
+    "phase2": "157/157",
+    "phase2ReleaseWarnings": 0,
+    "phase2ReleaseErrors": 0
+  },
+  "cadContextJsonV1": {
+    "schema": "codex.autocad.cad-context",
+    "schemaVersion": 1,
+    "canonicalBytes": 2225,
+    "canonicalSha256": "c5a03d4cb73f850209a71539fc70ddc2bcd6ec2f7f45627c7285fb53ec424423",
+    "explicitEntityTypes": [
+      "line",
+      "circle",
+      "polyline",
+      "dbText",
+      "mText",
+      "blockReference"
+    ],
+    "documentNameCaptured": false,
+    "documentPathCaptured": false,
+    "unknownOrNullFieldsAllowed": false
+  },
+  "contractSemantics": {
+    "ipcVersionSeparatedFromContextSchema": true,
+    "hostAgentUiContractVersion": 1,
+    "capabilityNegotiationClosed": true,
+    "methodEventAndErrorSetsClosed": true,
+    "turnRequestContextHashValidated": true,
+    "turnResponseContextHashEchoRequired": true,
+    "eventThreadTurnContextIdentityRequired": true,
+    "allowOnceSupported": true,
+    "allowForSessionSupported": false,
+    "offlineDisconnectTimeoutFailClosedSpecified": true,
+    "unauthenticatedFallbackAllowed": false,
+    "automaticCadWriteRetryAllowed": false
+  },
+  "sourceManifestSha256": "2BAD2227D8A4258D8F56FA8D8F847809976D06D181152CE72731D22FC34F8963",
+  "verifierSha256": "FCF547601272F5ED44D0A71E103CF15961166712C3E3FF78C5672CDFC333CF95",
+  "contractDocumentSha256": "7AF2FAB24697398DA5ED72A95815B90339CB7FAB37711848CD5E14BEAA7CF94F",
+  "gitDiffCheckPassed": true,
+  "secretScanPassed": true,
+  "agentHostDoctorPassed": true,
+  "autoCadProcessSetUnchanged": true,
+  "autoCadStartedOrRestarted": false,
+  "cadCommandsSent": false,
+  "netLoadVerified": false,
+  "runtimeIntegrationVerified": false,
+  "unverified": [
+    "unified Host.2016 build and NETLOAD",
+    "AutoCAD 2016 runtime JSON generation",
+    "Palette readable summary and JSON display",
+    "concrete IAgentBridgeClient",
+    "long-running AgentHost live Bridge",
+    "real Codex thread and turn from AutoCAD",
+    "assistant event return to Palette",
+    "two-turn continuous AutoCAD conversation",
+    "125 and 150 percent DPI",
+    "document close and AutoCAD exit lifecycle",
+    "complete AutoCAD 2016 support"
+  ],
+  "evidenceBoundary": "This evidence freezes CadContextJson v1 and the Host/Agent/UI public wire contract across net45 and net8 under PowerShell 7 and Windows PowerShell 5.1. It proves deterministic canonical JSON, closed methods/events/errors, exact context identity binding, one-time approval semantics, Release reproducibility, and the non-CAD Phase2 regression. It does not build or NETLOAD the future unified Host.2016, operate AutoCAD, prove Palette integration, start a long-running live Bridge, create a real Codex thread/turn from AutoCAD, or prove complete AutoCAD 2016 support."
+}

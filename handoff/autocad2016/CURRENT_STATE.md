@@ -112,21 +112,42 @@ NETLOAD 证据的能力一律视为未支持。
 - 选择哈希按脱敏策略不写入仓库；实体总数未单独计量，插件自动保存也未做独立
   运行时动作验证，因此对应 runtime 布尔值继续保持 `false`。
 
+### CadContextJson v1 与 Host/Agent/UI 公共契约
+
+- 规范：`handoff/autocad2016/MVP_PUBLIC_CONTRACT_V1.md`；证据：
+  `handoff/autocad2016/evidence/cad-context-contract-v1-verification-20260719.json`。
+- CadContextJson schema 固定为 `codex.autocad.cad-context` / version `1`，与 IPC
+  `protocolVersion` 和 Host/Agent/UI `contractVersion` 明确分离。
+- Line、Circle、Polyline、DBText、MText、BlockReference 六类图元使用显式强类型
+  payload；包含真实坐标、图层、文字、半径、顶点和有效块名。文档名称、路径和
+  `pathHash` 不进入 v1。
+- canonical JSON 固定为严格 UTF-8、无 BOM/空白、固定字段顺序、Handle 数值排序和
+  invariant G17 数字格式。冻结向量为 `2225` 字节，SHA-256
+  `c5a03d4cb73f850209a71539fc70ddc2bcd6ec2f7f45627c7285fb53ec424423`。
+- PowerShell 7.6.3 与 Windows PowerShell 5.1.19041.6456 均通过：每个 Shell 两次隔离
+  Release 构建逐字节一致，net45/net8 Contracts Specs 均为 `27/27` 且输出完全一致；
+  当前 Phase 2 回归为 Release `0` warning / `0` error、`157/157`。
+- 能力协商、方法/事件/错误闭集、thread/turn、assistant 文本事件、上下文哈希回显、
+  离线/断线/超时 fail-closed 和审批仅 `allow_once`/拒绝已经冻结。UI 不得增加
+  `allow_for_session`、未认证回退或隐式协议字段。
+- 本检查点没有构建或 NETLOAD 统一 Host.2016，也没有操作 AutoCAD；它不证明 Palette
+  JSON 展示、具体 `IAgentBridgeClient`、长运行 live Bridge、真实 Codex 对话或完整
+  AutoCAD 2016 支持。
+
 ## 当前活动阶段
 
-### Host.2016 认证 Bridge 与正式侧边栏决策门
+### 统一 Host.2016 只读 MVP
 
-- 只读选择上下文已建立独立运行时检查点；它尚未与 Palette、AgentHost 或正式侧边栏
-  合并，不能扩大为完整只读产品或 AutoCAD 2016 完整支持。
-- 真实进程外 bootstrap-doctor 已建立安全引导检查点；下一条 live 链路必须复用已验证的
-  固定 frame/KDF/HMAC 和受限继承句柄语义，不得回退到命令行、环境变量、日志或普通
-  可旁观 IPC 交付密钥。
-- 当前尚未完成的是长运行 AgentHost 与具体 `IAgentBridgeClient`、Host.2016 认证 Bridge、
-  断线/离线/超时 fail-closed 和结果身份绑定；这些项目通过前不得把 bootstrap-doctor
-  扩大表述为 Agent/Bridge 已接入 CAD。
-- 在开始实现或合并正式侧边栏 UI 前，必须先通知用户，并冻结 Codex 与 Kimi 共同遵守的
-  版本化契约，包括事件模型、请求/响应、只读上下文字段、审批状态、错误语义和兼容规则。
-  决策门通过后，两端才可按同一契约并行开发；不得先各自实现再用 UI 隐式决定协议。
+- 公共契约决策门已通过，Codex 与 Kimi 均必须以 `MVP_PUBLIC_CONTRACT_V1.md` 为唯一
+  wire/UI 数据基线；视觉实现可以并行，但不得反向改变协议。
+- 下一候选建立唯一 `Codex.AutoCAD.Host.2016` 产品入口，将已验证的诊断、100% DPI
+  Palette 和只读选择捕获整合为一个 net45/x64 DLL；三个 sidecar 在统一候选达到同等
+  证据前继续保留，不直接删除。
+- 第一条统一宿主检查点只生成 CadContextJson v1，在 Palette 显示可读摘要和 canonical
+  JSON；Agent、CAD 写入和自动保存仍禁用。完成真实编译、冻结 SHA-256 后再请求用户
+  在现有 AutoCAD 会话人工 NETLOAD。
+- 该只读检查点通过后，实现具体 `IAgentBridgeClient`，复用已验证 bootstrap/HMAC/seq/
+  nonce/受限句柄语义，接通长运行 AgentHost 和真实 Codex thread/turn，再完成两轮对话。
 
 ## 不可弱化的产品约束
 
@@ -139,7 +160,8 @@ NETLOAD 证据的能力一律视为未支持。
 - 插件不得自动保存 DWG，也不得关闭用户的 AutoCAD 自动保存设置。
 - 不启动、唤醒、关闭或重启用户的 AutoCAD；需要实机时只给出冻结候选和人工步骤。
 - 每个阶段必须先验证，再单独提交 Git。
-- 正式侧边栏 UI 的开发必须经过“通知用户 + 冻结共同契约”的显式决策门。
+- 正式侧边栏 UI 已通过公共契约决策门；任何 wire 不兼容变化必须升级 v2，不能由 UI
+  原型隐式扩展 v1。
 
 ## 待实机验证队列
 
@@ -154,12 +176,15 @@ NETLOAD 证据的能力一律视为未支持。
 
 ## 下一步顺序
 
-1. 将已通过的真实 AgentHost 安全引导检查点按验证后单独提交的纪律收口。
-2. 接通 Host.2016 与长运行 AgentHost 的认证 Bridge、结果身份绑定及离线/断线/超时
-   fail-closed，再请求对应实机验证。
-3. 在正式侧边栏 UI 开工前通知用户并冻结 Codex/Kimi 共同契约，再按契约并行开发。
-4. 将已验证的只读选择上下文按冻结契约接入正式宿主/UI。
-5. 最后才进入预览、拒绝、一次允许、锁内重校验和单事务写入闭环。
+1. 将本公共契约阶段按验证后单独提交的纪律收口。
+2. 在新阶段建立统一 Host.2016，将诊断、Palette、ReadOnlyContext 合并并映射为
+   CadContextJson v1。
+3. 在 Palette 中显示可读摘要和 canonical JSON；真实编译、冻结候选后请求人工 NETLOAD
+   并逐字段核对坐标、图层、文字、半径、顶点和块名。
+4. 实现具体 `IAgentBridgeClient` 和长运行 AgentHost live Bridge，完成真实 Codex thread、
+   携带上下文的 turn、assistant 文本回传及同一 thread 两轮连续对话。
+5. 补测 125%/150% DPI、文档关闭和 AutoCAD 退出生命周期；最后才进入预览、拒绝、
+   一次允许、锁内重校验和单事务写入闭环。
 
 ## 更新纪律
 

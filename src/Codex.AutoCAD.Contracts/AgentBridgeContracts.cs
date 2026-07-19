@@ -1,8 +1,15 @@
 namespace Codex.AutoCAD.Contracts;
 
+public static class AgentBridgeContractConstants
+{
+    public const int CurrentVersion = 1;
+    public const int MinimumCompatibleVersion = 1;
+}
+
 /// <summary>固定的 AgentHost ↔ AutoCAD 消息白名单；不允许任意命令名穿透到 CAD API。</summary>
 public static class AgentBridgeMethods
 {
+    public const string GetCapabilities = "agent.capabilities.get";
     public const string StartThread = "agent.thread.start";
     public const string StartTurn = "agent.turn.start";
     public const string InterruptTurn = "agent.turn.interrupt";
@@ -13,6 +20,7 @@ public static class AgentBridgeMethods
 
 public static class AgentBridgeEventKinds
 {
+    public const string ConnectionStateChanged = "connection.changed";
     public const string ThreadStarted = "thread.started";
     public const string TurnStarted = "turn.started";
     public const string UserMessage = "message.user";
@@ -30,36 +38,125 @@ public static class AgentBridgeEventKinds
     public const string TurnCancelled = "turn.cancelled";
 }
 
+public static class AgentBridgeConnectionStates
+{
+    public const string Offline = "offline";
+    public const string Connecting = "connecting";
+    public const string Online = "online";
+    public const string Degraded = "degraded";
+    public const string Closed = "closed";
+}
+
+public static class AgentBridgeApprovalDecisions
+{
+    public const string AllowOnce = "allow_once";
+    public const string DeclineAndContinue = "decline_and_continue";
+    public const string DeclineAndCancelTurn = "decline_and_cancel_turn";
+}
+
+public static class AgentBridgeErrorCodes
+{
+    public const string Offline = "offline";
+    public const string ContractMismatch = "contract_mismatch";
+    public const string AuthenticationFailed = "authentication_failed";
+    public const string ReplayRejected = "replay_rejected";
+    public const string RequestInvalid = "request_invalid";
+    public const string ContextInvalid = "context_invalid";
+    public const string ContextHashMismatch = "context_hash_mismatch";
+    public const string AgentUnavailable = "agent_unavailable";
+    public const string ConnectionLost = "connection_lost";
+    public const string Timeout = "timeout";
+    public const string Busy = "busy";
+    public const string TurnNotFound = "turn_not_found";
+    public const string ApprovalInvalid = "approval_invalid";
+    public const string ApprovalExpired = "approval_expired";
+    public const string ApprovalAlreadyConsumed = "approval_already_consumed";
+    public const string ResultIdentityMismatch = "result_identity_mismatch";
+    public const string InternalError = "internal_error";
+}
+
+public sealed class AgentCapabilitiesRequest
+{
+    public int ContractVersion { get; set; } = AgentBridgeContractConstants.CurrentVersion;
+
+    public string ClientName { get; set; } = string.Empty;
+
+    public string ClientVersion { get; set; } = string.Empty;
+
+    public string HostTarget { get; set; } = string.Empty;
+}
+
+public sealed class AgentCapabilitiesResponse
+{
+    public int ContractVersion { get; set; } = AgentBridgeContractConstants.CurrentVersion;
+
+    public int MinimumCompatibleVersion { get; set; } = AgentBridgeContractConstants.MinimumCompatibleVersion;
+
+    public string AgentInstanceId { get; set; } = string.Empty;
+
+    public string CadContextSchema { get; set; } = CadContextJsonV1Constants.Schema;
+
+    public int CadContextSchemaVersion { get; set; } = CadContextJsonV1Constants.SchemaVersion;
+
+    public string[] Methods { get; set; } = new string[0];
+
+    public string[] EventKinds { get; set; } = new string[0];
+
+    public string[] ApprovalDecisions { get; set; } = new string[0];
+
+    /// <summary>
+    /// Descriptive capability only. A true value never authorizes a CAD write; preview, one-time
+    /// approval, lock-time revalidation and a single transaction remain mandatory.
+    /// </summary>
+    public bool CadWriteAvailable { get; set; }
+}
+
 public sealed class AgentThreadStartRequest
 {
+    public int ContractVersion { get; set; } = AgentBridgeContractConstants.CurrentVersion;
+
     public string ConversationId { get; set; } = string.Empty;
 }
 
 public sealed class AgentThreadStartResponse
 {
+    public int ContractVersion { get; set; } = AgentBridgeContractConstants.CurrentVersion;
+
     public string ThreadId { get; set; } = string.Empty;
 }
 
 public sealed class AgentTurnStartRequest
 {
+    public int ContractVersion { get; set; } = AgentBridgeContractConstants.CurrentVersion;
+
     public string ThreadId { get; set; } = string.Empty;
 
     public string ClientTurnId { get; set; } = string.Empty;
 
     public string Prompt { get; set; } = string.Empty;
 
-    public CadContextEnvelope? Context { get; set; }
+    public CadContextJsonV1? Context { get; set; }
+
+    /// <summary>Lower-case SHA-256 of canonical CadContextJson v1 bytes.</summary>
+    public string ContextSha256 { get; set; } = string.Empty;
 }
 
 public sealed class AgentTurnStartResponse
 {
+    public int ContractVersion { get; set; } = AgentBridgeContractConstants.CurrentVersion;
+
     public string ThreadId { get; set; } = string.Empty;
 
     public string TurnId { get; set; } = string.Empty;
+
+    /// <summary>Echo of the exact accepted CadContextJson v1 identity, or empty when no context exists.</summary>
+    public string AcceptedContextSha256 { get; set; } = string.Empty;
 }
 
 public sealed class AgentTurnInterruptRequest
 {
+    public int ContractVersion { get; set; } = AgentBridgeContractConstants.CurrentVersion;
+
     public string ThreadId { get; set; } = string.Empty;
 
     public string TurnId { get; set; } = string.Empty;
@@ -67,6 +164,8 @@ public sealed class AgentTurnInterruptRequest
 
 public sealed class AgentApprovalResolveRequest
 {
+    public int ContractVersion { get; set; } = AgentBridgeContractConstants.CurrentVersion;
+
     public string ThreadId { get; set; } = string.Empty;
 
     public string TurnId { get; set; } = string.Empty;
@@ -81,6 +180,8 @@ public sealed class AgentApprovalResolveRequest
 /// </summary>
 public sealed class AgentBridgeEvent
 {
+    public int ContractVersion { get; set; } = AgentBridgeContractConstants.CurrentVersion;
+
     public string Kind { get; set; } = string.Empty;
 
     public string EventId { get; set; } = string.Empty;
@@ -109,6 +210,18 @@ public sealed class AgentBridgeEvent
 
     public string Error { get; set; } = string.Empty;
 
+    public string ErrorCode { get; set; } = string.Empty;
+
+    public bool Retryable { get; set; }
+
+    public string ConnectionState { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Exact context identity accepted for this turn. Assistant/tool/terminal events must retain it
+    /// so the Host can reject results from another document or selection.
+    /// </summary>
+    public string ContextSha256 { get; set; } = string.Empty;
+
     public string ApprovalId { get; set; } = string.Empty;
 
     public string ApprovalKind { get; set; } = string.Empty;
@@ -122,6 +235,27 @@ public sealed class AgentBridgeEvent
     public string OccurredAtUtc { get; set; } = string.Empty;
 
     public string ExpiresAtUtc { get; set; } = string.Empty;
+}
+
+public sealed class AgentBridgeFailure
+{
+    public int ContractVersion { get; set; } = AgentBridgeContractConstants.CurrentVersion;
+
+    public string Code { get; set; } = string.Empty;
+
+    public string Message { get; set; } = string.Empty;
+
+    /// <summary>
+    /// UI hint only. Even when true, the Host must never automatically retry a CAD write or reuse an
+    /// approval. Retrying a read-only turn requires a new explicit client request.
+    /// </summary>
+    public bool Retryable { get; set; }
+
+    public string ThreadId { get; set; } = string.Empty;
+
+    public string TurnId { get; set; } = string.Empty;
+
+    public string OccurredAtUtc { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -160,7 +294,137 @@ public static class AgentBridgeContractValidator
 {
     private const int MaximumIdentifierLength = 256;
     private const int MaximumPromptLength = 128 * 1024;
+    private const int MaximumDisplayTextLength = 128 * 1024;
+    private const int MaximumErrorLength = 4 * 1024;
     private const double MaximumCoordinateMagnitude = 1_000_000_000d;
+
+    private static readonly string[] KnownMethods =
+    [
+        AgentBridgeMethods.GetCapabilities,
+        AgentBridgeMethods.StartThread,
+        AgentBridgeMethods.StartTurn,
+        AgentBridgeMethods.InterruptTurn,
+        AgentBridgeMethods.ResolveApproval,
+        AgentBridgeMethods.ProposeLine,
+        AgentBridgeMethods.EventNotification,
+    ];
+
+    private static readonly string[] KnownEventKinds =
+    [
+        AgentBridgeEventKinds.ConnectionStateChanged,
+        AgentBridgeEventKinds.ThreadStarted,
+        AgentBridgeEventKinds.TurnStarted,
+        AgentBridgeEventKinds.UserMessage,
+        AgentBridgeEventKinds.AssistantMessageStarted,
+        AgentBridgeEventKinds.AssistantMessageDelta,
+        AgentBridgeEventKinds.AssistantMessageCompleted,
+        AgentBridgeEventKinds.ToolStarted,
+        AgentBridgeEventKinds.ToolProgress,
+        AgentBridgeEventKinds.ToolCompleted,
+        AgentBridgeEventKinds.ToolFailed,
+        AgentBridgeEventKinds.ApprovalRequested,
+        AgentBridgeEventKinds.ApprovalResolved,
+        AgentBridgeEventKinds.TurnCompleted,
+        AgentBridgeEventKinds.TurnFailed,
+        AgentBridgeEventKinds.TurnCancelled,
+    ];
+
+    private static readonly string[] KnownApprovalDecisions =
+    [
+        AgentBridgeApprovalDecisions.AllowOnce,
+        AgentBridgeApprovalDecisions.DeclineAndContinue,
+        AgentBridgeApprovalDecisions.DeclineAndCancelTurn,
+    ];
+
+    private static readonly string[] KnownConnectionStates =
+    [
+        AgentBridgeConnectionStates.Offline,
+        AgentBridgeConnectionStates.Connecting,
+        AgentBridgeConnectionStates.Online,
+        AgentBridgeConnectionStates.Degraded,
+        AgentBridgeConnectionStates.Closed,
+    ];
+
+    private static readonly string[] KnownErrorCodes =
+    [
+        AgentBridgeErrorCodes.Offline,
+        AgentBridgeErrorCodes.ContractMismatch,
+        AgentBridgeErrorCodes.AuthenticationFailed,
+        AgentBridgeErrorCodes.ReplayRejected,
+        AgentBridgeErrorCodes.RequestInvalid,
+        AgentBridgeErrorCodes.ContextInvalid,
+        AgentBridgeErrorCodes.ContextHashMismatch,
+        AgentBridgeErrorCodes.AgentUnavailable,
+        AgentBridgeErrorCodes.ConnectionLost,
+        AgentBridgeErrorCodes.Timeout,
+        AgentBridgeErrorCodes.Busy,
+        AgentBridgeErrorCodes.TurnNotFound,
+        AgentBridgeErrorCodes.ApprovalInvalid,
+        AgentBridgeErrorCodes.ApprovalExpired,
+        AgentBridgeErrorCodes.ApprovalAlreadyConsumed,
+        AgentBridgeErrorCodes.ResultIdentityMismatch,
+        AgentBridgeErrorCodes.InternalError,
+    ];
+
+    public static CadValidationFailure[] Validate(AgentCapabilitiesRequest? request)
+    {
+        var failures = new List<CadValidationFailure>();
+        if (request is null)
+        {
+            return [new CadValidationFailure(
+                "capabilities_request_required", "$", "能力协商请求不能为空。")];
+        }
+
+        ValidateContractVersion(request.ContractVersion, "$.contractVersion", failures);
+        RequireIdentifier(request.ClientName, "client_name", "$.clientName", failures);
+        RequireIdentifier(request.ClientVersion, "client_version", "$.clientVersion", failures);
+        RequireIdentifier(request.HostTarget, "host_target", "$.hostTarget", failures);
+        return failures.ToArray();
+    }
+
+    public static CadValidationFailure[] Validate(AgentCapabilitiesResponse? response)
+    {
+        var failures = new List<CadValidationFailure>();
+        if (response is null)
+        {
+            return [new CadValidationFailure(
+                "capabilities_response_required", "$", "能力协商响应不能为空。")];
+        }
+
+        ValidateContractVersion(response.ContractVersion, "$.contractVersion", failures);
+        Require(response.MinimumCompatibleVersion == AgentBridgeContractConstants.MinimumCompatibleVersion,
+            failures, "minimum_contract_version", "$.minimumCompatibleVersion",
+            "最小兼容契约版本不受支持。" );
+        RequireIdentifier(response.AgentInstanceId, "agent_instance_id", "$.agentInstanceId", failures);
+        Require(string.Equals(response.CadContextSchema, CadContextJsonV1Constants.Schema,
+                StringComparison.Ordinal),
+            failures, "capabilities_context_schema", "$.cadContextSchema",
+            "能力响应必须绑定CadContextJson v1 schema。" );
+        Require(response.CadContextSchemaVersion == CadContextJsonV1Constants.SchemaVersion,
+            failures, "capabilities_context_schema_version", "$.cadContextSchemaVersion",
+            "能力响应必须绑定CadContextJson v1版本。" );
+        ValidateKnownSet(response.Methods, KnownMethods, false,
+            "capabilities_method", "$.methods", failures);
+        ValidateKnownSet(response.EventKinds, KnownEventKinds, false,
+            "capabilities_event", "$.eventKinds", failures);
+        ValidateKnownSet(response.ApprovalDecisions, KnownApprovalDecisions, true,
+            "capabilities_approval", "$.approvalDecisions", failures);
+        return failures.ToArray();
+    }
+
+    public static CadValidationFailure[] Validate(AgentThreadStartRequest? request)
+    {
+        var failures = new List<CadValidationFailure>();
+        if (request is null)
+        {
+            return [new CadValidationFailure(
+                "thread_request_required", "$", "线程请求不能为空。")];
+        }
+
+        ValidateContractVersion(request.ContractVersion, "$.contractVersion", failures);
+        RequireIdentifier(request.ConversationId, "conversation_id", "$.conversationId", failures);
+        return failures.ToArray();
+    }
 
     public static CadValidationFailure[] Validate(AgentTurnStartRequest? request)
     {
@@ -170,19 +434,221 @@ public static class AgentBridgeContractValidator
             return [new CadValidationFailure("turn_request_required", "$", "回合请求不能为空。")];
         }
 
+        ValidateContractVersion(request.ContractVersion, "$.contractVersion", failures);
         RequireIdentifier(request.ThreadId, "thread_id", "$.threadId", failures);
         RequireIdentifier(request.ClientTurnId, "client_turn_id", "$.clientTurnId", failures);
-        Require(!string.IsNullOrWhiteSpace(request.Prompt) && request.Prompt.Length <= MaximumPromptLength,
+        Require(!string.IsNullOrWhiteSpace(request.Prompt)
+                && IsSafeDisplayText(request.Prompt, MaximumPromptLength),
             failures, "prompt_length", "$.prompt", "提示词不能为空且不能超过安全长度。");
         if (request.Context is not null)
         {
-            Require(request.Context.ProtocolVersion == ProtocolConstants.CurrentVersion,
-                failures, "context_protocol", "$.context.protocolVersion", "上下文协议版本不受支持。");
-            var contextEntities = request.Context.Selection?.Entities ?? new CadEntityRef[0];
-            Require(contextEntities.Length <= ProtocolConstants.MaximumContextEntities,
-                failures, "context_entity_limit", "$.context.selection.entities", "上下文图元数量超过上限。");
+            var contextFailures = CadContextJsonV1Validator.Validate(request.Context);
+            foreach (var failure in contextFailures)
+            {
+                var suffix = failure.Path == "$" ? string.Empty : failure.Path.Substring(1);
+                failures.Add(new CadValidationFailure(
+                    failure.Code,
+                    "$.context" + suffix,
+                    failure.Message));
+            }
+
+            if (contextFailures.Length == 0)
+            {
+                Require(IsLowerSha256(request.ContextSha256), failures,
+                    "context_hash", "$.contextSha256",
+                    "上下文身份必须是64位小写ASCII十六进制SHA-256。" );
+                if (IsLowerSha256(request.ContextSha256))
+                {
+                    var expected = CadContextJsonV1Codec.ComputeCanonicalSha256(request.Context);
+                    Require(string.Equals(expected, request.ContextSha256, StringComparison.Ordinal),
+                        failures, "context_hash_mismatch", "$.contextSha256",
+                        "上下文身份与规范CadContextJson v1字节不一致。" );
+                }
+            }
+        }
+        else
+        {
+            Require(string.IsNullOrEmpty(request.ContextSha256), failures,
+                "context_hash_without_context", "$.contextSha256",
+                "没有CAD上下文时不得携带上下文哈希。" );
         }
 
+        return failures.ToArray();
+    }
+
+    public static CadValidationFailure[] Validate(AgentTurnInterruptRequest? request)
+    {
+        var failures = new List<CadValidationFailure>();
+        if (request is null)
+        {
+            return [new CadValidationFailure(
+                "interrupt_request_required", "$", "中断请求不能为空。")];
+        }
+
+        ValidateContractVersion(request.ContractVersion, "$.contractVersion", failures);
+        RequireIdentifier(request.ThreadId, "thread_id", "$.threadId", failures);
+        RequireIdentifier(request.TurnId, "turn_id", "$.turnId", failures);
+        return failures.ToArray();
+    }
+
+    public static CadValidationFailure[] ValidateTurnAcceptance(
+        AgentTurnStartRequest? request,
+        AgentTurnStartResponse? response)
+    {
+        var failures = new List<CadValidationFailure>();
+        if (request is null)
+        {
+            failures.Add(new CadValidationFailure(
+                "turn_request_required", "$.request", "原始回合请求不能为空。"));
+            return failures.ToArray();
+        }
+
+        if (response is null)
+        {
+            failures.Add(new CadValidationFailure(
+                "turn_response_required", "$.response", "回合接受响应不能为空。"));
+            return failures.ToArray();
+        }
+
+        ValidateContractVersion(response.ContractVersion, "$.response.contractVersion", failures);
+        RequireIdentifier(response.ThreadId, "response_thread_id", "$.response.threadId", failures);
+        RequireIdentifier(response.TurnId, "response_turn_id", "$.response.turnId", failures);
+        Require(string.Equals(response.ThreadId, request.ThreadId, StringComparison.Ordinal),
+            failures, "response_thread_mismatch", "$.response.threadId",
+            "回合响应ThreadId与请求不一致。" );
+        Require(string.Equals(response.AcceptedContextSha256, request.ContextSha256,
+                StringComparison.Ordinal),
+            failures, "response_context_mismatch", "$.response.acceptedContextSha256",
+            "回合响应未绑定到请求的精确CAD上下文。" );
+        return failures.ToArray();
+    }
+
+    public static CadValidationFailure[] Validate(AgentApprovalResolveRequest? request)
+    {
+        var failures = new List<CadValidationFailure>();
+        if (request is null)
+        {
+            return [new CadValidationFailure(
+                "approval_request_required", "$", "审批决定不能为空。")];
+        }
+
+        ValidateContractVersion(request.ContractVersion, "$.contractVersion", failures);
+        RequireIdentifier(request.ThreadId, "thread_id", "$.threadId", failures);
+        RequireIdentifier(request.TurnId, "turn_id", "$.turnId", failures);
+        RequireIdentifier(request.ApprovalId, "approval_id", "$.approvalId", failures);
+        Require(IsKnown(request.Decision, KnownApprovalDecisions), failures,
+            "approval_decision", "$.decision",
+            "审批只能拒绝或一次允许，不支持会话级永久允许。" );
+        return failures.ToArray();
+    }
+
+    public static CadValidationFailure[] Validate(AgentBridgeEvent? bridgeEvent)
+    {
+        var failures = new List<CadValidationFailure>();
+        if (bridgeEvent is null)
+        {
+            return [new CadValidationFailure(
+                "bridge_event_required", "$", "Agent事件不能为空。")];
+        }
+
+        ValidateContractVersion(bridgeEvent.ContractVersion, "$.contractVersion", failures);
+        Require(IsKnown(bridgeEvent.Kind, KnownEventKinds), failures,
+            "bridge_event_kind", "$.kind", "Agent事件类型不在白名单中。" );
+        RequireIdentifier(bridgeEvent.EventId, "event_id", "$.eventId", failures);
+        Require(bridgeEvent.Sequence > 0, failures,
+            "event_sequence", "$.sequence", "事件sequence必须严格为正数。" );
+        Require(IsUtcTimestamp(bridgeEvent.OccurredAtUtc), failures,
+            "event_occurred_at", "$.occurredAtUtc", "事件时间必须是规范UTC时间。" );
+        Require(IsSafeDisplayText(bridgeEvent.Content, MaximumDisplayTextLength), failures,
+            "event_content", "$.content", "事件内容超过安全限制或包含无效Unicode。" );
+        Require(IsSafeDisplayText(bridgeEvent.Delta, MaximumDisplayTextLength), failures,
+            "event_delta", "$.delta", "事件增量超过安全限制或包含无效Unicode。" );
+
+        if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.ConnectionStateChanged,
+                StringComparison.Ordinal))
+        {
+            Require(IsKnown(bridgeEvent.ConnectionState, KnownConnectionStates), failures,
+                "connection_state", "$.connectionState", "连接状态不在白名单中。" );
+        }
+        else
+        {
+            RequireIdentifier(bridgeEvent.ThreadId, "thread_id", "$.threadId", failures);
+        }
+
+        if (RequiresTurnId(bridgeEvent.Kind))
+        {
+            RequireIdentifier(bridgeEvent.TurnId, "turn_id", "$.turnId", failures);
+        }
+
+        if (!string.IsNullOrEmpty(bridgeEvent.ContextSha256))
+        {
+            Require(IsLowerSha256(bridgeEvent.ContextSha256), failures,
+                "event_context_hash", "$.contextSha256",
+                "事件上下文身份必须是64位小写ASCII十六进制SHA-256。" );
+        }
+
+        if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.ApprovalRequested,
+                StringComparison.Ordinal))
+        {
+            RequireIdentifier(bridgeEvent.ApprovalId, "approval_id", "$.approvalId", failures);
+            ValidateKnownSet(bridgeEvent.AllowedDecisions, KnownApprovalDecisions, false,
+                "event_approval_decision", "$.allowedDecisions", failures);
+        }
+
+        if (IsFailureEvent(bridgeEvent.Kind))
+        {
+            Require(IsKnown(bridgeEvent.ErrorCode, KnownErrorCodes), failures,
+                "event_error_code", "$.errorCode", "失败事件必须携带白名单错误码。" );
+            Require(IsSafeDisplayText(bridgeEvent.Error, MaximumErrorLength)
+                    && !string.IsNullOrWhiteSpace(bridgeEvent.Error),
+                failures, "event_error", "$.error", "失败事件必须携带受限错误说明。" );
+        }
+
+        return failures.ToArray();
+    }
+
+    public static CadValidationFailure[] Validate(AgentBridgeFailure? failure)
+    {
+        var failures = new List<CadValidationFailure>();
+        if (failure is null)
+        {
+            return [new CadValidationFailure(
+                "bridge_failure_required", "$", "Bridge失败信息不能为空。")];
+        }
+
+        ValidateContractVersion(failure.ContractVersion, "$.contractVersion", failures);
+        Require(IsKnown(failure.Code, KnownErrorCodes), failures,
+            "bridge_error_code", "$.code", "Bridge错误码不在白名单中。" );
+        Require(!string.IsNullOrWhiteSpace(failure.Message)
+                && IsSafeDisplayText(failure.Message, MaximumErrorLength),
+            failures, "bridge_error_message", "$.message", "Bridge错误说明无效。" );
+        Require(IsUtcTimestamp(failure.OccurredAtUtc), failures,
+            "bridge_error_time", "$.occurredAtUtc", "Bridge错误时间必须是规范UTC时间。" );
+        return failures.ToArray();
+    }
+
+    public static CadValidationFailure[] ValidateEventIdentity(
+        AgentBridgeEvent? bridgeEvent,
+        string expectedThreadId,
+        string expectedTurnId,
+        string expectedContextSha256)
+    {
+        var failures = new List<CadValidationFailure>(Validate(bridgeEvent));
+        if (bridgeEvent is null)
+        {
+            return failures.ToArray();
+        }
+
+        Require(string.Equals(bridgeEvent.ThreadId, expectedThreadId, StringComparison.Ordinal),
+            failures, "event_thread_mismatch", "$.threadId",
+            "事件ThreadId与当前线程不一致。" );
+        Require(string.Equals(bridgeEvent.TurnId, expectedTurnId, StringComparison.Ordinal),
+            failures, "event_turn_mismatch", "$.turnId",
+            "事件TurnId与当前回合不一致。" );
+        Require(string.Equals(bridgeEvent.ContextSha256, expectedContextSha256,
+                StringComparison.Ordinal),
+            failures, "event_context_mismatch", "$.contextSha256",
+            "事件未绑定到当前回合的精确CAD上下文。" );
         return failures.ToArray();
     }
 
@@ -230,6 +696,117 @@ public static class AgentBridgeContractValidator
             && Math.Abs(point.Z) <= MaximumCoordinateMagnitude;
     }
 
+    private static void ValidateContractVersion(
+        int version,
+        string path,
+        ICollection<CadValidationFailure> failures)
+    {
+        Require(version == AgentBridgeContractConstants.CurrentVersion, failures,
+            "agent_contract_version", path, "Host/Agent/UI公共契约版本不受支持。" );
+    }
+
+    private static void ValidateKnownSet(
+        string[]? values,
+        string[] known,
+        bool allowEmpty,
+        string code,
+        string path,
+        ICollection<CadValidationFailure> failures)
+    {
+        values ??= new string[0];
+        Require(allowEmpty || values.Length > 0, failures,
+            code + "_required", path, "能力集合不能为空。" );
+        Require(values.Length <= known.Length, failures,
+            code + "_limit", path, "能力集合超过冻结白名单大小。" );
+        if (values.Length > known.Length)
+        {
+            return;
+        }
+
+        var unique = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = 0; index < values.Length; index++)
+        {
+            Require(IsKnown(values[index], known), failures,
+                code, path + "[" + index + "]", "能力值不在冻结白名单中。" );
+            Require(unique.Add(values[index]), failures,
+                code + "_duplicate", path + "[" + index + "]", "能力值不能重复。" );
+        }
+    }
+
+    private static bool RequiresTurnId(string kind)
+    {
+        return !string.Equals(kind, AgentBridgeEventKinds.ConnectionStateChanged,
+                StringComparison.Ordinal)
+            && !string.Equals(kind, AgentBridgeEventKinds.ThreadStarted, StringComparison.Ordinal);
+    }
+
+    private static bool IsFailureEvent(string kind)
+    {
+        return string.Equals(kind, AgentBridgeEventKinds.ToolFailed, StringComparison.Ordinal)
+            || string.Equals(kind, AgentBridgeEventKinds.TurnFailed, StringComparison.Ordinal);
+    }
+
+    private static bool IsKnown(string? value, IEnumerable<string> known)
+    {
+        return value is not null
+            && known.Any(item => string.Equals(item, value, StringComparison.Ordinal));
+    }
+
+    private static bool IsLowerSha256(string? value)
+    {
+        return value is { Length: 64 }
+            && value.All(static character =>
+                character is >= '0' and <= '9'
+                or >= 'a' and <= 'f');
+    }
+
+    private static bool IsSafeDisplayText(string? value, int maximumLength)
+    {
+        if (value is null || value.Length > maximumLength)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < value.Length; index++)
+        {
+            var character = value[index];
+            if (character == '\0')
+            {
+                return false;
+            }
+
+            if (char.IsHighSurrogate(character))
+            {
+                if (index + 1 >= value.Length || !char.IsLowSurrogate(value[index + 1]))
+                {
+                    return false;
+                }
+
+                index++;
+            }
+            else if (char.IsLowSurrogate(character))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsUtcTimestamp(string? value)
+    {
+        DateTimeOffset parsed;
+        return value is not null
+            && DateTimeOffset.TryParseExact(
+                value,
+                "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal
+                    | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                out parsed)
+            && parsed.Offset == TimeSpan.Zero;
+    }
+
     private static void RequireIdentifier(
         string? value,
         string code,
@@ -238,8 +815,18 @@ public static class AgentBridgeContractValidator
     {
         Require(value is not null
                 && !string.IsNullOrWhiteSpace(value)
-                && value.Length <= MaximumIdentifierLength,
+                && value.Length <= MaximumIdentifierLength
+                && IsSafeIdentifier(value),
             failures, code, path, "标识不能为空且不能超过安全长度。");
+    }
+
+    private static bool IsSafeIdentifier(string value)
+    {
+        return value.All(static character =>
+            character is >= 'a' and <= 'z'
+            or >= 'A' and <= 'Z'
+            or >= '0' and <= '9'
+            or '-' or '_' or '.' or ':');
     }
 
     private static void Require(
