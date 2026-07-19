@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-07-19",
+  "recordedAtLocal": "2026-07-19T09:17:55.3677187+08:00",
+  "source": "final post-fast-forward PowerShell 7 and Windows PowerShell 5.1 bootstrap primitive gates",
+  "scope": "autocad2016-net45-net8-auth-and-bootstrap-primitive",
+  "validatedBaseHead": "56115e483bd5ad221db2286c7d2ba5a28bf16d3a",
+  "stageCommitBinding": "the single Git commit containing this evidence, AgentBootstrap source, IPC Specs, verifier, and handoff updates",
+  "worktreeCommittedAtRecord": false,
+  "autoCadLiveEvidence": false,
+  "toolchain": {
+    "dotnetSdk": "8.0.319",
+    "powerShell7": "7.6.3",
+    "windowsPowerShell": "5.1.19041.6456",
+    "powerShell7RecordedAtLocal": "2026-07-19T09:16:56.7464372+08:00",
+    "windowsPowerShellRecordedAtLocal": "2026-07-19T09:17:55.3677187+08:00",
+    "crossShellEvidenceEqual": true,
+    "verifierSha256": "9E2482E7C7498FEA93CB0E43488AFA01484AAEE02E87EEE4A69C905F46404194",
+    "bootstrapSourceSha256": "68EC9A5EB9F0D007DF6AB022CAF31AD7274468FD6FEEF9FDB7AE6174C6A1258F",
+    "ipcSpecsSourceSha256": "E8886CB067F799147628302DFA84568733F66A6F49CBEDDB9E5B62CD7CE04C1E"
+  },
+  "results": {
+    "managedCoreReleaseBuild": {
+      "passed": true,
+      "warnings": 0,
+      "errors": 0,
+      "isolatedOutputs": true
+    },
+    "bridgeRegressionSpecs": {
+      "passed": 29,
+      "total": 29
+    },
+    "net45IpcAndBootstrapSpecs": {
+      "passed": 35,
+      "total": 35
+    },
+    "net8IpcAndBootstrapSpecs": {
+      "passed": 35,
+      "total": 35
+    },
+    "fixedCanonicalFrameKdfAndBidirectionalHmacMatch": true,
+    "isolatedBuildCountPerShell": 2,
+    "sixPrimaryArtifactsBitForBitMatchWithinEachShell": true,
+    "primaryArtifactHashes": {
+      "net45Contracts": "2A692CF5B8A8A1A082AC7EF8DDE73E1C73C12472ADE6B442C5370B409C85A6E1",
+      "net8Contracts": "37A94D3D73343F57EB533F27CFB7702D6A5943E57EFB0FFE18BC03D9E8720D7B",
+      "net45Ipc": "FC546C21D403C93A7907F50065A6C1498EAFA07835441898E8653AC3576B978B",
+      "net8Ipc": "7B3FA3325673162762A1FB643B1570FFA31798D2950308F711A6242424365B2C",
+      "net45Specs": "8EC53CA7CA3DD06D2DE70838EA9E9429883A4F80E12C0A926E722D8181ACCD09",
+      "net8Specs": "1DE0982A485B292682106A697D02D7E2DEF03640EDBE22CDA74283FF09596996"
+    }
+  },
+  "compiledBoundaries": {
+    "publicTopLevelTypeCount": 13,
+    "publicApi": {
+      "net45Count": 103,
+      "net8Count": 103,
+      "normalizedSha256": "25396FDA611128175FB52304A096A30133FA22B7AD81EF4AEAF37880493C399E"
+    },
+    "memberReferences": {
+      "net45Count": 95,
+      "net45Sha256": "5663EF4CE5C6B0AB9968614703CF087758BE3F37FAAA734436602E2874A15532",
+      "net8Count": 99,
+      "net8Sha256": "0CCC0AB0DE04BAAD8C3129467E8BD119E2DAC9D9486ACC0EC3E6A8B547759A99"
+    },
+    "bootstrapImplementation": {
+      "net45MethodCount": 52,
+      "net45IlSha256": "627A070B5A12C66DBF31311F44529B2A93137911D4A54B7DE78C817370EA6897",
+      "net8MethodCount": 52,
+      "net8IlSha256": "7CC4CED6C1FFE9D096BECE9E73102A6DE32533788CC6F61FEB7E83258C569ADE",
+      "criticalMethodCountPerRuntime": 13,
+      "criticalMethodBodyHashesFrozen": true
+    },
+    "moduleRefCount": 0,
+    "implMapCount": 0,
+    "forbiddenMemberReferenceScanPassed": true
+  },
+  "protocolProperties": {
+    "bootstrapFrameSha256": "D60FBAFC368EAA86EBFF00AE85DA88D1BE9D1A0B40B4960A5F52E00C82A0B0F4",
+    "payloadSingleUse": true,
+    "singleFrameWriteAttempt": true,
+    "failedWriteConsumesPayload": true,
+    "inboundPayloadForwardingRejected": true,
+    "inboundForwardingAttemptConsumesPayload": true,
+    "outboundDerivationRequiresSuccessfulWrite": true,
+    "endpointRoleBoundByPayloadOrigin": true,
+    "inboundAndOutboundClaimedOnce": true,
+    "invalidMacDoesNotAdvanceState": true,
+    "strictSequenceAndNonceReplayProtection": true,
+    "callerFrameAndAuthenticationKeyClearedOnCoveredExitPaths": true,
+    "protocolOwnedManagedSecretBuffersClearedOnCoveredPaths": true,
+    "authenticatedFrameCopiedBeforeSemanticParsing": true,
+    "authenticationOccursBeforeEofProbe": true
+  },
+  "gateResults": {
+    "powerShell7Passed": true,
+    "windowsPowerShell51Passed": true,
+    "projectLocalObjModified": false,
+    "autoCadProcessSetChanged": false,
+    "autoCadStartedOrRestarted": false,
+    "cadCommandsSent": false,
+    "gitDiffCheckPassed": true,
+    "crlfGatePassed": true,
+    "basicSecretScanPassed": true
+  },
+  "liveVerification": {
+    "netLoadAttempted": false,
+    "netLoadVerified": false,
+    "externalAuthenticationKeyDelivery": false,
+    "bootstrapTransportConfidentiality": false,
+    "pendingBootstrapAtomicConsumption": false,
+    "childProcessIdentityBinding": false,
+    "hardTimeoutAndProcessLifecycle": false,
+    "agentHostLiveBridge": false,
+    "runtimeToCadCandidateBinding": false
+  },
+  "limitations": [
+    "The bootstrap frame contains the session secret in plaintext; HMAC provides integrity, not confidentiality.",
+    "This gate validates in-memory and Stream protocol primitives only. A live launcher must use a dedicated, exclusive, restricted inherited confidential handle.",
+    "The gate does not prove PID/start-identity binding, atomic pending-bootstrap consumption, hard process deadlines, or unconfirmed-child termination.",
+    "No AgentHost live handshake, AutoCAD NETLOAD, CAD command, selection read, approval, transaction, or drawing write was executed.",
+    "This evidence does not establish complete AutoCAD 2016 support."
+  ],
+  "redaction": {
+    "cadTrustedDirectorySettingIncluded": false,
+    "userNamesIncluded": false,
+    "networkPathsIncluded": false,
+    "localFilePathsIncluded": false,
+    "drawingPathsIncluded": false,
+    "licenseDataIncluded": false,
+    "credentialsIncluded": false
+  },
+  "conclusion": "The net45 and .NET 8 authentication/bootstrap protocol primitive passed the final PowerShell 7 and Windows PowerShell 5.1 gates, isolated Release builds, 35/35 Specs on each target, Bridge 29/29 regression, byte-for-byte reproducibility, and compiled API/MemberRef/IL boundaries. This is not live AgentHost or AutoCAD runtime evidence."
+}

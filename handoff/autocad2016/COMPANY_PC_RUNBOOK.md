@@ -1,5 +1,7 @@
 # 公司电脑 AutoCAD 2016 操作手册
 
+开始操作前先核对 `CURRENT_STATE.md` 的冻结候选、待实机队列和当前禁止事项。
+
 本手册用于复验已成立的 AutoCAD 2016 诊断候选，并继续完成 Palette、只读上下文、Agent/Bridge 和审批写入阶段。
 
 ## 当前已知状态
@@ -10,9 +12,11 @@
 - 实机：用户已在原本打开的 AutoCAD 2016 进程中手工 `NETLOAD`，`CODEXCADDOCTOR`/`CODEXCAD` 可运行，`DBMOD 21 -> 21`。
 - 当前可重复构建候选：PowerShell 7.6.3 与 Windows PowerShell 5.1 验证均通过，独立双构建及两路并行验证均产生 SHA-256 `E8535C11AA09F93C405EBB7DFB46199EEDC27EE046959B4CC86395A06998B440`。该候选**尚未 NETLOAD**，验证结果必须保持 `NetLoadVerified=false`。
 - 旧诊断候选副本仍保持 SHA-256 `2E621C5D7AAF7F3F59C5CBD65C8E899712FA93F1E3ED5758F7E7A0ECDBFB0C85`，没有被隔离构建覆盖。由于原始 AutoCAD 命令记录没有采集运行时路径/哈希，该值仍只是测试上下文候选副本身份，不是已加载程序集的密码学绑定。
-- 能力边界：Palette、Agent、认证 IPC、选择上下文和 CAD 写入在该实机记录中均为禁用/未测。
+- Palette 已建立独立运行时检查点：提交 `56115e4`，冻结 DLL SHA-256 `90620EA354AAE9A3C2B2E11C3FA60274F1EF9B0753734AF7AAB67BDAA0E01DFE`；用户已在原有 AutoCAD 2016 进程验证 100% DPI 下停靠、浮动、隐藏重开、释放重建、中文换行和干净样本 `DBMOD=4`。125%/150% DPI 与退出生命周期仍待验证。
+- 能力边界：诊断记录中的 Palette、Agent、认证 IPC、选择上下文和 CAD 写入均为禁用/未测；独立 Palette 检查点只提升 Palette 100% DPI 范围，不证明 Agent、选择读取或 CAD 写入。
 - 证据缺口：当时命令记录没有回显 DLL 路径或现场 SHA-256，因此不得把任何后续重编译产物的哈希写成“已 NETLOAD DLL 哈希”。
 - Phase 2 本地最终门禁快照：Release 构建 `0` warning / `0` error；Contracts `15/15`、IPC `11/11`、Security `19/19`、AppServer `7/7`、Bridge `29/29`、AgentRuntime `31/31`、Chat `9/9`，合计 `121/121`；Bridge 压力复跑 `20 x 29 = 580/580`。AgentHost doctor 通过且无残留进程，diff/秘密扫描通过。以上是**非 CAD live** 证据；提交状态以当前 Git 历史为准，不证明 Host.2016 已接入 Agent/Bridge。
+- 跨运行时认证与 Bootstrap 原语门禁已在 PowerShell 7.6.3 和 Windows PowerShell 5.1.19041.6456 下通过：SDK `8.0.319`，托管核心 Release `0` warning / `0` error，Bridge `29/29`，net45/net8 均为 `35/35`，双隔离主产物逐字节一致。该门禁没有启动或操作 AutoCAD，也没有验证真实 AgentHost 句柄交付、传输机密性、进程身份或硬超时。
 
 除非需要验证启动/卸载生命周期，不要为了重复诊断而重启当前 AutoCAD 进程。
 
@@ -160,7 +164,29 @@ DBMOD
 
 ## 7. Phase 2 本地门禁
 
+Bootstrap 本地 Specs 只证明内存/Stream 原语。Frame 中的 session secret 为明文，HMAC
+不提供机密性；真实 AgentHost 启动必须另行验证专用、独占、受限继承句柄、写端关闭、
+硬超时、PID/启动身份绑定和未确认子进程终止。不得使用命令行、环境变量、日志或普通
+可旁观命名管道交付 bootstrap frame 或认证键。
+
 在进入 CAD 内集成前，重新运行并保存脱敏摘要：
+
+```powershell
+.\scripts\verify-autocad2016-auth-compat.ps1
+```
+
+该验证器必须在 PowerShell 7 和 Windows PowerShell 5.1 下分别通过，并保持：
+
+- net45 IPC/Bootstrap Specs：`35/35`
+- net8 IPC/Bootstrap Specs：`35/35`
+- Bridge 回归：`29/29`
+- net45/net8 六个主产物双隔离构建逐字节一致
+- 固定 frame、KDF、Host→Agent 与 Agent→Host HMAC 字节一致
+- 公共 API、MemberRef、关键状态机方法和完整 Bootstrap 实现 IL 冻结值一致
+- `AutoCadStartedOrRestarted=false`、`CadCommandsSent=false`、`NetLoadVerified=false`
+
+这组结果只允许称为“跨运行时认证与 Bootstrap 协议原语门禁通过”。不得据此声称
+真实 AgentHost 已启动、密钥已安全交付、Bridge 已接入 CAD 或 AutoCAD 2016 已完整支持。
 
 - Release 解决方案构建：`0` warning / `0` error
 - Contracts Specs：`15/15`
@@ -227,3 +253,4 @@ DBMOD
 - 证据 JSON 不含 `TRUSTEDPATHS`、用户名、真实图纸路径、网络路径、许可证数据或 API Key。
 - 当前诊断阶段只能称为“AutoCAD 2016 诊断编译/NETLOAD 兼容候选”，不得称为完整支持。
 - 当前 Host.2016 可重复构建证据见 `handoff/autocad2016/evidence/host-build-verification-20260718.json`；该文件明确新候选未 NETLOAD，并且不包含本机路径、用户名、图纸路径或企业受信目录内容。
+- 跨运行时 Bootstrap 原语证据见 `handoff/autocad2016/evidence/auth-bootstrap-verification-20260719.json`；该文件只保存脱敏计数、哈希和布尔边界，所有 live AgentHost、传输机密性及 CAD 集成项保持 `false`。
