@@ -30,6 +30,7 @@ $specProjects = @(
     "tests\Codex.AutoCAD.Security.Specs\Codex.AutoCAD.Security.Specs.csproj",
     "tests\Codex.AutoCAD.AppServer.Specs\Codex.AutoCAD.AppServer.Specs.csproj",
     "tests\Codex.AutoCAD.Bridge.Specs\Codex.AutoCAD.Bridge.Specs.csproj",
+    "tests\Codex.AutoCAD.Bridge.Client.Specs\Codex.AutoCAD.Bridge.Client.Specs.csproj",
     "tests\Codex.AutoCAD.AgentRuntime.Specs\Codex.AutoCAD.AgentRuntime.Specs.csproj",
     "tests\Codex.AutoCAD.Chat.Specs\Codex.AutoCAD.Chat.Specs.csproj"
 )
@@ -37,7 +38,10 @@ $specProjects = @(
 $solutionRequiredProjects = @(
     "src\Codex.AutoCAD.AgentHost\Codex.AutoCAD.AgentHost.csproj",
     "src\Codex.AutoCAD.Bridge\Codex.AutoCAD.Bridge.csproj",
+    "src\Codex.AutoCAD.Bridge.Client\Codex.AutoCAD.Bridge.Client.csproj",
     "src\Codex.AutoCAD.AgentRuntime\Codex.AutoCAD.AgentRuntime.csproj"
+) + @(
+    "tests\Codex.AutoCAD.Bridge.Client.TestServer\Codex.AutoCAD.Bridge.Client.TestServer.csproj"
 ) + $specProjects
 
 $hostProjectsExcludedFromCoreBuild = @(
@@ -58,9 +62,22 @@ function Invoke-CheckedCommand {
     )
 
     Write-Host "`n==> $Description" -ForegroundColor Cyan
-    & $FilePath @ArgumentList
-    if ($LASTEXITCODE -ne 0) {
-        throw "$Description 失败，退出码：$LASTEXITCODE"
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = @(& $FilePath @ArgumentList 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    foreach ($line in $output) {
+        Write-Host $line.ToString()
+    }
+
+    if ($exitCode -ne 0) {
+        throw "$Description 失败，退出码：$exitCode"
     }
 }
 
@@ -503,9 +520,33 @@ try {
         ) `
         -Description "构建托管核心解决方案（CAD Host 按目标版本独立验证，$Configuration）"
 
+    $bridgeClientTestServer = Join-Path $repoRoot (
+        "tests\Codex.AutoCAD.Bridge.Client.TestServer\bin\" +
+        $Configuration +
+        "\net8.0-windows\Codex.AutoCAD.Bridge.Client.TestServer.exe"
+    )
+    if (-not (Test-Path -LiteralPath $bridgeClientTestServer -PathType Leaf)) {
+        throw "Bridge Client TestServer未由解决方案构建产生：$bridgeClientTestServer"
+    }
+
+    $previousBridgeTestServer = [Environment]::GetEnvironmentVariable(
+        "CODEX_BRIDGE_TEST_SERVER_EXE",
+        [EnvironmentVariableTarget]::Process
+    )
     $specResults = [System.Collections.Generic.List[object]]::new()
-    foreach ($project in $specProjects) {
-        $specResults.Add((Invoke-ValidatedSpecProject -RelativePath $project))
+    try {
+        $env:CODEX_BRIDGE_TEST_SERVER_EXE = $bridgeClientTestServer
+        foreach ($project in $specProjects) {
+            $specResults.Add((Invoke-ValidatedSpecProject -RelativePath $project))
+        }
+    }
+    finally {
+        if ($null -eq $previousBridgeTestServer) {
+            Remove-Item Env:CODEX_BRIDGE_TEST_SERVER_EXE -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:CODEX_BRIDGE_TEST_SERVER_EXE = $previousBridgeTestServer
+        }
     }
     $totalSpecs = [int] (($specResults | Measure-Object -Property Total -Sum).Sum)
     Write-Host "`n==> 规格动态计数汇总：$totalSpecs/$totalSpecs" -ForegroundColor Green

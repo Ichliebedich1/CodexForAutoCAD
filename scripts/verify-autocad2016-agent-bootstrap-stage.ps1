@@ -25,18 +25,19 @@ $windowsPowerShellCommand = Join-Path `
     $env:SystemRoot `
     "System32\WindowsPowerShell\v1.0\powershell.exe"
 $expectedPhase2ProjectResults = [ordered]@{
-    "Codex.AutoCAD.Contracts.Specs" = 15
+    "Codex.AutoCAD.Contracts.Specs" = 27
     "Codex.AutoCAD.Ipc.Specs" = 35
     "Codex.AutoCAD.Security.Specs" = 19
     "Codex.AutoCAD.AppServer.Specs" = 7
-    "Codex.AutoCAD.Bridge.Specs" = 29
+    "Codex.AutoCAD.Bridge.Specs" = 34
+    "Codex.AutoCAD.Bridge.Client.Specs" = 22
     "Codex.AutoCAD.AgentRuntime.Specs" = 31
     "Codex.AutoCAD.Chat.Specs" = 9
 }
 $expectedPhase2Specs = [int] (
     ($expectedPhase2ProjectResults.Values | Measure-Object -Sum).Sum)
-if ($expectedPhase2Specs -ne 145) {
-    throw "冻结 Phase2 项目计数必须精确合计为 145。"
+if ($expectedPhase2Specs -ne 184) {
+    throw "冻结 Phase2 项目计数必须精确合计为 184。"
 }
 
 $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
@@ -368,7 +369,7 @@ function Assert-AuthEvidence {
     Assert-PropertyEquals $Evidence "Configuration" "Release"
     Assert-PropertyEquals $Evidence "Net45Specs" "35/35"
     Assert-PropertyEquals $Evidence "Net8Specs" "35/35"
-    Assert-PropertyEquals $Evidence "BridgeRegressionSpecs" "29/29"
+    Assert-PropertyEquals $Evidence "BridgeRegressionSpecs" "34/34"
 
     foreach ($name in @(
         "AuthCompatIsolatedRestoreOffline",
@@ -867,7 +868,7 @@ try {
             credentialsIncluded = $false
             rawStandardErrorIncluded = $false
         }
-        conclusion = "The machine-orchestrated AgentHost secure-bootstrap stage passed PowerShell 7 and Windows PowerShell 5.1 bootstrap gates (15/15 net45 and net8), authentication compatibility gates (Bridge 29/29 and net45/net8 35/35), and Phase2 Release gates (0 warnings, 0 errors, 145/145 Specs, Host scan, doctor, diff, and secret scan). The configured startup deadline triggers fail-closed abort followed by no more than five seconds of bounded termination cleanup. AutoCAD was not started, restarted, or commanded. Long-running Bridge, Host.2016 integration, and complete AutoCAD 2016 support remain unverified."
+        conclusion = "The machine-orchestrated AgentHost secure-bootstrap stage passed PowerShell 7 and Windows PowerShell 5.1 bootstrap gates (15/15 net45 and net8), authentication compatibility gates (Bridge 34/34 and net45/net8 35/35), and Phase2 Release gates (0 warnings, 0 errors, 184/184 Specs, Host scan, doctor, diff, and secret scan). The configured startup deadline triggers fail-closed abort followed by no more than five seconds of bounded termination cleanup. AutoCAD was not started, restarted, or commanded. Long-running Bridge, Host.2016 integration, and complete AutoCAD 2016 support remain unverified."
     }
 
     $finalJson = $finalEvidence | ConvertTo-Json -Depth 30

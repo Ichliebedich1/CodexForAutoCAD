@@ -1244,8 +1244,8 @@ function Invoke-IsolatedManagedCoreRegression {
     $bridgeOutput = Invoke-Captured -FilePath $dotnetCommand -Arguments @(
         $bridgeSpecCandidates[0].FullName
     ) -Description "运行隔离 Bridge 规格"
-    if (@($bridgeOutput | Where-Object { $_ -match "^\s*29/29 specs passed\s*$" }).Count -ne 1) {
-        throw "Bridge 回归必须精确通过 29/29。"
+    if (@($bridgeOutput | Where-Object { $_ -match "^\s*34/34 specs passed\s*$" }).Count -ne 1) {
+        throw "Bridge 回归必须精确通过 34/34。"
     }
 
     return [pscustomobject]@{
@@ -1412,6 +1412,7 @@ $expectedSolutionProjectPaths = @(
     "src\Codex.AutoCAD.AgentRuntime\Codex.AutoCAD.AgentRuntime.csproj",
     "src\Codex.AutoCAD.AppServer\Codex.AutoCAD.AppServer.csproj",
     "src\Codex.AutoCAD.Bridge\Codex.AutoCAD.Bridge.csproj",
+    "src\Codex.AutoCAD.Bridge.Client\Codex.AutoCAD.Bridge.Client.csproj",
     "src\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj",
     "src\Codex.AutoCAD.Host.2025\Codex.AutoCAD.Host.2025.csproj",
     "src\Codex.AutoCAD.Ipc\Codex.AutoCAD.Ipc.csproj",
@@ -1421,6 +1422,8 @@ $expectedSolutionProjectPaths = @(
     "tests\Codex.AutoCAD.AgentRuntime.Specs\Codex.AutoCAD.AgentRuntime.Specs.csproj",
     "tests\Codex.AutoCAD.AppServer.Specs\Codex.AutoCAD.AppServer.Specs.csproj",
     "tests\Codex.AutoCAD.Bridge.Specs\Codex.AutoCAD.Bridge.Specs.csproj",
+    "tests\Codex.AutoCAD.Bridge.Client.Specs\Codex.AutoCAD.Bridge.Client.Specs.csproj",
+    "tests\Codex.AutoCAD.Bridge.Client.TestServer\Codex.AutoCAD.Bridge.Client.TestServer.csproj",
     "tests\Codex.AutoCAD.Chat.Specs\Codex.AutoCAD.Chat.Specs.csproj",
     "tests\Codex.AutoCAD.Contracts.Specs\Codex.AutoCAD.Contracts.Specs.csproj",
     "tests\Codex.AutoCAD.Ipc.Specs\Codex.AutoCAD.Ipc.Specs.csproj",
@@ -1437,7 +1440,7 @@ if ($solutionProjectPaths.Count -ne $expectedSolutionProjectPaths.Count -or
         $solutionProjectDifference |
             ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" }
     ) -join "; "
-    throw "主解决方案项目清单必须精确匹配18个批准项目；实际：$($solutionProjectPaths.Count)；差异：$detail"
+    throw "主解决方案项目清单必须精确匹配21个批准项目；实际：$($solutionProjectPaths.Count)；差异：$detail"
 }
 $projectObjRoots = @(
     foreach ($projectPath in $solutionProjectPaths) {
@@ -1568,7 +1571,7 @@ try {
         ArtifactHashes = $artifactHashes
         Net45Specs = "$expectedSpecCount/$expectedSpecCount"
         Net8Specs = "$expectedSpecCount/$expectedSpecCount"
-        BridgeRegressionSpecs = "29/29"
+        BridgeRegressionSpecs = "34/34"
         BridgeRegressionRuntimeArtifactHashes = $managedCoreRegression.RuntimeArtifactHashes
         BridgeProjectOutputSha256 = $managedCoreRegression.BridgeProjectOutputSha256
         BridgeRuntimeCopyMatchesProjectOutput = $managedCoreRegression.RuntimeBridgeCopyMatchesProjectOutput

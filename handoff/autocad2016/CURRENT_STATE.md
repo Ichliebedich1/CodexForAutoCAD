@@ -1,6 +1,6 @@
 # AutoCAD 2016 当前状态索引
 
-最后更新：2026-07-19（北京时间）
+最后更新：2026-07-20（北京时间）
 
 本文件是项目的长期“当前状态索引”。它不替代 `README_FIRST.md`、
 `COMPANY_PC_RUNBOOK.md`、测试报告、证据 JSON 或 Git 历史；只把当前成立的结论、
@@ -134,6 +134,28 @@ NETLOAD 证据的能力一律视为未支持。
   JSON 展示、具体 `IAgentBridgeClient`、长运行 live Bridge、真实 Codex 对话或完整
   AutoCAD 2016 支持。
 
+### 具体 IAgentBridgeClient 跨运行时检查点
+
+- 阶段入口：`scripts/verify-autocad2016-bridge-client-stage.ps1`；阶段证据：
+  `handoff/autocad2016/evidence/bridge-client-stage-verification-20260720.json`。
+- PowerShell 7.6.3 与 Windows PowerShell 5.1.19041.6456 均通过同一完整门禁；每个
+  Shell 都执行两次隔离 Release 构建，net45/net8 Client、Specs、TestServer 和 Bridge
+  产物逐字节一致。
+- net45 与 net8 Bridge Client Specs 均为 `22/22` 且输出一致；Bridge 回归 `34/34`；
+  当前 Phase 2 为 Release `0` warning / `0` error、八个 Specs `184/184`。
+- 已验证能力协商、thread start、携带 CadContextJson v1 身份的 turn start、assistant
+  delta/completed 事件、interrupt 和仅一次审批响应；thread/turn/context 身份必须逐项
+  回显并绑定。
+- HMAC、严格递增 sequence、nonce、防重放、坏 MAC/序号间隙/nonce 重放拒绝均通过；
+  未知字段、重复字段、错误大小写、尾随 JSON、非法 UTF-8 和超大帧在分配前均
+  fail-closed。
+- 合法 turn 终态事件在身份校验后消费活动 turn；同一 turn 的后续迟到事件不再具有活动
+  身份并按 fail-closed 拒绝。离线、断线、请求超时、取消、并发 Stop 和重复 Dispose 均
+  有有界终态；连接故障会发出 `ConnectionFaulted`，密钥副本清零，TestServer 无残留。
+- 本检查点没有启动、重启或操作 AutoCAD，`NetLoadVerified=false`、
+  `AutoCadLiveEvidence=false`。它不证明统一 Host.2016 已接入长运行 AgentHost，也不证明
+  真实 Codex thread/turn、Palette 回答回传或两轮 CAD 对话。
+
 ## 当前活动阶段
 
 ### 统一 Host.2016 只读 MVP
@@ -146,8 +168,8 @@ NETLOAD 证据的能力一律视为未支持。
 - 第一条统一宿主检查点只生成 CadContextJson v1，在 Palette 显示可读摘要和 canonical
   JSON；Agent、CAD 写入和自动保存仍禁用。完成真实编译、冻结 SHA-256 后再请求用户
   在现有 AutoCAD 会话人工 NETLOAD。
-- 该只读检查点通过后，实现具体 `IAgentBridgeClient`，复用已验证 bootstrap/HMAC/seq/
-  nonce/受限句柄语义，接通长运行 AgentHost 和真实 Codex thread/turn，再完成两轮对话。
+- 具体 `IAgentBridgeClient` 已完成跨运行时非 CAD 门禁；下一步把它与统一 Host.2016、
+  安全 bootstrap 和长运行 AgentHost 组合，接通真实 Codex thread/turn 并完成两轮对话。
 
 ## 不可弱化的产品约束
 
@@ -168,21 +190,22 @@ NETLOAD 证据的能力一律视为未支持。
 用户已于 2026-07-19 开放实机测试窗口。只有候选完成真实编译、冻结 SHA-256 并准备好
 完整命令清单后才请求测试；仍不得由 Codex 启动、唤醒、关闭或重启 AutoCAD。当前队列：
 
-1. Palette 125% DPI。
-2. Palette 150% DPI。
-3. Palette 随 AutoCAD 正常退出的生命周期和残留检查。
-4. Host.2016 与长运行 AgentHost 的 live handshake、离线/断线/超时 fail-closed。
-5. 最后才进入预览、拒绝、一次允许、锁内重校验和单事务写入实测。
+1. 统一 Host.2016 冻结候选人工 NETLOAD，逐字段核对坐标、图层、文字、半径、顶点、
+   块名、Palette 摘要/JSON 和 `DBMOD` 不变。
+2. Palette 125% DPI。
+3. Palette 150% DPI。
+4. Palette 随 AutoCAD 正常退出的生命周期和残留检查。
+5. Host.2016 与长运行 AgentHost 的 live handshake、离线/断线/超时 fail-closed。
+6. 最后才进入预览、拒绝、一次允许、锁内重校验和单事务写入实测。
 
 ## 下一步顺序
 
-1. 将本公共契约阶段按验证后单独提交的纪律收口。
-2. 在新阶段建立统一 Host.2016，将诊断、Palette、ReadOnlyContext 合并并映射为
-   CadContextJson v1。
-3. 在 Palette 中显示可读摘要和 canonical JSON；真实编译、冻结候选后请求人工 NETLOAD
-   并逐字段核对坐标、图层、文字、半径、顶点和块名。
-4. 实现具体 `IAgentBridgeClient` 和长运行 AgentHost live Bridge，完成真实 Codex thread、
-   携带上下文的 turn、assistant 文本回传及同一 thread 两轮连续对话。
+1. 完成统一 Host.2016 冻结候选的人工 NETLOAD 和逐字段检查；通过后单独提交 Host 阶段。
+2. 将本 Bridge Client 检查点按验证后单独提交的纪律收口。
+3. 把具体 `IAgentBridgeClient`、安全 bootstrap 和长运行 AgentHost 接入统一 Host.2016，
+   完成 live handshake、离线/断线/超时 fail-closed。
+4. 创建真实 Codex thread，发送携带最新 CadContextJson v1 的 turn，将 assistant 文本回传
+   Palette，并在同一 thread 完成至少两轮连续对话。
 5. 补测 125%/150% DPI、文档关闭和 AutoCAD 退出生命周期；最后才进入预览、拒绝、
    一次允许、锁内重校验和单事务写入闭环。
 

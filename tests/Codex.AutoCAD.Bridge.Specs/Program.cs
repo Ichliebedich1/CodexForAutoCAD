@@ -1,6 +1,8 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO.Pipes;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Channels;
 using Codex.AutoCAD.Bridge;
 using Codex.AutoCAD.Contracts;
@@ -17,6 +19,11 @@ var specs = new (string Name, Func<Task> Run)[]
     ("重复nonce被拒绝", ReplayedNonceIsRejected),
     ("乱序消息被拒绝", OutOfOrderSequenceIsRejected),
     ("超大入站帧在分配前被拒绝", OversizedIncomingFrameIsRejected),
+    ("信封未知字段被拒绝", UnknownEnvelopeFieldIsRejected),
+    ("信封重复字段被拒绝", DuplicateEnvelopeFieldIsRejected),
+    ("信封字段大小写错误被拒绝", WrongCaseEnvelopeFieldIsRejected),
+    ("信封尾随JSON被拒绝", TrailingEnvelopeJsonIsRejected),
+    ("信封非法UTF-8被拒绝", InvalidEnvelopeUtf8IsRejected),
     ("超大出站帧被拒绝且不破坏序号", OversizedOutgoingFrameIsRejectedWithoutSequenceGap),
     ("非32字节会话密钥被拒绝", InvalidSecretLengthIsRejected),
     ("超过32层JSON被拒绝且连接可复用", ExcessiveJsonDepthIsRejected),
@@ -217,6 +224,59 @@ static async Task OversizedIncomingFrameIsRejected()
     await rawClient.FlushAsync();
 
     await ThrowsAsync<BridgeProtocolException>(() => server.Completion.WaitAsync(TimeSpan.FromSeconds(5)));
+}
+
+static Task UnknownEnvelopeFieldIsRejected()
+{
+    return AssertMalformedEnvelopeRejected(payload =>
+    {
+        var json = Encoding.UTF8.GetString(payload);
+        return Encoding.UTF8.GetBytes(
+            json.Insert(json.Length - 1, ",\"unexpected\":true"));
+    });
+}
+
+static Task DuplicateEnvelopeFieldIsRejected()
+{
+    return AssertMalformedEnvelopeRejected(payload =>
+    {
+        var json = Encoding.UTF8.GetString(payload);
+        return Encoding.UTF8.GetBytes(
+            json.Insert(1, "\"messageId\":\"duplicate\","));
+    });
+}
+
+static Task WrongCaseEnvelopeFieldIsRejected()
+{
+    return AssertMalformedEnvelopeRejected(payload =>
+    {
+        var json = Encoding.UTF8.GetString(payload);
+        return Encoding.UTF8.GetBytes(
+            json.Replace("\"messageId\"", "\"MessageId\"", StringComparison.Ordinal));
+    });
+}
+
+static Task TrailingEnvelopeJsonIsRejected()
+{
+    return AssertMalformedEnvelopeRejected(payload =>
+    {
+        var trailing = Encoding.UTF8.GetBytes("{}");
+        var mutated = new byte[payload.Length + trailing.Length];
+        Buffer.BlockCopy(payload, 0, mutated, 0, payload.Length);
+        Buffer.BlockCopy(trailing, 0, mutated, payload.Length, trailing.Length);
+        return mutated;
+    });
+}
+
+static Task InvalidEnvelopeUtf8IsRejected()
+{
+    return AssertMalformedEnvelopeRejected(payload =>
+    {
+        var mutated = new byte[payload.Length + 1];
+        Buffer.BlockCopy(payload, 0, mutated, 0, payload.Length);
+        mutated[mutated.Length - 1] = 0xFF;
+        return mutated;
+    });
 }
 
 static async Task OversizedOutgoingFrameIsRejectedWithoutSequenceGap()
@@ -877,6 +937,37 @@ static async Task AssertRawEnvelopeRejected(
     Equal(expectedCode, exception.ValidationCode);
 
     await AssertPipeClosedAsync(rawClient);
+}
+
+static async Task AssertMalformedEnvelopeRejected(Func<byte[], byte[]> mutate)
+{
+    var secret = IpcSessionSecret.Generate();
+    try
+    {
+        var envelope = CreateEnvelope(
+            secret,
+            Guid.NewGuid().ToString("N"),
+            1,
+            "malformed-envelope-nonce");
+        var payload = JsonSerializer.SerializeToUtf8Bytes(
+            envelope,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        payload = mutate(payload);
+
+        await using var stream = new MemoryStream();
+        var prefix = new byte[sizeof(int)];
+        BinaryPrimitives.WriteInt32LittleEndian(prefix, payload.Length);
+        await stream.WriteAsync(prefix);
+        await stream.WriteAsync(payload);
+        stream.Position = 0;
+
+        await ThrowsAsync<BridgeProtocolException>(
+            () => LengthPrefixedFrameCodec.ReadAsync(stream).AsTask());
+    }
+    finally
+    {
+        Array.Clear(secret, 0, secret.Length);
+    }
 }
 
 static async Task AssertPipeClosedAsync(Stream stream)
