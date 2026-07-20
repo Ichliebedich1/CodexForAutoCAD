@@ -1,4 +1,6 @@
 using Codex.AutoCAD.Contracts;
+using Codex.AutoCAD.Host2016;
+using Codex.AutoCAD.Host2016.ReadOnlyContext;
 
 var specs = new[]
 {
@@ -29,6 +31,11 @@ var specs = new[]
     new SpecCase("BRIDGE-V1-003 审批只允许拒绝或一次允许", BridgeApprovalIsOneTimeOnly),
     new SpecCase("BRIDGE-V1-004 事件序列错误和结果身份均fail-closed", BridgeEventsFailClosed),
     new SpecCase("BRIDGE-V1-005 离线断线超时使用闭集错误语义", BridgeFailuresUseClosedErrorCodes),
+    new SpecCase("HOST16-V1-001 六类只读快照映射为精确公共契约字段", UnifiedHostMapsSixEntityTypes),
+    new SpecCase("HOST16-V1-002 binary-v1选择和实体状态哈希保持绑定", UnifiedHostPreservesSelectionIdentity),
+    new SpecCase("HOST16-V1-003 映射后canonical JSON确定且不含图名路径", UnifiedHostCanonicalJsonIsPrivateAndDeterministic),
+    new SpecCase("HOST16-V1-004 可读摘要展示坐标图层文字半径顶点块名", UnifiedHostSummaryShowsRequiredFields),
+    new SpecCase("HOST16-V1-005 不透明文档元数据不合规则fail-closed", UnifiedHostRejectsUnsafeDocumentMetadata),
 };
 
 var failed = 0;
@@ -573,6 +580,235 @@ static void BridgeFailuresUseClosedErrorCodes()
         OccurredAtUtc = "2026-07-19T08:31:00.000Z",
     };
     Contains(AgentBridgeContractValidator.Validate(unknown), "bridge_error_code");
+}
+
+static void UnifiedHostMapsSixEntityTypes()
+{
+    var context = CreateUnifiedHostContext();
+    Equal(6, context.Selection.EntityCount, "统一Host必须映射完整六类选择。" );
+    Equal("A", context.Selection.Entities[0].Handle, "Handle必须按数值排序。" );
+    Equal(CadContextEntityTypes.Circle, context.Selection.Entities[0].EntityType,
+        "首个图元应为Circle。" );
+    Equal(12.5d, context.Selection.Entities[0].Circle!.Radius, "圆半径必须保真。" );
+    Equal("圆层", context.Selection.Entities[0].Layer, "图层必须保真。" );
+
+    var line = context.Selection.Entities.Single(entity =>
+        entity.EntityType == CadContextEntityTypes.Line);
+    Equal(100.25d, line.Line!.End.X, "直线坐标必须保真。" );
+
+    var polyline = context.Selection.Entities.Single(entity =>
+        entity.EntityType == CadContextEntityTypes.Polyline);
+    Equal(3, polyline.Polyline!.Vertices.Length, "多段线顶点必须完整映射。" );
+    Equal(0.25d, polyline.Polyline.Vertices[1].Bulge, "多段线bulge必须保真。" );
+
+    var dbText = context.Selection.Entities.Single(entity =>
+        entity.EntityType == CadContextEntityTypes.DbText);
+    Equal("阀门 A-01", dbText.DbText!.Text, "单行文字必须保真。" );
+
+    var mText = context.Selection.Entities.Single(entity =>
+        entity.EntityType == CadContextEntityTypes.MText);
+    Equal("第一行\n第二行", mText.MText!.Text, "多行文字必须保留换行。" );
+
+    var block = context.Selection.Entities.Single(entity =>
+        entity.EntityType == CadContextEntityTypes.BlockReference);
+    Equal("PUMP_01", block.BlockReference!.EffectiveName, "有效块名必须保真。" );
+    Equal(true, block.BlockReference.IsDynamic, "动态块标记必须保真。" );
+}
+
+static void UnifiedHostPreservesSelectionIdentity()
+{
+    var selection = CreateUnifiedHostSelection();
+    var context = CadContextJsonMapper.Build(
+        CreateUnifiedHostDocumentMetadata(),
+        selection,
+        DateTimeOffset.Parse("2026-07-19T12:34:56.789Z",
+            System.Globalization.CultureInfo.InvariantCulture));
+
+    Equal(selection.SnapshotHash, context.Selection.SnapshotHash,
+        "统一Host不得重新发明选择哈希。" );
+    Equal(selection.Entities.Count, context.Selection.Entities.Length,
+        "映射不得丢失实体。" );
+    for (var index = 0; index < selection.Entities.Count; index++)
+    {
+        Equal(selection.Entities[index].StateHash, context.Selection.Entities[index].StateHash,
+            "实体状态哈希必须逐项保持。" );
+    }
+}
+
+static void UnifiedHostCanonicalJsonIsPrivateAndDeterministic()
+{
+    var first = CreateUnifiedHostContext();
+    var second = CreateUnifiedHostContext();
+    var firstJson = CadContextJsonV1Codec.SerializeCanonical(first);
+    var secondJson = CadContextJsonV1Codec.SerializeCanonical(second);
+    Equal(firstJson, secondJson, "同一只读快照必须生成相同canonical JSON。" );
+    Equal(
+        CadContextJsonV1Codec.ComputeCanonicalSha256(first),
+        CadContextJsonV1Codec.ComputeCanonicalSha256(second),
+        "同一只读快照必须生成相同上下文哈希。" );
+    Equal(0, CadContextJsonV1Validator.Validate(first).Length,
+        "统一Host映射结果必须通过冻结公共契约。" );
+
+    DoesNotContainText(firstJson, "Drawing1");
+    DoesNotContainText(firstJson, "C:\\\\");
+    DoesNotContainText(firstJson, "documentName");
+    DoesNotContainText(firstJson, "documentPath");
+    DoesNotContainText(firstJson, "pathHash");
+
+    Equal(2198, System.Text.Encoding.UTF8.GetByteCount(firstJson),
+        "统一Host映射固定向量字节数漂移。" );
+    Equal("e57ebb86e98216a501e8de0c702fe64e65a3db9e391be4a7cc7a6cfdcac71e18",
+        CadContextJsonV1Codec.ComputeCanonicalSha256(first),
+        "统一Host映射固定向量SHA-256漂移。" );
+    Console.WriteLine("HOST16_CONTEXT_BYTES="
+        + System.Text.Encoding.UTF8.GetByteCount(firstJson));
+    Console.WriteLine("HOST16_CONTEXT_SHA256="
+        + CadContextJsonV1Codec.ComputeCanonicalSha256(first));
+}
+
+static void UnifiedHostSummaryShowsRequiredFields()
+{
+    var context = CreateUnifiedHostContext();
+    var json = CadContextJsonV1Codec.SerializeCanonical(context);
+    var summary = CadContextJsonMapper.BuildReadableSummary(
+        context,
+        CadContextJsonV1Codec.ComputeCanonicalSha256(context),
+        System.Text.Encoding.UTF8.GetByteCount(json));
+
+    ContainsText(summary, "图层：圆层");
+    ContainsText(summary, "半径：12.5");
+    ContainsText(summary, "起点：(0, 0, 0)");
+    ContainsText(summary, "顶点：3");
+    ContainsText(summary, "文字：阀门 A-01");
+    ContainsText(summary, "多行文字：第一行 ↵ 第二行");
+    ContainsText(summary, "块名：PUMP_01");
+}
+
+static void UnifiedHostRejectsUnsafeDocumentMetadata()
+{
+    var context = CadContextJsonMapper.Build(
+        new CadContextDocumentMetadata(
+            "C:\\secret\\Drawing1.dwg",
+            new string('a', 64),
+            42,
+            CadContextJsonV1Constants.ModelSpace,
+            "AC1027",
+            "millimeters"),
+        CreateUnifiedHostSelection(),
+        DateTimeOffset.Parse("2026-07-19T12:34:56.789Z",
+            System.Globalization.CultureInfo.InvariantCulture));
+    Contains(CadContextJsonV1Validator.Validate(context), "context_document_id");
+}
+
+static CadContextJsonV1 CreateUnifiedHostContext()
+{
+    return CadContextJsonMapper.Build(
+        CreateUnifiedHostDocumentMetadata(),
+        CreateUnifiedHostSelection(),
+        DateTimeOffset.Parse("2026-07-19T12:34:56.789Z",
+            System.Globalization.CultureInfo.InvariantCulture));
+}
+
+static CadContextDocumentMetadata CreateUnifiedHostDocumentMetadata()
+{
+    return new CadContextDocumentMetadata(
+        "doc-unified-001",
+        new string('a', 64),
+        42,
+        CadContextJsonV1Constants.ModelSpace,
+        "AC1027",
+        "millimeters");
+}
+
+static ContextSelectionSnapshot CreateUnifiedHostSelection()
+{
+    var vertices = new List<ContextPolylineVertex>
+    {
+        new ContextPolylineVertex(new ContextPoint2(0, 0), 0),
+        new ContextPolylineVertex(new ContextPoint2(10.5, 0), 0.25),
+        new ContextPolylineVertex(new ContextPoint2(10.5, 20), -0.125),
+    };
+
+    return CanonicalSelectionHash.Build(new List<ContextEntityDraft>
+    {
+        UnifiedHostDraft(
+            ContextEntityKind.BlockReference,
+            0x60,
+            "设备层",
+            block: new ContextBlockData(
+                new ContextPoint3(50, 60, 0),
+                0.5,
+                new ContextVector3(1, 2, 1),
+                "PUMP_01",
+                true,
+                false)),
+        UnifiedHostDraft(
+            ContextEntityKind.Line,
+            0x20,
+            "线层",
+            line: new ContextLineData(
+                new ContextPoint3(0, 0, 0),
+                new ContextPoint3(100.25, 5, 0))),
+        UnifiedHostDraft(
+            ContextEntityKind.Circle,
+            0x0A,
+            "圆层",
+            circle: new ContextCircleData(
+                new ContextPoint3(1, 2, 3),
+                12.5,
+                new ContextVector3(0, 0, 1))),
+        UnifiedHostDraft(
+            ContextEntityKind.Polyline,
+            0x30,
+            "轮廓层",
+            polyline: new ContextPolylineData(
+                true,
+                5,
+                new ContextVector3(0, 0, 1),
+                vertices)),
+        UnifiedHostDraft(
+            ContextEntityKind.DbText,
+            0x40,
+            "文字层",
+            dbText: new ContextDbTextData(
+                "阀门 A-01",
+                new ContextPoint3(7, 8, 0),
+                2.5,
+                0.25)),
+        UnifiedHostDraft(
+            ContextEntityKind.MText,
+            0x50,
+            "说明层",
+            mText: new ContextMTextData(
+                "第一行\n第二行",
+                new ContextPoint3(9, 10, 0),
+                3.5,
+                0.75)),
+    });
+}
+
+static ContextEntityDraft UnifiedHostDraft(
+    ContextEntityKind kind,
+    ulong handle,
+    string layer,
+    ContextLineData? line = null,
+    ContextCircleData? circle = null,
+    ContextPolylineData? polyline = null,
+    ContextDbTextData? dbText = null,
+    ContextMTextData? mText = null,
+    ContextBlockData? block = null)
+{
+    return new ContextEntityDraft(
+        kind,
+        handle,
+        0x1F,
+        layer,
+        line!,
+        circle!,
+        polyline!,
+        dbText!,
+        mText!,
+        block!);
 }
 
 static CadContextJsonV1 CreateCadContextV1()

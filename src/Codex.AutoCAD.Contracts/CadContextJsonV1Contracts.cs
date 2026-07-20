@@ -282,6 +282,9 @@ public static class CadContextJsonV1Validator
 
         ValidateString(document.DocumentId, MaximumIdentifierCharacters, MaximumNameBytes,
             false, true, "context_document_id", "$.document.documentId", failures);
+        Require(IsOpaqueIdentifier(document.DocumentId), failures,
+            "context_document_id", "$.document.documentId",
+            "文档标识必须是受限ASCII不透明ID，不能包含文件名或路径分隔符。" );
         Require(IsLowerSha256(document.DrawingFingerprint), failures,
             "context_drawing_fingerprint", "$.document.drawingFingerprint",
             "图纸指纹必须是64位小写ASCII十六进制SHA-256。" );
@@ -676,6 +679,16 @@ public static class CadContextJsonV1Validator
             && value.All(static character =>
                 character is >= '0' and <= '9'
                 or >= 'a' and <= 'f');
+    }
+
+    private static bool IsOpaqueIdentifier(string? value)
+    {
+        return value is { Length: >= 1 and <= MaximumIdentifierCharacters }
+            && value.All(static character =>
+                character is >= 'a' and <= 'z'
+                or >= 'A' and <= 'Z'
+                or >= '0' and <= '9'
+                or '-' or '_' or '.' or ':');
     }
 
     private static bool IsBoundedFinite(double value)

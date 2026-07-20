@@ -16,4 +16,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj" AdditionalProperties="EnableAutoCad2016=$(EnableAutoCad2016)" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016.ReadOnlyContext\ReadOnlyContextSnapshot.cs" Link="UnifiedHost2016\ReadOnlyContextSnapshot.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016.ReadOnlyContext\CanonicalSelectionHash.cs" Link="UnifiedHost2016\CanonicalSelectionHash.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\CadContextJsonMapper.cs" Link="UnifiedHost2016\CadContextJsonMapper.cs" />
+  </ItemGroup>
 </Project>
