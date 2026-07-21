@@ -65,5 +65,7 @@ public sealed class AgentBridgeClientOptions
 
     public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
+    public TimeSpan ShutdownTimeout { get; set; } = TimeSpan.FromSeconds(5);
+
     public int MaximumFrameBytes { get; set; } = ProtocolConstants.MaximumMessageBytes;
 }

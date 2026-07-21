@@ -1,16 +1,26 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
+using Codex.AutoCAD.AgentHost;
+using Codex.AutoCAD.AgentRuntime;
+using Codex.AutoCAD.AppServer;
+using Codex.AutoCAD.AppServer.Protocol;
 using Codex.AutoCAD.Bridge;
+using Codex.AutoCAD.Bridge.Client;
 using Codex.AutoCAD.Contracts;
 using Codex.AutoCAD.Ipc;
 
 var specs = new (string Name, Func<Task> Run)[]
 {
+    ("AgentHost长运行服务返回冻结v1能力", AgentHostCapabilitiesRoundTrip),
+    ("AgentHost同一thread完成两轮上下文对话并映射assistant事件",
+        AgentHostBridgeSessionSpecs.TwoContextTurnsReuseThreadAndMapAssistantEvents),
     ("当前用户命名管道可完成请求响应", RequestResponseWorks),
+    ("bootstrap方向密钥可完成具体Client到服务端认证", BootstrapDirectionKeysAuthenticateConcreteClient),
     ("通知可单向投递", NotificationWorks),
     ("取消消息会取消远端请求", CancellationPropagates),
     ("远端错误被结构化返回", RemoteErrorPropagates),
@@ -95,6 +105,162 @@ static async Task RequestResponseWorks()
         .WaitAsync(TimeSpan.FromSeconds(5));
     Equal("{\"count\":1}", response);
 }
+static async Task BootstrapDirectionKeysAuthenticateConcreteClient()
+{
+    var keyPair = CreateBootstrapDirectionKeyPair();
+    try
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var acceptTask = NamedPipeBridge.AcceptOneAsync(keyPair.AgentKeys, timeout.Token);
+        using var client = new AgentBridgeClient(
+            keyPair.HostKeys,
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromSeconds(5));
+        await client.StartAsync(timeout.Token);
+        await using var server = await acceptTask;
+        server.Start((request, _) =>
+        {
+            Equal(AgentBridgeMethods.GetCapabilities, request.Method);
+            return ValueTask.FromResult<string?>(JsonSerializer.Serialize(
+                new AgentCapabilitiesResponse
+                {
+                    AgentInstanceId = "bootstrap-direction-agent",
+                    Methods = new[]
+                    {
+                        AgentBridgeMethods.GetCapabilities,
+                        AgentBridgeMethods.StartThread,
+                        AgentBridgeMethods.StartTurn,
+                        AgentBridgeMethods.InterruptTurn,
+                        AgentBridgeMethods.ResolveApproval,
+                    },
+                    EventKinds = new[]
+                    {
+                        AgentBridgeEventKinds.ConnectionStateChanged,
+                        AgentBridgeEventKinds.ThreadStarted,
+                        AgentBridgeEventKinds.TurnStarted,
+                        AgentBridgeEventKinds.AssistantMessageDelta,
+                        AgentBridgeEventKinds.AssistantMessageCompleted,
+                        AgentBridgeEventKinds.TurnCompleted,
+                        AgentBridgeEventKinds.TurnFailed,
+                        AgentBridgeEventKinds.TurnCancelled,
+                    },
+                    ApprovalDecisions = new[]
+                    {
+                        AgentBridgeApprovalDecisions.AllowOnce,
+                        AgentBridgeApprovalDecisions.DeclineAndContinue,
+                        AgentBridgeApprovalDecisions.DeclineAndCancelTurn,
+                    },
+                    CadWriteAvailable = false,
+                },
+                new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        });
+
+        var response = await client.GetCapabilitiesAsync(
+            new AgentCapabilitiesRequest
+            {
+                ClientName = "Codex.AutoCAD.Host.2016",
+                ClientVersion = "0.2.0.0",
+                HostTarget = "autocad-r20.1-net45-x64",
+            },
+            timeout.Token);
+        Equal("bootstrap-direction-agent", response.AgentInstanceId);
+        await client.StopAsync(CancellationToken.None);
+    }
+    finally
+    {
+        keyPair.HostKeys.Dispose();
+        keyPair.AgentKeys.Dispose();
+    }
+}
+static async Task AgentHostCapabilitiesRoundTrip()
+{
+    var keyPair = CreateBootstrapDirectionKeyPair();
+    try
+    {
+        await using var appServer = new NoOpAgentAppServer();
+        await using var runtime = new CodexAgentRuntime(
+            appServer,
+            new AgentRuntimeOptions
+            {
+                Sandbox = AgentSandboxMode.ReadOnly,
+                ApprovalPolicy = AgentApprovalPolicy.OnRequest,
+                ApprovalsReviewer = AgentApprovalsReviewer.User,
+            });
+        var service = new AgentHostBridgeSession(runtime, "agenthost-capabilities-spec");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var serviceTask = service.RunAsync(keyPair.AgentKeys, timeout.Token);
+        using var client = new AgentBridgeClient(
+            keyPair.HostKeys,
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromSeconds(5));
+        await client.StartAsync(timeout.Token);
+        var response = await client.GetCapabilitiesAsync(
+            new AgentCapabilitiesRequest
+            {
+                ClientName = "Codex.AutoCAD.Host.2016",
+                ClientVersion = "0.2.0.0",
+                HostTarget = "autocad-r20.1-net45-x64",
+            },
+            timeout.Token);
+
+        Equal(AgentBridgeContractConstants.CurrentVersion, response.ContractVersion);
+        Equal(AgentBridgeContractConstants.MinimumCompatibleVersion,
+            response.MinimumCompatibleVersion);
+        Equal("agenthost-capabilities-spec", response.AgentInstanceId);
+        Equal(CadContextJsonV1Constants.Schema, response.CadContextSchema);
+        Equal(CadContextJsonV1Constants.SchemaVersion, response.CadContextSchemaVersion);
+        Equal(false, response.CadWriteAvailable);
+        Equal(true, response.Methods.Contains(AgentBridgeMethods.GetCapabilities, StringComparer.Ordinal));
+        Equal(true, response.EventKinds.Contains(
+            AgentBridgeEventKinds.ConnectionStateChanged,
+            StringComparer.Ordinal));
+        await client.StopAsync(CancellationToken.None);
+        await serviceTask.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+    finally
+    {
+        keyPair.HostKeys.Dispose();
+        keyPair.AgentKeys.Dispose();
+    }
+}
+
+
+static string CreateLowerHexIdentifier()
+{
+    return Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+}
+
+static (AgentBootstrapDirectionKeys HostKeys, AgentBootstrapDirectionKeys AgentKeys)
+    CreateBootstrapDirectionKeyPair()
+{
+    var sessionId = CreateLowerHexIdentifier();
+    var pipeName = "codex-autocad-" + CreateLowerHexIdentifier();
+    using var outboundPayload = AgentBootstrapPayload.CreateRandom(sessionId, pipeName);
+    using var encoded = new MemoryStream();
+    var writeKey = AgentBootstrapProtocol.CreateAuthenticationKey();
+    var readKey = (byte[])writeKey.Clone();
+    try
+    {
+        AgentBootstrapProtocol.WriteSingleFrameAndClearKey(
+            encoded,
+            outboundPayload,
+            writeKey);
+        encoded.Position = 0;
+        using var inboundPayload = AgentBootstrapProtocol.ReadSingleFrameAndClearKey(
+            encoded,
+            readKey);
+        return (
+            HostKeys: outboundPayload.DeriveDirectionKeys(),
+            AgentKeys: inboundPayload.DeriveDirectionKeys());
+    }
+    finally
+    {
+        Array.Clear(writeKey, 0, writeKey.Length);
+        Array.Clear(readKey, 0, readKey.Length);
+    }
+}
+
+
 
 static async Task NotificationWorks()
 {
@@ -1591,8 +1757,59 @@ sealed class NonCooperativeShutdownStream : Stream
 
     public override async ValueTask DisposeAsync()
     {
+
         _disposeStarted.TrySetResult();
         await _disposeRelease.Task;
         GC.SuppressFinalize(this);
     }
+}
+
+sealed class NoOpAgentAppServer : IAgentAppServer
+{
+    public event EventHandler<AppServerNotification>? NotificationReceived
+    {
+        add { }
+        remove { }
+    }
+
+    public event CommandApprovalRequestedHandler? CommandApprovalRequested
+    {
+        add { }
+        remove { }
+    }
+
+    public event FileChangeApprovalRequestedHandler? FileChangeApprovalRequested
+    {
+        add { }
+        remove { }
+    }
+
+    public event PermissionsApprovalRequestedHandler? PermissionsApprovalRequested
+    {
+        add { }
+        remove { }
+    }
+
+    public event CadApprovalRequestedHandler? CadApprovalRequested
+    {
+        add { }
+        remove { }
+    }
+
+    public event ServerRequestReceivedHandler? ServerRequestReceived
+    {
+        add { }
+        remove { }
+    }
+
+    public Task StartAsync(CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task<TResult> SendRequestAsync<TResult>(
+        string method,
+        object? parameters = null,
+        CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException("No Codex request is expected in this spec.");
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

@@ -1,6 +1,6 @@
 # AutoCAD 2016 当前状态索引
 
-最后更新：2026-07-20（北京时间）
+最后更新：2026-07-21（北京时间）
 
 本文件是项目的长期“当前状态索引”。它不替代 `README_FIRST.md`、
 `COMPANY_PC_RUNBOOK.md`、测试报告、证据 JSON 或 Git 历史；只把当前成立的结论、
@@ -162,14 +162,63 @@ NETLOAD 证据的能力一律视为未支持。
 
 - 公共契约决策门已通过，Codex 与 Kimi 均必须以 `MVP_PUBLIC_CONTRACT_V1.md` 为唯一
   wire/UI 数据基线；视觉实现可以并行，但不得反向改变协议。
-- 下一候选建立唯一 `Codex.AutoCAD.Host.2016` 产品入口，将已验证的诊断、100% DPI
-  Palette 和只读选择捕获整合为一个 net45/x64 DLL；三个 sidecar 在统一候选达到同等
-  证据前继续保留，不直接删除。
-- 第一条统一宿主检查点只生成 CadContextJson v1，在 Palette 显示可读摘要和 canonical
-  JSON；Agent、CAD 写入和自动保存仍禁用。完成真实编译、冻结 SHA-256 后再请求用户
-  在现有 AutoCAD 会话人工 NETLOAD。
-- 具体 `IAgentBridgeClient` 已完成跨运行时非 CAD 门禁；下一步把它与统一 Host.2016、
-  安全 bootstrap 和长运行 AgentHost 组合，接通真实 Codex thread/turn 并完成两轮对话。
+- 诊断、Palette、只读选择捕获和 CadContextJson v1 已整合为唯一
+  `Codex.AutoCAD.Host.2016` net45/x64 产品入口。用户已对上一统一候选人工 `NETLOAD`，
+  验证 Palette 打开、四个真实图元生成 `1700` 字节 JSON、摘要展示和 `DBMOD 0 -> 0`。
+- 上一 Agent 候选执行 `CODEX16AGENTSTART` 时在能力协商阶段以 `ArgumentException`
+  fail-closed；没有进入 CAD 写入，相关 AgentHost 进程未残留。根因是 Host 将含空格和
+  `/` 的显示文字用作 v1 机器标识符。
+- 修复后的生产标识符固定为 `codex-autocad-2016-mvp`、`0.3.1.0` 和
+  `autocad-r20.1-net45-x64`。精确回归 `HOST2016_CAPABILITIES_IDENTITY` 为 `1/1`。
+- 当前实机候选 ID：`autocad2016-mvp-agent-v031-a7bff46f-8c74b95e`；Host 程序集版本
+  `0.3.1.0`、SHA-256
+  `A7BFF46F1BA4970818ACB03F51C09EEBF1DDB8A7093D0C4C615E2D877D9236D1`。AgentHost 为
+  framework-dependent single-file，SHA-256
+  `8C74B95ECD6680F9A35824DB1C2C543D42B52AB1E4D3565F5B7EE8DBB1DC900E`。
+- 当前非 CAD 门禁：Release、Phase 2 `192/192`、精确候选 net45 Bridge Client
+  `22/22`、精确候选 net45 AgentLauncher `15/15`、AgentService `7/7`、真实本机 Codex
+  能力协商与同一 thread 两轮上下文问答 `2/2`；secret scan、`git diff --check` 和相关
+  进程残留 `0` 均通过。
+- 用户已在真实 AutoCAD 2016 中人工 `NETLOAD` 该精确候选，Palette 显示模块版本
+  `0.3.1.0`；真实 Line 已发布为 CadContextJson v1 并显示于 Palette。AgentHost 完成
+  认证启动，本机 Codex 返回第一轮回答，同一 thread 的第二轮问题正确复用了前一轮
+  标记；用户另确认多次连续上下文对话正常。核心只读 AI 链路因此可记为
+  `NetLoadVerified=true`、`AutoCadLiveEvidence=true`。脱敏证据见
+  `handoff/autocad2016/evidence/agent-mvp-runtime-verification-20260721.json`。
+- 用户确认执行了规定的停止与 `DBMOD` 检查，但随后独立只读进程检查仍发现 `1` 个由
+  当前 AutoCAD 进程创建的候选 `AgentHost bootstrap-serve` 进程。因此核心问答通过不等于
+  停止生命周期通过；`agentHostNoResidualProcessVerified=false`，在定位并复验前不得把
+  “有界停止且无残留”写成已验证。
+- CAD 写入和插件保存继续禁用；本阶段不触碰一次审批、事务写入或自动保存设置。
+
+### 下一活动阶段：只读对象覆盖率
+
+- 当前 CadContextJson v1 只对白名单中的 Line、Circle、Polyline、DBText、MText、
+  BlockReference 提供强类型 payload；选区中任一其他实体会以
+  `validation-unsupported-entity-kind` 整体 fail-closed。这是当前最常见的实际使用阻断。
+- v1 已冻结，不在原 schema 上悄悄加入旧消费者无法理解的新实体。下一阶段先定义
+  CadContextJson v2，新增高频实体强类型 payload，并为仍未知的实体提供显式、限界、
+  脱敏的占位记录和 `complete=false`/计数；不得静默丢弃未知实体，也不得读取代理对象
+  私有数据、图纸路径或外部资源路径。
+- 第一批优先评估 Arc、Ellipse、Spline、Point、Ray/Xline、2D/3D legacy Polyline、
+  Dimension、Hatch、Leader/MLeader 和 Table。按目标机 R20.1 原版 API 可编译性、固定
+  白名单字段、数量/顶点/文字上限和真实图纸常见度逐项冻结，不一次承诺所有 AutoCAD
+  或垂直产品代理对象。
+- 在对象扩展候选冻结前，先修复或解释上述 AgentHost 停止残留；两项分别验证、分别提交。
+
+### 已验证但尚待集成的独立阶段
+
+- 环境采集器的注册表 `Location` 工作已经完成，不再是待开发项。独立分支
+  `codex/collector-discovery-hardening` 包含 `a011dd1` 和 `083f5f1` 两个已验证提交：
+  支持 `AcadLocation`、`InstallLocation`、`Location`，覆盖 Location-only 非标准安装、
+  指向 `acad.exe` 的规范化，以及 probe、根键、子键枚举和属性读取四类失败分支；
+  PowerShell 7/5.1 均为 `24/24`，真实只读采集均发现一个可构建 R20.1 安装。
+- `083f5f1` 当前尚未进入 `main` 或本 Agent MVP 分支。先完成并提交精确 0.3.1 Agent
+  候选的实机阶段，再以独立集成操作引入 collector 两个提交；不得重复实现或把它们混入
+  未验证 Agent 提交。
+- 主工作树仍含用户所有的未提交 Host.2025 UI、选择和写入原型，以及其他未跟踪文件。
+  这些变化没有进入 `codex/bridge-client-net45`，不能作为本 AutoCAD 2016 候选的构建或
+  验证证据，也不得由本阶段清理、覆盖或提交。
 
 ## 不可弱化的产品约束
 
@@ -190,24 +239,30 @@ NETLOAD 证据的能力一律视为未支持。
 用户已于 2026-07-19 开放实机测试窗口。只有候选完成真实编译、冻结 SHA-256 并准备好
 完整命令清单后才请求测试；仍不得由 Codex 启动、唤醒、关闭或重启 AutoCAD。当前队列：
 
-1. 统一 Host.2016 冻结候选人工 NETLOAD，逐字段核对坐标、图层、文字、半径、顶点、
-   块名、Palette 摘要/JSON 和 `DBMOD` 不变。
-2. Palette 125% DPI。
-3. Palette 150% DPI。
-4. Palette 随 AutoCAD 正常退出的生命周期和残留检查。
-5. Host.2016 与长运行 AgentHost 的 live handshake、离线/断线/超时 fail-closed。
-6. 最后才进入预览、拒绝、一次允许、锁内重校验和单事务写入实测。
+1. 核心 `0.3.1.0` NETLOAD、真实选择、Palette JSON、Agent 在线、本机 Codex 回答和
+   同一 thread 两轮对话已通过；不再重复请求用户粘贴敏感上下文或完整命令输出。
+2. 定位并修复 `CODEX16AGENTSTOP` 后仍存在一个 AgentHost 进程的问题，冻结新候选后只做
+   最小启动/停止复验；`DBMOD` 必须不变。
+3. AutoCAD 内补测 AgentHost 离线、断线和超时 fail-closed；不得回退到未认证通道。
+4. CadContextJson v2 混合选区：新增高频类型、一个仍未知类型、部分解析完整性标志和
+   `DBMOD` 不变。
+5. Palette 125% DPI。
+6. Palette 150% DPI。
+7. 文档关闭和 AutoCAD 正常退出生命周期及残留检查。
+8. 最后才进入预览、拒绝、一次允许、锁内重校验和单事务写入实测。
 
 ## 下一步顺序
 
-1. 完成统一 Host.2016 冻结候选的人工 NETLOAD 和逐字段检查；通过后单独提交 Host 阶段。
-2. 将本 Bridge Client 检查点按验证后单独提交的纪律收口。
-3. 把具体 `IAgentBridgeClient`、安全 bootstrap 和长运行 AgentHost 接入统一 Host.2016，
-   完成 live handshake、离线/断线/超时 fail-closed。
-4. 创建真实 Codex thread，发送携带最新 CadContextJson v1 的 turn，将 assistant 文本回传
-   Palette，并在同一 thread 完成至少两轮连续对话。
-5. 补测 125%/150% DPI、文档关闭和 AutoCAD 退出生命周期；最后才进入预览、拒绝、
-   一次允许、锁内重校验和单事务写入闭环。
+1. 核心 Agent MVP 实机证据已收集；运行最终自动化门禁并单独提交该核心阶段，同时保留
+   “停止后无残留”未通过的明确边界。
+2. 修复 AgentHost 停止结果不可见/进程残留问题，自动化验证后冻结新候选并完成最小
+   AutoCAD 启停复验，单独提交生命周期修复。
+3. 冻结 CadContextJson v2 对象覆盖契约，实现第一批高频对象和显式未知对象占位，完成
+   net45/net8、Host 和混合选择 Specs 后再请求实机验证并单独提交。
+4. 按 `MVP_LIFECYCLE_RUNTIME_TEST_20260721.md` 补测离线/断线/超时、125%/150% DPI、
+   文档关闭和 AutoCAD 退出生命周期。
+5. 只读 MVP 与生命周期运行门槛通过后，再进入预览、拒绝、一次允许、锁内重校验和
+   单事务写入。
 
 ## 更新纪律
 

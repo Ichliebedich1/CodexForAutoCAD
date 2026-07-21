@@ -72,6 +72,24 @@ namespace Codex.AutoCAD.Host2016
             }
         }
 
+        internal static void UpdateAgentStatus(string value)
+        {
+            var current = controller;
+            if (current != null)
+            {
+                current.UpdateAgentStatus(value);
+            }
+        }
+
+        internal static void UpdateAgentText(string value)
+        {
+            var current = controller;
+            if (current != null)
+            {
+                current.UpdateAgentText(value);
+            }
+        }
+
         internal static void Terminate()
         {
             var current = controller;

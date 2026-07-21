@@ -1,16 +1,16 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using Codex.AutoCAD.Contracts;
 using Codex.AutoCAD.Ipc;
 
 namespace Codex.AutoCAD.AgentLauncher;
 
-public static class AgentHostBootstrapDoctor
+public static class AgentHostBootstrapService
 {
     private const int IdentifierBytes = 16;
     private const string PipeNamePrefix = "codex-autocad-";
-    internal static readonly SemaphoreSlim LaunchGate = new SemaphoreSlim(1, 1);
 
-    public static Task<AgentBootstrapDoctorResult> RunAsync(
+    public static Task<AgentHostServiceSession> StartAsync(
         AgentHostBootstrapOptions options,
         CancellationToken cancellationToken = default(CancellationToken))
     {
@@ -22,14 +22,14 @@ public static class AgentHostBootstrapDoctor
         return RunSupervisedAsync(options, cancellationToken);
     }
 
-    private static async Task<AgentBootstrapDoctorResult> RunSupervisedAsync(
+    private static async Task<AgentHostServiceSession> RunSupervisedAsync(
         AgentHostBootstrapOptions options,
         CancellationToken cancellationToken)
     {
         var controller = new AgentBootstrapDeadlineController(
             options.GetValidatedStartupTimeout(),
             cancellationToken);
-        Task<AgentBootstrapDoctorResult> workerTask;
+        Task<AgentHostServiceSession> workerTask;
         try
         {
             workerTask = Task.Run(() => RunWorkerAsync(options, controller));
@@ -51,7 +51,7 @@ public static class AgentHostBootstrapDoctor
         throw controller.GetTerminalFailure();
     }
 
-    private static async Task<AgentBootstrapDoctorResult> RunWorkerAsync(
+    private static async Task<AgentHostServiceSession> RunWorkerAsync(
         AgentHostBootstrapOptions options,
         AgentBootstrapDeadlineController controller)
     {
@@ -60,13 +60,13 @@ public static class AgentHostBootstrapDoctor
         {
             try
             {
-                LaunchGate.Wait(controller.AbortToken);
+                AgentHostBootstrapDoctor.LaunchGate.Wait(controller.AbortToken);
             }
-            catch (OperationCanceledException)
-                when (controller.IsAbortRequested)
+            catch (OperationCanceledException) when (controller.IsAbortRequested)
             {
                 throw controller.GetTerminalFailure();
             }
+
             gateHeld = true;
             controller.Checkpoint();
             AgentBootstrapLateFailureRegistry.ThrowIfPoisoned();
@@ -82,13 +82,13 @@ public static class AgentHostBootstrapDoctor
             {
                 if (gateHeld)
                 {
-                    LaunchGate.Release();
+                    AgentHostBootstrapDoctor.LaunchGate.Release();
                 }
             }
         }
     }
 
-    private static async Task<AgentBootstrapDoctorResult> RunCoreAsync(
+    private static async Task<AgentHostServiceSession> RunCoreAsync(
         AgentHostBootstrapOptions options,
         AgentBootstrapDeadlineController controller)
     {
@@ -108,7 +108,8 @@ public static class AgentHostBootstrapDoctor
         {
             var bootstrapId = payload.CopyBootstrapId();
             WindowsInheritedBootstrapProcess? child = null;
-            Task<StandardErrorCapture>? standardErrorTask = null;
+            AgentBootstrapDirectionKeys? hostKeys = null;
+            Task<AgentHostStandardErrorCapture>? standardErrorTask = null;
             try
             {
                 try
@@ -116,6 +117,7 @@ public static class AgentHostBootstrapDoctor
                     controller.BeginStartAttempt();
                     child = WindowsInheritedBootstrapProcess.Start(
                         executableIdentity,
+                        AgentHostBootstrapCommand.Serve,
                         controller.Checkpoint);
                     controller.PublishSuspended(child);
                 }
@@ -129,7 +131,7 @@ public static class AgentHostBootstrapDoctor
                     controller.EndStartAttempt();
                     throw new AgentBootstrapLaunchException(
                         AgentBootstrapLaunchFailure.ProcessStartFailed,
-                        "Starting AgentHost failed.",
+                        "Starting AgentHost service failed.",
                         exception);
                 }
 
@@ -155,15 +157,16 @@ public static class AgentHostBootstrapDoctor
                     {
                         throw new AgentBootstrapLaunchException(
                             AgentBootstrapLaunchFailure.ChildExitedWithError,
-                            "AgentHost exited during bootstrap write with code "
-                            + exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                            "AgentHost service exited during bootstrap write with code "
+                            + exitCode.ToString(
+                                System.Globalization.CultureInfo.InvariantCulture)
                             + ".",
                             exception);
                     }
 
                     throw new AgentBootstrapLaunchException(
                         AgentBootstrapLaunchFailure.BootstrapWriteFailed,
-                        "Writing the one-use AgentHost bootstrap packet failed.",
+                        "Writing the one-use AgentHost service bootstrap packet failed.",
                         exception);
                 }
                 finally
@@ -183,11 +186,11 @@ public static class AgentHostBootstrapDoctor
                 {
                     throw new AgentBootstrapLaunchException(
                         AgentBootstrapLaunchFailure.ProcessStartFailed,
-                        "Resuming the validated AgentHost failed.",
+                        "Resuming the validated AgentHost service failed.",
                         exception);
                 }
 
-                using (var hostKeys = payload.DeriveDirectionKeys())
+                hostKeys = payload.DeriveDirectionKeys();
                 using (var incomingGuard = hostKeys.CreateConfirmationInboundGuard())
                 {
                     var confirmationTask = Task.Run(
@@ -198,22 +201,6 @@ public static class AgentHostBootstrapDoctor
                             confirmationTask,
                             controller)
                         .ConfigureAwait(false);
-
-                    var exitCode = await WaitForExitAsync(child, controller)
-                        .ConfigureAwait(false);
-                    var standardError = await WaitForStandardErrorAsync(
-                            standardErrorTask,
-                            controller)
-                        .ConfigureAwait(false);
-                    if (exitCode != 0)
-                    {
-                        throw new AgentBootstrapLaunchException(
-                            AgentBootstrapLaunchFailure.ChildExitedWithError,
-                            "AgentHost bootstrap doctor exited with code "
-                            + exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                            + FormatStandardErrorSummary(standardError));
-                    }
-
                     var result = AgentBootstrapConfirmationProtocol.ValidateHostConfirmation(
                         confirmation,
                         incomingGuard,
@@ -223,11 +210,32 @@ public static class AgentHostBootstrapDoctor
                         child.ProcessId,
                         child.ProcessCreationFileTime,
                         child.ExecutableSha256,
-                        standardError.Bytes,
-                        standardError.Truncated);
+                        0,
+                        false);
+
+                    int exitCode;
+                    if (child.WaitForExit(0, out exitCode))
+                    {
+                        throw new AgentBootstrapLaunchException(
+                            AgentBootstrapLaunchFailure.ChildExitedWithError,
+                            "AgentHost service exited immediately after confirmation with code "
+                            + exitCode.ToString(
+                                System.Globalization.CultureInfo.InvariantCulture)
+                            + ".");
+                    }
+
                     child.MarkConfirmed();
+                    child.RequireTerminationOnDispose();
                     controller.CommitSuccess(child);
-                    return result;
+                    var serviceSession = new AgentHostServiceSession(
+                        child,
+                        hostKeys,
+                        standardErrorTask,
+                        result);
+                    child = null;
+                    hostKeys = null;
+                    standardErrorTask = null;
+                    return serviceSession;
                 }
             }
             catch (AgentBootstrapLaunchException exception)
@@ -258,7 +266,7 @@ public static class AgentHostBootstrapDoctor
             {
                 var wrapped = new AgentBootstrapLaunchException(
                     AgentBootstrapLaunchFailure.ConfirmationInvalid,
-                    "AgentHost bootstrap failed closed.",
+                    "AgentHost service bootstrap failed closed.",
                     exception);
                 if (child != null)
                 {
@@ -278,6 +286,7 @@ public static class AgentHostBootstrapDoctor
             finally
             {
                 Array.Clear(bootstrapId, 0, bootstrapId.Length);
+                hostKeys?.Dispose();
                 if (standardErrorTask != null && !standardErrorTask.IsCompleted)
                 {
                     ObserveFault(standardErrorTask);
@@ -326,7 +335,7 @@ public static class AgentHostBootstrapDoctor
             {
                 throw new AgentBootstrapLaunchException(
                     AgentBootstrapLaunchFailure.ChildExitedWithError,
-                    "AgentHost exited before confirmation with code "
+                    "AgentHost service exited before confirmation with code "
                     + exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture)
                     + ".",
                     exception);
@@ -334,58 +343,12 @@ public static class AgentHostBootstrapDoctor
 
             throw new AgentBootstrapLaunchException(
                 AgentBootstrapLaunchFailure.ConfirmationInvalid,
-                "AgentHost confirmation was missing, truncated, duplicated, or malformed.",
+                "AgentHost service confirmation was missing, truncated, duplicated, or malformed.",
                 exception);
         }
     }
 
-    private static async Task<int> WaitForExitAsync(
-        WindowsInheritedBootstrapProcess child,
-        AgentBootstrapDeadlineController controller)
-    {
-        while (true)
-        {
-            controller.Checkpoint();
-            int exitCode;
-            if (child.WaitForExit(0, out exitCode))
-            {
-                return exitCode;
-            }
-
-            var remaining = controller.GetRemainingOrThrow();
-            var delay = remaining < TimeSpan.FromMilliseconds(25)
-                ? remaining
-                : TimeSpan.FromMilliseconds(25);
-            var completed = await Task.WhenAny(
-                    Task.Delay(delay),
-                    controller.AbortCompletion)
-                .ConfigureAwait(false);
-            if (completed == controller.AbortCompletion)
-            {
-                throw controller.GetTerminalFailure();
-            }
-        }
-    }
-
-    private static async Task<StandardErrorCapture> WaitForStandardErrorAsync(
-        Task<StandardErrorCapture> standardErrorTask,
-        AgentBootstrapDeadlineController controller)
-    {
-        var completed = await Task.WhenAny(standardErrorTask, controller.AbortCompletion)
-            .ConfigureAwait(false);
-        if (completed == controller.AbortCompletion || controller.IsAbortRequested)
-        {
-            ObserveFault(standardErrorTask);
-            await controller.AbortCompletion.ConfigureAwait(false);
-            throw controller.GetTerminalFailure();
-        }
-
-        var result = await standardErrorTask.ConfigureAwait(false);
-        controller.Checkpoint();
-        return result;
-    }
-
-    private static Task<StandardErrorCapture> CaptureStandardErrorAsync(
+    private static Task<AgentHostStandardErrorCapture> CaptureStandardErrorAsync(
         Stream input,
         int maximumBytes)
     {
@@ -404,6 +367,7 @@ public static class AgentHostBootstrapDoctor
                     {
                         capturedBytes += Math.Min(read, remaining);
                     }
+
                     if (read > remaining)
                     {
                         truncated = true;
@@ -412,7 +376,7 @@ public static class AgentHostBootstrapDoctor
                     Array.Clear(buffer, 0, read);
                 }
 
-                return new StandardErrorCapture(capturedBytes, truncated);
+                return new AgentHostStandardErrorCapture(capturedBytes, truncated);
             }
             finally
             {
@@ -439,15 +403,6 @@ public static class AgentHostBootstrapDoctor
         }
     }
 
-    private static string FormatStandardErrorSummary(StandardErrorCapture standardError)
-    {
-        return ". stderrBytes="
-            + standardError.Bytes.ToString(System.Globalization.CultureInfo.InvariantCulture)
-            + ", stderrTruncated="
-            + (standardError.Truncated ? "true" : "false")
-            + ".";
-    }
-
     private static void ObserveFault(Task task)
     {
         task.ContinueWith(
@@ -456,20 +411,267 @@ public static class AgentHostBootstrapDoctor
                 var ignored = completed.Exception;
             },
             CancellationToken.None,
-            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskContinuationOptions.OnlyOnFaulted
+                | TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
     }
+}
 
-    private sealed class StandardErrorCapture
+public sealed class AgentHostServiceSession : IDisposable
+{
+    private const int TerminationWaitMilliseconds = 5000;
+    private static readonly TimeSpan StandardErrorDrainTimeout = TimeSpan.FromSeconds(1);
+
+    private readonly object _sync = new object();
+    private WindowsInheritedBootstrapProcess? _child;
+    private AgentBootstrapDirectionKeys? _directionKeys;
+    private Task<AgentHostStandardErrorCapture>? _standardErrorTask;
+    private Task? _stopTask;
+    private int _disposeSignaled;
+    private bool _stopping;
+    private int _standardErrorBytes;
+    private bool _standardErrorTruncated;
+
+    internal AgentHostServiceSession(
+        WindowsInheritedBootstrapProcess child,
+        AgentBootstrapDirectionKeys directionKeys,
+        Task<AgentHostStandardErrorCapture> standardErrorTask,
+        AgentBootstrapDoctorResult result)
     {
-        internal StandardErrorCapture(int bytes, bool truncated)
+        _child = child ?? throw new ArgumentNullException(nameof(child));
+        _directionKeys = directionKeys ?? throw new ArgumentNullException(nameof(directionKeys));
+        _standardErrorTask = standardErrorTask
+            ?? throw new ArgumentNullException(nameof(standardErrorTask));
+        if (result == null)
         {
-            Bytes = bytes;
-            Truncated = truncated;
+            throw new ArgumentNullException(nameof(result));
         }
 
-        internal int Bytes { get; }
-
-        internal bool Truncated { get; }
+        ProcessId = result.ProcessId;
+        ProcessCreationFileTime = result.ProcessCreationFileTime;
+        BootstrapId = result.BootstrapId;
+        SessionId = result.SessionId;
+        PipeName = result.PipeName;
+        ExecutableSha256 = result.ExecutableSha256;
     }
+
+    public int ProcessId { get; }
+
+    public long ProcessCreationFileTime { get; }
+
+    public string BootstrapId { get; }
+
+    public string SessionId { get; }
+
+    public string PipeName { get; }
+
+    public string ExecutableSha256 { get; }
+
+    public int StandardErrorBytes
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _standardErrorBytes;
+            }
+        }
+    }
+
+    public bool StandardErrorTruncated
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _standardErrorTruncated;
+            }
+        }
+    }
+
+    public AgentBootstrapDirectionKeys ClaimDirectionKeys()
+    {
+        lock (_sync)
+        {
+            if (_stopping || Volatile.Read(ref _disposeSignaled) != 0)
+            {
+                throw new ObjectDisposedException(nameof(AgentHostServiceSession));
+            }
+
+            if (_directionKeys == null)
+            {
+                throw new AgentBootstrapException(
+                    AgentBootstrapValidationCode.AlreadyConsumed,
+                    "AgentHost service direction keys have already been claimed.");
+            }
+
+            var claimed = _directionKeys;
+            _directionKeys = null;
+            return claimed;
+        }
+    }
+
+    public Task StopAsync(
+        CancellationToken cancellationToken = default(CancellationToken))
+    {
+        var stopTask = GetOrStartStopTask();
+        return AwaitWithCancellationAsync(stopTask, cancellationToken);
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposeSignaled, 1) != 0)
+        {
+            return;
+        }
+
+        GetOrStartStopTask().GetAwaiter().GetResult();
+    }
+
+    private Task GetOrStartStopTask()
+    {
+        lock (_sync)
+        {
+            if (_stopTask != null)
+            {
+                return _stopTask;
+            }
+
+            _stopping = true;
+            var child = _child;
+            var directionKeys = _directionKeys;
+            var standardErrorTask = _standardErrorTask;
+            _child = null;
+            _directionKeys = null;
+            _standardErrorTask = null;
+            _stopTask = Task.Run(
+                () => StopCore(child, directionKeys, standardErrorTask));
+            return _stopTask;
+        }
+    }
+
+    private void StopCore(
+        WindowsInheritedBootstrapProcess? child,
+        AgentBootstrapDirectionKeys? directionKeys,
+        Task<AgentHostStandardErrorCapture>? standardErrorTask)
+    {
+        var failures = new List<Exception>();
+        directionKeys?.Dispose();
+        var terminationProved = child == null;
+        if (child != null)
+        {
+            try
+            {
+                terminationProved = child.TerminateAndWait(TerminationWaitMilliseconds);
+                if (!terminationProved)
+                {
+                    failures.Add(new InvalidOperationException(
+                        "AgentHost service did not terminate inside the hard cleanup deadline."));
+                }
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
+        if (standardErrorTask != null)
+        {
+            try
+            {
+                var completed = Task.WhenAny(
+                        standardErrorTask,
+                        Task.Delay(StandardErrorDrainTimeout))
+                    .GetAwaiter()
+                    .GetResult();
+                if (completed != standardErrorTask)
+                {
+                    failures.Add(new TimeoutException(
+                        "AgentHost stderr drain did not settle after process termination."));
+                }
+                else
+                {
+                    var capture = standardErrorTask.GetAwaiter().GetResult();
+                    lock (_sync)
+                    {
+                        _standardErrorBytes = capture.Bytes;
+                        _standardErrorTruncated = capture.Truncated;
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
+        if (child != null)
+        {
+            var ioFailure = child.AbortIo();
+            if (ioFailure != null)
+            {
+                failures.Add(ioFailure);
+            }
+
+            try
+            {
+                child.Dispose();
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
+        if (!terminationProved || failures.Count != 0)
+        {
+            var failure = new AgentBootstrapLaunchException(
+                AgentBootstrapLaunchFailure.ChildTerminationFailed,
+                "Stopping AgentHost service could not prove complete bounded cleanup.",
+                failures.Count == 1
+                    ? failures[0]
+                    : new AggregateException(failures));
+            AgentBootstrapLateFailureRegistry.Record(failure);
+            throw failure;
+        }
+    }
+
+    private static async Task AwaitWithCancellationAsync(
+        Task task,
+        CancellationToken cancellationToken)
+    {
+        if (!cancellationToken.CanBeCanceled)
+        {
+            await task.ConfigureAwait(false);
+            return;
+        }
+
+        var cancellationTask = new TaskCompletionSource<bool>();
+        using (cancellationToken.Register(
+            state => ((TaskCompletionSource<bool>)state!).TrySetResult(true),
+            cancellationTask))
+        {
+            var completed = await Task.WhenAny(task, cancellationTask.Task)
+                .ConfigureAwait(false);
+            if (completed == cancellationTask.Task)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            await task.ConfigureAwait(false);
+        }
+    }
+}
+
+internal sealed class AgentHostStandardErrorCapture
+{
+    internal AgentHostStandardErrorCapture(int bytes, bool truncated)
+    {
+        Bytes = bytes;
+        Truncated = truncated;
+    }
+
+    internal int Bytes { get; }
+
+    internal bool Truncated { get; }
 }

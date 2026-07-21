@@ -147,6 +147,11 @@ namespace Codex.AutoCAD.Host2016
             return state;
         }
 
+        internal static UnifiedContextState GetCurrentState()
+        {
+            return state;
+        }
+
         internal static void Clear(string reason)
         {
             Initialize();
@@ -190,7 +195,8 @@ namespace Codex.AutoCAD.Host2016
 
             var builder = new StringBuilder();
             builder.AppendLine("--- Codex AutoCAD 2016 Unified Read-Only Context ---");
-            builder.AppendLine("Module version: 0.2.0.0");
+            builder.Append("Module version: ").AppendLine(
+                typeof(UnifiedReadOnlyContextRuntime).Assembly.GetName().Version.ToString());
             builder.AppendLine("Target API: AutoCAD R20.1 / managed 20.1.0.0");
             builder.Append("Status: ").AppendLine(current.Status);
             builder.Append("Published: ").AppendLine(current.Published ? "true" : "false");

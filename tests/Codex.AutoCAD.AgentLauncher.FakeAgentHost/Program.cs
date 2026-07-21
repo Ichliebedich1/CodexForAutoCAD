@@ -23,8 +23,11 @@ internal static class FakeAgentHostProgram
             return 42;
         }
 
-        if (args.Length != 1
-            || !string.Equals(args[0], "bootstrap-doctor", StringComparison.Ordinal))
+        var serve = args.Length == 1
+            && string.Equals(args[0], "bootstrap-serve", StringComparison.Ordinal);
+        if (!serve
+            && (args.Length != 1
+                || !string.Equals(args[0], "bootstrap-doctor", StringComparison.Ordinal)))
         {
             throw new ArgumentException("Unexpected fake AgentHost command line.");
         }
@@ -60,7 +63,7 @@ internal static class FakeAgentHostProgram
         try
         {
             using var keys = payload.DeriveDirectionKeys();
-            using var authenticator = keys.CreateOutboundAuthenticator();
+            using var authenticator = keys.CreateConfirmationOutboundAuthenticator();
             var identity = AgentBootstrapInheritedChannel.GetCurrentProcessIdentity();
             var processId = mode == "identity" ? checked(identity.ProcessId + 1) : identity.ProcessId;
             var confirmation = AgentBootstrapConfirmationProtocol.CreateAgentConfirmation(
@@ -104,6 +107,13 @@ internal static class FakeAgentHostProgram
                 AgentBootstrapConfirmationProtocol.WriteSingleFrame(
                     confirmationOutput,
                     confirmation);
+            }
+
+            if (serve)
+            {
+                confirmationOutput.Dispose();
+                Thread.Sleep(Timeout.Infinite);
+                return 99;
             }
 
             return 0;

@@ -92,10 +92,61 @@ public sealed class AuthenticatedPipeConnection : IAsyncDisposable
         _activeRequestSlots = new SemaphoreSlim(_maximumActiveRequests, _maximumActiveRequests);
         _handlerSlots = new SemaphoreSlim(_maximumConcurrentHandlers, _maximumConcurrentHandlers);
     }
+    internal AuthenticatedPipeConnection(
+        Stream stream,
+        string sessionId,
+        IpcEnvelopeAuthenticator authenticator,
+        IpcSessionGuard incomingGuard,
+        BridgeConnectionOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        if (!stream.CanRead || !stream.CanWrite)
+        {
+            throw new ArgumentException("桥接流必须同时支持读取和写入。", nameof(stream));
+        }
+
+        if (string.IsNullOrWhiteSpace(sessionId)
+            || sessionId.Length > IpcSessionGuard.MaximumIdentifierCharacters)
+        {
+            throw new ArgumentException(
+                $"SessionId不能为空且不能超过{IpcSessionGuard.MaximumIdentifierCharacters}个字符。",
+                nameof(sessionId));
+        }
+
+        ArgumentNullException.ThrowIfNull(authenticator);
+        ArgumentNullException.ThrowIfNull(incomingGuard);
+        options ??= new BridgeConnectionOptions();
+        options.Validate();
+        _stream = stream;
+        _sessionId = sessionId;
+        _authenticator = authenticator;
+        _incomingGuard = incomingGuard;
+        _maximumPendingRequests = options.MaximumPendingRequests;
+        _maximumPendingNotifications = options.MaximumPendingNotifications;
+        _maximumActiveRequests = options.MaximumActiveRequests;
+        _maximumConcurrentHandlers = options.MaximumConcurrentHandlers;
+        _maximumFrameBytes = options.MaximumFrameBytes;
+        _shutdownTimeout = options.ShutdownTimeout;
+        _pendingRequestSlots = new SemaphoreSlim(
+            _maximumPendingRequests,
+            _maximumPendingRequests);
+        _pendingNotificationSlots = new SemaphoreSlim(
+            _maximumPendingNotifications,
+            _maximumPendingNotifications);
+        _activeRequestSlots = new SemaphoreSlim(
+            _maximumActiveRequests,
+            _maximumActiveRequests);
+        _handlerSlots = new SemaphoreSlim(
+            _maximumConcurrentHandlers,
+            _maximumConcurrentHandlers);
+    }
+
 
     public Task Completion => _receiveTask ?? Task.CompletedTask;
 
     public Exception? TerminalError => Volatile.Read(ref _terminalError);
+
+    public event EventHandler<BridgeResponseSentEventArgs>? ResponseSent;
 
     public void Start(
         BridgeRequestHandler? requestHandler = null,
@@ -558,6 +609,31 @@ public sealed class AuthenticatedPipeConnection : IAsyncDisposable
                         response,
                         connectionToken)
                     .ConfigureAwait(false);
+                RaiseResponseSent(envelope.MessageId, string.IsNullOrEmpty(response.ErrorCode));
+            }
+        }
+    }
+
+    private void RaiseResponseSent(string requestId, bool succeeded)
+    {
+        var handlers = ResponseSent;
+        if (handlers is null)
+        {
+            return;
+        }
+
+        var args = new BridgeResponseSentEventArgs(requestId, succeeded);
+        foreach (EventHandler<BridgeResponseSentEventArgs> handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                handler(this, args);
+            }
+            catch (Exception exception)
+            {
+                RecordTerminalError(exception);
+                TryCancel(_lifetime);
+                return;
             }
         }
     }

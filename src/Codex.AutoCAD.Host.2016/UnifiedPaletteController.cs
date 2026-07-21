@@ -19,9 +19,12 @@ namespace Codex.AutoCAD.Host2016
         private static readonly Guid PaletteGuid = new Guid(PaletteGuidText);
 
         private readonly DocumentCollection documents;
+        private readonly object agentSync = new object();
+        private readonly StringBuilder agentText = new StringBuilder();
         private PaletteSet paletteSet;
         private UnifiedPalettePanel panel;
         private PaletteContextView context;
+        private string agentStatus = "Agent 离线；只读模式。";
         private bool disposed;
         private int generationCount;
         private int resetCount;
@@ -74,6 +77,45 @@ namespace Codex.AutoCAD.Host2016
             UpdatePanel();
         }
 
+        internal void UpdateAgentStatus(string value)
+        {
+            string currentStatus;
+            lock (agentSync)
+            {
+                agentStatus = value ?? string.Empty;
+                currentStatus = agentStatus;
+            }
+
+            var currentPanel = panel;
+            if (currentPanel != null)
+            {
+                currentPanel.UpdateAgentStatus(currentStatus);
+            }
+        }
+
+        internal void UpdateAgentText(string value)
+        {
+            string currentText;
+            lock (agentSync)
+            {
+                if (string.IsNullOrEmpty(value))
+                {
+                    agentText.Clear();
+                }
+                else
+                {
+                    agentText.Append(value);
+                }
+                currentText = agentText.ToString();
+            }
+
+            var currentPanel = panel;
+            if (currentPanel != null)
+            {
+                currentPanel.UpdateAgentText(currentText);
+            }
+        }
+
         internal string BuildInfo()
         {
             EnsureNotDisposed();
@@ -87,7 +129,8 @@ namespace Codex.AutoCAD.Host2016
 
             var builder = new StringBuilder();
             builder.AppendLine("--- Codex AutoCAD 2016 Unified Palette Info ---");
-            builder.AppendLine("Module version: 0.2.0.0");
+            builder.Append("Module version: ").AppendLine(
+                typeof(UnifiedPaletteController).Assembly.GetName().Version.ToString());
             builder.AppendLine("Target API: AutoCAD R20.1 / managed 20.1.0.0");
             builder.Append("Palette GUID: ").AppendLine(PaletteGuidText);
             builder.Append("Created: ").AppendLine(created ? "true" : "false");
@@ -113,7 +156,12 @@ namespace Codex.AutoCAD.Host2016
             builder.Append("CadContext JSON bytes: ").AppendLine(context.CanonicalBytes.ToString(CultureInfo.InvariantCulture));
             builder.AppendLine("Readable summary: enabled");
             builder.AppendLine("Canonical JSON display: enabled");
-            builder.AppendLine("Agent: disabled");
+            string currentAgentStatus;
+            lock (agentSync)
+            {
+                currentAgentStatus = agentStatus;
+            }
+            builder.Append("Agent: ").AppendLine(currentAgentStatus);
             builder.AppendLine("CAD write: disabled");
             builder.AppendLine("Plugin-initiated save: disabled");
             builder.AppendLine("AutoCAD SAVETIME setting: not modified");
@@ -309,6 +357,15 @@ namespace Codex.AutoCAD.Host2016
             metrics.Append(" / ").Append(documentToBeDestroyedCount.ToString(CultureInfo.InvariantCulture));
             currentPanel.UpdateMetrics(metrics.ToString());
             currentPanel.UpdateContext(context);
+            string currentAgentStatus;
+            string currentAgentText;
+            lock (agentSync)
+            {
+                currentAgentStatus = agentStatus;
+                currentAgentText = agentText.ToString();
+            }
+            currentPanel.UpdateAgentStatus(currentAgentStatus);
+            currentPanel.UpdateAgentText(currentAgentText);
         }
 
         private static string ReadDbmod()

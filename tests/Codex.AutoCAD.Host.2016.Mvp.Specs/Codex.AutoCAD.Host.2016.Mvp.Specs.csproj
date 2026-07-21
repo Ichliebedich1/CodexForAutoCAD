@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>Codex.AutoCAD.Host.2016.Mvp.Specs</AssemblyName>
+    <RootNamespace>Codex.AutoCAD.Host.2016.Mvp.Specs</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentProtocolIdentity.cs"
+             Link="MvpAgentProtocolIdentity.cs" />
+  </ItemGroup>
+</Project>

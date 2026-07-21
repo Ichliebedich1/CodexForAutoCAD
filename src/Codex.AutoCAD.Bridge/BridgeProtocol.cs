@@ -14,6 +14,20 @@ public sealed record BridgeRequest(string RequestId, string Method, string BodyJ
 
 public sealed record BridgeNotification(string NotificationId, string Method, string BodyJson);
 
+public sealed class BridgeResponseSentEventArgs : EventArgs
+{
+    public BridgeResponseSentEventArgs(string requestId, bool succeeded)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(requestId);
+        RequestId = requestId;
+        Succeeded = succeeded;
+    }
+
+    public string RequestId { get; }
+
+    public bool Succeeded { get; }
+}
+
 public delegate ValueTask<string?> BridgeRequestHandler(
     BridgeRequest request,
     CancellationToken cancellationToken);

@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
@@ -31,7 +32,7 @@ namespace Codex.AutoCAD.Host2016
             editor.WriteMessage("\nPalette capability: enabled");
             editor.WriteMessage("\nRead-only selection capability: enabled");
             editor.WriteMessage("\nCadContextJson: codex.autocad.cad-context/1");
-            editor.WriteMessage("\nAgent/IPC: disabled");
+            editor.WriteMessage("\nAgent/IPC: authenticated MVP candidate; manual start");
             editor.WriteMessage("\nCAD write capability: disabled");
             editor.WriteMessage("\nPlugin-initiated save: disabled");
             editor.WriteMessage("\nAutoCAD SAVETIME setting: not modified");
@@ -56,7 +57,7 @@ namespace Codex.AutoCAD.Host2016
             }
 
             document.Editor.WriteMessage(
-                "\nHost.2016 当前为统一只读 MVP 候选：诊断、Palette、六类选择读取和 CadContextJson v1 已整合；Agent、CAD 写入和插件保存保持禁用。\n");
+                "\nHost.2016 当前为统一只读 AI MVP 候选：诊断、Palette、六类选择、CadContextJson v1 和认证 Agent Bridge 已整合；CAD 写入和插件保存保持禁用。\n");
         }
 
         [CommandMethod("CODEX16PAL", CommandFlags.Modal)]
@@ -70,7 +71,7 @@ namespace Codex.AutoCAD.Host2016
 
             UnifiedPaletteRuntime.Show();
             editor.WriteMessage(
-                "\nCodex AutoCAD 2016 统一只读侧边栏已打开；预选对象后执行 CODEX16CTX。Agent、CAD 写入和插件保存均禁用。\n");
+                "\nCodex AutoCAD 2016 统一只读侧边栏已打开；预选对象后执行 CODEX16CTX，再在面板输入问题或执行 CODEX16ASK。CAD 写入和插件保存均禁用。\n");
         }
 
         [CommandMethod("CODEX16PALINFO", CommandFlags.Modal)]
@@ -144,6 +145,73 @@ namespace Codex.AutoCAD.Host2016
             UnifiedReadOnlyContextRuntime.Clear("user-command");
             editor.WriteMessage(
                 "\nCodex AutoCAD 2016 统一只读上下文已从内存清除；图纸未修改、未保存。\n");
+        }
+
+        [CommandMethod("CODEX16AGENTSTART", CommandFlags.Modal)]
+        public void StartAgent()
+        {
+            var editor = GetActiveEditor();
+            if (editor == null)
+            {
+                return;
+            }
+
+            Observe(MvpAgentRuntime.StartAsync());
+            UnifiedPaletteRuntime.Show();
+            editor.WriteMessage(
+                "\nAgentHost 启动请求已提交；状态将在侧边栏更新。CAD 写入仍禁用。\n");
+        }
+
+        [CommandMethod("CODEX16ASK", CommandFlags.Modal)]
+        public void AskAgent()
+        {
+            var editor = GetActiveEditor();
+            if (editor == null)
+            {
+                return;
+            }
+
+            var prompt = new PromptStringOptions("\n输入要结合当前选择上下文分析的问题：")
+            {
+                AllowSpaces = true,
+            };
+            var result = editor.GetString(prompt);
+            if (result.Status != PromptStatus.OK || string.IsNullOrWhiteSpace(result.StringResult))
+            {
+                return;
+            }
+
+            UnifiedPaletteRuntime.Show();
+            Observe(MvpAgentRuntime.AskAsync(result.StringResult));
+            editor.WriteMessage("\n只读问题已提交；回答将在侧边栏流式显示。\n");
+        }
+
+        [CommandMethod("CODEX16AGENTSTOP", CommandFlags.Modal)]
+        public void StopAgent()
+        {
+            var editor = GetActiveEditor();
+            if (editor == null)
+            {
+                return;
+            }
+
+            Observe(MvpAgentRuntime.StopAsync());
+            editor.WriteMessage("\nAgentHost 停止请求已提交。\n");
+        }
+
+        private static void Observe(Task task)
+        {
+            if (task == null)
+            {
+                return;
+            }
+
+            task.ContinueWith(
+                completed =>
+                {
+                    var ignored = completed.Exception;
+                },
+                TaskContinuationOptions.OnlyOnFaulted);
         }
 
         private static Editor GetActiveEditor()

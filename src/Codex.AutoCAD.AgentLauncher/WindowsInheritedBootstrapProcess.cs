@@ -167,6 +167,12 @@ public static class AgentBootstrapInheritedChannel
     }
 }
 
+internal enum AgentHostBootstrapCommand
+{
+    Doctor = 0,
+    Serve = 1,
+}
+
 internal sealed class WindowsInheritedBootstrapProcess : IDisposable
 {
     private readonly SafeKernelHandle processHandle;
@@ -212,6 +218,17 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
 
     internal static WindowsInheritedBootstrapProcess Start(
         AgentHostExecutableIdentity executableIdentity,
+        Action throwIfLaunchAborted)
+    {
+        return Start(
+            executableIdentity,
+            AgentHostBootstrapCommand.Doctor,
+            throwIfLaunchAborted);
+    }
+
+    internal static WindowsInheritedBootstrapProcess Start(
+        AgentHostExecutableIdentity executableIdentity,
+        AgentHostBootstrapCommand command,
         Action throwIfLaunchAborted)
     {
         if (throwIfLaunchAborted == null)
@@ -282,7 +299,14 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
 
             var commandLine = new StringBuilder();
             commandLine.Append(QuoteCommandLineArgument(executablePath));
-            commandLine.Append(" bootstrap-doctor");
+            commandLine.Append(command switch
+            {
+                AgentHostBootstrapCommand.Doctor => " bootstrap-doctor",
+                AgentHostBootstrapCommand.Serve => " bootstrap-serve",
+                _ => throw new AgentBootstrapLaunchException(
+                    AgentBootstrapLaunchFailure.InvalidConfiguration,
+                    "AgentHost bootstrap command is invalid."),
+            });
 
             throwIfLaunchAborted();
 
@@ -526,6 +550,12 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
             throw new InvalidOperationException("A suspended AgentHost cannot be confirmed.");
         }
         confirmed = true;
+    }
+
+    internal void RequireTerminationOnDispose()
+    {
+        ThrowIfDisposed();
+        confirmed = false;
     }
 
     internal bool WaitForExit(int milliseconds, out int exitCode)

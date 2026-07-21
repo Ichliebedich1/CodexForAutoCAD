@@ -156,7 +156,9 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
             options.ServiceTier,
             options.Ephemeral,
             _runtimeWorkspaceRoots,
-            CadDynamicToolCatalog.CreateWireTools());
+            options.EnableCadDynamicTools
+                ? CadDynamicToolCatalog.CreateWireTools()
+                : Array.Empty<DynamicToolNamespaceWire>());
 
         var response = await _appServer.SendRequestAsync<JsonElement>(
             "thread/start",

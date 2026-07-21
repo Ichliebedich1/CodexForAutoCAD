@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>Codex.AutoCAD.AgentService.Specs</AssemblyName>
+    <RootNamespace>Codex.AutoCAD.AgentService.Specs</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Codex.AutoCAD.AgentLauncher\Codex.AutoCAD.AgentLauncher.csproj" />
+    <ProjectReference Include="..\..\src\Codex.AutoCAD.Ipc\Codex.AutoCAD.Ipc.csproj" />
+  </ItemGroup>
+</Project>

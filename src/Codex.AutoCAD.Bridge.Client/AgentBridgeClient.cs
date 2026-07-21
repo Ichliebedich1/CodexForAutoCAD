@@ -17,9 +17,9 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
     private readonly SemaphoreSlim _sendGate = new SemaphoreSlim(1, 1);
     private readonly string _pipeName;
     private readonly string _sessionId;
-    private readonly byte[] _sessionSecret;
     private readonly TimeSpan _connectTimeout;
     private readonly TimeSpan _requestTimeout;
+    private readonly TimeSpan _shutdownTimeout;
     private readonly int _maximumFrameBytes;
     private readonly Dictionary<string, TaskCompletionSource<BridgeClientJsonCodec.ResponsePayloadValue>>
         _pendingRequests =
@@ -68,6 +68,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
 
         ValidateTimeout(options.ConnectTimeout, nameof(options.ConnectTimeout));
         ValidateTimeout(options.RequestTimeout, nameof(options.RequestTimeout));
+        ValidateTimeout(options.ShutdownTimeout, nameof(options.ShutdownTimeout));
         if (options.MaximumFrameBytes <= 0
             || options.MaximumFrameBytes > ProtocolConstants.MaximumMessageBytes)
         {
@@ -76,10 +77,79 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
 
         _pipeName = options.PipeName;
         _sessionId = options.SessionId;
-        _sessionSecret = (byte[])options.SessionSecret.Clone();
+        IpcEnvelopeAuthenticator? authenticator = null;
+        try
+        {
+            authenticator = new IpcEnvelopeAuthenticator(options.SessionSecret);
+            _incomingGuard = new IpcSessionGuard(_sessionId, options.SessionSecret);
+            _authenticator = authenticator;
+            authenticator = null;
+        }
+        finally
+        {
+            if (authenticator is not null)
+            {
+                authenticator.Dispose();
+            }
+        }
         _connectTimeout = options.ConnectTimeout;
         _requestTimeout = options.RequestTimeout;
+        _shutdownTimeout = options.ShutdownTimeout;
+
         _maximumFrameBytes = options.MaximumFrameBytes;
+    }
+    public AgentBridgeClient(
+        AgentBootstrapDirectionKeys directionKeys,
+        TimeSpan connectTimeout,
+        TimeSpan requestTimeout,
+        int maximumFrameBytes = ProtocolConstants.MaximumMessageBytes,
+        TimeSpan? shutdownTimeout = null)
+    {
+        if (directionKeys is null)
+        {
+            throw new ArgumentNullException(nameof(directionKeys));
+        }
+
+        ValidatePipeName(directionKeys.PipeName);
+        if (string.IsNullOrWhiteSpace(directionKeys.SessionId)
+            || directionKeys.SessionId.Length > IpcSessionGuard.MaximumIdentifierCharacters)
+        {
+            throw new ArgumentException(
+                "Bootstrap SessionId为空或超过安全长度。",
+                nameof(directionKeys));
+        }
+
+        ValidateTimeout(connectTimeout, nameof(connectTimeout));
+        ValidateTimeout(requestTimeout, nameof(requestTimeout));
+        var validatedShutdownTimeout = shutdownTimeout ?? TimeSpan.FromSeconds(5);
+        ValidateTimeout(validatedShutdownTimeout, nameof(shutdownTimeout));
+        if (maximumFrameBytes <= 0
+            || maximumFrameBytes > ProtocolConstants.MaximumMessageBytes)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumFrameBytes));
+        }
+
+        _pipeName = directionKeys.PipeName;
+        _sessionId = directionKeys.SessionId;
+        _connectTimeout = connectTimeout;
+        _requestTimeout = requestTimeout;
+        _shutdownTimeout = validatedShutdownTimeout;
+        _maximumFrameBytes = maximumFrameBytes;
+        IpcEnvelopeAuthenticator? authenticator = null;
+        try
+        {
+            authenticator = directionKeys.CreateOutboundAuthenticator();
+            _incomingGuard = directionKeys.CreateInboundGuard();
+            _authenticator = authenticator;
+            authenticator = null;
+        }
+        finally
+        {
+            if (authenticator is not null)
+            {
+                authenticator.Dispose();
+            }
+        }
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -107,22 +177,17 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
             cancellationToken.ThrowIfCancellationRequested();
 
             var lifetime = new CancellationTokenSource();
-            var authenticator = new IpcEnvelopeAuthenticator(_sessionSecret);
-            var incomingGuard = new IpcSessionGuard(_sessionId, _sessionSecret);
             lock (_sync)
             {
-                if (_state != ClientState.Starting)
+                if (_state != ClientState.Starting
+                    || _authenticator is null
+                    || _incomingGuard is null)
                 {
                     lifetime.Dispose();
-                    authenticator.Dispose();
-                    incomingGuard.Dispose();
                     throw CreateStateException("Agent Bridge Client启动期间已终止。");
                 }
 
                 _lifetime = lifetime;
-                _authenticator = authenticator;
-                _incomingGuard = incomingGuard;
-                Array.Clear(_sessionSecret, 0, _sessionSecret.Length);
                 _state = ClientState.Online;
                 _receiveTask = ReceiveLoopAsync(pipe, lifetime.Token);
             }
@@ -188,6 +253,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
             return;
         }
 
+        Exception? stopFailure = null;
         try
         {
             TryCancel(lifetime);
@@ -200,18 +266,60 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
                 completion.TrySetException(stopped);
             }
 
-            await _sendGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
-            _sendGate.Release();
+            using (var sendTimeout = new CancellationTokenSource(_shutdownTimeout))
+            {
+                try
+                {
+                    await _sendGate.WaitAsync(sendTimeout.Token).ConfigureAwait(false);
+                    _sendGate.Release();
+                }
+                catch (OperationCanceledException) when (sendTimeout.IsCancellationRequested)
+                {
+                    stopFailure = new AgentBridgeClientException(
+                        AgentBridgeErrorCodes.Timeout,
+                        "Agent Bridge发送通道未在关闭期限内释放。");
+                }
+            }
 
             if (receiveTask is not null)
             {
-                await receiveTask.ConfigureAwait(false);
+                var completed = await Task.WhenAny(
+                        receiveTask,
+                        Task.Delay(_shutdownTimeout))
+                    .ConfigureAwait(false);
+                if (completed == receiveTask)
+                {
+                    await receiveTask.ConfigureAwait(false);
+                }
+                else
+                {
+                    ObserveFault(receiveTask);
+                    stopFailure = stopFailure ?? new AgentBridgeClientException(
+                        AgentBridgeErrorCodes.Timeout,
+                        "Agent Bridge接收循环未在关闭期限内结束。");
+                }
             }
+        }
+        catch (Exception exception)
+        {
+            stopFailure = stopFailure ?? exception;
         }
         finally
         {
             DisposeSecurityMaterials();
-            _stopCompletion.TrySetResult(true);
+            if (stopFailure is null)
+            {
+                _stopCompletion.TrySetResult(true);
+            }
+            else
+            {
+                _stopCompletion.TrySetException(stopFailure);
+            }
+        }
+
+        if (stopFailure is not null)
+        {
+            throw stopFailure;
         }
     }
 
@@ -343,7 +451,6 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
             }
 
             DisposeSecurityMaterials();
-            Array.Clear(_sessionSecret, 0, _sessionSecret.Length);
             if (stopCompleted)
             {
                 _sendGate.Dispose();
@@ -737,7 +844,6 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
             _incomingGuard = null;
             _lifetime = null;
             _pipe = null;
-            Array.Clear(_sessionSecret, 0, _sessionSecret.Length);
         }
 
         if (authenticator is not null)
@@ -920,6 +1026,18 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
         catch (ObjectDisposedException)
         {
         }
+    }
+
+    private static void ObserveFault(Task task)
+    {
+        task.ContinueWith(
+            completed =>
+            {
+                var ignored = completed.Exception;
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     private sealed class CancellationRegistration : IDisposable

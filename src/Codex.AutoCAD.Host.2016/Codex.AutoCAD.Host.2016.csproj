@@ -54,6 +54,18 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Codex.AutoCAD.AgentLauncher\Codex.AutoCAD.AgentLauncher.csproj">
+      <AdditionalProperties>EnableAutoCad2016=true</AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\Codex.AutoCAD.Bridge.Client\Codex.AutoCAD.Bridge.Client.csproj">
+      <AdditionalProperties>EnableAutoCad2016=true</AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj">
+      <AdditionalProperties>EnableAutoCad2016=true</AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\Codex.AutoCAD.Ipc\Codex.AutoCAD.Ipc.csproj">
+      <AdditionalProperties>EnableAutoCad2016=true</AdditionalProperties>
+    </ProjectReference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Drawing" />
@@ -89,17 +101,15 @@
     <Compile Include="CodexAutoCad2016Extension.cs" />
     <Compile Include="CodexCad2016Commands.cs" />
     <Compile Include="EmbeddedContractGlobalUsings.cs" />
-    <Compile Include="EmbeddedCadValidationFailure.cs" />
     <Compile Include="CadContextJsonMapper.cs" />
     <Compile Include="DocumentContextRegistry.cs" />
     <Compile Include="UnifiedReadOnlyContextRuntime.cs" />
     <Compile Include="UnifiedPaletteRuntime.cs" />
     <Compile Include="UnifiedPaletteController.cs" />
     <Compile Include="UnifiedPalettePanel.cs" />
-    <Compile Include="..\Codex.AutoCAD.Contracts\ProtocolConstants.cs" Link="EmbeddedContracts\ProtocolConstants.cs" />
-    <Compile Include="..\Codex.AutoCAD.Contracts\Geometry.cs" Link="EmbeddedContracts\Geometry.cs" />
-    <Compile Include="..\Codex.AutoCAD.Contracts\CadContextJsonV1Contracts.cs" Link="EmbeddedContracts\CadContextJsonV1Contracts.cs" />
-    <Compile Include="..\Codex.AutoCAD.Contracts\CadContextJsonV1Codec.cs" Link="EmbeddedContracts\CadContextJsonV1Codec.cs" />
+    <Compile Include="MvpAgentProtocolIdentity.cs" />
+    <Compile Include="MvpAgentClient.cs" />
+    <Compile Include="MvpAgentRuntime.cs" />
     <Compile Include="..\Codex.AutoCAD.Host.2016.ReadOnlyContext\ReadOnlySelectionCapture.cs" Link="ReadOnlyContext\ReadOnlySelectionCapture.cs" />
     <Compile Include="..\Codex.AutoCAD.Host.2016.ReadOnlyContext\ReadOnlyContextSnapshot.cs" Link="ReadOnlyContext\ReadOnlyContextSnapshot.cs" />
     <Compile Include="..\Codex.AutoCAD.Host.2016.ReadOnlyContext\CanonicalSelectionHash.cs" Link="ReadOnlyContext\CanonicalSelectionHash.cs" />

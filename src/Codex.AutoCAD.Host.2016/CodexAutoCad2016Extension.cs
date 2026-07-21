@@ -12,16 +12,18 @@ namespace Codex.AutoCAD.Host2016
         public void Initialize()
         {
             UnifiedReadOnlyContextRuntime.Initialize();
+            MvpAgentRuntime.Initialize();
             var document = Application.DocumentManager.MdiActiveDocument;
             if (document != null)
             {
                 document.Editor.WriteMessage(
-                    "\nCodex AutoCAD 2016 统一只读 MVP 候选已加载。输入 CODEX16PAL 打开侧边栏；预选对象后输入 CODEX16CTX 生成 CadContextJson v1。Agent、CAD 写入和插件保存均禁用。\n");
+                    "\nCodex AutoCAD 2016 统一只读 AI MVP 候选已加载。输入 CODEX16PAL 打开侧边栏；预选对象后输入 CODEX16CTX，再使用 CODEX16AGENTSTART/CODEX16ASK。CAD 写入和插件保存均禁用。\n");
             }
         }
 
         public void Terminate()
         {
+            MvpAgentRuntime.Terminate();
             UnifiedReadOnlyContextRuntime.Terminate();
             UnifiedPaletteRuntime.Terminate();
         }
