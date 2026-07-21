@@ -204,6 +204,19 @@ NETLOAD 证据的能力一律视为未支持。
   Dimension、Hatch、Leader/MLeader 和 Table。按目标机 R20.1 原版 API 可编译性、固定
   白名单字段、数量/顶点/文字上限和真实图纸常见度逐项冻结，不一次承诺所有 AutoCAD
   或垂直产品代理对象。
+- CadContextJson v2 独立契约、验证器和确定性 Codec 已在隔离分支
+  `codex/cad-context-v2` 中冻结候选；v1 源文件未修改，原固定向量仍为 2225 字节、
+  `c5a03d4c...4423`。v2 固定向量为 6678 字节、`21cc9378...c3b4`，
+  net8 与 net45 Contracts Specs 均为 `39/39`。
+- v2 覆盖原六类及 Arc、Ellipse、Spline、Point、Ray、Xline、Polyline2d、
+  Polyline3d、Dimension、Hatch、Leader、MLeader、Table，共 19 个强类型 payload。
+  未知、读取失败或超过单实体限额的对象使用仅含 `dxfName/reason` 的受限占位；
+  `entityCount`、`parsedEntityCount`、`unsupportedEntityCount` 和 `complete`
+  必须相互一致。
+- 目标机原版 Acdbmgd 20.1.0.0 公共 API 字段审计已记录在
+  `MVP_CAD_CONTEXT_V2.md`；契约证据见
+  `evidence/cad-context-contract-v2-verification-20260721.json`。Host 捕获、Bridge v2
+  协商、R20.1 Host 编译和 AutoCAD 实机混合选区仍为 `false`。
 - 在对象扩展候选冻结前，先修复或解释上述 AgentHost 停止残留；两项分别验证、分别提交。
 
 ### 已验证但尚待集成的独立阶段
@@ -257,8 +270,9 @@ NETLOAD 证据的能力一律视为未支持。
    “停止后无残留”未通过的明确边界。
 2. 修复 AgentHost 停止结果不可见/进程残留问题，自动化验证后冻结新候选并完成最小
    AutoCAD 启停复验，单独提交生命周期修复。
-3. 冻结 CadContextJson v2 对象覆盖契约，实现第一批高频对象和显式未知对象占位，完成
-   net45/net8、Host 和混合选择 Specs 后再请求实机验证并单独提交。
+3. CadContextJson v2 契约和 net45/net8 固定向量已经冻结；下一步实现 Host.2016
+   快照/映射、显式 Bridge v2 协商和混合选择 Specs，使用原版 R20.1 程序集编译冻结
+   候选后再请求实机验证并单独提交。
 4. 按 `MVP_LIFECYCLE_RUNTIME_TEST_20260721.md` 补测离线/断线/超时、125%/150% DPI、
    文档关闭和 AutoCAD 退出生命周期。
 5. 只读 MVP 与生命周期运行门槛通过后，再进入预览、拒绝、一次允许、锁内重校验和
