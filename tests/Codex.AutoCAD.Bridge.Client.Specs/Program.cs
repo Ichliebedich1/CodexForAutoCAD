@@ -2,6 +2,18 @@ using System.Diagnostics;
 using Codex.AutoCAD.Bridge.Client;
 using Codex.AutoCAD.Contracts;
 
+const string explicitEmptySchemasSpecId = "bridge-client-explicit-empty-schemas-fail-closed";
+const string absentSchemasSpecId = "bridge-client-absent-schemas-v1-default";
+const string v1v2SchemasSpecId = "bridge-client-v1v2-schemas-pass";
+const string duplicateSchemasSpecId = "bridge-client-duplicate-schemas-rejected";
+const string nullEntrySchemasSpecId = "bridge-client-null-entry-schemas-rejected";
+const string explicitNullSchemasSpecId = "bridge-client-explicit-null-schemas-rejected";
+const string versionDecimalSpecId = "bridge-client-schema-version-decimal-rejected";
+const string versionScientificSpecId = "bridge-client-schema-version-scientific-rejected";
+const string v1OnlySchemasSpecId = "bridge-client-v1-only-schemas-pass";
+const string v2OnlySchemasSpecId = "bridge-client-v2-only-schemas-rejected";
+const string mixedNullEntrySchemasSpecId = "bridge-client-mixed-null-entry-schemas-rejected";
+const string missingVersionFieldSpecId = "bridge-client-missing-version-field-rejected";
 const string capabilitiesSpecId = "bridge-client-capabilities-cross-runtime";
 const string threadSpecId = "bridge-client-thread-start-cross-runtime";
 const string turnSpecId = "bridge-client-turn-start-with-context-cross-runtime";
@@ -24,7 +36,185 @@ const string wrongCaseSpecId = "bridge-client-wrong-case-fail-closed";
 const string trailingJsonSpecId = "bridge-client-trailing-json-fail-closed";
 const string invalidUtf8SpecId = "bridge-client-invalid-utf8-fail-closed";
 const string oversizedFrameSpecId = "bridge-client-oversized-frame-fail-closed";
-var currentSpecId = capabilitiesSpecId;
+var currentSpecId = explicitEmptySchemasSpecId;
+
+// Codec-level regression tests for supportedCadContextSchemas fail-closed behavior.
+// These tests verify the JSON decoder correctly distinguishes between:
+//   - absent field (backward compat → v1 default)
+//   - explicit null (fail-closed → rejected, NOT same as absent)
+//   - explicit empty array (fail-closed → rejected)
+//   - valid v1+v2, v1-only, v2-only, duplicate, null entry, malformed versions
+
+try
+{
+    // TC-1: Explicit empty supportedCadContextSchemas → codec rejects (fail-closed)
+    {
+        var json = BuildCapabilitiesResponseJson(
+            supportedCadContextSchemasJson: "[]");
+        var failure = CaptureAgentBridgeFailure(
+            () => BridgeClientJsonCodec.DeserializeCapabilitiesResponse(json));
+        Require(failure.Code == AgentBridgeErrorCodes.ContractMismatch,
+            "explicit empty schemas must be rejected by codec");
+    }
+    Console.WriteLine("[PASS] " + explicitEmptySchemasSpecId);
+
+    currentSpecId = absentSchemasSpecId;
+    // TC-2: Absent supportedCadContextSchemas → v1 default preserved → validation passes
+    {
+        var json = BuildCapabilitiesResponseJson(
+            supportedCadContextSchemasJson: null);
+        var response = BridgeClientJsonCodec.DeserializeCapabilitiesResponse(json);
+        Require(response.SupportedCadContextSchemas.Length == 1,
+            "absent schemas must produce v1 default");
+        Require(response.SupportedCadContextSchemas[0].Schema == CadContextJsonV1Constants.Schema,
+            "absent schemas default schema must be v1");
+        Require(response.SupportedCadContextSchemas[0].SchemaVersion == CadContextJsonV1Constants.SchemaVersion,
+            "absent schemas default version must be v1");
+        var failures = AgentBridgeContractValidator.Validate(response);
+        Require(failures.Length == 0,
+            "absent schemas with v1 default must pass validation");
+    }
+    Console.WriteLine("[PASS] " + absentSchemasSpecId);
+
+    currentSpecId = v1v2SchemasSpecId;
+    // TC-3: v1+v2 schemas → decoded correctly → validation passes
+    {
+        var json = BuildCapabilitiesResponseJson(
+            supportedCadContextSchemasJson: "[{\"schema\":\"codex.autocad.cad-context\",\"schemaVersion\":1},{\"schema\":\"codex.autocad.cad-context\",\"schemaVersion\":2}]");
+        var response = BridgeClientJsonCodec.DeserializeCapabilitiesResponse(json);
+        Require(response.SupportedCadContextSchemas.Length == 2,
+            "v1+v2 schemas must produce two entries");
+        Require(response.SupportedCadContextSchemas[0].SchemaVersion == 1,
+            "first schema version must be 1");
+        Require(response.SupportedCadContextSchemas[1].SchemaVersion == 2,
+            "second schema version must be 2");
+        var failures = AgentBridgeContractValidator.Validate(response);
+        Require(failures.Length == 0,
+            "v1+v2 schemas must pass validation");
+    }
+    Console.WriteLine("[PASS] " + v1v2SchemasSpecId);
+
+    currentSpecId = duplicateSchemasSpecId;
+    // TC-4: Duplicate schemas → codec rejects (fail-closed)
+    {
+        var json = BuildCapabilitiesResponseJson(
+            supportedCadContextSchemasJson: "[{\"schema\":\"codex.autocad.cad-context\",\"schemaVersion\":1},{\"schema\":\"codex.autocad.cad-context\",\"schemaVersion\":1}]");
+        var failure = CaptureAgentBridgeFailure(
+            () => BridgeClientJsonCodec.DeserializeCapabilitiesResponse(json));
+        Require(failure.Code == AgentBridgeErrorCodes.ContractMismatch,
+            "duplicate schemas must be rejected by codec");
+    }
+    Console.WriteLine("[PASS] " + duplicateSchemasSpecId);
+
+    currentSpecId = nullEntrySchemasSpecId;
+    // TC-5: Null entry inside schema array → codec rejects (fail-closed)
+    {
+        var json = BuildCapabilitiesResponseJson(
+            supportedCadContextSchemasJson: "[null]");
+        var failure = CaptureAgentBridgeFailure(
+            () => BridgeClientJsonCodec.DeserializeCapabilitiesResponse(json));
+        Require(failure.Code == AgentBridgeErrorCodes.ContractMismatch
+                || failure.Code == "request_invalid",
+            "null entry in schema array must be rejected by codec");
+    }
+    Console.WriteLine("[PASS] " + nullEntrySchemasSpecId);
+
+    currentSpecId = explicitNullSchemasSpecId;
+    // TC-6: Explicit null supportedCadContextSchemas → codec rejects (NOT same as absent)
+    {
+        var json = BuildCapabilitiesResponseJsonWithRawField(
+            "\"supportedCadContextSchemas\":null");
+        var failure = CaptureAgentBridgeFailure(
+            () => BridgeClientJsonCodec.DeserializeCapabilitiesResponse(json));
+        Require(failure.Code == "request_invalid",
+            "explicit null schemas must be rejected as invalid JSON type");
+    }
+    Console.WriteLine("[PASS] " + explicitNullSchemasSpecId);
+
+    currentSpecId = versionDecimalSpecId;
+    // TC-7: schemaVersion as 1.0 (decimal notation) → codec rejects
+    {
+        var json = BuildCapabilitiesResponseJson(
+            supportedCadContextSchemasJson: "[{\"schema\":\"codex.autocad.cad-context\",\"schemaVersion\":1.0}]");
+        var failure = CaptureAgentBridgeFailure(
+            () => BridgeClientJsonCodec.DeserializeCapabilitiesResponse(json));
+        Require(failure.Code == "request_invalid",
+            "decimal schemaVersion 1.0 must be rejected as non-integer");
+    }
+    Console.WriteLine("[PASS] " + versionDecimalSpecId);
+
+    currentSpecId = versionScientificSpecId;
+    // TC-8: schemaVersion as 1e0 (scientific notation) → codec rejects
+    {
+        var json = BuildCapabilitiesResponseJson(
+            supportedCadContextSchemasJson: "[{\"schema\":\"codex.autocad.cad-context\",\"schemaVersion\":1e0}]");
+        var failure = CaptureAgentBridgeFailure(
+            () => BridgeClientJsonCodec.DeserializeCapabilitiesResponse(json));
+        Require(failure.Code == "request_invalid",
+            "scientific schemaVersion 1e0 must be rejected as non-integer");
+    }
+    Console.WriteLine("[PASS] " + versionScientificSpecId);
+
+    currentSpecId = v1OnlySchemasSpecId;
+    // TC-9: v1-only schemas → decoded correctly → validation passes
+    {
+        var json = BuildCapabilitiesResponseJson(
+            supportedCadContextSchemasJson: "[{\"schema\":\"codex.autocad.cad-context\",\"schemaVersion\":1}]");
+        var response = BridgeClientJsonCodec.DeserializeCapabilitiesResponse(json);
+        Require(response.SupportedCadContextSchemas.Length == 1,
+            "v1-only schemas must produce one entry");
+        Require(response.SupportedCadContextSchemas[0].SchemaVersion == 1,
+            "v1-only schema version must be 1");
+        var failures = AgentBridgeContractValidator.Validate(response);
+        Require(failures.Length == 0,
+            "v1-only schemas must pass validation");
+    }
+    Console.WriteLine("[PASS] " + v1OnlySchemasSpecId);
+
+    currentSpecId = v2OnlySchemasSpecId;
+    // TC-10: v2-only schemas → codec rejects (v1 always required)
+    {
+        var json = BuildCapabilitiesResponseJson(
+            supportedCadContextSchemasJson: "[{\"schema\":\"codex.autocad.cad-context\",\"schemaVersion\":2}]");
+        var failure = CaptureAgentBridgeFailure(
+            () => BridgeClientJsonCodec.DeserializeCapabilitiesResponse(json));
+        Require(failure.Code == AgentBridgeErrorCodes.ContractMismatch,
+            "v2-only schemas must be rejected (v1 required)");
+    }
+    Console.WriteLine("[PASS] " + v2OnlySchemasSpecId);
+
+    currentSpecId = mixedNullEntrySchemasSpecId;
+    // TC-11: [valid v1, null] → codec rejects (mixed null entry in array)
+    {
+        var json = BuildCapabilitiesResponseJson(
+            supportedCadContextSchemasJson: "[{\"schema\":\"codex.autocad.cad-context\",\"schemaVersion\":1},null]");
+        var failure = CaptureAgentBridgeFailure(
+            () => BridgeClientJsonCodec.DeserializeCapabilitiesResponse(json));
+        Require(failure.Code == "request_invalid",
+            "mixed null entry in schema array must be request_invalid");
+    }
+    Console.WriteLine("[PASS] " + mixedNullEntrySchemasSpecId);
+
+    currentSpecId = missingVersionFieldSpecId;
+    // TC-12: Raw JSON schema entry missing schemaVersion field → codec rejects (wire-level absence)
+    {
+        var json = BuildCapabilitiesResponseJson(
+            supportedCadContextSchemasJson: "[{\"schema\":\"codex.autocad.cad-context\"}]");
+        var failure = CaptureAgentBridgeFailure(
+            () => BridgeClientJsonCodec.DeserializeCapabilitiesResponse(json));
+        Require(failure.Code == "request_invalid",
+            "wire-level missing schemaVersion must be request_invalid");
+    }
+    Console.WriteLine("[PASS] " + missingVersionFieldSpecId);
+}
+catch (Exception exception)
+{
+    Console.Error.WriteLine(
+        "[FAIL] " + currentSpecId + ": " + exception.GetType().Name + ": " + exception.Message);
+    return 1;
+}
+
+currentSpecId = capabilitiesSpecId;
 var serverExe = Environment.GetEnvironmentVariable("CODEX_BRIDGE_TEST_SERVER_EXE");
 if (string.IsNullOrWhiteSpace(serverExe) || !File.Exists(serverExe))
 {
@@ -633,7 +823,7 @@ try
         "oversized-frame",
         oversizedFrameSpecId);
 
-    Console.WriteLine("22/22 specs passed");
+    Console.WriteLine("33/33 specs passed");
     return 0;
 }
 catch (Exception exception)
@@ -830,4 +1020,35 @@ static CadContextJsonV1 CreateCadContext()
             },
         },
     };
+}
+
+static string BuildCapabilitiesResponseJson(string? supportedCadContextSchemasJson)
+{
+    var json = "{\"contractVersion\":1,"
+        + "\"minimumCompatibleVersion\":1,"
+        + "\"agentInstanceId\":\"codec-test-agent\","
+        + "\"cadContextSchema\":\"codex.autocad.cad-context\","
+        + "\"cadContextSchemaVersion\":1,"
+        + (supportedCadContextSchemasJson is not null
+            ? "\"supportedCadContextSchemas\":" + supportedCadContextSchemasJson + ","
+            : string.Empty)
+        + "\"methods\":[\"agent.capabilities.get\",\"agent.thread.start\",\"agent.turn.start\",\"agent.turn.interrupt\"],"
+        + "\"eventKinds\":[\"thread.started\",\"turn.started\",\"message.assistant.delta\",\"message.assistant.completed\",\"turn.completed\",\"turn.failed\"],"
+        + "\"approvalDecisions\":[],"
+        + "\"cadWriteAvailable\":false}";
+    return json;
+}
+
+static string BuildCapabilitiesResponseJsonWithRawField(string rawField)
+{
+    return "{\"contractVersion\":1,"
+        + "\"minimumCompatibleVersion\":1,"
+        + "\"agentInstanceId\":\"codec-test-agent\","
+        + "\"cadContextSchema\":\"codex.autocad.cad-context\","
+        + "\"cadContextSchemaVersion\":1,"
+        + rawField + ","
+        + "\"methods\":[\"agent.capabilities.get\",\"agent.thread.start\",\"agent.turn.start\",\"agent.turn.interrupt\"],"
+        + "\"eventKinds\":[\"thread.started\",\"turn.started\",\"message.assistant.delta\",\"message.assistant.completed\",\"turn.completed\",\"turn.failed\"],"
+        + "\"approvalDecisions\":[],"
+        + "\"cadWriteAvailable\":false}";
 }

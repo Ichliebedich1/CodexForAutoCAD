@@ -1,9 +1,12 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Globalization;
 using System.Text;
 using System.Xml;
 using Codex.AutoCAD.Contracts;
+
+[assembly: InternalsVisibleTo("Codex.AutoCAD.Bridge.Client.Specs")]
 
 namespace Codex.AutoCAD.Bridge.Client;
 
@@ -65,7 +68,7 @@ internal static class BridgeClientJsonCodec
         new JsonFieldSpec("agentInstanceId", JsonFieldKind.String),
         new JsonFieldSpec("cadContextSchema", JsonFieldKind.String),
         new JsonFieldSpec("cadContextSchemaVersion", JsonFieldKind.Integer),
-        new JsonFieldSpec("supportedCadContextSchemas", JsonFieldKind.SchemaArray),
+        new JsonFieldSpec("supportedCadContextSchemas", JsonFieldKind.SchemaArrayNotNull),
         new JsonFieldSpec("methods", JsonFieldKind.StringArray),
         new JsonFieldSpec("eventKinds", JsonFieldKind.StringArray),
         new JsonFieldSpec("approvalDecisions", JsonFieldKind.StringArray),
@@ -249,7 +252,7 @@ internal static class BridgeClientJsonCodec
         {
             StrictJsonShapeValidator.ValidateObject(utf8, CapabilitiesResponseV2ExtendedShape);
             wire = Deserialize<CapabilitiesResponseWire>(utf8);
-            hasV2Schemas = wire.SupportedCadContextSchemas is { Length: > 0 };
+            hasV2Schemas = wire.SupportedCadContextSchemas is not null;
         }
         catch (AgentBridgeClientException)
         {
@@ -1075,6 +1078,7 @@ internal static class BridgeClientJsonCodec
         Boolean,
         StringArray,
         SchemaArray,
+        SchemaArrayNotNull,
     }
 
     private sealed class JsonFieldSpec
@@ -1362,6 +1366,15 @@ internal static class BridgeClientJsonCodec
                         reader.ReadElementContentAsString();
                     }
                     return;
+                case JsonFieldKind.SchemaArrayNotNull:
+                    if (!string.Equals(actualType, "array", StringComparison.Ordinal))
+                    {
+                        throw new AgentBridgeClientException(
+                            "request_invalid",
+                            "JSON字段类型无效：" + field.Name + "（仅允许array，不允许null）。");
+                    }
+                    ReadSchemaArray(reader, field.Name);
+                    return;
                 default:
                     throw new AgentBridgeClientException("request_invalid", "未知JSON字段类型。");
             }
@@ -1437,7 +1450,13 @@ internal static class BridgeClientJsonCodec
                     else if (string.Equals(propName, "schemaVersion", StringComparison.Ordinal))
                     {
                         RequireType(reader.GetAttribute("type") ?? "", "number", fieldName + ".schemaVersion");
-                        reader.ReadElementContentAsString();
+                        var versionStr = reader.ReadElementContentAsString();
+                        if (!IsStrictInteger(versionStr))
+                        {
+                            throw new AgentBridgeClientException(
+                                "request_invalid",
+                                "JSON schemaVersion必须是严格整数：" + fieldName + "。");
+                        }
                         hasVersion = true;
                     }
                     else

@@ -70,6 +70,12 @@ var specs = new[]
     new SpecCase("BRIDGE-V2-003 能力响应列出支持的CadContext schema版本", BridgeCapabilitiesListSupportedSchemas),
     new SpecCase("BRIDGE-V2-004 v1客户端在v2-capable AgentHost仍可协商", BridgeV1ClientNegotiatesWithV2CapableHost),
     new SpecCase("BRIDGE-V2-005 重复CadContext schema版本被拒绝", BridgeCapabilitiesRejectDuplicateSchemas),
+    new SpecCase("BRIDGE-V2-006 显式空supportedCadContextSchemas被拒绝fail-closed", BridgeCapabilitiesRejectExplicitEmptySchemas),
+    new SpecCase("BRIDGE-V2-007 缺失legacy supportedCadContextSchemas保留v1默认", BridgeCapabilitiesAbsentSchemasPreservesV1Default),
+    new SpecCase("BRIDGE-V2-008 仅v2 schema无v1被拒绝", BridgeCapabilitiesRejectV2OnlySchema),
+    new SpecCase("BRIDGE-V2-009 畸形schema条目null被拒绝", BridgeCapabilitiesRejectMalformedSchemaEntry),
+    new SpecCase("BRIDGE-V2-010 v1-only schema列表通过验证", BridgeCapabilitiesV1OnlySchemasPass),
+    new SpecCase("BRIDGE-V2-011 缺少schemaVersion的条目被拒绝", BridgeCapabilitiesRejectMissingVersionEntry),
     new SpecCase("HOST16-V1-001 六类只读快照映射为精确公共契约字段", UnifiedHostMapsSixEntityTypes),
     new SpecCase("HOST16-V1-002 binary-v1选择和实体状态哈希保持绑定", UnifiedHostPreservesSelectionIdentity),
     new SpecCase("HOST16-V1-003 映射后canonical JSON确定且不含图名路径", UnifiedHostCanonicalJsonIsPrivateAndDeterministic),
@@ -813,6 +819,200 @@ static void BridgeCapabilitiesRejectDuplicateSchemas()
     Contains(
         AgentBridgeContractValidator.Validate(response),
         "capabilities_schema_duplicate");
+}
+
+static void BridgeCapabilitiesRejectExplicitEmptySchemas()
+{
+    var response = new AgentCapabilitiesResponse
+    {
+        AgentInstanceId = "agent-explicit-empty",
+        Methods =
+        [
+            AgentBridgeMethods.GetCapabilities,
+            AgentBridgeMethods.StartThread,
+            AgentBridgeMethods.StartTurn,
+            AgentBridgeMethods.InterruptTurn,
+        ],
+        EventKinds =
+        [
+            AgentBridgeEventKinds.ThreadStarted,
+            AgentBridgeEventKinds.TurnStarted,
+            AgentBridgeEventKinds.AssistantMessageDelta,
+            AgentBridgeEventKinds.AssistantMessageCompleted,
+            AgentBridgeEventKinds.TurnCompleted,
+            AgentBridgeEventKinds.TurnFailed,
+        ],
+        SupportedCadContextSchemas = [],
+        CadWriteAvailable = false,
+    };
+    Contains(AgentBridgeContractValidator.Validate(response), "capabilities_schemas_required");
+}
+
+static void BridgeCapabilitiesAbsentSchemasPreservesV1Default()
+{
+    var response = new AgentCapabilitiesResponse
+    {
+        AgentInstanceId = "agent-absent-schemas",
+        Methods =
+        [
+            AgentBridgeMethods.GetCapabilities,
+            AgentBridgeMethods.StartThread,
+            AgentBridgeMethods.StartTurn,
+            AgentBridgeMethods.InterruptTurn,
+        ],
+        EventKinds =
+        [
+            AgentBridgeEventKinds.ThreadStarted,
+            AgentBridgeEventKinds.TurnStarted,
+            AgentBridgeEventKinds.AssistantMessageDelta,
+            AgentBridgeEventKinds.AssistantMessageCompleted,
+            AgentBridgeEventKinds.TurnCompleted,
+            AgentBridgeEventKinds.TurnFailed,
+        ],
+        CadWriteAvailable = false,
+    };
+    Equal(0, AgentBridgeContractValidator.Validate(response).Length,
+        "缺失legacy supportedCadContextSchemas的默认v1条目应通过验证（向后兼容）。");
+    Equal(1, response.SupportedCadContextSchemas.Length,
+        "默认v1条目应恰好包含一个schema。");
+    Equal(CadContextJsonV1Constants.Schema, response.SupportedCadContextSchemas[0].Schema,
+        "默认schema应为v1。");
+    Equal(CadContextJsonV1Constants.SchemaVersion, response.SupportedCadContextSchemas[0].SchemaVersion,
+        "默认schema版本应为v1。");
+}
+
+static void BridgeCapabilitiesRejectV2OnlySchema()
+{
+    var response = new AgentCapabilitiesResponse
+    {
+        AgentInstanceId = "agent-v2-only",
+        Methods =
+        [
+            AgentBridgeMethods.GetCapabilities,
+            AgentBridgeMethods.StartThread,
+            AgentBridgeMethods.StartTurn,
+            AgentBridgeMethods.StartTurnV2,
+            AgentBridgeMethods.InterruptTurn,
+        ],
+        EventKinds =
+        [
+            AgentBridgeEventKinds.ThreadStarted,
+            AgentBridgeEventKinds.TurnStarted,
+            AgentBridgeEventKinds.AssistantMessageDelta,
+            AgentBridgeEventKinds.AssistantMessageCompleted,
+            AgentBridgeEventKinds.TurnCompleted,
+            AgentBridgeEventKinds.TurnFailed,
+        ],
+        SupportedCadContextSchemas =
+        [
+            new CadContextSchemaVersionEntry
+            {
+                Schema = CadContextJsonV2Constants.Schema,
+                SchemaVersion = CadContextJsonV2Constants.SchemaVersion,
+            },
+        ],
+        CadWriteAvailable = false,
+    };
+    Contains(AgentBridgeContractValidator.Validate(response), "capabilities_schemas_v1_required");
+}
+
+static void BridgeCapabilitiesRejectMalformedSchemaEntry()
+{
+    var response = new AgentCapabilitiesResponse
+    {
+        AgentInstanceId = "agent-malformed-schema",
+        Methods =
+        [
+            AgentBridgeMethods.GetCapabilities,
+            AgentBridgeMethods.StartThread,
+            AgentBridgeMethods.StartTurn,
+            AgentBridgeMethods.InterruptTurn,
+        ],
+        EventKinds =
+        [
+            AgentBridgeEventKinds.ThreadStarted,
+            AgentBridgeEventKinds.TurnStarted,
+            AgentBridgeEventKinds.AssistantMessageDelta,
+            AgentBridgeEventKinds.AssistantMessageCompleted,
+            AgentBridgeEventKinds.TurnCompleted,
+            AgentBridgeEventKinds.TurnFailed,
+        ],
+        SupportedCadContextSchemas =
+        [
+            null!,
+        ],
+        CadWriteAvailable = false,
+    };
+    Contains(AgentBridgeContractValidator.Validate(response), "capabilities_schema_entry");
+}
+
+static void BridgeCapabilitiesV1OnlySchemasPass()
+{
+    var response = new AgentCapabilitiesResponse
+    {
+        AgentInstanceId = "agent-v1-only",
+        Methods =
+        [
+            AgentBridgeMethods.GetCapabilities,
+            AgentBridgeMethods.StartThread,
+            AgentBridgeMethods.StartTurn,
+            AgentBridgeMethods.InterruptTurn,
+        ],
+        EventKinds =
+        [
+            AgentBridgeEventKinds.ThreadStarted,
+            AgentBridgeEventKinds.TurnStarted,
+            AgentBridgeEventKinds.AssistantMessageDelta,
+            AgentBridgeEventKinds.AssistantMessageCompleted,
+            AgentBridgeEventKinds.TurnCompleted,
+            AgentBridgeEventKinds.TurnFailed,
+        ],
+        SupportedCadContextSchemas =
+        [
+            new CadContextSchemaVersionEntry
+            {
+                Schema = CadContextJsonV1Constants.Schema,
+                SchemaVersion = CadContextJsonV1Constants.SchemaVersion,
+            },
+        ],
+        CadWriteAvailable = false,
+    };
+    Equal(0, AgentBridgeContractValidator.Validate(response).Length,
+        "v1-only schema列表应通过验证。");
+}
+
+static void BridgeCapabilitiesRejectMissingVersionEntry()
+{
+    var response = new AgentCapabilitiesResponse
+    {
+        AgentInstanceId = "agent-missing-version",
+        Methods =
+        [
+            AgentBridgeMethods.GetCapabilities,
+            AgentBridgeMethods.StartThread,
+            AgentBridgeMethods.StartTurn,
+            AgentBridgeMethods.InterruptTurn,
+        ],
+        EventKinds =
+        [
+            AgentBridgeEventKinds.ThreadStarted,
+            AgentBridgeEventKinds.TurnStarted,
+            AgentBridgeEventKinds.AssistantMessageDelta,
+            AgentBridgeEventKinds.AssistantMessageCompleted,
+            AgentBridgeEventKinds.TurnCompleted,
+            AgentBridgeEventKinds.TurnFailed,
+        ],
+        SupportedCadContextSchemas =
+        [
+            new CadContextSchemaVersionEntry
+            {
+                Schema = CadContextJsonV1Constants.Schema,
+                SchemaVersion = 0,
+            },
+        ],
+        CadWriteAvailable = false,
+    };
+    Contains(AgentBridgeContractValidator.Validate(response), "capabilities_schema_version");
 }
 
 static void UnifiedHostMapsSixEntityTypes()
