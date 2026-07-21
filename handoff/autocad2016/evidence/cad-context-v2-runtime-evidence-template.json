@@ -1,0 +1,43 @@
+{
+  "$schema": "cad-context-v2-runtime-evidence",
+  "schemaVersion": 1,
+  "candidateId": "",
+  "commit": "",
+  "hostDllSha256": "",
+  "moduleVersion": "",
+  "schema": "codex.autocad.cad-context",
+  "schemaVersion_target": 2,
+  "status": "",
+  "recordedAtUtc": "",
+  "testId": "",
+  "testType": "",
+  "entityTypes": [],
+  "placeholderReasons": [],
+  "selection": {
+    "entityCount": 0,
+    "parsedEntityCount": 0,
+    "unsupportedEntityCount": 0,
+    "complete": false
+  },
+  "dbmod": {
+    "before": 0,
+    "after": 0,
+    "unchanged": true
+  },
+  "documentSwitch": {
+    "tested": false,
+    "contextCleared": false
+  },
+  "safety": {
+    "noCadWrite": true,
+    "noSaveCall": true,
+    "noSavetimeModification": true,
+    "noAutoLisp": true,
+    "noComAutomation": true,
+    "noSendKeys": true,
+    "noScriptInjection": true,
+    "noNetload": true,
+    "noRegistryModification": true
+  },
+  "notes": ""
+}

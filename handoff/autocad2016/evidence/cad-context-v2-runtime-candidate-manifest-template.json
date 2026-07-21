@@ -1,0 +1,56 @@
+{
+  "$schema": "cad-context-v2-runtime-candidate-manifest",
+  "schemaVersion": 1,
+  "candidateId": "",
+  "commit": "",
+  "hostDllSha256": "",
+  "moduleVersion": "",
+  "schema": "codex.autocad.cad-context",
+  "schemaVersion_target": 2,
+  "status": "",
+  "recordedAtUtc": "",
+  "testMatrix": {
+    "sampleA": {
+      "line": false,
+      "circle": false,
+      "polyline": false,
+      "dbText": false,
+      "mText": false,
+      "blockReference": false
+    },
+    "sampleB": {
+      "arc": false,
+      "ellipse": false,
+      "spline": false,
+      "point": false,
+      "ray": false,
+      "xline": false
+    },
+    "sampleC": {
+      "polyline2d": false,
+      "polyline3d": false,
+      "dimension": false
+    },
+    "sampleD": {
+      "hatch": false,
+      "leader": false,
+      "mLeader": false,
+      "table": false
+    },
+    "sampleE": {
+      "unknownEntityType": false,
+      "entityReadFailed": false,
+      "entityDataLimit": false
+    }
+  },
+  "coverage": {
+    "strongTypeCount": 0,
+    "placeholderReasonCount": 0,
+    "mixedSelectionTested": false,
+    "dbmodUnchanged": false,
+    "documentSwitchClearsContext": false,
+    "noCadWrite": false,
+    "noSaveCall": false,
+    "noSavetimeModification": false
+  }
+}
