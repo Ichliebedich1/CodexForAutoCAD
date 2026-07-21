@@ -26,7 +26,8 @@ if (mode != "happy"
     && mode != "trailing-json"
     && mode != "invalid-utf8"
     && mode != "oversized-frame"
-    && mode != "terminal-late-event")
+    && mode != "terminal-late-event"
+    && mode != "v2-happy")
 {
     Console.Error.WriteLine("invalid test mode");
     return 2;
@@ -56,7 +57,7 @@ var serializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web)
 try
 {
     if (mode != "happy" && mode != "disconnect" && mode != "timeout"
-        && mode != "terminal-late-event")
+        && mode != "terminal-late-event" && mode != "v2-happy")
     {
         return await RunRawFaultServerAsync(
             pipeName,
@@ -180,15 +181,26 @@ try
             var response = new AgentCapabilitiesResponse
             {
                 AgentInstanceId = "test-agent-instance",
-                Methods = new[]
-                {
-                    AgentBridgeMethods.GetCapabilities,
-                    AgentBridgeMethods.StartThread,
-                    AgentBridgeMethods.StartTurn,
-                    AgentBridgeMethods.InterruptTurn,
-                    AgentBridgeMethods.ResolveApproval,
-                    AgentBridgeMethods.EventNotification,
-                },
+                Methods = mode == "v2-happy"
+                    ? new[]
+                    {
+                        AgentBridgeMethods.GetCapabilities,
+                        AgentBridgeMethods.StartThread,
+                        AgentBridgeMethods.StartTurn,
+                        AgentBridgeMethods.StartTurnV2,
+                        AgentBridgeMethods.InterruptTurn,
+                        AgentBridgeMethods.ResolveApproval,
+                        AgentBridgeMethods.EventNotification,
+                    }
+                    : new[]
+                    {
+                        AgentBridgeMethods.GetCapabilities,
+                        AgentBridgeMethods.StartThread,
+                        AgentBridgeMethods.StartTurn,
+                        AgentBridgeMethods.InterruptTurn,
+                        AgentBridgeMethods.ResolveApproval,
+                        AgentBridgeMethods.EventNotification,
+                    },
                 EventKinds = new[]
                 {
                     AgentBridgeEventKinds.ConnectionStateChanged,
@@ -206,6 +218,28 @@ try
                     AgentBridgeApprovalDecisions.DeclineAndContinue,
                     AgentBridgeApprovalDecisions.DeclineAndCancelTurn,
                 },
+                SupportedCadContextSchemas = mode == "v2-happy"
+                    ? new[]
+                    {
+                        new CadContextSchemaVersionEntry
+                        {
+                            Schema = CadContextJsonV1Constants.Schema,
+                            SchemaVersion = CadContextJsonV1Constants.SchemaVersion,
+                        },
+                        new CadContextSchemaVersionEntry
+                        {
+                            Schema = CadContextJsonV2Constants.Schema,
+                            SchemaVersion = CadContextJsonV2Constants.SchemaVersion,
+                        },
+                    }
+                    : new[]
+                    {
+                        new CadContextSchemaVersionEntry
+                        {
+                            Schema = CadContextJsonV1Constants.Schema,
+                            SchemaVersion = CadContextJsonV1Constants.SchemaVersion,
+                        },
+                    },
                 CadWriteAvailable = false,
             };
 
@@ -243,7 +277,7 @@ try
             activeThreadId = turnRequest!.ThreadId;
             activeTurnId = "turn-test-1";
             activeContextSha256 = turnRequest.ContextSha256;
-            emitAssistantEvents = mode == "happy";
+            emitAssistantEvents = mode == "happy" || mode == "v2-happy";
             emitTerminalLateEvents = mode == "terminal-late-event";
 
             return JsonSerializer.Serialize(
@@ -252,6 +286,31 @@ try
                     ThreadId = activeThreadId,
                     TurnId = activeTurnId,
                     AcceptedContextSha256 = turnRequest.ContextSha256,
+                },
+                serializerOptions);
+        }
+
+        if (string.Equals(request.Method, AgentBridgeMethods.StartTurnV2, StringComparison.Ordinal))
+        {
+            var turnV2Request = JsonSerializer.Deserialize<AgentTurnStartV2Request>(
+                request.BodyJson,
+                serializerOptions);
+            if (AgentBridgeContractValidator.Validate(turnV2Request).Length != 0)
+            {
+                throw new InvalidOperationException("invalid turn v2 start request");
+            }
+
+            activeThreadId = turnV2Request!.ThreadId;
+            activeTurnId = "turn-v2-test-1";
+            activeContextSha256 = turnV2Request.ContextV2Sha256;
+            emitAssistantEvents = mode == "v2-happy";
+
+            return JsonSerializer.Serialize(
+                new AgentTurnStartV2Response
+                {
+                    ThreadId = activeThreadId,
+                    TurnId = activeTurnId,
+                    AcceptedContextV2Sha256 = turnV2Request.ContextV2Sha256,
                 },
                 serializerOptions);
         }

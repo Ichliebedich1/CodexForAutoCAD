@@ -1,0 +1,125 @@
+{
+  "generatedAtUtc": "2026-07-21T08:00:00.000Z",
+  "baselineCommit": "589c8ea",
+  "v1ClientBaselineCommit": "0ceb123",
+  "configuration": "Release",
+  "dotnetSdk": "8.0.319",
+  "totalSpecs": 14,
+  "passedSpecs": 13,
+  "failedSpecs": 1,
+  "requiredPassed": false,
+  "autoCadStartedOrRestarted": false,
+  "cadCommandsSent": false,
+  "netLoadVerified": false,
+  "autoCadLiveEvidence": false,
+  "entries": [
+    {
+      "specId": "COMPAT-V2-001",
+      "passed": true,
+      "detail": "旧v1 Client可安全读取v2-capable Host能力响应"
+    },
+    {
+      "specId": "COMPAT-V2-002",
+      "passed": true,
+      "detail": "旧v1 Host响应正确映射为仅v1能力"
+    },
+    {
+      "specId": "COMPAT-V2-003",
+      "passed": true,
+      "detail": "空schema列表正确被fail-closed拒绝"
+    },
+    {
+      "specId": "COMPAT-V2-004",
+      "passed": true,
+      "detail": "null schema列表正确被fail-closed拒绝"
+    },
+    {
+      "specId": "COMPAT-V2-005-duplicate-gap",
+      "passed": false,
+      "detail": "生产缺口: 验证器不拒绝重复schema条目 (requiredPassed=false)"
+    },
+    {
+      "specId": "COMPAT-V2-005",
+      "passed": true,
+      "detail": "重复条目、未知schema/version、缺少v1、超出限制均正确拒绝"
+    },
+    {
+      "specId": "COMPAT-V2-006",
+      "passed": true,
+      "detail": "v2 roundtrip保留v1/v2 schema、agent.turn.start.v2、原v1字段和contractVersion"
+    },
+    {
+      "specId": "COMPAT-V2-007",
+      "passed": true,
+      "detail": "v1/v2 context/hash矩阵: null+空通过, null+非空拒绝, 非空+空拒绝, 非空+正确通过, 非空+错误拒绝"
+    },
+    {
+      "specId": "COMPAT-V2-008",
+      "passed": true,
+      "detail": "取消有界结束、不自动重试、终端fail-closed"
+    },
+    {
+      "specId": "COMPAT-V2-009",
+      "passed": true,
+      "detail": "断线返回ConnectionLost、不回退未认证通道"
+    },
+    {
+      "specId": "COMPAT-V2-010",
+      "passed": true,
+      "detail": "超时有界、不重试、终端fail-closed"
+    },
+    {
+      "specId": "COMPAT-V2-011",
+      "passed": true,
+      "detail": "v1 thread/turn/interrupt/approval/assistant事件/stop在v2-capable Host上行为不变"
+    },
+    {
+      "specId": "COMPAT-V2-012",
+      "passed": true,
+      "detail": "坏MAC/sequence间隙/nonce重放/超大帧均fail-closed"
+    },
+    {
+      "specId": "NEGATIVE-SELF-CHECK",
+      "passed": true,
+      "detail": "5项负向自检均证明关键检查存在且有效"
+    }
+  ],
+  "productionGaps": [
+    {
+      "specId": "COMPAT-V2-005-duplicate-gap",
+      "description": "AgentBridgeContractValidator.ValidateSupportedCadContextSchemas 不拒绝重复schema条目",
+      "requiredPassed": false,
+      "codePath": "src/Codex.AutoCAD.Contracts/AgentBridgeContracts.cs ValidateSupportedCadContextSchemas",
+      "recommendation": "在验证器中添加去重检查"
+    }
+  ],
+  "testMatrix": {
+    "COMPAT-V2-001": "旧v1 Client读取新Host能力响应",
+    "COMPAT-V2-002": "当前Client读取旧Host响应，字段omitted映射为仅v1",
+    "COMPAT-V2-003": "supportedCadContextSchemas=[] fail-closed",
+    "COMPAT-V2-004": "supportedCadContextSchemas=null fail-closed",
+    "COMPAT-V2-005": "重复条目、未知schema/version结构化拒绝",
+    "COMPAT-V2-006": "v2 capability wire roundtrip保留v1/v2字段",
+    "COMPAT-V2-007": "v2 context/hash矩阵五种组合",
+    "COMPAT-V2-008": "请求期间取消有界结束",
+    "COMPAT-V2-009": "请求期间断线结构化错误",
+    "COMPAT-V2-010": "请求超时有界fail-closed",
+    "COMPAT-V2-011": "旧v1行为在v2-capable Host上不变",
+    "COMPAT-V2-012": "安全原语(坏MAC/seq/nonce/超大帧)不变"
+  },
+  "modifiedFiles": [
+    "tests/Codex.AutoCAD.Bridge.V2Compat.Specs/Codex.AutoCAD.Bridge.V2Compat.Specs.csproj",
+    "tests/Codex.AutoCAD.Bridge.V2Compat.Specs/Program.cs",
+    "tests/Codex.AutoCAD.Bridge.Client.TestServer/Program.cs",
+    "scripts/verify-autocad2016-bridge-v2-compat.ps1",
+    "handoff/autocad2016/BRIDGE_V2_COMPAT_HARNESS_HANDOFF.md",
+    "handoff/autocad2016/evidence/bridge-v2-compat-harness-verification-20260721.json"
+  ],
+  "verificationBoundary": {
+    "srcModified": false,
+    "securityPrimitivesModified": false,
+    "autoCadStarted": false,
+    "autoCadOperated": false,
+    "netLoadExecuted": false
+  }
+}

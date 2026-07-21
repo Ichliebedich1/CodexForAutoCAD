@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>Codex.AutoCAD.Bridge.V2Compat.Specs</AssemblyName>
+    <RootNamespace>Codex.AutoCAD.Bridge.V2Compat.Specs</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Codex.AutoCAD.Bridge.Client\Codex.AutoCAD.Bridge.Client.csproj" />
+    <ProjectReference Include="..\..\src\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj" />
+  </ItemGroup>
+</Project>
