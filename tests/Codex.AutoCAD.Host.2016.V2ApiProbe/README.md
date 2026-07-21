@@ -15,10 +15,29 @@ AutoCAD 2016 R20.1 托管程序集（AcMgd/AcDbMgd 20.1.0.0）中是否真实存
 
 ## 用法
 
+单 Shell 验证：
+
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\verify-autocad2016-v2-api-surface.ps1 -AutoCad2016Dir "D:\AutoCAD 2016"
 ```
+
+双 Shell 门禁（推荐，PowerShell 7 + Windows PowerShell 5.1 独立构建并交叉验证）：
+
+```powershell
+pwsh.exe -NoProfile -File .\scripts\verify-autocad2016-v2-api-surface-stage.ps1 -AutoCad2016Dir "D:\AutoCAD 2016"
+```
+
+需要在不覆盖 Git evidence 的情况下复跑时，只允许把输出定向到仓库 `artifacts` 子目录：
+
+```powershell
+pwsh.exe -NoProfile -File .\scripts\verify-autocad2016-v2-api-surface-stage.ps1 `
+  -AutoCad2016Dir "D:\AutoCAD 2016" `
+  -EvidenceDirectory .\artifacts\v2-api-probe-review
+```
+
+正式 evidence 目录和自定义复验目录中的三个目标文件都会在构建前统一检查；已有文件
+时失败关闭，不覆盖历史记录。
 
 ## 文件结构
 
@@ -75,6 +94,6 @@ C# 编译器强制验证以下内容（如果任何类型或属性缺失，编�
 - 不把 Autodesk DLL 复制进仓库
 - 原版 R20.1 Release 编译 0 warning / 0 error
 - 输出不包含 Autodesk DLL
-- PowerShell 7 和 Windows PowerShell 5.1 结果一致
+- PowerShell 7 和 Windows PowerShell 5.1 结果必须一致（由 `verify-autocad2016-v2-api-surface-stage.ps1` 双 Shell 门禁验证）
 - 缺失成员时准确报告类型和成员，不关闭警告或绕过 locked restore
 - 证据不得包含企业路径、用户名、TRUSTEDPATHS 或凭据
