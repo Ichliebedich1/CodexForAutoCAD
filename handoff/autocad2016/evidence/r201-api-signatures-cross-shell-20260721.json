@@ -1,0 +1,1273 @@
+{
+  "probeVersion": "1.0.0",
+  "verificationTimeUtc": "2026-07-21T09:02:38.3204184Z",
+  "stageScriptVersion": "1.0.0",
+  "autoCad2016Dir": "REDACTED",
+  "configuration": "Release",
+  "autoCadStartedOrRestarted": false,
+  "cadCommandsSent": false,
+  "netLoadVerified": false,
+  "autoCadLiveEvidence": false,
+  "crossShellConsistency": {
+    "consistent": true,
+    "checks": {
+      "normalizedProbeOutputIdentical": true,
+      "shellIdentities": [
+        "pwsh-7.6",
+        "powershell-5.1"
+      ],
+      "probeDllHashMatch": true
+    }
+  },
+  "powershell7": {
+    "shellIdentity": "pwsh-7.6",
+    "powerShellVersion": "7.6.3",
+    "buildWarnings": 0,
+    "buildErrors": 0,
+    "probeDllSha256": "7A371BF0C99FCA5DF4D0D1E021891F110D6FB30AB3D46C9BA645C17A46C2ACB2",
+    "probeJsonSha256": "AD41725637CCEC076F654B7CEBEE4F448B92ED39643C129637E844BF4898DEFF",
+    "autodeskDllsInOutput": 0,
+    "probeOutput": {
+      "compileTimeTypesVerified": 36,
+      "compileTimePropertiesVerified": 17,
+      "compileTimeMethodSignaturesVerified": 10,
+      "compileTimeNote": "All typeof, property-access, and delegate expressions compiled successfully against R20.1",
+      "positiveMethodSignatureChecks": [
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Spline",
+          "member": "GetControlPointAt",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Spline",
+          "isStatic": false,
+          "returnType": "Autodesk.AutoCAD.Geometry.Point3d",
+          "parameterCount": 1,
+          "parameters": [
+            {
+              "name": "index",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Spline",
+          "member": "GetFitPointAt",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Spline",
+          "isStatic": false,
+          "returnType": "Autodesk.AutoCAD.Geometry.Point3d",
+          "parameterCount": 1,
+          "parameters": [
+            {
+              "name": "index",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Polyline",
+          "member": "GetBulgeAt",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Polyline",
+          "isStatic": false,
+          "returnType": "System.Double",
+          "parameterCount": 1,
+          "parameters": [
+            {
+              "name": "index",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Leader",
+          "member": "VertexAt",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Leader",
+          "isStatic": false,
+          "returnType": "Autodesk.AutoCAD.Geometry.Point3d",
+          "parameterCount": 1,
+          "parameters": [
+            {
+              "name": "value",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "member": "GetLeaderIndexes",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "isStatic": false,
+          "returnType": "System.Collections.ArrayList",
+          "parameterCount": 0,
+          "parameters": [],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "member": "GetLeaderLineIndexes",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "isStatic": false,
+          "returnType": "System.Collections.ArrayList",
+          "parameterCount": 1,
+          "parameters": [
+            {
+              "name": "leaderIndex",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "member": "VerticesCount",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "isStatic": false,
+          "returnType": "System.Int32",
+          "parameterCount": 1,
+          "parameters": [
+            {
+              "name": "leaderLineIndex",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "member": "GetVertex",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "isStatic": false,
+          "returnType": "Autodesk.AutoCAD.Geometry.Point3d",
+          "parameterCount": 2,
+          "parameters": [
+            {
+              "name": "leaderLineIndex",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            },
+            {
+              "name": "index",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Hatch",
+          "member": "GetLoopAt",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Hatch",
+          "isStatic": false,
+          "returnType": "Autodesk.AutoCAD.DatabaseServices.HatchLoop",
+          "parameterCount": 1,
+          "parameters": [
+            {
+              "name": "loopIndex",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "member": "GetTextString",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "isStatic": false,
+          "returnType": "System.String",
+          "parameterCount": 3,
+          "parameters": [
+            {
+              "name": "row",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            },
+            {
+              "name": "column",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            },
+            {
+              "name": "contentIndex",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        }
+      ],
+      "positivePropertySignatureChecks": [
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "member": "MText",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "propertyType": "Autodesk.AutoCAD.DatabaseServices.MText",
+          "canRead": true,
+          "canWrite": true,
+          "isStatic": false,
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "member": "ContentType",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "propertyType": "Autodesk.AutoCAD.DatabaseServices.ContentType",
+          "canRead": true,
+          "canWrite": true,
+          "isStatic": false,
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Hatch",
+          "member": "NumberOfLoops",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Hatch",
+          "propertyType": "System.Int32",
+          "canRead": true,
+          "canWrite": false,
+          "isStatic": false,
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "member": "Cells",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "propertyType": "Autodesk.AutoCAD.DatabaseServices.CellRange",
+          "canRead": true,
+          "canWrite": false,
+          "isStatic": false,
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "member": "Rows",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "propertyType": "Autodesk.AutoCAD.DatabaseServices.RowsCollection",
+          "canRead": true,
+          "canWrite": false,
+          "isStatic": false,
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "member": "Columns",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "propertyType": "Autodesk.AutoCAD.DatabaseServices.ColumnsCollection",
+          "canRead": true,
+          "canWrite": false,
+          "isStatic": false,
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Leader",
+          "member": "NumVertices",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Leader",
+          "propertyType": "System.Int32",
+          "canRead": true,
+          "canWrite": false,
+          "isStatic": false,
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.DBPoint",
+          "member": "EcsRotation",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.DBPoint",
+          "propertyType": "System.Double",
+          "canRead": true,
+          "canWrite": true,
+          "isStatic": false,
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Spline",
+          "member": "NurbsData",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Spline",
+          "propertyType": "Autodesk.AutoCAD.DatabaseServices.NurbsData",
+          "canRead": true,
+          "canWrite": true,
+          "isStatic": false,
+          "passed": true
+        }
+      ],
+      "expectedAbsenceChecks": [
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "member": "TextString",
+          "expectedKind": "property",
+          "correctlyAbsent": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "member": "GetTextStyle",
+          "expectedKind": "method",
+          "correctlyAbsent": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "member": "GetCellType",
+          "expectedKind": "method",
+          "correctlyAbsent": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Polyline2d",
+          "member": "VertexObjectIdList",
+          "expectedKind": "property",
+          "correctlyAbsent": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Polyline3d",
+          "member": "Vertices",
+          "expectedKind": "property",
+          "correctlyAbsent": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Polyline3d",
+          "member": "VertexObjectIdList",
+          "expectedKind": "property",
+          "correctlyAbsent": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.BlockReference",
+          "member": "XrefStatus",
+          "expectedKind": "property",
+          "correctlyAbsent": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Dimension",
+          "member": "DimensionType",
+          "expectedKind": "property",
+          "correctlyAbsent": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.DimensionType",
+          "member": "(enum)",
+          "expectedKind": "enum",
+          "correctlyAbsent": true,
+          "note": "DimensionType enum does not exist in R20.1; consistent with Dimension.DimensionType property also absent"
+        }
+      ],
+      "enumSignatureChecks": {
+        "Autodesk.AutoCAD.DatabaseServices.ContentType": {
+          "fullName": "Autodesk.AutoCAD.DatabaseServices.ContentType",
+          "underlyingType": "System.Int32",
+          "namesSorted": [
+            "BlockContent",
+            "MTextContent",
+            "NoneContent",
+            "ToleranceContent"
+          ],
+          "values": {
+            "BlockContent": 1,
+            "MTextContent": 2,
+            "NoneContent": 0,
+            "ToleranceContent": 3
+          },
+          "count": 4,
+          "matchesFrozenExpected": true,
+          "passed": true
+        },
+        "Autodesk.AutoCAD.DatabaseServices.HatchLoopTypes": {
+          "fullName": "Autodesk.AutoCAD.DatabaseServices.HatchLoopTypes",
+          "underlyingType": "System.Int32",
+          "namesSorted": [
+            "Default",
+            "Derived",
+            "Duplicate",
+            "External",
+            "NotClosed",
+            "Outermost",
+            "Polyline",
+            "SelfIntersecting",
+            "TextIsland",
+            "Textbox"
+          ],
+          "values": {
+            "Default": 0,
+            "Derived": 4,
+            "Duplicate": 256,
+            "External": 1,
+            "NotClosed": 32,
+            "Outermost": 16,
+            "Polyline": 2,
+            "SelfIntersecting": 64,
+            "TextIsland": 128,
+            "Textbox": 8
+          },
+          "count": 10,
+          "matchesFrozenExpected": true,
+          "passed": true
+        },
+        "Autodesk.AutoCAD.DatabaseServices.CellType": {
+          "fullName": "Autodesk.AutoCAD.DatabaseServices.CellType",
+          "underlyingType": "System.Int32",
+          "namesSorted": [
+            "Bool",
+            "CharPtr",
+            "Double",
+            "HardOwnerId",
+            "HardPtrId",
+            "Integer",
+            "ObjectId",
+            "Point",
+            "SoftOwnerId",
+            "SoftPtrId",
+            "Unknown",
+            "Vector"
+          ],
+          "values": {
+            "Bool": 10,
+            "CharPtr": 3,
+            "Double": 2,
+            "HardOwnerId": 6,
+            "HardPtrId": 8,
+            "Integer": 1,
+            "ObjectId": 5,
+            "Point": 4,
+            "SoftOwnerId": 7,
+            "SoftPtrId": 9,
+            "Unknown": 0,
+            "Vector": 11
+          },
+          "count": 12,
+          "matchesFrozenExpected": true,
+          "passed": true
+        },
+        "Autodesk.AutoCAD.DatabaseServices.Poly2dType": {
+          "fullName": "Autodesk.AutoCAD.DatabaseServices.Poly2dType",
+          "underlyingType": "System.Int32",
+          "namesSorted": [
+            "CubicSplinePoly",
+            "FitCurvePoly",
+            "QuadSplinePoly",
+            "SimplePoly"
+          ],
+          "values": {
+            "CubicSplinePoly": 3,
+            "FitCurvePoly": 1,
+            "QuadSplinePoly": 2,
+            "SimplePoly": 0
+          },
+          "count": 4,
+          "matchesFrozenExpected": true,
+          "passed": true
+        },
+        "Autodesk.AutoCAD.DatabaseServices.Poly3dType": {
+          "fullName": "Autodesk.AutoCAD.DatabaseServices.Poly3dType",
+          "underlyingType": "System.Int32",
+          "namesSorted": [
+            "CubicSplinePoly",
+            "QuadSplinePoly",
+            "SimplePoly"
+          ],
+          "values": {
+            "CubicSplinePoly": 2,
+            "QuadSplinePoly": 1,
+            "SimplePoly": 0
+          },
+          "count": 3,
+          "matchesFrozenExpected": true,
+          "passed": true
+        },
+        "Autodesk.AutoCAD.DatabaseServices.XrefStatus": {
+          "fullName": "Autodesk.AutoCAD.DatabaseServices.XrefStatus",
+          "underlyingType": "System.Int32",
+          "namesSorted": [
+            "FileNotFound",
+            "NotAnXref",
+            "Resolved",
+            "Unloaded",
+            "Unreferenced",
+            "Unresolved"
+          ],
+          "values": {
+            "FileNotFound": 4,
+            "NotAnXref": 0,
+            "Resolved": 1,
+            "Unloaded": 2,
+            "Unreferenced": 3,
+            "Unresolved": 5
+          },
+          "count": 6,
+          "matchesFrozenExpected": true,
+          "passed": true
+        }
+      },
+      "assemblySignatureChecks": {
+        "acmgd": {
+          "assemblyName": "Acmgd",
+          "assemblyVersion": "20.1.0.0",
+          "cultureName": "",
+          "publicKeyToken": "",
+          "expectedVersion": "20.1.0.0",
+          "versionMatch": true,
+          "hasLocation": true,
+          "sha256": "CCE13839886E827C392637D4F6B670E4CA7780E1A02B660E41D049E9C492B97F",
+          "authenticodeSubject": "CN=\"Autodesk, Inc\", OU=Design Solutions Group, OU=Digital ID Class 3 - Microsoft Software Validation v2, O=\"Autodesk, Inc\", L=San Rafael, S=California, C=US",
+          "authenticodeIssuer": "CN=VeriSign Class 3 Code Signing 2010 CA, OU=Terms of use at https://www.verisign.com/rpa (c)10, OU=VeriSign Trust Network, O=\"VeriSign, Inc.\", C=US",
+          "authenticodeValid": true,
+          "authenticodeNotBefore": "2012-07-25T08:00:00+08:00",
+          "authenticodeNotAfter": "2015-09-21T07:59:59+08:00",
+          "fileSizeBytes": 2601400,
+          "passed": true
+        },
+        "acdbmgd": {
+          "assemblyName": "Acdbmgd",
+          "assemblyVersion": "20.1.0.0",
+          "cultureName": "",
+          "publicKeyToken": "",
+          "expectedVersion": "20.1.0.0",
+          "versionMatch": true,
+          "hasLocation": true,
+          "sha256": "9C27F4A71E4DFAEC393B53AB15A657FA37CA9F8A7B09E0522894AB3B354603BB",
+          "authenticodeSubject": "CN=\"Autodesk, Inc\", OU=Design Solutions Group, OU=Digital ID Class 3 - Microsoft Software Validation v2, O=\"Autodesk, Inc\", L=San Rafael, S=California, C=US",
+          "authenticodeIssuer": "CN=VeriSign Class 3 Code Signing 2010 CA, OU=Terms of use at https://www.verisign.com/rpa (c)10, OU=VeriSign Trust Network, O=\"VeriSign, Inc.\", C=US",
+          "authenticodeValid": true,
+          "authenticodeNotBefore": "2012-07-25T08:00:00+08:00",
+          "authenticodeNotAfter": "2015-09-21T07:59:59+08:00",
+          "fileSizeBytes": 6436792,
+          "passed": true
+        },
+        "accoremgd": {
+          "assemblyName": "accoremgd",
+          "assemblyVersion": "20.1.0.0",
+          "cultureName": "",
+          "publicKeyToken": "",
+          "expectedVersion": "20.1.0.0",
+          "versionMatch": true,
+          "hasLocation": true,
+          "sha256": "80860722FB2D40209D63E4720BE9D5018A5A4F27FE23F844DFE2951CA35E30B0",
+          "authenticodeSubject": "CN=\"Autodesk, Inc\", OU=Design Solutions Group, OU=Digital ID Class 3 - Microsoft Software Validation v2, O=\"Autodesk, Inc\", L=San Rafael, S=California, C=US",
+          "authenticodeIssuer": "CN=VeriSign Class 3 Code Signing 2010 CA, OU=Terms of use at https://www.verisign.com/rpa (c)10, OU=VeriSign Trust Network, O=\"VeriSign, Inc.\", C=US",
+          "authenticodeValid": true,
+          "authenticodeNotBefore": "2012-07-25T08:00:00+08:00",
+          "authenticodeNotAfter": "2015-09-21T07:59:59+08:00",
+          "fileSizeBytes": 906680,
+          "passed": true
+        }
+      },
+      "summary": {
+        "positiveSignature": {
+          "methods": {
+            "total": 10,
+            "passed": 10,
+            "failed": 0
+          },
+          "properties": {
+            "total": 9,
+            "passed": 9,
+            "failed": 0
+          },
+          "getTextString4ArgOverload": {
+            "type": "Autodesk.AutoCAD.DatabaseServices.Table",
+            "member": "GetTextString",
+            "kind": "method",
+            "overload": "4-arg (obsolete)",
+            "exists": true,
+            "returnType": "System.String",
+            "parameterCount": 4
+          },
+          "allPositiveSignaturesOk": true
+        },
+        "expectedAbsence": {
+          "total": 9,
+          "correctlyAbsent": 9,
+          "unexpectedlyPresent": 0,
+          "allExpectedAbsentOk": true
+        },
+        "enumFreeze": {
+          "total": 6,
+          "passed": 6,
+          "failed": 0,
+          "dimensionTypeAbsent": true,
+          "allEnumsOk": true
+        },
+        "assemblyIdentity": {
+          "total": 3,
+          "passed": 3,
+          "failed": 0,
+          "allAssembliesOk": true
+        },
+        "overallPassed": true
+      },
+      "disclaimer": "Compile-time checks verify types/properties/method signatures via C# compiler. Runtime checks verify via reflection. This probe does NOT start or operate AutoCAD and is NOT equivalent to AutoCAD runtime verification."
+    }
+  },
+  "powershell51": {
+    "shellIdentity": "powershell-5.1",
+    "powerShellVersion": "5.1.19041.6456",
+    "buildWarnings": 0,
+    "buildErrors": 0,
+    "probeDllSha256": "7A371BF0C99FCA5DF4D0D1E021891F110D6FB30AB3D46C9BA645C17A46C2ACB2",
+    "probeJsonSha256": "AD41725637CCEC076F654B7CEBEE4F448B92ED39643C129637E844BF4898DEFF",
+    "autodeskDllsInOutput": 0,
+    "probeOutput": {
+      "compileTimeTypesVerified": 36,
+      "compileTimePropertiesVerified": 17,
+      "compileTimeMethodSignaturesVerified": 10,
+      "compileTimeNote": "All typeof, property-access, and delegate expressions compiled successfully against R20.1",
+      "positiveMethodSignatureChecks": [
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Spline",
+          "member": "GetControlPointAt",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Spline",
+          "isStatic": false,
+          "returnType": "Autodesk.AutoCAD.Geometry.Point3d",
+          "parameterCount": 1,
+          "parameters": [
+            {
+              "name": "index",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Spline",
+          "member": "GetFitPointAt",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Spline",
+          "isStatic": false,
+          "returnType": "Autodesk.AutoCAD.Geometry.Point3d",
+          "parameterCount": 1,
+          "parameters": [
+            {
+              "name": "index",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Polyline",
+          "member": "GetBulgeAt",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Polyline",
+          "isStatic": false,
+          "returnType": "System.Double",
+          "parameterCount": 1,
+          "parameters": [
+            {
+              "name": "index",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Leader",
+          "member": "VertexAt",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Leader",
+          "isStatic": false,
+          "returnType": "Autodesk.AutoCAD.Geometry.Point3d",
+          "parameterCount": 1,
+          "parameters": [
+            {
+              "name": "value",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "member": "GetLeaderIndexes",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "isStatic": false,
+          "returnType": "System.Collections.ArrayList",
+          "parameterCount": 0,
+          "parameters": [],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "member": "GetLeaderLineIndexes",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "isStatic": false,
+          "returnType": "System.Collections.ArrayList",
+          "parameterCount": 1,
+          "parameters": [
+            {
+              "name": "leaderIndex",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "member": "VerticesCount",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "isStatic": false,
+          "returnType": "System.Int32",
+          "parameterCount": 1,
+          "parameters": [
+            {
+              "name": "leaderLineIndex",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "member": "GetVertex",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "isStatic": false,
+          "returnType": "Autodesk.AutoCAD.Geometry.Point3d",
+          "parameterCount": 2,
+          "parameters": [
+            {
+              "name": "leaderLineIndex",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            },
+            {
+              "name": "index",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Hatch",
+          "member": "GetLoopAt",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Hatch",
+          "isStatic": false,
+          "returnType": "Autodesk.AutoCAD.DatabaseServices.HatchLoop",
+          "parameterCount": 1,
+          "parameters": [
+            {
+              "name": "loopIndex",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "member": "GetTextString",
+          "kind": "method",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "isStatic": false,
+          "returnType": "System.String",
+          "parameterCount": 3,
+          "parameters": [
+            {
+              "name": "row",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            },
+            {
+              "name": "column",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            },
+            {
+              "name": "contentIndex",
+              "type": "System.Int32",
+              "isOut": false,
+              "isOptional": false,
+              "isByRef": false
+            }
+          ],
+          "passed": true
+        }
+      ],
+      "positivePropertySignatureChecks": [
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "member": "MText",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "propertyType": "Autodesk.AutoCAD.DatabaseServices.MText",
+          "canRead": true,
+          "canWrite": true,
+          "isStatic": false,
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "member": "ContentType",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "propertyType": "Autodesk.AutoCAD.DatabaseServices.ContentType",
+          "canRead": true,
+          "canWrite": true,
+          "isStatic": false,
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Hatch",
+          "member": "NumberOfLoops",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Hatch",
+          "propertyType": "System.Int32",
+          "canRead": true,
+          "canWrite": false,
+          "isStatic": false,
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "member": "Cells",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "propertyType": "Autodesk.AutoCAD.DatabaseServices.CellRange",
+          "canRead": true,
+          "canWrite": false,
+          "isStatic": false,
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "member": "Rows",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "propertyType": "Autodesk.AutoCAD.DatabaseServices.RowsCollection",
+          "canRead": true,
+          "canWrite": false,
+          "isStatic": false,
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "member": "Columns",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "propertyType": "Autodesk.AutoCAD.DatabaseServices.ColumnsCollection",
+          "canRead": true,
+          "canWrite": false,
+          "isStatic": false,
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Leader",
+          "member": "NumVertices",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Leader",
+          "propertyType": "System.Int32",
+          "canRead": true,
+          "canWrite": false,
+          "isStatic": false,
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.DBPoint",
+          "member": "EcsRotation",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.DBPoint",
+          "propertyType": "System.Double",
+          "canRead": true,
+          "canWrite": true,
+          "isStatic": false,
+          "passed": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Spline",
+          "member": "NurbsData",
+          "kind": "property",
+          "declaringType": "Autodesk.AutoCAD.DatabaseServices.Spline",
+          "propertyType": "Autodesk.AutoCAD.DatabaseServices.NurbsData",
+          "canRead": true,
+          "canWrite": true,
+          "isStatic": false,
+          "passed": true
+        }
+      ],
+      "expectedAbsenceChecks": [
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.MLeader",
+          "member": "TextString",
+          "expectedKind": "property",
+          "correctlyAbsent": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "member": "GetTextStyle",
+          "expectedKind": "method",
+          "correctlyAbsent": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Table",
+          "member": "GetCellType",
+          "expectedKind": "method",
+          "correctlyAbsent": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Polyline2d",
+          "member": "VertexObjectIdList",
+          "expectedKind": "property",
+          "correctlyAbsent": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Polyline3d",
+          "member": "Vertices",
+          "expectedKind": "property",
+          "correctlyAbsent": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Polyline3d",
+          "member": "VertexObjectIdList",
+          "expectedKind": "property",
+          "correctlyAbsent": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.BlockReference",
+          "member": "XrefStatus",
+          "expectedKind": "property",
+          "correctlyAbsent": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.Dimension",
+          "member": "DimensionType",
+          "expectedKind": "property",
+          "correctlyAbsent": true
+        },
+        {
+          "type": "Autodesk.AutoCAD.DatabaseServices.DimensionType",
+          "member": "(enum)",
+          "expectedKind": "enum",
+          "correctlyAbsent": true,
+          "note": "DimensionType enum does not exist in R20.1; consistent with Dimension.DimensionType property also absent"
+        }
+      ],
+      "enumSignatureChecks": {
+        "Autodesk.AutoCAD.DatabaseServices.ContentType": {
+          "fullName": "Autodesk.AutoCAD.DatabaseServices.ContentType",
+          "underlyingType": "System.Int32",
+          "namesSorted": [
+            "BlockContent",
+            "MTextContent",
+            "NoneContent",
+            "ToleranceContent"
+          ],
+          "values": {
+            "BlockContent": 1,
+            "MTextContent": 2,
+            "NoneContent": 0,
+            "ToleranceContent": 3
+          },
+          "count": 4,
+          "matchesFrozenExpected": true,
+          "passed": true
+        },
+        "Autodesk.AutoCAD.DatabaseServices.HatchLoopTypes": {
+          "fullName": "Autodesk.AutoCAD.DatabaseServices.HatchLoopTypes",
+          "underlyingType": "System.Int32",
+          "namesSorted": [
+            "Default",
+            "Derived",
+            "Duplicate",
+            "External",
+            "NotClosed",
+            "Outermost",
+            "Polyline",
+            "SelfIntersecting",
+            "TextIsland",
+            "Textbox"
+          ],
+          "values": {
+            "Default": 0,
+            "Derived": 4,
+            "Duplicate": 256,
+            "External": 1,
+            "NotClosed": 32,
+            "Outermost": 16,
+            "Polyline": 2,
+            "SelfIntersecting": 64,
+            "TextIsland": 128,
+            "Textbox": 8
+          },
+          "count": 10,
+          "matchesFrozenExpected": true,
+          "passed": true
+        },
+        "Autodesk.AutoCAD.DatabaseServices.CellType": {
+          "fullName": "Autodesk.AutoCAD.DatabaseServices.CellType",
+          "underlyingType": "System.Int32",
+          "namesSorted": [
+            "Bool",
+            "CharPtr",
+            "Double",
+            "HardOwnerId",
+            "HardPtrId",
+            "Integer",
+            "ObjectId",
+            "Point",
+            "SoftOwnerId",
+            "SoftPtrId",
+            "Unknown",
+            "Vector"
+          ],
+          "values": {
+            "Bool": 10,
+            "CharPtr": 3,
+            "Double": 2,
+            "HardOwnerId": 6,
+            "HardPtrId": 8,
+            "Integer": 1,
+            "ObjectId": 5,
+            "Point": 4,
+            "SoftOwnerId": 7,
+            "SoftPtrId": 9,
+            "Unknown": 0,
+            "Vector": 11
+          },
+          "count": 12,
+          "matchesFrozenExpected": true,
+          "passed": true
+        },
+        "Autodesk.AutoCAD.DatabaseServices.Poly2dType": {
+          "fullName": "Autodesk.AutoCAD.DatabaseServices.Poly2dType",
+          "underlyingType": "System.Int32",
+          "namesSorted": [
+            "CubicSplinePoly",
+            "FitCurvePoly",
+            "QuadSplinePoly",
+            "SimplePoly"
+          ],
+          "values": {
+            "CubicSplinePoly": 3,
+            "FitCurvePoly": 1,
+            "QuadSplinePoly": 2,
+            "SimplePoly": 0
+          },
+          "count": 4,
+          "matchesFrozenExpected": true,
+          "passed": true
+        },
+        "Autodesk.AutoCAD.DatabaseServices.Poly3dType": {
+          "fullName": "Autodesk.AutoCAD.DatabaseServices.Poly3dType",
+          "underlyingType": "System.Int32",
+          "namesSorted": [
+            "CubicSplinePoly",
+            "QuadSplinePoly",
+            "SimplePoly"
+          ],
+          "values": {
+            "CubicSplinePoly": 2,
+            "QuadSplinePoly": 1,
+            "SimplePoly": 0
+          },
+          "count": 3,
+          "matchesFrozenExpected": true,
+          "passed": true
+        },
+        "Autodesk.AutoCAD.DatabaseServices.XrefStatus": {
+          "fullName": "Autodesk.AutoCAD.DatabaseServices.XrefStatus",
+          "underlyingType": "System.Int32",
+          "namesSorted": [
+            "FileNotFound",
+            "NotAnXref",
+            "Resolved",
+            "Unloaded",
+            "Unreferenced",
+            "Unresolved"
+          ],
+          "values": {
+            "FileNotFound": 4,
+            "NotAnXref": 0,
+            "Resolved": 1,
+            "Unloaded": 2,
+            "Unreferenced": 3,
+            "Unresolved": 5
+          },
+          "count": 6,
+          "matchesFrozenExpected": true,
+          "passed": true
+        }
+      },
+      "assemblySignatureChecks": {
+        "acmgd": {
+          "assemblyName": "Acmgd",
+          "assemblyVersion": "20.1.0.0",
+          "cultureName": "",
+          "publicKeyToken": "",
+          "expectedVersion": "20.1.0.0",
+          "versionMatch": true,
+          "hasLocation": true,
+          "sha256": "CCE13839886E827C392637D4F6B670E4CA7780E1A02B660E41D049E9C492B97F",
+          "authenticodeSubject": "CN=\"Autodesk, Inc\", OU=Design Solutions Group, OU=Digital ID Class 3 - Microsoft Software Validation v2, O=\"Autodesk, Inc\", L=San Rafael, S=California, C=US",
+          "authenticodeIssuer": "CN=VeriSign Class 3 Code Signing 2010 CA, OU=Terms of use at https://www.verisign.com/rpa (c)10, OU=VeriSign Trust Network, O=\"VeriSign, Inc.\", C=US",
+          "authenticodeValid": true,
+          "authenticodeNotBefore": "2012-07-25T08:00:00+08:00",
+          "authenticodeNotAfter": "2015-09-21T07:59:59+08:00",
+          "fileSizeBytes": 2601400,
+          "passed": true
+        },
+        "acdbmgd": {
+          "assemblyName": "Acdbmgd",
+          "assemblyVersion": "20.1.0.0",
+          "cultureName": "",
+          "publicKeyToken": "",
+          "expectedVersion": "20.1.0.0",
+          "versionMatch": true,
+          "hasLocation": true,
+          "sha256": "9C27F4A71E4DFAEC393B53AB15A657FA37CA9F8A7B09E0522894AB3B354603BB",
+          "authenticodeSubject": "CN=\"Autodesk, Inc\", OU=Design Solutions Group, OU=Digital ID Class 3 - Microsoft Software Validation v2, O=\"Autodesk, Inc\", L=San Rafael, S=California, C=US",
+          "authenticodeIssuer": "CN=VeriSign Class 3 Code Signing 2010 CA, OU=Terms of use at https://www.verisign.com/rpa (c)10, OU=VeriSign Trust Network, O=\"VeriSign, Inc.\", C=US",
+          "authenticodeValid": true,
+          "authenticodeNotBefore": "2012-07-25T08:00:00+08:00",
+          "authenticodeNotAfter": "2015-09-21T07:59:59+08:00",
+          "fileSizeBytes": 6436792,
+          "passed": true
+        },
+        "accoremgd": {
+          "assemblyName": "accoremgd",
+          "assemblyVersion": "20.1.0.0",
+          "cultureName": "",
+          "publicKeyToken": "",
+          "expectedVersion": "20.1.0.0",
+          "versionMatch": true,
+          "hasLocation": true,
+          "sha256": "80860722FB2D40209D63E4720BE9D5018A5A4F27FE23F844DFE2951CA35E30B0",
+          "authenticodeSubject": "CN=\"Autodesk, Inc\", OU=Design Solutions Group, OU=Digital ID Class 3 - Microsoft Software Validation v2, O=\"Autodesk, Inc\", L=San Rafael, S=California, C=US",
+          "authenticodeIssuer": "CN=VeriSign Class 3 Code Signing 2010 CA, OU=Terms of use at https://www.verisign.com/rpa (c)10, OU=VeriSign Trust Network, O=\"VeriSign, Inc.\", C=US",
+          "authenticodeValid": true,
+          "authenticodeNotBefore": "2012-07-25T08:00:00+08:00",
+          "authenticodeNotAfter": "2015-09-21T07:59:59+08:00",
+          "fileSizeBytes": 906680,
+          "passed": true
+        }
+      },
+      "summary": {
+        "positiveSignature": {
+          "methods": {
+            "total": 10,
+            "passed": 10,
+            "failed": 0
+          },
+          "properties": {
+            "total": 9,
+            "passed": 9,
+            "failed": 0
+          },
+          "getTextString4ArgOverload": {
+            "type": "Autodesk.AutoCAD.DatabaseServices.Table",
+            "member": "GetTextString",
+            "kind": "method",
+            "overload": "4-arg (obsolete)",
+            "exists": true,
+            "returnType": "System.String",
+            "parameterCount": 4
+          },
+          "allPositiveSignaturesOk": true
+        },
+        "expectedAbsence": {
+          "total": 9,
+          "correctlyAbsent": 9,
+          "unexpectedlyPresent": 0,
+          "allExpectedAbsentOk": true
+        },
+        "enumFreeze": {
+          "total": 6,
+          "passed": 6,
+          "failed": 0,
+          "dimensionTypeAbsent": true,
+          "allEnumsOk": true
+        },
+        "assemblyIdentity": {
+          "total": 3,
+          "passed": 3,
+          "failed": 0,
+          "allAssembliesOk": true
+        },
+        "overallPassed": true
+      },
+      "disclaimer": "Compile-time checks verify types/properties/method signatures via C# compiler. Runtime checks verify via reflection. This probe does NOT start or operate AutoCAD and is NOT equivalent to AutoCAD runtime verification."
+    }
+  },
+  "summary": {
+    "crossShellConsistent": true,
+    "ps7OverallPassed": true,
+    "ps51OverallPassed": true,
+    "probeDllSha256": "7A371BF0C99FCA5DF4D0D1E021891F110D6FB30AB3D46C9BA645C17A46C2ACB2",
+    "disclaimer": "This probe does NOT start or operate AutoCAD. Evidence is non-live."
+  }
+}
