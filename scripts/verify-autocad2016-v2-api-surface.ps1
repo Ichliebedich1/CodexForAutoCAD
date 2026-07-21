@@ -6,7 +6,11 @@ param(
     [ValidateSet('Release')]
     [string]$Configuration = 'Release',
 
-    [string]$MsBuildPath
+    [string]$MsBuildPath,
+
+    [string]$EvidencePath = "",
+
+    [string]$ArtifactRoot = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,7 +22,12 @@ $nuGetConfigPath = Join-Path $repoRoot 'tests\Codex.AutoCAD.Host.2016.V2ApiProbe
 $packageLockPath = Join-Path $repoRoot 'tests\Codex.AutoCAD.Host.2016.V2ApiProbe\packages.lock.json'
 $vendoredPackagePath = Join-Path $repoRoot 'third_party\nuget\Microsoft.NETFramework.ReferenceAssemblies.net45.1.0.3.nupkg'
 $AutoCad2016Dir = [IO.Path]::GetFullPath($AutoCad2016Dir)
-$verificationRoot = Join-Path $repoRoot ("artifacts\v2api-probe-verify-{0}" -f [Guid]::NewGuid().ToString('N'))
+$effectiveArtifactRoot = if ([string]::IsNullOrWhiteSpace($ArtifactRoot)) {
+    Join-Path $repoRoot ("artifacts\v2api-probe-verify-{0}" -f [Guid]::NewGuid().ToString('N'))
+} else {
+    [IO.Path]::GetFullPath($ArtifactRoot)
+}
+$verificationRoot = $effectiveArtifactRoot
 $outputDirectory = Join-Path $verificationRoot 'bin'
 $baseIntermediateDirectory = Join-Path $verificationRoot 'obj-base'
 $intermediateDirectory = Join-Path $verificationRoot 'obj-compile'
@@ -411,11 +420,17 @@ Write-Host "IMPORTANT: This probe verifies API surface existence only."
 Write-Host "It does NOT start or operate AutoCAD and is NOT equivalent to runtime verification."
 
 # Write evidence JSON
-$evidencePath = Join-Path $repoRoot 'handoff\autocad2016\evidence\v2-api-surface-probe-verification.json'
-$evidenceDir = Split-Path -Parent $evidencePath
+$resolvedEvidencePath = if ([string]::IsNullOrWhiteSpace($EvidencePath)) {
+    Join-Path $repoRoot 'handoff\autocad2016\evidence\v2-api-surface-probe-verification.json'
+} else {
+    [IO.Path]::GetFullPath($EvidencePath)
+}
+$evidenceDir = Split-Path -Parent $resolvedEvidencePath
 if (-not (Test-Path $evidenceDir)) {
     New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
 }
+
+$dllSha256 = (Get-FileHash -LiteralPath $dllPath -Algorithm SHA256).Hash.ToUpperInvariant()
 
 $evidence = [ordered]@{
     probeVersion = "1.0.0"
@@ -432,6 +447,7 @@ $evidence = [ordered]@{
     runtimeChecksFailed = $result.summary.failed
     runtimePassedMembers = $result.runtimeMethodChecks.passed
     runtimeFailedMembers = $result.runtimeMethodChecks.failed
+    dllSha256 = $dllSha256
     autodeskDllsInOutput = 0
     autoCadStartedOrRestarted = $false
     cadCommandsSent = $false
@@ -441,5 +457,5 @@ $evidence = [ordered]@{
 }
 
 $evidenceJson = $evidence | ConvertTo-Json -Depth 4
-[IO.File]::WriteAllText($evidencePath, $evidenceJson, $strictUtf8)
-Write-Host "Evidence written to: $evidencePath"
+[IO.File]::WriteAllText($resolvedEvidencePath, $evidenceJson, $strictUtf8)
+Write-Host "Evidence written to: $resolvedEvidencePath"

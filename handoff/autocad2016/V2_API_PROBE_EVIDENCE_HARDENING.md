@@ -1,0 +1,79 @@
+# V2 API Surface Probe Evidence Hardening
+
+日期：2026-07-21
+
+## 变更摘要
+
+本次硬化为 V2 API Surface Probe 验证脚本增加双 Shell（PowerShell 7 + Windows PowerShell 5.1）隔离构建和交叉验证能力，不修改生产代码或探针语义。
+
+## 修改文件
+
+| 文件 | 变更 |
+| --- | --- |
+| `scripts/verify-autocad2016-v2-api-surface.ps1` | 新增 `EvidencePath` 和 `ArtifactRoot` 参数；输出增加 `dllSha256` 字段；默认调用行为不变 |
+| `scripts/verify-autocad2016-v2-api-surface-stage.ps1` | 新增。双 Shell 编排器，分别在 PS7 和 PS5.1 下独立构建和运行探针，交叉验证后生成聚合 evidence |
+| `tests/Codex.AutoCAD.Host.2016.V2ApiProbe/README.md` | 修正"双 Shell 已一致"表述，改为由 stage 脚本门禁验证；新增 stage 脚本用法 |
+
+## Evidence 文件
+
+| 文件 | 来源 |
+| --- | --- |
+| `evidence/v2-api-surface-probe-pwsh7-20260721.json` | stage 脚本自动生成，PS7 worker 产出 |
+| `evidence/v2-api-surface-probe-powershell51-20260721.json` | stage 脚本自动生成，PS5.1 worker 产出 |
+| `evidence/v2-api-surface-probe-cross-shell-20260721.json` | stage 脚本自动生成，双 Shell 聚合比较 |
+| `evidence/v2-api-surface-probe-verification.json` | 历史文件，逐字节不变 |
+
+## 门禁规则
+
+### 构建要求
+
+- Release / net45 / x64
+- 0 warning / 0 error
+- 输出不含 Autodesk DLL（`Private=false` 强制）
+
+### 运行时检查
+
+- 精确 `passed=19`、`failed=8`
+- 八个失败成员集合不变：
+  - `MLeader.TextString [any]`
+  - `Table.GetTextStyle [method]`
+  - `Table.GetCellType [method]`
+  - `Polyline2d.VertexObjectIdList [property]`
+  - `Polyline3d.Vertices [property]`
+  - `Polyline3d.VertexObjectIdList [property]`
+  - `BlockReference.XrefStatus [property]`
+  - `Dimension.DimensionType [property]`
+
+### 跨 Shell 一致性
+
+- 规范化 evidence JSON 逐字符一致
+- DLL SHA-256 一致
+- 通过/失败成员集合一致
+
+### Fail-Closed 条件
+
+以下任一情况触发 fail-closed，不产出最终 evidence：
+
+- PS7 或 PS5.1 缺失
+- 构建失败（非零退出码）
+- 结果计数漂移（passed ≠ 19 或 failed ≠ 8）
+- 成员集合漂移
+- DLL SHA-256 不一致
+- 规范化 evidence 不一致
+- 证据覆盖（目标路径已存在）
+- 敏感路径泄露
+
+### 聚合 evidence 必须包含
+
+```text
+autoCadStartedOrRestarted=false
+cadCommandsSent=false
+netLoadVerified=false
+autoCadLiveEvidence=false
+```
+
+## 限制
+
+- 本探针是编译时 API 表面探针，不启动或操作 AutoCAD
+- 不进行 NETLOAD，不证明运行时行为
+- 双 Shell 一致性只证明构建产物和反射结果一致，不替代 AutoCAD 实机验证
