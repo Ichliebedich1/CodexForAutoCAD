@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "scope": "autocad2016-agent-stop-stage",
+  "recordedAtUtc": "{recordedAtUtc}",
+  "frozenAtUtc": "{frozenAtUtc}",
+  "generatedBy": "scripts/verify-autocad2016-agent-stop-stage.ps1",
+  "autoCadLiveEvidence": false,
+  "autoCadProcessStarted": false,
+  "autoCadProcessControlled": false,
+  "cadCommandsSent": false,
+  "candidateId": "{candidateId}",
+  "gitBinding": {
+    "head": "{gitHead}",
+    "dirtyDiffSha256": "{dirtyDiffSha256}",
+    "sourceInputManifestSha256": "{sourceInputManifestSha256}"
+  },
+  "builds": {
+    "isolatedBuildCount": 2,
+    "hostOutputTreesEqual": true,
+    "agentHostOutputTreesEqual": true,
+    "build1LogSha256": "{build1LogSha256}",
+    "build2LogSha256": "{build2LogSha256}"
+  },
+  "specs": {
+    "host2016Mvp": {
+      "passed": 1,
+      "total": 1
+    },
+    "agentLauncher": {
+      "passed": 15,
+      "total": 15
+    },
+    "phase2": {
+      "passed": "{phase2Passed}",
+      "total": "{phase2Total}"
+    }
+  },
+  "package": {
+    "files": [
+      {
+        "FileName": "Codex.AutoCAD.Host.2016.dll",
+        "Sha256": "{hostDllSha256}"
+      },
+      {
+        "FileName": "Codex.AutoCAD.AgentLauncher.dll",
+        "Sha256": "{agentLauncherDllSha256}"
+      },
+      {
+        "FileName": "Codex.AutoCAD.Bridge.Client.dll",
+        "Sha256": "{bridgeClientDllSha256}"
+      },
+      {
+        "FileName": "Codex.AutoCAD.Contracts.dll",
+        "Sha256": "{contractsDllSha256}"
+      },
+      {
+        "FileName": "Codex.AutoCAD.Ipc.dll",
+        "Sha256": "{ipcDllSha256}"
+      },
+      {
+        "FileName": "Codex.AutoCAD.AgentHost.exe",
+        "Sha256": "{agentHostExeSha256}"
+      },
+      {
+        "FileName": "Codex.AutoCAD.AgentHost.exe.sha256",
+        "Sha256": "{sidecarSha256}"
+      }
+    ],
+    "frozenAtUtc": "{packageFrozenAtUtc}"
+  },
+  "verificationFlags": {
+    "paletteSourceWiringInspected": true,
+    "paletteBehaviorAutomatedVerified": false,
+    "paletteRuntimeVerified": false,
+    "netLoadVerified": false,
+    "runtimeToArtifactBindingVerified": false
+  },
+  "limitations": [
+    "This evidence does not prove AutoCAD runtime integration.",
+    "paletteBehaviorAutomatedVerified, paletteRuntimeVerified, netLoadVerified, and runtimeToArtifactBindingVerified are all false.",
+    "No AutoCAD process was started, stopped, or sent commands.",
+    "This is a build and spec verification only."
+  ]
+}
