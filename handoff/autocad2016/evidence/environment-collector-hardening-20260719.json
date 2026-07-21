@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-07-21",
+  "scope": "autocad2016-environment-discovery-hardening",
+  "baselineCommit": "ecaff6be8ad30918813da2b587623b712e14ab3e",
+  "stageCommitBinding": "The Git commit containing this evidence file also contains the exact collector and documentation updates described here.",
+  "collector": {
+    "path": "scripts/collect-autocad2016-environment.ps1",
+    "sha256": "BCFA796058FB24FAA313F0703D152BBCBD99F1CD08FB304254BC37883FB5651C",
+    "gitBlobHash": "e7104430a3f25979a46d555cd814e67bb0b59310",
+    "reportSchemaVersion": 5,
+    "supportedRegistryValueNames": [
+      "AcadLocation",
+      "InstallLocation",
+      "Location"
+    ],
+    "locationOnlyNonProgramFilesFixtureCovered": true,
+    "directoryAndExecutableHintDeduplicationCovered": true,
+    "emptyRegistryValuesRejected": true,
+    "discoveryReadFailuresReportedAsRedactedCounts": true
+  },
+  "testExecution": {
+    "currentStage": {
+      "windowsPowerShell51": {
+        "version": "5.1.19041.6456",
+        "command": "powershell -File scripts/collect-autocad2016-environment.ps1 -RunDiscoverySelfTest",
+        "result": "24/24",
+        "passed": true
+      },
+      "powerShell7": {
+        "available": false,
+        "reason": "PowerShell 7 (pwsh) is not installed on this machine",
+        "result": "not-run",
+        "passed": false
+      }
+    },
+    "historicalReference": {
+      "description": "Commit 083f5f1 ran PS7 7.6.3 self-test 24/24 against the same collector Git blob e7104430a3f25979a46d555cd814e67bb0b59310 (SHA-256 BCFA7960...). That historical evidence is citable because the collector code identity is identical, but it was not re-executed in this integration stage.",
+      "commit": "083f5f1",
+      "collectorGitBlob": "e7104430a3f25979a46d555cd814e67bb0b59310",
+      "collectorSha256Prefix": "BCFA7960",
+      "ps7Version": "7.6.3",
+      "ps7SelfTestResult": "24/24"
+    },
+    "autoCadProcessStartedOrRestarted": false,
+    "cadCommandsSent": false,
+    "registryModified": false
+  },
+  "realTargetReadOnlyCollection": {
+    "currentStage": {
+      "windowsPowerShell51": {
+        "passed": true,
+        "command": "powershell -File scripts/collect-autocad2016-environment.ps1",
+        "collectorSchemaVersion": 5,
+        "collectionSucceeded": true,
+        "autoCad2016InstallationCount": 1,
+        "readyForHost2016BuildCount": 1,
+        "releaseRootsPresent": 1,
+        "keysInspected": 4,
+        "keysRead": 4,
+        "acadLocationHintCount": 1,
+        "installLocationHintCount": 0,
+        "locationHintCount": 1,
+        "releaseRootProbeFailureCount": 0,
+        "releaseRootReadFailureCount": 0,
+        "childEnumerationFailureCount": 0,
+        "propertyReadFailureCount": 0,
+        "rawOutputSha256": "1EFC151614519D81597B1F4FBBF183B59569D957249700D2076BF4651D1A9883"
+      },
+      "powerShell7": {
+        "available": false,
+        "result": "not-run"
+      }
+    },
+    "historicalReference": {
+      "description": "Commit 083f5f1 ran PS7 real collection successfully against the same collector blob. That historical evidence is citable because the collector code identity is identical, but it was not re-executed in this integration stage.",
+      "commit": "083f5f1",
+      "collectorGitBlob": "e7104430a3f25979a46d555cd814e67bb0b59310"
+    },
+    "trustedPathsQueried": false,
+    "autoCadProcessStartedOrRestarted": false,
+    "cadCommandsSent": false,
+    "systemOrAutoCadSettingsModified": false
+  },
+  "redaction": {
+    "trustedPathsIncluded": false,
+    "userNamesIncluded": false,
+    "localMachinePathsIncluded": false,
+    "networkPathsIncluded": false,
+    "drawingPathsOrNamesIncluded": false,
+    "licenseDataIncluded": false,
+    "secretsIncluded": false,
+    "rawRegistryKeysOrValuesIncluded": false
+  }
+}
