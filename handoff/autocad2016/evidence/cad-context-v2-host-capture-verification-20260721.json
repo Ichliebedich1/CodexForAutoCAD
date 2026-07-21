@@ -1,0 +1,85 @@
+{
+  "SchemaVersion": 1,
+  "Stage": "autocad2016-cad-context-v2-host-capture",
+  "Status": "compiled-candidate-not-runtime-integrated",
+  "BaselineCommit": "0ceb123428219fe289a7a8c95fcea0a45838489c",
+  "Target": {
+    "ProductSeries": "R20.1",
+    "Architecture": "x64",
+    "HostFramework": "net45"
+  },
+  "AutodeskAssemblies": [
+    {
+      "Name": "acmgd.dll",
+      "AssemblyVersion": "20.1.0.0",
+      "Sha256": "CCE13839886E827C392637D4F6B670E4CA7780E1A02B660E41D049E9C492B97F",
+      "AuthenticodeValid": true,
+      "Publisher": "Autodesk, Inc"
+    },
+    {
+      "Name": "acdbmgd.dll",
+      "AssemblyVersion": "20.1.0.0",
+      "Sha256": "9C27F4A71E4DFAEC393B53AB15A657FA37CA9F8A7B09E0522894AB3B354603BB",
+      "AuthenticodeValid": true,
+      "Publisher": "Autodesk, Inc"
+    },
+    {
+      "Name": "accoremgd.dll",
+      "AssemblyVersion": "20.1.0.0",
+      "Sha256": "80860722FB2D40209D63E4720BE9D5018A5A4F27FE23F844DFE2951CA35E30B0",
+      "AuthenticodeValid": true,
+      "Publisher": "Autodesk, Inc"
+    }
+  ],
+  "HostBuild": {
+    "Configuration": "Release",
+    "Framework": "net45",
+    "Architecture": "x64",
+    "IndependentSourceCopies": 2,
+    "BitForBitHostDll": true,
+    "HostDllBytes": 105984,
+    "HostDllSha256": "700A0BF9CBD976625F1EF4D7BE820DD257263295466EDA13FBC8109D89F96DD0",
+    "AutodeskDllCopyCount": 0,
+    "LockedRestore": true,
+    "Warnings": 0,
+    "Errors": 0
+  },
+  "Specs": {
+    "HostV2Net45": "12/12",
+    "HostV2Net8": "12/12",
+    "HostV2OutputsIdentical": true,
+    "HostV2SnapshotBytes": 147,
+    "HostV2SnapshotSha256": "0ba4970c01da7877a41c9de960f1decd090d0f6646e9eff7a979c71db5bb8990",
+    "ContractsNet45": "39/39",
+    "ContractsNet8": "39/39",
+    "ContractsOutputsIdentical": true,
+    "CadContextV1Bytes": 2225,
+    "CadContextV1Sha256": "c5a03d4cb73f850209a71539fc70ddc2bcd6ec2f7f45627c7285fb53ec424423",
+    "CadContextV2Bytes": 6678,
+    "CadContextV2Sha256": "21cc9378a618022c5bc21cb35c58db7818272c33d0adc5b5bd8618b4a638c3b4",
+    "Phase2": "199/199"
+  },
+  "Safety": {
+    "HostForbiddenApiScanPassed": true,
+    "SecretScanPassed": true,
+    "GitDiffCheckPassed": true,
+    "CadWriteEnabled": false,
+    "PluginInitiatedSaveEnabled": false
+  },
+  "Boundaries": {
+    "HostV2CaptureImplemented": true,
+    "R201HostCompileVerified": true,
+    "RuntimeIntegrated": false,
+    "PaletteV2Integrated": false,
+    "BridgeV2Negotiated": false,
+    "CandidateArtifactFrozen": false,
+    "AutoCadStartedOrRestarted": false,
+    "CadCommandsSent": false,
+    "DrawingReadOrWrittenByVerifier": false,
+    "NetLoadVerified": false,
+    "RuntimeToArtifactBindingVerified": false,
+    "AutoCadLiveEvidence": false,
+    "MixedSelectionRuntimeVerified": false,
+    "CompleteAutoCad2016Support": false
+  }
+}

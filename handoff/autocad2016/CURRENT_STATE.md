@@ -215,8 +215,18 @@ NETLOAD 证据的能力一律视为未支持。
   必须相互一致。
 - 目标机原版 Acdbmgd 20.1.0.0 公共 API 字段审计已记录在
   `MVP_CAD_CONTEXT_V2.md`；契约证据见
-  `evidence/cad-context-contract-v2-verification-20260721.json`。Host 捕获、Bridge v2
-  协商、R20.1 Host 编译和 AutoCAD 实机混合选区仍为 `false`。
+  `evidence/cad-context-contract-v2-verification-20260721.json`。
+- Host.2016 的真实对象读取、v2 JSON 映射、逐实体降级和选择状态哈希已经形成构建
+  候选。Host v2 Specs 在 net45/net8 均为 `12/12` 且 stdout 一致；Contracts 保持
+  `39/39`，v1/v2 固定向量不变。Phase 2 当前动态回归为 `199/199`。
+- 两份独立临时源码副本使用目标机原版 R20.1 程序集完成 locked Release 重建，Host DLL
+  均为 `105984` 字节、SHA-256
+  `700A0BF9CBD976625F1EF4D7BE820DD257263295466EDA13FBC8109D89F96DD0`，Autodesk DLL
+  copy count 为 `0`。证据见
+  `evidence/cad-context-v2-host-capture-verification-20260721.json`。
+- 上述结果只把 `HostV2CaptureImplemented` 和 `R201HostCompileVerified` 提升为 `true`；
+  `RuntimeIntegrated`、`BridgeV2Negotiated`、`NetLoadVerified`、`AutoCadLiveEvidence` 和
+  实机混合选区仍为 `false`。
 - 在对象扩展候选冻结前，先修复或解释上述 AgentHost 停止残留；两项分别验证、分别提交。
 
 ### 已验证但尚待集成的独立阶段
@@ -270,9 +280,9 @@ NETLOAD 证据的能力一律视为未支持。
    “停止后无残留”未通过的明确边界。
 2. 修复 AgentHost 停止结果不可见/进程残留问题，自动化验证后冻结新候选并完成最小
    AutoCAD 启停复验，单独提交生命周期修复。
-3. CadContextJson v2 契约和 net45/net8 固定向量已经冻结；下一步实现 Host.2016
-   快照/映射、显式 Bridge v2 协商和混合选择 Specs，使用原版 R20.1 程序集编译冻结
-   候选后再请求实机验证并单独提交。
+3. CadContextJson v2 契约、Host.2016 捕获/映射、net45/net8 固定向量和 R20.1 构建候选
+   已完成；下一步吸收跨版本兼容夹具结论，接入统一 Runtime/Palette 和显式 Bridge v2
+   协商。冻结可运行候选后再请求实机混合选区验证并单独提交。
 4. 按 `MVP_LIFECYCLE_RUNTIME_TEST_20260721.md` 补测离线/断线/超时、125%/150% DPI、
    文档关闭和 AutoCAD 退出生命周期。
 5. 只读 MVP 与生命周期运行门槛通过后，再进入预览、拒绝、一次允许、锁内重校验和

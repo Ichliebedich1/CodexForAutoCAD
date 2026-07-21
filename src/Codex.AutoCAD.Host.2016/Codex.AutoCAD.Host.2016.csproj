@@ -102,6 +102,10 @@
     <Compile Include="CodexCad2016Commands.cs" />
     <Compile Include="EmbeddedContractGlobalUsings.cs" />
     <Compile Include="CadContextJsonMapper.cs" />
+    <Compile Include="CadContextV2CapturePolicy.cs" />
+    <Compile Include="CadContextJsonV2Mapper.cs" />
+    <Compile Include="CanonicalSelectionHashV2.cs" />
+    <Compile Include="ReadOnlySelectionCaptureV2.cs" />
     <Compile Include="DocumentContextRegistry.cs" />
     <Compile Include="UnifiedReadOnlyContextRuntime.cs" />
     <Compile Include="UnifiedPaletteRuntime.cs" />

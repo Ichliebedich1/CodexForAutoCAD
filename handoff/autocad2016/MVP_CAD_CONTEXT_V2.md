@@ -1,7 +1,8 @@
 # CadContextJson v2 冻结候选
 
-状态：契约设计候选。只有在 net45/net8 固定向量、目标机 R20.1 编译和 AutoCAD 2016
-实机混合选区全部通过后，才可标记为运行验证完成。
+状态：契约已冻结，Host.2016 真实对象捕获为构建候选。net45/net8 固定向量和目标机
+R20.1 原版程序集编译已经通过；Runtime、Palette、Bridge v2 协商和 AutoCAD 2016 实机
+混合选区仍未完成，因此不得标记为运行验证完成。
 
 ## 1. 不可破坏的 v1 边界
 
@@ -176,3 +177,22 @@ v1 与 v2 必须使用显式、独立的能力和请求类型：
 7. 规范 JSON 不含图名、路径、异常消息或敏感配置。
 8. 使用目标机原版 R20.1 程序集 Release 编译通过。
 9. 用户在 AutoCAD 2016 中人工 NETLOAD 冻结候选并验证混合选区、DBMOD 不变、插件不保存。
+
+## 11. Host 捕获构建检查点（2026-07-21）
+
+- `ReadOnlySelectionCaptureV2` 已实现 19 个强类型 payload，并在单实体范围内隔离
+  `GetObject`、身份、公共字段和 payload getter 失败。
+- 未知类型、读取失败和单实体数据超限分别生成受限占位；无异常消息、堆栈或图纸路径
+  进入 JSON。
+- MLeader 在读取索引集合和分配顶点数组前先检查 R20.1 计数，并对总顶点数做溢出安全
+  累加。
+- Host v2 Specs 在 net45/net8 均为 `12/12`，stdout 完全一致；选择快照冻结向量为
+  `147` 字节、SHA-256
+  `0ba4970c01da7877a41c9de960f1decd090d0f6646e9eff7a979c71db5bb8990`。
+- Contracts 在 net45/net8 均为 `39/39`，v1/v2 冻结向量保持不变。
+- 两份独立临时源码副本使用目标机原版 R20.1 程序集 locked restore/Rebuild，Host DLL
+  均为 `105984` 字节、SHA-256
+  `700A0BF9CBD976625F1EF4D7BE820DD257263295466EDA13FBC8109D89F96DD0`；输出中 Autodesk
+  DLL 数量为 `0`。
+- 本检查点没有启动、唤醒、关闭或操作 AutoCAD，也没有执行 `NETLOAD`。该 DLL 哈希只
+  表示可重复构建候选，尚未与任何 AutoCAD 运行时绑定。
