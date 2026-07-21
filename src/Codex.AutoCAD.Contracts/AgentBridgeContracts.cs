@@ -854,6 +854,7 @@ public static class AgentBridgeContractValidator
             "capabilities_schemas_limit", "$.supportedCadContextSchemas",
             "支持的CadContext schema超过已知版本数。");
         var hasV1 = false;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         for (var index = 0; index < schemas.Length; index++)
         {
             var entry = schemas[index];
@@ -866,12 +867,20 @@ public static class AgentBridgeContractValidator
                 continue;
             }
 
+            var version = entry.SchemaVersion.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
+            var identity = (entry.Schema ?? string.Empty) + "\n" + version;
+            if (!seen.Add(identity))
+            {
+                failures.Add(new CadValidationFailure(
+                    "capabilities_schema_duplicate", path,
+                    "支持的CadContext schema/version条目不能重复。"));
+            }
+
             Require(IsKnown(entry.Schema, KnownCadContextSchemas), failures,
                 "capabilities_schema_name", path + ".schema",
                 "schema名称不在已知列表中。");
-            Require(IsKnown(entry.SchemaVersion.ToString(
-                    System.Globalization.CultureInfo.InvariantCulture),
-                    KnownCadContextSchemaVersions),
+            Require(IsKnown(version, KnownCadContextSchemaVersions),
                 failures, "capabilities_schema_version", path + ".schemaVersion",
                 "schema版本不在已知列表中。");
             if (string.Equals(entry.Schema, CadContextJsonV1Constants.Schema,
