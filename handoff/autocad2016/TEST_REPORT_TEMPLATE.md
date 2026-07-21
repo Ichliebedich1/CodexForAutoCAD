@@ -1,5 +1,45 @@
 ﻿# AutoCAD 2016 实机测试记录
 
+## 2026-07-21 当前状态摘要
+
+本节是当前有效结论，优先级高于下方保留的 2026-07-18 至 2026-07-19 历史详细记录。项目进度只能按真实运行证据、自动化门禁和未验证候选分别判断；旧审计中的 `25%` 已失效，不得继续引用。
+
+### 已在原版 AutoCAD 2016 中实机通过
+
+- Agent MVP `0.3.1` 对应提交 `7f10d60`。
+- 用户在目标机原版 AutoCAD 2016 中人工 `NETLOAD`，选择一条真实 `Line` 后完成：
+  `CadContextJson v1 -> Palette -> 认证 AgentHost -> 本机 Codex -> assistant 回答`。
+- 同一 Codex thread 已连续完成两轮问答，用户多次复测确认具备当前会话上下文记忆。
+- 该检查点证明受支持图元的最小只读 AI happy path。CAD 写入和插件发起保存保持禁用；它不证明全部对象类型、完整 Agent 生命周期、发布包或 CAD 写入能力。
+
+### P0：AgentHost 停止生命周期候选
+
+- `0.3.2` 已有代码和冻结候选准备，但尚未由用户人工 `NETLOAD`，尚未形成通过验证后的独立提交。
+- 当前失败路径存在状态风险：一次停止失败后再次执行 `STOP`，可能误报“已停止”并跳过重新清理，不能据此证明 AgentHost 残留为零。
+- 现有构建证据还需修正 Palette wiring 的过度声明，以及证据时间早于实际构建产物的问题。
+- 关闭 P0 前必须重新冻结候选，并在干净 AutoCAD 2016 会话中完成两轮
+  `AGENTSTART -> 在线 -> AGENTSTOP -> 已停止`，随后确认 `DBMOD` 不变且 AgentHost 残留进程为 `0`。通过后单独更新证据和提交。
+
+### P1：CadContextJson v2 基础与产品链缺口
+
+- v2 基础提交截至 `50f6cf3`：19 种强类型对象、3 种受限占位；未知对象不再导致整组选区失败。
+- Contracts net45/net8 均为 `71/71`；当前 Phase 2 完整门禁为 `231/231`。
+- 原版 R20.1 API surface probe 已完成基础验证，但最终产品 Runtime、Palette 和 Agent Client 仍使用 `CadContextJson v1`。
+- 尚未把 v2 捕获、解析/占位计数、`complete`、显式 schema capability 和 `StartTurnV2Async` 接入真实认证产品链。
+- 当前 capabilities 解析存在待修正的 fail-open 风险：Provider 明确返回空 `supportedCadContextSchemas` 时，默认 v1 值可能被保留。空能力必须明确 fail-closed，并有回归测试。
+- 最终集成候选仍需原版 R20.1 Release 构建、冻结 DLL 和用户人工 `NETLOAD`。实机样本应包含多个新增支持对象及一个未知对象，并验证 `published=true`、`unsupportedEntityCount=1`、`complete=false`、`DBMOD` 不变且 Codex 使用 v2 上下文回答。
+
+### 当前发布边界
+
+- 当前可以称为“AutoCAD 2016 已实机通过的最小只读 AI happy path”，不能称为完整 AutoCAD 2016 支持。
+- P0、P1 均未完成对应实机验收和阶段提交。
+- CAD 写入的预览、一次性审批、HMAC、防重放、锁内重校验、单事务、Undo/回滚和不自动保存仍无 AutoCAD 2016 端到端证据。
+- AutoCAD 退出、Agent 异常退出/断线/超时/取消、文档切换和 125%/150% DPI 等稳定性矩阵仍待补齐。
+
+## 历史详细记录（2026-07-18 至 2026-07-19）
+
+> 以下详细记录原样保留，用于追溯诊断 Host、独立 Palette 和独立 ReadOnlyContext sidecar 的早期阶段证据。其“Agent 未接入”“正式侧边栏未完成”等结论只描述当时状态，不得覆盖上方 2026-07-21 的 `0.3.1` 实机 happy path。旧计数和旧拓扑也不得替代当前 `71/71`、`231/231` 及 P0/P1 状态。
+
 ## 证据来源与适用边界
 
 本报告严格分开六类证据：
@@ -320,23 +360,22 @@ Release 构建、七个 Specs、Bridge 压力、AgentHost doctor、diff 与秘�
 
 ## 测试结论
 
-- 是否达到“2016 诊断编译/NETLOAD 兼容候选”：**是**；仅限提交 `2d2ad37` 的诊断薄宿主和当前用户命令记录。
-- 是否达到“2016 独立只读 Selection sidecar 检查点”：**是**；仅限冻结候选 `AB3132...E6B8` 的六类 implied selection、显式清除、`DBMOD 4 -> 4` 和 DocumentActivated 缓存失效。
-- 是否达到“2016 完整只读产品候选”：**否**；正式侧边栏 UI、Agent/Bridge 集成、实体总数、文档关闭/泄漏及其余运行时矩阵仍未完成。
-- 是否达到“2016 CAD 写入候选”：**否**；审批、锁内重校验和事务写入未获得 2016 实机证据。
+- 是否达到“原版 AutoCAD 2016 / R20.1 有界兼容检查点”：**是**；诊断 Host、Palette、只读上下文和 `0.3.1` 最小 Agent happy path 均有各自范围内的人工运行证据，不能跨候选继承。
+- 是否达到“统一只读 AI 最小 happy path”：**是**；提交 `7f10d60` 的 `0.3.1` 已由用户人工验证一条真实 `Line` 经 `CadContextJson v1`、Palette、认证 AgentHost 到本机 Codex 返回回答，并在同一 thread 完成两轮连续对话。
+- 是否完成 `0.3.2` AgentHost 停止生命周期：**否**；候选尚未人工 `NETLOAD`、尚未提交，重复 `STOP` 误报和证据准确性问题尚未关闭。
+- 是否完成 CadContextJson v2 基础：**是，限自动化/构建基础**；截至 `50f6cf3` 已有 19 种强类型对象、3 种受限占位、Contracts net45/net8 `71/71` 和 Phase 2 `231/231`。
+- 是否完成 v2 产品接入：**否**；Host.2016 Runtime、Palette 和 Agent Client 仍为 v1，空 `supportedCadContextSchemas` 的 fail-open 风险、显式 v2 capability、真实认证 v2 turn、最终 R20.1 构建和人工 `NETLOAD` 均未完成。
+- 是否达到“稳定、可重复验收的只读产品候选”：**否**；P0/P1、退出/异常/取消/文档切换和 125%/150% DPI 等矩阵仍未收口。
+- 是否达到“2016 CAD 写入候选”：**否**；审批、锁内重校验、事务写入、Undo/回滚和写入后不自动保存没有 2016 实机证据。
 - 是否达到“完整支持 AutoCAD 2016”：**否**。
-- Palette 静态/构建门禁是否通过：**是**。
-- Palette INFO/RESET 的干净 DBMOD 门禁是否通过：**是**；有效样本六个读数全部为 `4`。
-- Palette 完整运行时阶段是否通过：**否**；冻结候选身份、当前 96 DPI UI/IME 与零写入门禁已通过，但 125%/150% DPI 和退出生命周期仍未完成。
-- 是否允许提交当前 Palette 检查点：**是**；只允许以“已绑定的 96 DPI Palette 运行时候选检查点”单独提交，不得表述为完整 Palette 验收或完整 AutoCAD 2016 支持。
-- ReadOnlyContext 静态/规格/IL/禁写/可重复构建门禁是否通过：**是**；双 PowerShell、Specs `25/25` 和四次相同 DLL SHA-256 均有证据。
-- ReadOnlyContext 有界实机检查点是否通过：**是**；冻结候选身份、六类捕获、显式清除、DBMOD 不变及 DocumentActivated 缓存失效均已验证。
-- 是否允许单独提交当前 ReadOnlyContext 检查点：**是**；只能表述为“已绑定的独立只读 Selection sidecar 检查点”，不得表述为正式 UI/Agent 集成、CAD 写入或完整 AutoCAD 2016 支持。
-- 是否允许发布：否。
+- 是否允许发布：**否**。
+- 旧审计中的 `25%` 是否仍有效：**否**；该结论形成于 Agent 产品链尚未实机接通的历史阶段，已被 `0.3.1` 真实 happy path 和后续 v2 基础进展取代。
 
-最终表述：目标机 AutoCAD 2016 已证明可加载 `net45/x64` 诊断薄宿主；已绑定的独立 Palette 冻结候选通过当前 96 DPI 的打开、停靠、浮动、隐藏重开、中文 IME 与干净 DBMOD 验证；已绑定的独立 ReadOnlyContext 冻结候选通过六类只读 implied selection、显式清除、`DBMOD 4 -> 4` 和 DocumentActivated 缓存失效检查点。诊断宿主历史身份、125%/150% DPI、退出/关闭生命周期、实体总数、正式 UI/Agent/Bridge、CAD 写入和完整安全闭环仍不完整，因此 AutoCAD 2016 完整支持仍未成立。
+最终表述：目标机原版 AutoCAD 2016 已实机通过 `0.3.1` 最小只读 AI 链路及同一 thread 两轮对话。`0.3.2` AgentHost 停止生命周期仍待修复后人工 `NETLOAD`，CadContextJson v2 虽已具备 19 种强类型对象、3 种受限占位和自动化门禁基础，但产品 Runtime 仍为 v1，并存在空 schema capability 的 fail-open 待修项。CAD 写入与完整发布安全闭环仍未建立，因此当前不能宣称完整支持或允许发布。
 
-## 证据文件
+## 历史证据文件
+
+以下文件主要对应 2026-07-18 至 2026-07-19 的诊断、Palette 和独立 ReadOnlyContext 阶段。它们继续保留用于追溯，但不能单独证明 `0.3.1` Agent happy path、`0.3.2` 生命周期候选或 v2 产品接入已经完成。
 
 - `handoff/autocad2016/evidence/autocad2016-diagnostic-netload-20260718.json`
 - `handoff/autocad2016/evidence/environment-collector-20260718.json`

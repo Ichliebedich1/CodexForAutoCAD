@@ -2,6 +2,21 @@
 
 本目录是 AutoCAD 2025 面板与 AgentHost 之间的纯 .NET 状态边界，不引用 AutoCAD、WPF、Shell 或文件系统 API，后续可以原样提取到共享库。
 
+## 定位与当前状态（2026-07-21）
+
+本目录属于 Host.2025 的 UI/状态原型，不是当前 AutoCAD 2016 最小 MVP 的产品入口，也没有经过原版 AutoCAD 2016 R20.1 人工 `NETLOAD` 验证。Host.2025 保留为次要目标；其中已有状态模型和 Specs 只能证明原型层行为，不能作为 AutoCAD 2016 运行或发布证据。
+
+当前已实机通过的 AutoCAD 2016 链路是 Agent MVP `0.3.1`（提交 `7f10d60`）：一条 `Line` 经 `CadContextJson v1 -> Palette -> 认证 AgentHost -> 本机 Codex` 返回回答，并在同一 Codex thread 中完成两轮连续对话。该链路不直接依赖本目录的 Host.2025 UI。
+
+当前边界：
+
+- `0.3.2` AgentHost 停止生命周期仍是未提交、未实机验证的候选；失败后的重复 `STOP` 状态存在误报风险。
+- `CadContextJson v2` 的 19 种强类型对象、3 种受限占位和底层 Bridge/AgentHost 能力已经形成基础提交（截至 `50f6cf3`），但 Host.2016 Runtime、Palette 和 Agent Client 仍使用 v1。
+- CAD 写入和插件发起保存继续禁用；Host.2025 中的写入相关代码只视为原型，不得据此宣称 AutoCAD 2016 写入支持。
+- 面向多 Provider 的 `IAgentProvider`、统一 Provider 事件和 `DirectApiAgentProvider` 重构已列入长期待办，当前延后到 AutoCAD 2016 只读 MVP 的 P0/P1 收口之后。现阶段不开发第二套 Agent Loop，也不为展示进度创建脱离真实调用链的空接口。
+
+如后续抽取本状态模型，UI 只能消费 Provider 无关的内部事件；Codex thread/task ID 必须与系统 session/task ID 分离，Codex 专有 JSON 只能停留在适配层。该方向是后续架构约束，不表示 Provider 重构已经完成。
+
 ## 事件归约约定
 
 - `IAgentBridgeClient` 先把 App Server/IPC 数据规范化为强类型 `AgentEvent`，UI 不解析原始 JSON。

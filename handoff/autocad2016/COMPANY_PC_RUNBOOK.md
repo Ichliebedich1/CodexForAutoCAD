@@ -2,9 +2,30 @@
 
 开始操作前先核对 `CURRENT_STATE.md` 的冻结候选、待实机队列和当前禁止事项。
 
-本手册用于复验已成立的 AutoCAD 2016 诊断候选，并继续完成 Palette、只读上下文、Agent/Bridge 和审批写入阶段。
+本手册用于复验已成立的 AutoCAD 2016 只读 AI 主链，并继续完成 AgentHost 停止生命周期、
+CadContextJson v2、只读稳定化和后续审批写入阶段。
 
-## 当前已知状态
+## 2026-07-21 当前操作摘要
+
+- Host `0.3.1.0` 的只读 AI happy path 已由用户在原版 AutoCAD 2016 中人工验证，并以
+  `7f10d60` 单独提交：真实 Line -> CadContextJson v1 -> Palette -> 认证 AgentHost ->
+  本机 Codex -> 同一 thread 两轮连续对话。
+- 当前 Codex 通信是结构化 `codex app-server --stdio`，不是终端模拟、ANSI 文本解析或 MCP。
+- `0.3.1` 停止后曾观察到一个 AgentHost 残留。`0.3.2` 已有原版 R20.1 编译候选，但
+  尚未人工 NETLOAD、尚未提交；审计还发现失败后重复 STOP 状态和证据时间/覆盖范围问题。
+  应先修正并重新冻结，再请求用户实机测试。
+- CadContextJson v2 基础已在 `codex/cad-context-v2` 的 `50f6cf3` 提交：19 类强类型对象、
+  3 类受限占位、Contracts net45/net8 `71/71`、Phase 2 `231/231`。统一 Host Runtime、
+  Palette、Doctor、命令和 `MvpAgentClient` 仍实际使用 v1；尚无真实 v2 回合或 NETLOAD。
+- 显式空 `supportedCadContextSchemas` 可能被默认值恢复为 v1，必须先改为 fail-closed。
+- CAD 写入和插件保存继续 disabled。未经新候选原版 R20.1 编译、冻结哈希和用户人工
+  NETLOAD，不扩大 AutoCAD 2016 支持声明。
+- 目前不要求重复测试已通过的 0.3.1 AI 主链；P0/P1 各自准备完冻结候选后再通知用户。
+
+下文保留早期诊断、Palette 和 Selection 检查点的完整复验背景。若与本摘要或
+`CURRENT_STATE.md` 冲突，以更新且证据范围更具体的记录为准。
+
+## 历史检查点明细（截至 2026-07-19）
 
 - 首次已提交诊断基线：`2d2ad3738095794c8374e916559c0c5d13702ba1`。
 - 目标机：原版 AutoCAD 2016 简体中文，R20.1，x64；托管 API 程序集版本 `20.1.0.0`。
@@ -205,18 +226,23 @@ Bootstrap 本地 Specs 只证明内存/Stream 原语。Frame 中的 session secr
 
 命名管道测试在受限沙箱中可能因访问控制失败；只有在受控的普通用户环境中通过才可作为本地 IPC 规格证据。本节结果是本地阶段验证快照，提交状态以 Git 历史为准；它仍不能替代 Host.2016 live handshake、Agent 与 CAD 的实际连接或 CAD 内验证。
 
-## 8. Palette 与只读冒烟
+## 8. Palette、只读上下文与 Agent 冒烟
 
-诊断候选不包含 Palette 或选择上下文。独立 Palette 与 ReadOnlyContext sidecar 已分别建立检查点；后续正式宿主集成或回归时按顺序执行：
+统一 Host `0.3.1.0` 已把 Palette、CadContextJson v1 和认证 Agent 链路接入同一产品入口，
+并完成真实 Line 与同一 thread 两轮对话。历史独立 sidecar 记录只用于回归来源，不再代表
+当前产品拓扑。后续冻结候选按顺序执行：
 
 1. 面板打开、停靠、浮动、隐藏、重开。
 2. 中文输入、换行、发送、停止；测试 100%、125%、150% DPI。
 3. AgentHost 未启动时只显示离线，不崩溃、不回退到未认证 IPC。
-4. AgentHost 启动后完成两轮只读对话并确认上下文记忆。
-5. 分别选择 Line、Circle、Polyline、DBText、MText、BlockReference。
+4. AgentHost 启动后完成两轮只读对话并确认上下文记忆；0.3.1 已通过，不要求无理由重复。
+5. v1 回归可选择 Line、Circle、Polyline、DBText、MText、BlockReference；v2 候选必须
+   选择多个新增支持对象，并额外包含一个未知对象，确认不会整组选区失败。
 6. 核对上下文只含白名单字段；选择哈希只用于现场比对，按脱敏策略不写入仓库。
 7. 再次检查 `DBMOD` 和图纸修改状态均未变化；实体总数若要声明通过，必须另行读取并记录脱敏计数，不能用 `selected=6` 代替。
 8. 切换/关闭图纸、隐藏面板、退出 AutoCAD，检查无残留线程、事件泵和 Agent 进程。
+9. v2 必须显示 `entityCount`、`parsedEntityCount`、`unsupportedEntityCount` 和 `complete`，
+   并确认 Agent 通过显式 v2 capability 后发送 v2 turn；缺少能力时必须 fail-closed。
 
 只读冒烟失败时，不进入 CAD 写入测试。
 
