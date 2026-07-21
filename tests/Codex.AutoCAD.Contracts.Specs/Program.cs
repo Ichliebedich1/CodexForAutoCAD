@@ -38,6 +38,10 @@ var specs = new[]
     new SpecCase("BRIDGE-V1-003 审批只允许拒绝或一次允许", BridgeApprovalIsOneTimeOnly),
     new SpecCase("BRIDGE-V1-004 事件序列错误和结果身份均fail-closed", BridgeEventsFailClosed),
     new SpecCase("BRIDGE-V1-005 离线断线超时使用闭集错误语义", BridgeFailuresUseClosedErrorCodes),
+    new SpecCase("BRIDGE-V2-001 v2回合请求和接受响应绑定精确上下文v2", BridgeV2TurnBindsExactContextIdentity),
+    new SpecCase("BRIDGE-V2-002 v2回合请求拒绝schema版本或哈希不匹配", BridgeV2TurnRejectsMismatch),
+    new SpecCase("BRIDGE-V2-003 能力响应列出支持的CadContext schema版本", BridgeCapabilitiesListSupportedSchemas),
+    new SpecCase("BRIDGE-V2-004 v1客户端在v2-capable AgentHost仍可协商", BridgeV1ClientNegotiatesWithV2CapableHost),
     new SpecCase("HOST16-V1-001 六类只读快照映射为精确公共契约字段", UnifiedHostMapsSixEntityTypes),
     new SpecCase("HOST16-V1-002 binary-v1选择和实体状态哈希保持绑定", UnifiedHostPreservesSelectionIdentity),
     new SpecCase("HOST16-V1-003 映射后canonical JSON确定且不含图名路径", UnifiedHostCanonicalJsonIsPrivateAndDeterministic),
@@ -589,6 +593,157 @@ static void BridgeFailuresUseClosedErrorCodes()
     Contains(AgentBridgeContractValidator.Validate(unknown), "bridge_error_code");
 }
 
+static void BridgeV2TurnBindsExactContextIdentity()
+{
+    var context = CreateCadContextV2();
+    var contextHash = CadContextJsonV2Codec.ComputeCanonicalSha256(context);
+    var request = new AgentTurnStartV2Request
+    {
+        ThreadId = "thread-1",
+        ClientTurnId = "client-turn-v2-1",
+        Prompt = "解释当前v2选区。",
+        ContextV2 = context,
+        ContextV2Sha256 = contextHash,
+    };
+    Equal(0, AgentBridgeContractValidator.Validate(request).Length,
+        "合法v2回合请求应通过。");
+
+    var response = new AgentTurnStartV2Response
+    {
+        ThreadId = "thread-1",
+        TurnId = "turn-v2-1",
+        AcceptedContextV2Sha256 = contextHash,
+    };
+    Equal(0, AgentBridgeContractValidator.ValidateTurnV2Acceptance(request, response).Length,
+        "v2响应必须回显精确上下文v2身份。");
+
+    response.AcceptedContextV2Sha256 = new string('0', 64);
+    Contains(AgentBridgeContractValidator.ValidateTurnV2Acceptance(request, response),
+        "response_context_v2_mismatch");
+}
+
+static void BridgeV2TurnRejectsMismatch()
+{
+    var context = CreateCadContextV2();
+    var request = new AgentTurnStartV2Request
+    {
+        ThreadId = "thread-1",
+        ClientTurnId = "client-turn-v2-2",
+        Prompt = "测试v2拒绝。",
+        ContextV2 = context,
+        ContextV2Sha256 = new string('0', 64),
+    };
+    Contains(AgentBridgeContractValidator.Validate(request), "context_v2_hash_mismatch");
+
+    request.ContextV2Sha256 = CadContextJsonV2Codec.ComputeCanonicalSha256(context);
+    request.ContextV2!.SchemaVersion = 1;
+    Contains(AgentBridgeContractValidator.Validate(request), "context_v2_schema_version");
+
+    request.ContextV2 = null;
+    request.ContextV2Sha256 = new string('a', 64);
+    Contains(AgentBridgeContractValidator.Validate(request), "context_v2_hash_without_context");
+}
+
+static void BridgeCapabilitiesListSupportedSchemas()
+{
+    var response = new AgentCapabilitiesResponse
+    {
+        AgentInstanceId = "agent-v2",
+        Methods =
+        [
+            AgentBridgeMethods.GetCapabilities,
+            AgentBridgeMethods.StartThread,
+            AgentBridgeMethods.StartTurn,
+            AgentBridgeMethods.StartTurnV2,
+            AgentBridgeMethods.InterruptTurn,
+        ],
+        EventKinds =
+        [
+            AgentBridgeEventKinds.ThreadStarted,
+            AgentBridgeEventKinds.TurnStarted,
+            AgentBridgeEventKinds.AssistantMessageDelta,
+            AgentBridgeEventKinds.AssistantMessageCompleted,
+            AgentBridgeEventKinds.TurnCompleted,
+            AgentBridgeEventKinds.TurnFailed,
+        ],
+        SupportedCadContextSchemas =
+        [
+            new Codex.AutoCAD.Contracts.CadContextSchemaVersionEntry
+            {
+                Schema = CadContextJsonV1Constants.Schema,
+                SchemaVersion = 1,
+            },
+            new Codex.AutoCAD.Contracts.CadContextSchemaVersionEntry
+            {
+                Schema = CadContextJsonV2Constants.Schema,
+                SchemaVersion = 2,
+            },
+        ],
+        CadWriteAvailable = false,
+    };
+    Equal(0, AgentBridgeContractValidator.Validate(response).Length,
+        "包含v1和v2的schema列表应通过。");
+
+    response.SupportedCadContextSchemas =
+    [
+        new Codex.AutoCAD.Contracts.CadContextSchemaVersionEntry
+        {
+            Schema = CadContextJsonV2Constants.Schema,
+            SchemaVersion = 2,
+        },
+    ];
+    Contains(AgentBridgeContractValidator.Validate(response), "capabilities_schemas_v1_required");
+
+    response.SupportedCadContextSchemas = [];
+    Contains(AgentBridgeContractValidator.Validate(response), "capabilities_schemas_required");
+}
+
+static void BridgeV1ClientNegotiatesWithV2CapableHost()
+{
+    var response = new AgentCapabilitiesResponse
+    {
+        AgentInstanceId = "agent-v2-compat",
+        CadContextSchema = CadContextJsonV1Constants.Schema,
+        CadContextSchemaVersion = 1,
+        Methods =
+        [
+            AgentBridgeMethods.GetCapabilities,
+            AgentBridgeMethods.StartThread,
+            AgentBridgeMethods.StartTurn,
+            AgentBridgeMethods.InterruptTurn,
+        ],
+        EventKinds =
+        [
+            AgentBridgeEventKinds.ThreadStarted,
+            AgentBridgeEventKinds.TurnStarted,
+            AgentBridgeEventKinds.AssistantMessageDelta,
+            AgentBridgeEventKinds.AssistantMessageCompleted,
+            AgentBridgeEventKinds.TurnCompleted,
+            AgentBridgeEventKinds.TurnFailed,
+        ],
+        SupportedCadContextSchemas =
+        [
+            new Codex.AutoCAD.Contracts.CadContextSchemaVersionEntry
+            {
+                Schema = CadContextJsonV1Constants.Schema,
+                SchemaVersion = 1,
+            },
+            new Codex.AutoCAD.Contracts.CadContextSchemaVersionEntry
+            {
+                Schema = CadContextJsonV2Constants.Schema,
+                SchemaVersion = 2,
+            },
+        ],
+        CadWriteAvailable = false,
+    };
+    Equal(0, AgentBridgeContractValidator.Validate(response).Length,
+        "v1客户端看到v2-capable能力响应应通过。");
+    Equal(CadContextJsonV1Constants.Schema, response.CadContextSchema,
+        "v1客户端应能读取v1 schema字段。");
+    Equal(2, response.SupportedCadContextSchemas.Length,
+        "v2-capable host应列出两个schema版本。");
+}
+
 static void UnifiedHostMapsSixEntityTypes()
 {
     var context = CreateUnifiedHostContext();
@@ -816,6 +971,47 @@ static ContextEntityDraft UnifiedHostDraft(
         dbText!,
         mText!,
         block!);
+}
+
+static CadContextJsonV2 CreateCadContextV2()
+{
+    return new CadContextJsonV2
+    {
+        CapturedAtUtc = "2026-07-21T04:00:00.000Z",
+        Document = new CadContextDocumentV2
+        {
+            DocumentId = "doc-v2-spec",
+            DrawingFingerprint = new string('a', 64),
+            Revision = 1,
+            CurrentSpace = CadContextJsonV2Constants.ModelSpace,
+            DrawingVersion = "AC1027",
+            Units = "millimeters",
+        },
+        Selection = new CadContextSelectionV2
+        {
+            SnapshotHash = new string('b', 64),
+            EntityCount = 1,
+            ParsedEntityCount = 1,
+            UnsupportedEntityCount = 0,
+            Complete = true,
+            Entities =
+            [
+                new CadContextEntityV2
+                {
+                    Handle = "10",
+                    OwnerSpaceHandle = "1F",
+                    EntityType = CadContextEntityTypesV2.Line,
+                    StateHash = new string('c', 64),
+                    Layer = "结构层",
+                    Line = new CadContextLineV2
+                    {
+                        Start = new CadPoint3(0, 0, 0),
+                        End = new CadPoint3(100.25, 20.5, 0),
+                    },
+                },
+            ],
+        },
+    };
 }
 
 static CadContextJsonV1 CreateCadContextV1()

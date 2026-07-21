@@ -378,6 +378,35 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
         return response;
     }
 
+    public async Task<AgentTurnStartV2Response> StartTurnV2Async(
+        AgentTurnStartV2Request request,
+        CancellationToken cancellationToken)
+    {
+        var bodyJson = BridgeClientJsonCodec.SerializeTurnStartV2Request(request);
+        var responseJson = await RequestAsync(
+                AgentBridgeMethods.StartTurnV2,
+                bodyJson,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var response = BridgeClientJsonCodec.DeserializeTurnStartV2Response(responseJson, request);
+        lock (_sync)
+        {
+            EnsureOnline();
+            if (_activeTurns.ContainsKey(response.TurnId))
+            {
+                throw new AgentBridgeClientException(
+                    AgentBridgeErrorCodes.ResultIdentityMismatch,
+                    "Agent返回了重复的TurnId。");
+            }
+
+            _activeTurns.Add(
+                response.TurnId,
+                new TurnIdentity(response.ThreadId, response.AcceptedContextV2Sha256));
+        }
+
+        return response;
+    }
+
     public async Task InterruptTurnAsync(
         AgentTurnInterruptRequest request,
         CancellationToken cancellationToken)

@@ -12,6 +12,7 @@ public static class AgentBridgeMethods
     public const string GetCapabilities = "agent.capabilities.get";
     public const string StartThread = "agent.thread.start";
     public const string StartTurn = "agent.turn.start";
+    public const string StartTurnV2 = "agent.turn.start.v2";
     public const string InterruptTurn = "agent.turn.interrupt";
     public const string ResolveApproval = "agent.approval.resolve";
     public const string ProposeLine = "cad.line.propose";
@@ -105,10 +106,30 @@ public sealed class AgentCapabilitiesResponse
     public string[] ApprovalDecisions { get; set; } = new string[0];
 
     /// <summary>
+    /// Explicit list of CadContextJson schema/version pairs supported by this AgentHost.
+    /// v1-only hosts return [{schema, 1}]; v2-capable hosts return both v1 and v2 entries.
+    /// </summary>
+    public CadContextSchemaVersionEntry[] SupportedCadContextSchemas { get; set; } =
+    [
+        new CadContextSchemaVersionEntry
+        {
+            Schema = CadContextJsonV1Constants.Schema,
+            SchemaVersion = CadContextJsonV1Constants.SchemaVersion,
+        },
+    ];
+
+    /// <summary>
     /// Descriptive capability only. A true value never authorizes a CAD write; preview, one-time
     /// approval, lock-time revalidation and a single transaction remain mandatory.
     /// </summary>
     public bool CadWriteAvailable { get; set; }
+}
+
+public sealed class CadContextSchemaVersionEntry
+{
+    public string Schema { get; set; } = string.Empty;
+
+    public int SchemaVersion { get; set; }
 }
 
 public sealed class AgentThreadStartRequest
@@ -151,6 +172,34 @@ public sealed class AgentTurnStartResponse
 
     /// <summary>Echo of the exact accepted CadContextJson v1 identity, or empty when no context exists.</summary>
     public string AcceptedContextSha256 { get; set; } = string.Empty;
+}
+
+public sealed class AgentTurnStartV2Request
+{
+    public int ContractVersion { get; set; } = AgentBridgeContractConstants.CurrentVersion;
+
+    public string ThreadId { get; set; } = string.Empty;
+
+    public string ClientTurnId { get; set; } = string.Empty;
+
+    public string Prompt { get; set; } = string.Empty;
+
+    public CadContextJsonV2? ContextV2 { get; set; }
+
+    /// <summary>Lower-case SHA-256 of canonical CadContextJson v2 bytes.</summary>
+    public string ContextV2Sha256 { get; set; } = string.Empty;
+}
+
+public sealed class AgentTurnStartV2Response
+{
+    public int ContractVersion { get; set; } = AgentBridgeContractConstants.CurrentVersion;
+
+    public string ThreadId { get; set; } = string.Empty;
+
+    public string TurnId { get; set; } = string.Empty;
+
+    /// <summary>Echo of the exact accepted CadContextJson v2 identity.</summary>
+    public string AcceptedContextV2Sha256 { get; set; } = string.Empty;
 }
 
 public sealed class AgentTurnInterruptRequest
@@ -303,6 +352,7 @@ public static class AgentBridgeContractValidator
         AgentBridgeMethods.GetCapabilities,
         AgentBridgeMethods.StartThread,
         AgentBridgeMethods.StartTurn,
+        AgentBridgeMethods.StartTurnV2,
         AgentBridgeMethods.InterruptTurn,
         AgentBridgeMethods.ResolveApproval,
         AgentBridgeMethods.ProposeLine,
@@ -403,6 +453,7 @@ public static class AgentBridgeContractValidator
         Require(response.CadContextSchemaVersion == CadContextJsonV1Constants.SchemaVersion,
             failures, "capabilities_context_schema_version", "$.cadContextSchemaVersion",
             "能力响应必须绑定CadContextJson v1版本。" );
+        ValidateSupportedCadContextSchemas(response.SupportedCadContextSchemas, failures);
         ValidateKnownSet(response.Methods, KnownMethods, false,
             "capabilities_method", "$.methods", failures);
         ValidateKnownSet(response.EventKinds, KnownEventKinds, false,
@@ -473,6 +524,88 @@ public static class AgentBridgeContractValidator
                 "没有CAD上下文时不得携带上下文哈希。" );
         }
 
+        return failures.ToArray();
+    }
+
+    public static CadValidationFailure[] Validate(AgentTurnStartV2Request? request)
+    {
+        var failures = new List<CadValidationFailure>();
+        if (request is null)
+        {
+            return [new CadValidationFailure("turn_v2_request_required", "$", "回合v2请求不能为空。")];
+        }
+
+        ValidateContractVersion(request.ContractVersion, "$.contractVersion", failures);
+        RequireIdentifier(request.ThreadId, "thread_id", "$.threadId", failures);
+        RequireIdentifier(request.ClientTurnId, "client_turn_id", "$.clientTurnId", failures);
+        Require(!string.IsNullOrWhiteSpace(request.Prompt)
+                && IsSafeDisplayText(request.Prompt, MaximumPromptLength),
+            failures, "prompt_length", "$.prompt", "提示词不能为空且不能超过安全长度。");
+        if (request.ContextV2 is not null)
+        {
+            var contextFailures = CadContextJsonV2Validator.Validate(request.ContextV2);
+            foreach (var failure in contextFailures)
+            {
+                var suffix = failure.Path == "$" ? string.Empty : failure.Path.Substring(1);
+                failures.Add(new CadValidationFailure(
+                    failure.Code,
+                    "$.contextV2" + suffix,
+                    failure.Message));
+            }
+
+            if (contextFailures.Length == 0)
+            {
+                Require(IsLowerSha256(request.ContextV2Sha256), failures,
+                    "context_v2_hash", "$.contextV2Sha256",
+                    "上下文v2身份必须是64位小写ASCII十六进制SHA-256。");
+                if (IsLowerSha256(request.ContextV2Sha256))
+                {
+                    var expected = CadContextJsonV2Codec.ComputeCanonicalSha256(request.ContextV2);
+                    Require(string.Equals(expected, request.ContextV2Sha256, StringComparison.Ordinal),
+                        failures, "context_v2_hash_mismatch", "$.contextV2Sha256",
+                        "上下文v2身份与规范CadContextJson v2字节不一致。");
+                }
+            }
+        }
+        else
+        {
+            Require(string.IsNullOrEmpty(request.ContextV2Sha256), failures,
+                "context_v2_hash_without_context", "$.contextV2Sha256",
+                "没有CAD上下文v2时不得携带上下文v2哈希。");
+        }
+
+        return failures.ToArray();
+    }
+
+    public static CadValidationFailure[] ValidateTurnV2Acceptance(
+        AgentTurnStartV2Request? request,
+        AgentTurnStartV2Response? response)
+    {
+        var failures = new List<CadValidationFailure>();
+        if (request is null)
+        {
+            failures.Add(new CadValidationFailure(
+                "turn_v2_request_required", "$.request", "原始回合v2请求不能为空。"));
+            return failures.ToArray();
+        }
+
+        if (response is null)
+        {
+            failures.Add(new CadValidationFailure(
+                "turn_v2_response_required", "$.response", "回合v2接受响应不能为空。"));
+            return failures.ToArray();
+        }
+
+        ValidateContractVersion(response.ContractVersion, "$.response.contractVersion", failures);
+        RequireIdentifier(response.ThreadId, "response_thread_id", "$.response.threadId", failures);
+        RequireIdentifier(response.TurnId, "response_turn_id", "$.response.turnId", failures);
+        Require(string.Equals(response.ThreadId, request.ThreadId, StringComparison.Ordinal),
+            failures, "response_thread_mismatch", "$.response.threadId",
+            "回合v2响应ThreadId与请求不一致。");
+        Require(string.Equals(response.AcceptedContextV2Sha256, request.ContextV2Sha256,
+                StringComparison.Ordinal),
+            failures, "response_context_v2_mismatch", "$.response.acceptedContextV2Sha256",
+            "回合v2响应未绑定到请求的精确CAD上下文v2。");
         return failures.ToArray();
     }
 
@@ -694,6 +827,64 @@ public static class AgentBridgeContractValidator
             && Math.Abs(point.X) <= MaximumCoordinateMagnitude
             && Math.Abs(point.Y) <= MaximumCoordinateMagnitude
             && Math.Abs(point.Z) <= MaximumCoordinateMagnitude;
+    }
+
+    private static readonly string[] KnownCadContextSchemas =
+    [
+        CadContextJsonV1Constants.Schema,
+    ];
+
+    private static readonly string[] KnownCadContextSchemaVersions =
+    [
+        CadContextJsonV1Constants.SchemaVersion.ToString(
+            System.Globalization.CultureInfo.InvariantCulture),
+        CadContextJsonV2Constants.SchemaVersion.ToString(
+            System.Globalization.CultureInfo.InvariantCulture),
+    ];
+
+    private static void ValidateSupportedCadContextSchemas(
+        CadContextSchemaVersionEntry[]? schemas,
+        ICollection<CadValidationFailure> failures)
+    {
+        schemas ??= [];
+        Require(schemas.Length > 0, failures,
+            "capabilities_schemas_required", "$.supportedCadContextSchemas",
+            "能力响应必须列出至少一个支持的CadContext schema。");
+        Require(schemas.Length <= KnownCadContextSchemaVersions.Length, failures,
+            "capabilities_schemas_limit", "$.supportedCadContextSchemas",
+            "支持的CadContext schema超过已知版本数。");
+        var hasV1 = false;
+        for (var index = 0; index < schemas.Length; index++)
+        {
+            var entry = schemas[index];
+            var path = "$.supportedCadContextSchemas[" + index.ToString(
+                System.Globalization.CultureInfo.InvariantCulture) + "]";
+            if (entry is null)
+            {
+                failures.Add(new CadValidationFailure(
+                    "capabilities_schema_entry", path, "schema条目不能为空。"));
+                continue;
+            }
+
+            Require(IsKnown(entry.Schema, KnownCadContextSchemas), failures,
+                "capabilities_schema_name", path + ".schema",
+                "schema名称不在已知列表中。");
+            Require(IsKnown(entry.SchemaVersion.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
+                    KnownCadContextSchemaVersions),
+                failures, "capabilities_schema_version", path + ".schemaVersion",
+                "schema版本不在已知列表中。");
+            if (string.Equals(entry.Schema, CadContextJsonV1Constants.Schema,
+                    StringComparison.Ordinal)
+                && entry.SchemaVersion == CadContextJsonV1Constants.SchemaVersion)
+            {
+                hasV1 = true;
+            }
+        }
+
+        Require(hasV1, failures,
+            "capabilities_schemas_v1_required", "$.supportedCadContextSchemas",
+            "支持的schema列表必须始终包含v1。");
     }
 
     private static void ValidateContractVersion(
