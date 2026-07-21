@@ -642,6 +642,243 @@ internal static class CadContextJsonV2Specs
         ContainsText(json, "\"y\":0,\"z\":9.9999999999999995e-8");
     }
 
+    internal static void SplineTotalPointLimitAndPlusOne()
+    {
+        var context = MakeMinimalContext(CadContextEntityTypesV2.Spline);
+        var spline = context.Selection.Entities[0].Spline!;
+        spline.ControlPoints = Enumerable.Range(0, 128)
+            .Select(i => new CadPoint3(i, 0, 0))
+            .ToArray();
+        spline.FitPoints = Enumerable.Range(0, 128)
+            .Select(i => new CadPoint3(i, 1, 0))
+            .ToArray();
+        spline.HasFitData = true;
+        Equal(0, CadContextJsonV2Validator.Validate(context).Length,
+            "128+128=256个样条曲线点应恰好通过。");
+
+        spline.ControlPoints = Enumerable.Range(0, 129)
+            .Select(i => new CadPoint3(i, 0, 0))
+            .ToArray();
+        spline.FitPoints = Enumerable.Range(0, 128)
+            .Select(i => new CadPoint3(i, 1, 0))
+            .ToArray();
+        Contains(CadContextJsonV2Validator.Validate(context),
+            "context_v2_spline_point_limit");
+    }
+
+    internal static void LeaderVertexLimitAndPlusOne()
+    {
+        var context = MakeMinimalContext(CadContextEntityTypesV2.Leader);
+        var leader = context.Selection.Entities[0].Leader!;
+        leader.Vertices = Enumerable.Range(0, 256)
+            .Select(i => new CadPoint3(i, 0, 0))
+            .ToArray();
+        Equal(0, CadContextJsonV2Validator.Validate(context).Length,
+            "恰好达到引线顶点上限应通过。");
+
+        leader.Vertices = Enumerable.Range(0, 257)
+            .Select(i => new CadPoint3(i, 0, 0))
+            .ToArray();
+        Contains(CadContextJsonV2Validator.Validate(context),
+            "context_v2_leader_vertices_limit");
+    }
+
+    internal static void MLeaderTotalVertexLimitAndPlusOne()
+    {
+        var context = MakeMinimalContext(CadContextEntityTypesV2.MLeader);
+        var mleader = context.Selection.Entities[0].MLeader!;
+        mleader.LeaderLines =
+        [
+            new CadContextMLeaderLineV2
+            {
+                Vertices = Enumerable.Range(0, 128)
+                    .Select(i => new CadPoint3(i, 0, 0))
+                    .ToArray(),
+            },
+            new CadContextMLeaderLineV2
+            {
+                Vertices = Enumerable.Range(0, 128)
+                    .Select(i => new CadPoint3(i, 1, 0))
+                    .ToArray(),
+            },
+        ];
+        Equal(0, CadContextJsonV2Validator.Validate(context).Length,
+            "多条引线总计256个顶点应恰好通过。");
+
+        mleader.LeaderLines =
+        [
+            new CadContextMLeaderLineV2
+            {
+                Vertices = Enumerable.Range(0, 129)
+                    .Select(i => new CadPoint3(i, 0, 0))
+                    .ToArray(),
+            },
+            new CadContextMLeaderLineV2
+            {
+                Vertices = Enumerable.Range(0, 128)
+                    .Select(i => new CadPoint3(i, 1, 0))
+                    .ToArray(),
+            },
+        ];
+        var failures = CadContextJsonV2Validator.Validate(context);
+        Contains(failures, "context_v2_mleader_vertex_limit");
+
+        context = MakeMinimalContext(CadContextEntityTypesV2.MLeader);
+        mleader = context.Selection.Entities[0].MLeader!;
+        mleader.LeaderLines =
+        [
+            new CadContextMLeaderLineV2
+            {
+                Vertices = Enumerable.Range(0, 257)
+                    .Select(i => new CadPoint3(i, 0, 0))
+                    .ToArray(),
+            },
+        ];
+        failures = CadContextJsonV2Validator.Validate(context);
+        Contains(failures, "context_v2_mleader_vertices_limit");
+        Contains(failures, "context_v2_mleader_vertex_limit");
+    }
+
+    internal static void FrozenLegalBoundaryFixtureIsDeterministic()
+    {
+        var context = CreateLegalBoundaryFixture();
+        var failures = CadContextJsonV2Validator.Validate(context);
+        Equal(0, failures.Length, "合法边界fixture验证应通过: " + JoinCodes(failures));
+
+        var utf8 = CadContextJsonV2Codec.SerializeCanonicalUtf8(context);
+        var sha256 = CadContextJsonV2Codec.ComputeCanonicalSha256(context);
+
+        var utf8_2 = CadContextJsonV2Codec.SerializeCanonicalUtf8(context);
+        var sha256_2 = CadContextJsonV2Codec.ComputeCanonicalSha256(context);
+
+        var utf8_3 = CadContextJsonV2Codec.SerializeCanonicalUtf8(context);
+        var sha256_3 = CadContextJsonV2Codec.ComputeCanonicalSha256(context);
+
+        Equal(sha256, sha256_2, "连续序列化第1/2次SHA-256必须一致。");
+        Equal(sha256_2, sha256_3, "连续序列化第2/3次SHA-256必须一致。");
+        Equal(utf8.Length, utf8_2.Length, "连续序列化第1/2次字节数必须一致。");
+        Equal(utf8_2.Length, utf8_3.Length, "连续序列化第2/3次字节数必须一致。");
+
+        for (var index = 0; index < utf8.Length; index++)
+        {
+            var b = utf8[index];
+            Equal(true,
+                b == 0x09 || b == 0x0A || b == 0x0D || (b >= 0x20 && b <= 0x7E),
+                "字节偏移" + index + "值0x" + b.ToString("X2") + "不是纯ASCII。");
+        }
+
+        var asciiLine = "CAD_CONTEXT_JSON_V2_LIMITS sha256=" + sha256
+            + " bytes=" + utf8.Length;
+        foreach (var c in asciiLine)
+        {
+            Equal(true, c >= ' ' && c <= '~',
+                "输出行含非ASCII字符: U+" + ((int)c).ToString("X4"));
+        }
+        Console.WriteLine(asciiLine);
+
+        const string expectedSha256 =
+            "fb532a9c3932f400d6fa093cab4d5b2f9abef3a65bb0b2eb890fbe2d1bbf629e";
+        const int expectedBytes = 17721;
+        Equal(expectedSha256, sha256, "边界fixture SHA-256必须与固定期望一致。");
+        Equal(expectedBytes, utf8.Length, "边界fixture字节数必须与固定期望一致。");
+    }
+
+    private static CadContextJsonV2 CreateLegalBoundaryFixture()
+    {
+        const string hex = "0123456789abcdef";
+        return new CadContextJsonV2
+        {
+            CapturedAtUtc = "2026-07-21T12:00:00.000Z",
+            Document = new CadContextDocumentV2
+            {
+                DocumentId = "fixture-limits-v1",
+                DrawingFingerprint = new string('f', 64),
+                Revision = 1,
+                CurrentSpace = CadContextJsonV2Constants.ModelSpace,
+                DrawingVersion = "AC1027",
+                Units = "Millimeters",
+            },
+            Selection = new CadContextSelectionV2
+            {
+                SnapshotHash = new string('e', 64),
+                EntityCount = 3,
+                ParsedEntityCount = 3,
+                UnsupportedEntityCount = 0,
+                Complete = true,
+                Entities =
+                [
+                    new CadContextEntityV2
+                    {
+                        Handle = "1",
+                        OwnerSpaceHandle = "1F",
+                        EntityType = CadContextEntityTypesV2.Spline,
+                        StateHash = new string(hex[1 % hex.Length], 64),
+                        Layer = "0",
+                        Spline = new CadContextSplineV2
+                        {
+                            Degree = 3,
+                            IsRational = false,
+                            HasFitData = true,
+                            ControlPoints = Enumerable.Range(0, 128)
+                                .Select(i => new CadPoint3(i, 0, 0))
+                                .ToArray(),
+                            FitPoints = Enumerable.Range(0, 128)
+                                .Select(i => new CadPoint3(i, 1, 0))
+                                .ToArray(),
+                        },
+                    },
+                    new CadContextEntityV2
+                    {
+                        Handle = "2",
+                        OwnerSpaceHandle = "1F",
+                        EntityType = CadContextEntityTypesV2.Leader,
+                        StateHash = new string(hex[2 % hex.Length], 64),
+                        Layer = "0",
+                        Leader = new CadContextLeaderV2
+                        {
+                            IsSplined = false,
+                            HasArrowHead = true,
+                            AnnotationType = "MText",
+                            Normal = new CadPoint3(0, 0, 1),
+                            Vertices = Enumerable.Range(0, 256)
+                                .Select(i => new CadPoint3(i, 0, 0))
+                                .ToArray(),
+                        },
+                    },
+                    new CadContextEntityV2
+                    {
+                        Handle = "3",
+                        OwnerSpaceHandle = "1F",
+                        EntityType = CadContextEntityTypesV2.MLeader,
+                        StateHash = new string(hex[3 % hex.Length], 64),
+                        Layer = "0",
+                        MLeader = new CadContextMLeaderV2
+                        {
+                            ContentType = "MTextContent",
+                            Normal = new CadPoint3(0, 0, 1),
+                            Text = "limit-test",
+                            LeaderLines =
+                            [
+                                new CadContextMLeaderLineV2
+                                {
+                                    Vertices = Enumerable.Range(0, 128)
+                                        .Select(i => new CadPoint3(i, 0, 0))
+                                        .ToArray(),
+                                },
+                                new CadContextMLeaderLineV2
+                                {
+                                    Vertices = Enumerable.Range(0, 128)
+                                        .Select(i => new CadPoint3(i, 1, 0))
+                                        .ToArray(),
+                                },
+                            ],
+                        },
+                    },
+                ],
+            },
+        };
+    }
+
     private static CadContextJsonV2 CreateFullContext()
     {
         var entities = new[]
