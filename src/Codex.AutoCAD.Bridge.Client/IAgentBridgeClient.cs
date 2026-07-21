@@ -24,6 +24,10 @@ public interface IAgentBridgeClient : IDisposable
         AgentTurnStartRequest request,
         CancellationToken cancellationToken);
 
+    Task<AgentTurnStartV2Response> StartTurnV2Async(
+        AgentTurnStartV2Request request,
+        CancellationToken cancellationToken);
+
     Task InterruptTurnAsync(
         AgentTurnInterruptRequest request,
         CancellationToken cancellationToken);

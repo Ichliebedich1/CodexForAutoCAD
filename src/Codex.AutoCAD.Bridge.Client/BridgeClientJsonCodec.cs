@@ -58,6 +58,20 @@ internal static class BridgeClientJsonCodec
         new JsonFieldSpec("cadWriteAvailable", JsonFieldKind.Boolean),
     };
 
+    private static readonly JsonFieldSpec[] CapabilitiesResponseV2ExtendedShape =
+    {
+        new JsonFieldSpec("contractVersion", JsonFieldKind.Integer),
+        new JsonFieldSpec("minimumCompatibleVersion", JsonFieldKind.Integer),
+        new JsonFieldSpec("agentInstanceId", JsonFieldKind.String),
+        new JsonFieldSpec("cadContextSchema", JsonFieldKind.String),
+        new JsonFieldSpec("cadContextSchemaVersion", JsonFieldKind.Integer),
+        new JsonFieldSpec("supportedCadContextSchemas", JsonFieldKind.SchemaArray),
+        new JsonFieldSpec("methods", JsonFieldKind.StringArray),
+        new JsonFieldSpec("eventKinds", JsonFieldKind.StringArray),
+        new JsonFieldSpec("approvalDecisions", JsonFieldKind.StringArray),
+        new JsonFieldSpec("cadWriteAvailable", JsonFieldKind.Boolean),
+    };
+
     private static readonly JsonFieldSpec[] ThreadStartRequestShape =
     {
         new JsonFieldSpec("contractVersion", JsonFieldKind.Integer),
@@ -76,6 +90,14 @@ internal static class BridgeClientJsonCodec
         new JsonFieldSpec("threadId", JsonFieldKind.String),
         new JsonFieldSpec("turnId", JsonFieldKind.String),
         new JsonFieldSpec("acceptedContextSha256", JsonFieldKind.String),
+    };
+
+    private static readonly JsonFieldSpec[] TurnStartV2ResponseShape =
+    {
+        new JsonFieldSpec("contractVersion", JsonFieldKind.Integer),
+        new JsonFieldSpec("threadId", JsonFieldKind.String),
+        new JsonFieldSpec("turnId", JsonFieldKind.String),
+        new JsonFieldSpec("acceptedContextV2Sha256", JsonFieldKind.String),
     };
 
     private static readonly JsonFieldSpec[] TurnInterruptRequestShape =
@@ -221,8 +243,20 @@ internal static class BridgeClientJsonCodec
     public static AgentCapabilitiesResponse DeserializeCapabilitiesResponse(string json)
     {
         var utf8 = GetStrictUtf8(json, "capabilities response");
-        StrictJsonShapeValidator.ValidateObject(utf8, CapabilitiesResponseShape);
-        var wire = Deserialize<CapabilitiesResponseWire>(utf8);
+        CapabilitiesResponseWire wire;
+        var hasV2Schemas = false;
+        try
+        {
+            StrictJsonShapeValidator.ValidateObject(utf8, CapabilitiesResponseV2ExtendedShape);
+            wire = Deserialize<CapabilitiesResponseWire>(utf8);
+            hasV2Schemas = wire.SupportedCadContextSchemas is { Length: > 0 };
+        }
+        catch (AgentBridgeClientException)
+        {
+            StrictJsonShapeValidator.ValidateObject(utf8, CapabilitiesResponseShape);
+            wire = Deserialize<CapabilitiesResponseWire>(utf8);
+        }
+
         var response = new AgentCapabilitiesResponse
         {
             ContractVersion = wire.ContractVersion,
@@ -236,11 +270,23 @@ internal static class BridgeClientJsonCodec
             CadWriteAvailable = wire.CadWriteAvailable,
         };
 
+        if (hasV2Schemas)
+        {
+            response.SupportedCadContextSchemas = wire.SupportedCadContextSchemas!
+                .Where(s => s is not null)
+                .Select(s => new Codex.AutoCAD.Contracts.CadContextSchemaVersionEntry
+                {
+                    Schema = s!.Schema ?? string.Empty,
+                    SchemaVersion = s.SchemaVersion,
+                })
+                .ToArray();
+        }
+
         if (AgentBridgeContractValidator.Validate(response).Length != 0)
         {
             throw new AgentBridgeClientException(
                 AgentBridgeErrorCodes.ContractMismatch,
-                "Agent capabilities响应不符合冻结v1契约。");
+                "Agent capabilities响应不符合冻结契约。");
         }
 
         return response;
@@ -349,6 +395,73 @@ internal static class BridgeClientJsonCodec
             throw new AgentBridgeClientException(
                 AgentBridgeErrorCodes.ResultIdentityMismatch,
                 "Agent turn响应与thread/context身份不一致。");
+        }
+
+        return response;
+    }
+
+    public static string SerializeTurnStartV2Request(AgentTurnStartV2Request request)
+    {
+        if (request is null)
+        {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        if (AgentBridgeContractValidator.Validate(request).Length != 0)
+        {
+            throw new ArgumentException("Agent turn v2请求不符合冻结契约。", nameof(request));
+        }
+
+        var builder = new StringBuilder();
+        builder.Append('{');
+        AppendJsonPropertyName(builder, "contractVersion");
+        builder.Append(request.ContractVersion.ToString(CultureInfo.InvariantCulture));
+        builder.Append(',');
+        AppendJsonProperty(builder, "threadId", request.ThreadId);
+        builder.Append(',');
+        AppendJsonProperty(builder, "clientTurnId", request.ClientTurnId);
+        builder.Append(',');
+        AppendJsonProperty(builder, "prompt", request.Prompt);
+        builder.Append(',');
+        AppendJsonPropertyName(builder, "contextV2");
+        builder.Append(request.ContextV2 is null
+            ? "null"
+            : CadContextJsonV2Codec.SerializeCanonical(request.ContextV2));
+        builder.Append(',');
+        AppendJsonProperty(builder, "contextV2Sha256", request.ContextV2Sha256);
+        builder.Append('}');
+
+        var json = builder.ToString();
+        if (GetStrictUtf8(json, "turn start v2 request").Length > ProtocolConstants.MaximumMessageBytes)
+        {
+            throw new AgentBridgeClientException("request_invalid", "Agent turn v2请求超过安全上限。");
+        }
+
+        return json;
+    }
+
+    public static AgentTurnStartV2Response DeserializeTurnStartV2Response(
+        string json,
+        AgentTurnStartV2Request request)
+    {
+        var utf8 = GetStrictUtf8(json, "turn start v2 response");
+        StrictJsonShapeValidator.ValidateObject(utf8, TurnStartV2ResponseShape);
+        var wire = Deserialize<TurnStartV2ResponseWire>(utf8);
+        var response = new AgentTurnStartV2Response
+        {
+            ContractVersion = wire.ContractVersion,
+            ThreadId = RequireString(wire.ThreadId, "threadId"),
+            TurnId = RequireString(wire.TurnId, "turnId"),
+            AcceptedContextV2Sha256 = RequireString(
+                wire.AcceptedContextV2Sha256,
+                "acceptedContextV2Sha256"),
+        };
+
+        if (AgentBridgeContractValidator.ValidateTurnV2Acceptance(request, response).Length != 0)
+        {
+            throw new AgentBridgeClientException(
+                AgentBridgeErrorCodes.ResultIdentityMismatch,
+                "Agent turn v2响应与thread/context身份不一致。");
         }
 
         return response;
@@ -772,8 +885,21 @@ internal static class BridgeClientJsonCodec
         [DataMember(Name = "approvalDecisions", Order = 8, IsRequired = true)]
         public string[] ApprovalDecisions { get; set; } = new string[0];
 
-        [DataMember(Name = "cadWriteAvailable", Order = 9, IsRequired = true)]
+        [DataMember(Name = "supportedCadContextSchemas", Order = 9, IsRequired = false)]
+        public SchemaEntryWire[]? SupportedCadContextSchemas { get; set; }
+
+        [DataMember(Name = "cadWriteAvailable", Order = 10, IsRequired = true)]
         public bool CadWriteAvailable { get; set; }
+    }
+
+    [DataContract]
+    private sealed class SchemaEntryWire
+    {
+        [DataMember(Name = "schema", Order = 1, IsRequired = true)]
+        public string Schema { get; set; } = string.Empty;
+
+        [DataMember(Name = "schemaVersion", Order = 2, IsRequired = true)]
+        public int SchemaVersion { get; set; }
     }
 
     [DataContract]
@@ -810,6 +936,22 @@ internal static class BridgeClientJsonCodec
 
         [DataMember(Name = "acceptedContextSha256", Order = 4, IsRequired = true)]
         public string AcceptedContextSha256 { get; set; } = string.Empty;
+    }
+
+    [DataContract]
+    private sealed class TurnStartV2ResponseWire
+    {
+        [DataMember(Name = "contractVersion", Order = 1, IsRequired = true)]
+        public int ContractVersion { get; set; }
+
+        [DataMember(Name = "threadId", Order = 2, IsRequired = true)]
+        public string ThreadId { get; set; } = string.Empty;
+
+        [DataMember(Name = "turnId", Order = 3, IsRequired = true)]
+        public string TurnId { get; set; } = string.Empty;
+
+        [DataMember(Name = "acceptedContextV2Sha256", Order = 4, IsRequired = true)]
+        public string AcceptedContextV2Sha256 { get; set; } = string.Empty;
     }
 
     [DataContract]
@@ -932,6 +1074,7 @@ internal static class BridgeClientJsonCodec
         Integer,
         Boolean,
         StringArray,
+        SchemaArray,
     }
 
     private sealed class JsonFieldSpec
@@ -1202,6 +1345,23 @@ internal static class BridgeClientJsonCodec
                     RequireType(actualType, "array", field.Name);
                     ReadStringArray(reader, field.Name);
                     return;
+                case JsonFieldKind.SchemaArray:
+                    if (!string.Equals(actualType, "array", StringComparison.Ordinal)
+                        && !string.Equals(actualType, "null", StringComparison.Ordinal))
+                    {
+                        throw new AgentBridgeClientException(
+                            "request_invalid",
+                            "JSON字段类型无效：" + field.Name + "。");
+                    }
+                    if (string.Equals(actualType, "array", StringComparison.Ordinal))
+                    {
+                        ReadSchemaArray(reader, field.Name);
+                    }
+                    else
+                    {
+                        reader.ReadElementContentAsString();
+                    }
+                    return;
                 default:
                     throw new AgentBridgeClientException("request_invalid", "未知JSON字段类型。");
             }
@@ -1240,6 +1400,82 @@ internal static class BridgeClientJsonCodec
                 throw new AgentBridgeClientException(
                     "request_invalid",
                     "JSON数组结构无效：" + fieldName + "。" );
+            }
+
+            reader.ReadEndElement();
+        }
+
+        private static void ReadSchemaArray(XmlDictionaryReader reader, string fieldName)
+        {
+            var arrayDepth = reader.Depth;
+            var itemCount = 0;
+            reader.ReadStartElement();
+            reader.MoveToContent();
+            while (reader.NodeType == XmlNodeType.Element && reader.Depth == arrayDepth + 1)
+            {
+                if (!string.Equals(reader.GetAttribute("type"), "object", StringComparison.Ordinal))
+                {
+                    throw new AgentBridgeClientException(
+                        "request_invalid",
+                        "JSON schema数组只能包含object：" + fieldName + "。");
+                }
+
+                var objDepth = reader.Depth;
+                reader.ReadStartElement();
+                reader.MoveToContent();
+                var hasSchema = false;
+                var hasVersion = false;
+                while (reader.NodeType == XmlNodeType.Element && reader.Depth == objDepth + 1)
+                {
+                    var propName = reader.LocalName;
+                    if (string.Equals(propName, "schema", StringComparison.Ordinal))
+                    {
+                        RequireType(reader.GetAttribute("type") ?? "", "string", fieldName + ".schema");
+                        reader.ReadElementContentAsString();
+                        hasSchema = true;
+                    }
+                    else if (string.Equals(propName, "schemaVersion", StringComparison.Ordinal))
+                    {
+                        RequireType(reader.GetAttribute("type") ?? "", "number", fieldName + ".schemaVersion");
+                        reader.ReadElementContentAsString();
+                        hasVersion = true;
+                    }
+                    else
+                    {
+                        throw new AgentBridgeClientException(
+                            "request_invalid",
+                            "JSON schema object包含未知字段：" + propName + "。");
+                    }
+                    reader.MoveToContent();
+                }
+                if (!hasSchema || !hasVersion)
+                {
+                    throw new AgentBridgeClientException(
+                        "request_invalid",
+                        "JSON schema object缺少必需字段：" + fieldName + "。");
+                }
+                if (reader.NodeType != XmlNodeType.EndElement || reader.Depth != objDepth)
+                {
+                    throw new AgentBridgeClientException(
+                        "request_invalid",
+                        "JSON schema object结构无效：" + fieldName + "。");
+                }
+                reader.ReadEndElement();
+                itemCount++;
+                if (itemCount > 16)
+                {
+                    throw new AgentBridgeClientException(
+                        "request_invalid",
+                        "JSON schema数组超过安全上限：" + fieldName + "。");
+                }
+                reader.MoveToContent();
+            }
+
+            if (reader.NodeType != XmlNodeType.EndElement || reader.Depth != arrayDepth)
+            {
+                throw new AgentBridgeClientException(
+                    "request_invalid",
+                    "JSON schema数组结构无效：" + fieldName + "。");
             }
 
             reader.ReadEndElement();
