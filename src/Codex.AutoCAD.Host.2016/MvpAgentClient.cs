@@ -448,6 +448,8 @@ namespace Codex.AutoCAD.Host2016
                     : requestTurn.MarkTerminal(MvpAgentTurnStates.Failed);
             }
 
+            PublishSafely(TextChanged, string.Empty);
+
             if (requestTurn == null)
             {
                 PublishSafely(
