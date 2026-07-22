@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 
 namespace Codex.AutoCAD.Host2016
@@ -116,7 +117,7 @@ namespace Codex.AutoCAD.Host2016
             var send = new Button
             {
                 Content = "发送给 Codex",
-                Margin = new Thickness(8.0, 8.0, 0.0, 0.0),
+                Margin = new Thickness(4.0),
                 Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
             };
             send.Click += async (sender, args) =>
@@ -151,7 +152,7 @@ namespace Codex.AutoCAD.Host2016
             var cancel = new Button
             {
                 Content = "取消回合",
-                Margin = new Thickness(8.0, 8.0, 0.0, 0.0),
+                Margin = new Thickness(4.0),
                 Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
                 ToolTip = "幂等取消当前 Codex 回合；不会修改 CAD。",
             };
@@ -176,16 +177,73 @@ namespace Codex.AutoCAD.Host2016
                     cancel.IsEnabled = true;
                 }
             };
-            var actions = new StackPanel
+            var newConversation = new Button
             {
-                Orientation = Orientation.Horizontal,
+                Content = "新建对话",
+                Margin = new Thickness(4.0),
+                Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
+                ToolTip = "保留当前 CAD 上下文，但建立新的 Codex 对话。",
             };
+            newConversation.Click += async (sender, args) =>
+            {
+                newConversation.IsEnabled = false;
+                try
+                {
+                    await MvpAgentRuntime.NewConversationAsync();
+                }
+                catch (Exception exception)
+                {
+                    UpdateAgentStatus(
+                        MvpAgentFailureFormatter
+                            .FromException(
+                                exception,
+                                MvpAgentFailureStages.StartingConversation)
+                            .FormatForUser("新建 Codex 对话"));
+                }
+                finally
+                {
+                    newConversation.IsEnabled = true;
+                }
+            };
+            var clearAll = new Button
+            {
+                Content = "清除全部",
+                Margin = new Thickness(4.0),
+                Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
+                ToolTip = "清除 CAD 上下文、回答文本和当前 Codex 对话；不会修改 CAD。",
+            };
+            clearAll.Click += (sender, args) =>
+            {
+                try
+                {
+                    MvpAgentRuntime.ClearAll();
+                }
+                catch (Exception exception)
+                {
+                    UpdateAgentStatus(
+                        MvpAgentFailureFormatter
+                            .FromException(
+                                exception,
+                                MvpAgentFailureStages.ClearingConversation)
+                            .FormatForUser("清除全部"));
+                }
+            };
+            var actions = new UniformGrid
+            {
+                Columns = 2,
+                Rows = 2,
+                Margin = new Thickness(0.0, 4.0, 0.0, 0.0),
+            };
+            actions.Children.Add(newConversation);
+            actions.Children.Add(clearAll);
             actions.Children.Add(cancel);
             actions.Children.Add(send);
-            var input = new DockPanel();
-            DockPanel.SetDock(actions, Dock.Right);
-            input.Children.Add(actions);
+            var input = new Grid();
+            input.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            input.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             input.Children.Add(prompt);
+            Grid.SetRow(actions, 1);
+            input.Children.Add(actions);
             Grid.SetRow(input, 7);
             root.Children.Add(input);
 

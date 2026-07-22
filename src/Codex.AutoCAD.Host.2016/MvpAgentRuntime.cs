@@ -111,6 +111,66 @@ namespace Codex.AutoCAD.Host2016
             return current.CancelActiveTurnAsync(CancellationToken.None);
         }
 
+        internal static async Task NewConversationAsync()
+        {
+            MvpAgentClient current;
+            CancellationToken token;
+            lock (sync)
+            {
+                current = client;
+                token = lifetime == null ? CancellationToken.None : lifetime.Token;
+            }
+
+            if (current == null)
+            {
+                throw new InvalidOperationException(
+                    "请先执行 CODEX16AGENTSTART，确认 AgentHost 在线后再新建对话。");
+            }
+
+            var context = UnifiedReadOnlyContextRuntime.GetCurrentState();
+            var documentId = context != null
+                && context.Published
+                && context.Context != null
+                && context.Context.Document != null
+                    ? context.Context.Document.DocumentId
+                    : string.Empty;
+            await current.NewConversationAsync(documentId, token)
+                .ConfigureAwait(false);
+        }
+
+        internal static void ClearAll()
+        {
+            MvpAgentClient current;
+            lock (sync)
+            {
+                current = client;
+            }
+
+            if (current != null)
+            {
+                current.ClearConversation();
+            }
+
+            UnifiedReadOnlyContextRuntime.Clear("all-user-command");
+            UnifiedPaletteRuntime.UpdateAgentText(string.Empty);
+            UpdateAgentStatusSafely(
+                "CAD 上下文、回答文本和当前 Codex 对话已清除；下一次提问将建立新对话。");
+        }
+
+        internal static void HandleDocumentChanged()
+        {
+            MvpAgentClient current;
+            lock (sync)
+            {
+                current = client;
+            }
+
+            if (current != null)
+            {
+                current.InvalidateConversationForDocumentChange();
+            }
+        }
+
         internal static Task StopAsync()
         {
             MvpAgentClient current;

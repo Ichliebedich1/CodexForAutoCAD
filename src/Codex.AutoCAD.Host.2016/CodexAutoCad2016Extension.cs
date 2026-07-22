@@ -17,7 +17,7 @@ namespace Codex.AutoCAD.Host2016
             if (document != null)
             {
                 document.Editor.WriteMessage(
-                    "\nCodex AutoCAD 2016 统一只读 AI MVP 候选已加载。输入 CODEX16PAL 打开侧边栏；预选对象后输入 CODEX16CTX，再使用 CODEX16AGENTSTART/CODEX16ASK。CAD 写入和插件保存均禁用。\n");
+                    "\nCodex AutoCAD 2016 统一只读 AI MVP 候选已加载。输入 CODEX16PAL 打开侧边栏；预选对象后输入 CODEX16CTX，再使用 CODEX16AGENTSTART/CODEX16ASK。CODEX16NEWCHAT 新建对话，CODEX16CLEARALL 清除全部。CAD 写入和插件保存均禁用。\n");
             }
         }
 

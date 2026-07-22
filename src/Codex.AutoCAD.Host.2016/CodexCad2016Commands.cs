@@ -57,7 +57,7 @@ namespace Codex.AutoCAD.Host2016
             }
 
             document.Editor.WriteMessage(
-                "\nHost.2016 当前为统一只读 AI MVP 候选：诊断、Palette、CadContextJson v2 选择读取和认证 Agent Bridge 已整合；CAD 写入和插件保存保持禁用。\n");
+                "\nHost.2016 当前为统一只读 AI MVP 候选：诊断、Palette、CadContextJson v2、认证 Agent Bridge、图纸级对话隔离及显式新建/清除对话已整合；CAD 写入和插件保存保持禁用。\n");
         }
 
         [CommandMethod("CODEX16PAL", CommandFlags.Modal)]
@@ -144,7 +144,7 @@ namespace Codex.AutoCAD.Host2016
 
             UnifiedReadOnlyContextRuntime.Clear("user-command");
             editor.WriteMessage(
-                "\nCodex AutoCAD 2016 统一只读上下文已从内存清除；图纸未修改、未保存。\n");
+                "\nCodex AutoCAD 2016 统一只读上下文已从内存清除；当前 Codex 对话仍保留，图纸未修改、未保存。\n");
         }
 
         [CommandMethod("CODEX16AGENTSTART", CommandFlags.Modal)]
@@ -207,6 +207,51 @@ namespace Codex.AutoCAD.Host2016
                 "取消 Codex 回合",
                 MvpAgentFailureStages.CancellingTurn);
             editor.WriteMessage("\nCodex 回合取消请求已提交；状态将在侧边栏更新。\n");
+        }
+
+        [CommandMethod("CODEX16NEWCHAT", CommandFlags.Modal)]
+        public void NewAgentConversation()
+        {
+            var editor = GetActiveEditor();
+            if (editor == null)
+            {
+                return;
+            }
+
+            UnifiedPaletteRuntime.Show();
+            Observe(
+                MvpAgentRuntime.NewConversationAsync(),
+                "新建 Codex 对话",
+                MvpAgentFailureStages.StartingConversation);
+            editor.WriteMessage(
+                "\n新建 Codex 对话请求已提交；当前 CAD 上下文保持不变，状态将在侧边栏更新。\n");
+        }
+
+        [CommandMethod("CODEX16CLEARALL", CommandFlags.Modal)]
+        public void ClearAllAgentState()
+        {
+            var editor = GetActiveEditor();
+            if (editor == null)
+            {
+                return;
+            }
+
+            UnifiedPaletteRuntime.Show();
+            try
+            {
+                MvpAgentRuntime.ClearAll();
+                editor.WriteMessage(
+                    "\nCAD 上下文、回答文本和当前 Codex 对话已清除；图纸未修改、未保存。\n");
+            }
+            catch (System.Exception exception)
+            {
+                UnifiedPaletteRuntime.UpdateAgentStatus(
+                    MvpAgentFailureFormatter
+                        .FromException(
+                            exception,
+                            MvpAgentFailureStages.ClearingConversation)
+                        .FormatForUser("清除全部"));
+            }
         }
 
         [CommandMethod("CODEX16AGENTSTOP", CommandFlags.Modal)]

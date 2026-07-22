@@ -371,6 +371,7 @@ namespace Codex.AutoCAD.Host2016
             documentActivatedCount++;
             ClearInternal("document-activated", true, null, null);
             NotifyPalette();
+            MvpAgentRuntime.HandleDocumentChanged();
         }
 
         private static void OnDocumentToBeDestroyed(object sender, DocumentCollectionEventArgs eventArgs)
@@ -379,6 +380,7 @@ namespace Codex.AutoCAD.Host2016
             Documents.Remove(eventArgs == null ? null : eventArgs.Document);
             ClearInternal("document-to-be-destroyed", true, null, null);
             NotifyPalette();
+            MvpAgentRuntime.HandleDocumentChanged();
         }
     }
 
