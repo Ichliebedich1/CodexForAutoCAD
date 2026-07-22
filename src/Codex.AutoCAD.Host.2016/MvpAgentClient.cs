@@ -31,6 +31,8 @@ namespace Codex.AutoCAD.Host2016
         private MvpAgentStopCoordinator stopCoordinator;
         private bool online;
         private bool conversationTransition;
+        private bool conversationResetRequired;
+        private long conversationEpoch;
         private bool stopRequested;
         private bool stopCompleted;
 
@@ -150,6 +152,20 @@ namespace Codex.AutoCAD.Host2016
             if (!isCurrentContext())
             {
                 throw new InvalidOperationException("当前 CAD 上下文已失效，请重新执行 CODEX16CTX。");
+            }
+
+            var documentId = context.Context == null || context.Context.Document == null
+                ? string.Empty
+                : context.Context.Document.DocumentId;
+            if (!string.IsNullOrWhiteSpace(documentId))
+            {
+                await EnsureConversationForDocumentAsync(documentId, cancellationToken)
+                    .ConfigureAwait(false);
+                if (!isCurrentContext())
+                {
+                    throw new InvalidOperationException(
+                        "当前 CAD 上下文已失效，请重新执行 CODEX16CTX。");
+                }
             }
 
             IAgentBridgeClient currentBridge;
@@ -287,6 +303,7 @@ namespace Codex.AutoCAD.Host2016
             cancellationToken.ThrowIfCancellationRequested();
             IAgentBridgeClient currentBridge;
             string newSystemSessionId;
+            long transitionEpoch;
             lock (sync)
             {
                 EnsureOnlineForAskLocked();
@@ -310,6 +327,7 @@ namespace Codex.AutoCAD.Host2016
                 currentBridge = bridge;
                 newSystemSessionId = Guid.NewGuid().ToString("N");
                 conversationTransition = true;
+                transitionEpoch = conversationEpoch;
             }
 
             try
@@ -334,9 +352,18 @@ namespace Codex.AutoCAD.Host2016
                         throw CreateUnavailableExceptionLocked();
                     }
 
+                    if (conversationEpoch != transitionEpoch)
+                    {
+                        throw new AgentBridgeClientException(
+                            AgentBridgeErrorCodes.ContextInvalid,
+                            "新对话建立期间当前图纸已变化。");
+                    }
+
                     systemSessionId = newSystemSessionId;
                     threadId = thread.ThreadId;
                     conversationDocumentId = documentId ?? string.Empty;
+                    conversationResetRequired = false;
+                    conversationEpoch++;
                     activeTurn = null;
                     conversationTransition = false;
                 }
@@ -354,6 +381,162 @@ namespace Codex.AutoCAD.Host2016
                 }
 
                 throw;
+            }
+        }
+
+        private async Task EnsureConversationForDocumentAsync(
+            string documentId,
+            CancellationToken cancellationToken)
+        {
+            bool createFreshConversation;
+            lock (sync)
+            {
+                EnsureOnlineForAskLocked();
+                if (conversationTransition)
+                {
+                    throw new AgentBridgeClientException(
+                        AgentBridgeErrorCodes.Busy,
+                        "Codex 对话正在切换。");
+                }
+
+                if (!conversationResetRequired
+                    && string.IsNullOrEmpty(conversationDocumentId))
+                {
+                    conversationDocumentId = documentId;
+                    return;
+                }
+
+                createFreshConversation = conversationResetRequired
+                    || !string.Equals(
+                        conversationDocumentId,
+                        documentId,
+                        StringComparison.Ordinal);
+            }
+
+            if (createFreshConversation)
+            {
+                await NewConversationAsync(documentId, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        internal void InvalidateConversationForDocumentChange()
+        {
+            MvpAgentTurnState requestTurn;
+            IAgentBridgeClient currentBridge;
+            string currentThread;
+            string providerTurnId;
+            bool dispatchInterrupt;
+            TaskCompletionSource<bool> cancellationCompletion;
+            lock (sync)
+            {
+                conversationEpoch++;
+                conversationDocumentId = string.Empty;
+                conversationResetRequired = true;
+                requestTurn = activeTurn != null && !activeTurn.IsTerminal
+                    ? activeTurn
+                    : null;
+                currentBridge = bridge;
+                currentThread = threadId;
+                providerTurnId = requestTurn == null
+                    ? string.Empty
+                    : requestTurn.ProviderTurnId;
+                dispatchInterrupt = requestTurn != null
+                    && requestTurn.TryBeginForcedInterrupt();
+                cancellationCompletion = requestTurn == null
+                    ? null
+                    : requestTurn.MarkTerminal(MvpAgentTurnStates.Failed);
+            }
+
+            if (requestTurn == null)
+            {
+                PublishSafely(
+                    StatusChanged,
+                    "图纸已切换；旧 Codex 对话已隔离，下一次提问将建立新对话。");
+                return;
+            }
+
+            requestTurn.CancelTimeout();
+            var failure = new MvpAgentTurnException(
+                requestTurn.RequestId,
+                requestTurn.State,
+                new AgentBridgeClientException(
+                    AgentBridgeErrorCodes.ContextInvalid,
+                    "当前图纸已切换。"));
+            if (cancellationCompletion != null)
+            {
+                cancellationCompletion.TrySetException(failure);
+            }
+
+            PublishSafely(
+                ErrorChanged,
+                MvpAgentFailureFormatter
+                    .FromErrorCode(
+                        AgentBridgeErrorCodes.ContextInvalid,
+                        MvpAgentFailureStages.RunningTurn)
+                    .WithRequest(requestTurn.RequestId, requestTurn.State)
+                    .FormatForUser("图纸切换"));
+            if (dispatchInterrupt && currentBridge != null)
+            {
+                _ = InterruptTurnBestEffortAsync(
+                    currentBridge,
+                    currentThread,
+                    providerTurnId);
+            }
+        }
+
+        internal void ClearConversation()
+        {
+            lock (sync)
+            {
+                if (activeTurn != null && !activeTurn.IsTerminal)
+                {
+                    throw new MvpAgentTurnException(
+                        activeTurn.RequestId,
+                        activeTurn.State,
+                        new AgentBridgeClientException(
+                            AgentBridgeErrorCodes.Busy,
+                            "已有只读 Codex 回合正在运行。"));
+                }
+
+                if (conversationTransition)
+                {
+                    throw new AgentBridgeClientException(
+                        AgentBridgeErrorCodes.Busy,
+                        "Codex 对话正在切换。");
+                }
+
+                conversationEpoch++;
+                conversationDocumentId = string.Empty;
+                conversationResetRequired = true;
+                activeTurn = null;
+            }
+
+            PublishSafely(TextChanged, string.Empty);
+            PublishSafely(
+                StatusChanged,
+                "当前 Codex 对话已清除；下一次提问将建立新对话。");
+        }
+
+        private static async Task InterruptTurnBestEffortAsync(
+            IAgentBridgeClient currentBridge,
+            string currentThread,
+            string providerTurnId)
+        {
+            try
+            {
+                await currentBridge.InterruptTurnAsync(
+                        new AgentTurnInterruptRequest
+                        {
+                            ThreadId = currentThread,
+                            TurnId = providerTurnId,
+                        },
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch
+            {
+                // The old drawing is already isolated locally. Provider interruption is best effort.
             }
         }
 
@@ -991,7 +1174,12 @@ namespace Codex.AutoCAD.Host2016
             {
                 if (!ReferenceEquals(bridge, sender as IAgentBridgeClient)
                     || activeTurn == null
-                    || activeTurn.IsTerminal)
+                    || activeTurn.IsTerminal
+                    || (!string.IsNullOrEmpty(bridgeEvent.ThreadId)
+                        && !string.Equals(
+                            threadId,
+                            bridgeEvent.ThreadId,
+                            StringComparison.Ordinal)))
                 {
                     return;
                 }

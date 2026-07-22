@@ -122,6 +122,26 @@ var specs = new[]
         "A new conversation cannot overwrite an active Host turn",
         NewConversationRejectsActiveTurn),
     new SpecCase(
+        "HOST2016_DOCUMENT_CHANGE_CREATES_FRESH_CONVERSATION",
+        "A context from another drawing cannot reuse the previous drawing's Codex thread",
+        DocumentChangeCreatesFreshConversation),
+    new SpecCase(
+        "HOST2016_DOCUMENT_ACTIVATION_INVALIDATES_ACTIVE_CONVERSATION",
+        "A drawing activation terminates the old turn and rejects its late events",
+        DocumentActivationInvalidatesActiveConversation),
+    new SpecCase(
+        "HOST2016_OLD_DOCUMENT_EVENTS_CANNOT_UPDATE_NEW_CONVERSATION",
+        "A late event from drawing A cannot update drawing B even if Provider turn ids collide",
+        OldDocumentEventsCannotUpdateNewConversation),
+    new SpecCase(
+        "HOST2016_CLEAR_CONVERSATION_DEFERS_FRESH_THREAD",
+        "Clearing a completed conversation forces a fresh Provider thread on the next ASK",
+        ClearConversationDefersFreshThread),
+    new SpecCase(
+        "HOST2016_SAME_DOCUMENT_RECAPTURE_KEEPS_CONVERSATION",
+        "Clearing and recapturing CAD context in the same drawing keeps the Codex conversation",
+        SameDocumentRecaptureKeepsConversation),
+    new SpecCase(
         "HOST2016_TERMINATE_SUCCESS_STOPS_ONCE",
         "AutoCAD termination performs one cleanup when it succeeds",
         TerminateSuccessStopsOnce),
@@ -1184,6 +1204,309 @@ static async Task NewConversationRejectsActiveTurn()
     Equal(0, bridge.StartThreadCount, "Provider thread count after rejected new conversation");
 }
 
+static async Task DocumentChangeCreatesFreshConversation()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-document-a",
+        "system-session-document-a");
+    var contextA = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2
+        {
+            Document = new CadContextDocumentV2 { DocumentId = "document-a" },
+        },
+        ContextSha256 = new string('5', 64),
+    };
+    await client.AskAsync(
+            "question for drawing A",
+            contextA,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.TurnCompleted,
+        TurnId = "fake-turn-1",
+    });
+
+    var contextB = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2
+        {
+            Document = new CadContextDocumentV2 { DocumentId = "document-b" },
+        },
+        ContextSha256 = new string('6', 64),
+    };
+    await client.AskAsync(
+            "question for drawing B",
+            contextB,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+
+    Equal(1, bridge.StartThreadCount, "Cross-document fresh Provider thread count");
+    True(
+        bridge.LastStartTurnV2Request != null
+        && string.Equals(
+            bridge.LastStartTurnV2Request.ThreadId,
+            bridge.LastStartedThreadId,
+            StringComparison.Ordinal),
+        "Drawing B reused drawing A's Provider thread.");
+}
+
+static async Task DocumentActivationInvalidatesActiveConversation()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-before-document-activation",
+        "system-session-before-document-activation");
+    var errors = new List<string>();
+    var textEvents = new List<string>();
+    client.ErrorChanged += errors.Add;
+    client.TextChanged += textEvents.Add;
+    var contextA = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2
+        {
+            Document = new CadContextDocumentV2 { DocumentId = "activated-document-a" },
+        },
+        ContextSha256 = new string('7', 64),
+    };
+    await client.AskAsync(
+            "active request for drawing A",
+            contextA,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var request = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("Drawing A request was not captured.");
+
+    client.InvalidateConversationForDocumentChange();
+
+    Equal(1, bridge.InterruptTurnCount, "Document activation Provider interrupt count");
+    True(
+        errors.Exists(value =>
+            value.Contains("error_code=context_invalid", StringComparison.Ordinal)
+            && value.Contains("request_id=" + request.ClientTurnId, StringComparison.Ordinal)
+            && value.Contains("state=failed", StringComparison.Ordinal)),
+        "Document activation did not publish a structured terminal failure.");
+    var textCountAfterActivation = textEvents.Count;
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.AssistantMessageDelta,
+        TurnId = "fake-turn-1",
+        Delta = "late-text-from-drawing-a",
+    });
+    Equal(
+        textCountAfterActivation,
+        textEvents.Count,
+        "Late drawing A text event count after activation");
+
+    var contextB = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2
+        {
+            Document = new CadContextDocumentV2 { DocumentId = "activated-document-b" },
+        },
+        ContextSha256 = new string('8', 64),
+    };
+    await client.AskAsync(
+            "fresh request for drawing B",
+            contextB,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    Equal(1, bridge.StartThreadCount, "Fresh thread count after document activation");
+}
+
+static async Task OldDocumentEventsCannotUpdateNewConversation()
+{
+    var bridge = new FakeAgentBridgeClient
+    {
+        ReuseProviderTurnId = true,
+    };
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-late-document-a",
+        "system-session-late-document-a");
+    var textEvents = new List<string>();
+    client.TextChanged += textEvents.Add;
+    var contextA = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2
+        {
+            Document = new CadContextDocumentV2 { DocumentId = "late-document-a" },
+        },
+        ContextSha256 = new string('9', 64),
+    };
+    await client.AskAsync(
+            "drawing A request",
+            contextA,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var drawingAThread = bridge.LastStartTurnV2Request?.ThreadId
+        ?? throw new InvalidOperationException("Drawing A thread was not captured.");
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.TurnCompleted,
+        ThreadId = drawingAThread,
+        TurnId = "shared-provider-turn",
+    });
+
+    var contextB = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2
+        {
+            Document = new CadContextDocumentV2 { DocumentId = "late-document-b" },
+        },
+        ContextSha256 = new string('a', 64),
+    };
+    await client.AskAsync(
+            "drawing B request",
+            contextB,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var drawingBThread = bridge.LastStartTurnV2Request?.ThreadId
+        ?? throw new InvalidOperationException("Drawing B thread was not captured.");
+    var textCountBeforeLateEvent = textEvents.Count;
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.AssistantMessageDelta,
+        ThreadId = drawingAThread,
+        TurnId = "shared-provider-turn",
+        Delta = "late-text-from-drawing-a",
+    });
+    Equal(
+        textCountBeforeLateEvent,
+        textEvents.Count,
+        "Drawing A late event count after drawing B started");
+
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.AssistantMessageDelta,
+        ThreadId = drawingBThread,
+        TurnId = "shared-provider-turn",
+        Delta = "accepted-text-from-drawing-b",
+    });
+    Equal(
+        textCountBeforeLateEvent + 1,
+        textEvents.Count,
+        "Drawing B current event count");
+}
+
+static async Task ClearConversationDefersFreshThread()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-before-clear-all",
+        "system-session-before-clear-all");
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2
+        {
+            Document = new CadContextDocumentV2 { DocumentId = "document-clear-all" },
+        },
+        ContextSha256 = new string('b', 64),
+    };
+    await client.AskAsync(
+            "request before clear all",
+            context,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.TurnCompleted,
+        TurnId = "fake-turn-1",
+    });
+
+    client.ClearConversation();
+    Equal(0, bridge.StartThreadCount, "Provider thread count during local clear");
+
+    await client.AskAsync(
+            "request after clear all",
+            context,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    Equal(1, bridge.StartThreadCount, "Provider thread count after local clear");
+    True(
+        bridge.LastStartTurnV2Request != null
+        && string.Equals(
+            bridge.LastStartTurnV2Request.ThreadId,
+            bridge.LastStartedThreadId,
+            StringComparison.Ordinal),
+        "The first request after clearing the conversation reused the old Provider thread.");
+}
+
+static async Task SameDocumentRecaptureKeepsConversation()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-same-document",
+        "system-session-same-document");
+    var firstContext = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2
+        {
+            Document = new CadContextDocumentV2 { DocumentId = "same-document" },
+        },
+        ContextSha256 = new string('c', 64),
+    };
+    await client.AskAsync(
+            "first same-document request",
+            firstContext,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.TurnCompleted,
+        TurnId = "fake-turn-1",
+    });
+
+    var recapturedContext = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2
+        {
+            Document = new CadContextDocumentV2 { DocumentId = "same-document" },
+        },
+        ContextSha256 = new string('d', 64),
+    };
+    await client.AskAsync(
+            "second same-document request after context clear and recapture",
+            recapturedContext,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+
+    Equal(0, bridge.StartThreadCount, "Same-document Provider thread creation count");
+    Equal(2, bridge.StartTurnV2Count, "Same-document request count");
+    True(
+        bridge.LastStartTurnV2Request != null
+        && string.Equals(
+            bridge.LastStartTurnV2Request.ThreadId,
+            "thread-same-document",
+            StringComparison.Ordinal),
+        "Same-document context recapture unexpectedly replaced the Codex conversation.");
+}
+
 static Task TerminateSuccessStopsOnce()
 {
     var stopCount = 0;
@@ -1395,6 +1718,8 @@ internal sealed class FakeAgentBridgeClient : IAgentBridgeClient
 
     internal bool DelayStartTurnResponse { get; set; }
 
+    internal bool ReuseProviderTurnId { get; set; }
+
     internal int InterruptFailuresRemaining { get; set; }
 
     public event EventHandler<AgentBridgeEventReceivedEventArgs>? EventReceived;
@@ -1451,7 +1776,9 @@ internal sealed class FakeAgentBridgeClient : IAgentBridgeClient
         var response = new AgentTurnStartV2Response
         {
             ThreadId = request.ThreadId,
-            TurnId = "fake-turn-" + StartTurnV2Count,
+            TurnId = ReuseProviderTurnId
+                ? "shared-provider-turn"
+                : "fake-turn-" + StartTurnV2Count,
             AcceptedContextV2Sha256 = request.ContextV2Sha256,
         };
         if (!DelayStartTurnResponse)
