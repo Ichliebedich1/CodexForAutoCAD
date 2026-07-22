@@ -28,6 +28,8 @@ namespace Codex.AutoCAD.Host2016
         private static CadQueryResponse lastQueryResponse;
         private static DrawingIndexAgentSnapshot publishedAgentSnapshot;
         private static DrawingIndexSnapshotValidity publishedAgentSnapshotValidity;
+        private static DrawingIndexPerformanceMetrics performanceMetrics =
+            new DrawingIndexPerformanceMetrics();
         private static Database observedDatabase;
         private static bool initialized;
         private static bool idleAttached;
@@ -70,6 +72,7 @@ namespace Codex.AutoCAD.Host2016
             lastQueryRequest = null;
             lastQueryResponse = null;
             descriptor = CreateEmptyDescriptor();
+            performanceMetrics = new DrawingIndexPerformanceMetrics();
             indexedCurrentSpace = string.Empty;
             initialized = false;
         }
@@ -122,6 +125,7 @@ namespace Codex.AutoCAD.Host2016
             lastQueryRequest = null;
             lastQueryResponse = null;
             indexedCurrentSpace = ReadCurrentSpaceToken(document.Database);
+            performanceMetrics = new DrawingIndexPerformanceMetrics();
             activeSession = new DrawingIndexBuildSession(
                 document,
                 metadata,
@@ -129,7 +133,8 @@ namespace Codex.AutoCAD.Host2016
                 scope,
                 dbmodBefore,
                 startedAt,
-                new DrawingIndexAccumulator(MaximumEstimatedManagedBytes));
+                new DrawingIndexAccumulator(MaximumEstimatedManagedBytes),
+                performanceMetrics);
             AttachDatabaseEvents(document.Database);
             AttachIdle();
             NotifyPalette();
@@ -220,6 +225,7 @@ namespace Codex.AutoCAD.Host2016
             Initialize();
             EnsureCurrentRevision();
             var current = descriptor;
+            var performance = performanceMetrics.Snapshot();
             var builder = new StringBuilder();
             builder.AppendLine("--- Codex AutoCAD 2016 DrawingIndex ---");
             builder.Append("Schema: ").Append(DrawingIndexContractConstants.Schema).Append('/')
@@ -254,6 +260,33 @@ namespace Codex.AutoCAD.Host2016
                 lastQueryResponse == null ? "0" : lastQueryResponse.TotalMatches.ToString(CultureInfo.InvariantCulture));
             builder.Append('/').AppendLine(
                 lastQueryResponse == null ? "0" : lastQueryResponse.ReturnedCount.ToString(CultureInfo.InvariantCulture));
+            builder.Append("Idle slice budget ms: ").AppendLine(
+                MaximumMillisecondsPerIdleSlice.ToString(CultureInfo.InvariantCulture));
+            builder.Append("Idle slices total/preparation/read: ")
+                .Append(performance.IdleSliceCount.ToString(CultureInfo.InvariantCulture)).Append('/')
+                .Append(performance.PreparationSliceCount.ToString(CultureInfo.InvariantCulture)).Append('/')
+                .AppendLine(performance.ReadSliceCount.ToString(CultureInfo.InvariantCulture));
+            builder.Append("Maximum idle slice ms: ").AppendLine(
+                DrawingIndexPerformanceMetrics.FormatMilliseconds(performance.MaximumIdleSliceDuration));
+            builder.Append("Maximum preparation slice ms: ").AppendLine(
+                DrawingIndexPerformanceMetrics.FormatMilliseconds(performance.MaximumPreparationSliceDuration));
+            builder.Append("Maximum read slice ms: ").AppendLine(
+                DrawingIndexPerformanceMetrics.FormatMilliseconds(performance.MaximumReadSliceDuration));
+            builder.Append("Total scan elapsed ms: ").AppendLine(
+                DrawingIndexPerformanceMetrics.FormatMilliseconds(performance.TotalScanDuration));
+            builder.Append("Scan timeout ms: ").AppendLine(
+                MaximumScanDuration.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture));
+            builder.Append("Managed memory budget bytes: ").AppendLine(
+                MaximumEstimatedManagedBytes.ToString(CultureInfo.InvariantCulture));
+            builder.Append("Query page entity limit: ").AppendLine(
+                DrawingIndexContractConstants.MaximumPageSize.ToString(CultureInfo.InvariantCulture));
+            builder.Append("IPC message hard limit bytes: ").AppendLine(
+                ProtocolConstants.MaximumMessageBytes.ToString(CultureInfo.InvariantCulture));
+            builder.Append("Queries: ").AppendLine(performance.QueryCount.ToString(CultureInfo.InvariantCulture));
+            builder.Append("Last query ms: ").AppendLine(
+                DrawingIndexPerformanceMetrics.FormatMilliseconds(performance.LastQueryDuration));
+            builder.Append("Maximum query ms: ").AppendLine(
+                DrawingIndexPerformanceMetrics.FormatMilliseconds(performance.MaximumQueryDuration));
             builder.AppendLine("Document name/path capture: disabled");
             builder.AppendLine("CAD write: disabled");
             builder.AppendLine("Plugin-initiated save: disabled");
@@ -301,11 +334,20 @@ namespace Codex.AutoCAD.Host2016
 
         private static CadQueryResponse ExecuteAndRemember(CadQueryRequest request)
         {
-            var response = DrawingIndexQueryEngine.Execute(descriptor, publishedEntities, request);
-            lastQueryRequest = CloneRequest(request);
-            lastQueryResponse = response;
-            NotifyPalette();
-            return response;
+            var timer = Stopwatch.StartNew();
+            try
+            {
+                var response = DrawingIndexQueryEngine.Execute(descriptor, publishedEntities, request);
+                lastQueryRequest = CloneRequest(request);
+                lastQueryResponse = response;
+                NotifyPalette();
+                return response;
+            }
+            finally
+            {
+                timer.Stop();
+                performanceMetrics.RecordQuery(timer.Elapsed);
+            }
         }
 
         private static void OnIdle(object sender, EventArgs eventArgs)
@@ -323,6 +365,8 @@ namespace Codex.AutoCAD.Host2016
             }
 
             processingIdle = true;
+            var preparationPhase = session.Items == null;
+            var idleTimer = Stopwatch.StartNew();
             try
             {
                 ProcessSession(session);
@@ -354,6 +398,11 @@ namespace Codex.AutoCAD.Host2016
             }
             finally
             {
+                idleTimer.Stop();
+                session.PerformanceMetrics.RecordIdleSlice(
+                    preparationPhase,
+                    idleTimer.Elapsed,
+                    session.ScanTimer.Elapsed);
                 processingIdle = false;
             }
         }
@@ -857,6 +906,7 @@ namespace Codex.AutoCAD.Host2016
 
             activeSession = null;
             DetachIdle();
+            session.PerformanceMetrics.CompleteScan(session.ScanTimer.Elapsed);
             session.Dispose();
             InvalidatePublishedAgentSnapshot();
             descriptor.Status = status;
@@ -906,10 +956,11 @@ namespace Codex.AutoCAD.Host2016
                 {
                     publishedAgentSnapshot =
                         DrawingIndexAgentSnapshot.CreateFromOwnedFrozenEntities(
-                        generation,
-                        descriptor,
-                        publishedEntities,
-                        validity);
+                            generation,
+                            descriptor,
+                            publishedEntities,
+                            validity,
+                            session.PerformanceMetrics);
                     publishedAgentSnapshotValidity = validity;
                 }
                 catch (DrawingIndexQueryException)
@@ -1386,7 +1437,8 @@ namespace Codex.AutoCAD.Host2016
                 string scope,
                 int dbmodBefore,
                 DateTimeOffset startedAtUtc,
-                DrawingIndexAccumulator accumulator)
+                DrawingIndexAccumulator accumulator,
+                DrawingIndexPerformanceMetrics sourcePerformanceMetrics)
             {
                 Document = document;
                 Metadata = metadata;
@@ -1395,6 +1447,8 @@ namespace Codex.AutoCAD.Host2016
                 DbmodBefore = dbmodBefore;
                 StartedAtUtc = startedAtUtc;
                 Accumulator = accumulator;
+                PerformanceMetrics = sourcePerformanceMetrics;
+                ScanTimer = Stopwatch.StartNew();
                 CurrentSpaceToken = ReadCurrentSpaceToken(document.Database);
             }
 
@@ -1411,6 +1465,10 @@ namespace Codex.AutoCAD.Host2016
             internal DateTimeOffset StartedAtUtc { get; private set; }
 
             internal DrawingIndexAccumulator Accumulator { get; private set; }
+
+            internal DrawingIndexPerformanceMetrics PerformanceMetrics { get; private set; }
+
+            internal Stopwatch ScanTimer { get; private set; }
 
             internal string CurrentSpaceToken { get; private set; }
 
@@ -1438,6 +1496,7 @@ namespace Codex.AutoCAD.Host2016
 
             public void Dispose()
             {
+                ScanTimer.Stop();
                 var preparation = Preparation;
                 Preparation = null;
                 if (preparation != null)

@@ -112,6 +112,10 @@ request/thread 身份临时绑定，随后必须与 Provider turn 再次匹配�
 - 统计和查询使用脱离 AutoCAD 对象的强类型副本；不保留 Entity 引用到后台线程。
 - 索引完成时将已冻结实体数组所有权转移给 Agent 快照，避免 50k 场景的第二次数组深拷贝；
   外部调用构造快照时仍执行深拷贝。
+- Host 本地线程安全遥测记录 Idle 总/准备/读取片数、各阶段最大分片耗时、总扫描耗时以及
+  本地/Agent 查询耗时；只由 `CODEX16INDEXINFO` 展示，不改变 DrawingIndex/CadQuery wire。
+- `CODEX16INDEXINFO` 和候选 manifest 同时声明单页最多 `200` 个实体、IPC 单帧最多
+  `8,388,608` 字节；实机 evidence 另外记录 AutoCAD 扫描前和扫描期间峰值工作集。
 - 对象事件、文档激活、关闭、撤销和 DBMOD 变化会使正在构建或已发布索引收敛到
   `stale`，旧游标不可继续使用。
 
@@ -138,6 +142,8 @@ Agent；Codex 只在 ASK 回合中通过 `cad.query_drawing` 按需取得分页�
 - `src/Codex.AutoCAD.Host.2016/DrawingIndexEntityReader.cs`：R20.1 只读摘要和受限占位。
 - `src/Codex.AutoCAD.Host.2016/DrawingIndexRuntime.cs`：Idle 分片、文档事件和 Host 生命周期。
 - `src/Codex.AutoCAD.Host.2016/DrawingIndexAgentSnapshot.cs`：纯托管冻结快照和失效检查。
+- `src/Codex.AutoCAD.Host.2016/DrawingIndexPerformanceMetrics.cs`：Host 本地分片、扫描与查询
+  性能证据，不引用 Autodesk API。
 - `src/Codex.AutoCAD.Host.2016/MvpAgentClient.cs`：回合身份绑定与 Host 反向查询处理。
 - `src/Codex.AutoCAD.Contracts/AgentBridgeContracts.cs`：反向查询请求/响应和稳定错误码。
 - `src/Codex.AutoCAD.Bridge.Client/AgentBridgeClient.cs`：双向请求、取消、STOP 和关闭排空。
@@ -147,33 +153,42 @@ Agent；Codex 只在 ASK 回合中通过 `cad.query_drawing` 按需取得分页�
   分页、失效、预算和重复令牌测试。
 - `scripts/verify-autocad2016-drawing-index-candidate.ps1`：锁文件恢复、R20.1 构建、
   只读扫描、候选打包、哈希和 evidence 生成。
+- `scripts/new-autocad2016-drawing-index-benchmarks.ps1`：离线生成精确 1k/10k/50k 模型空间
+  AC1009 DXF，拒绝覆盖且不启动 AutoCAD。
+- `scripts/verify-autocad2016-drawing-index-benchmarks.ps1`：双次哈希、独立解析和 evidence
+  fail-closed 门禁 `6/6`。
+- `scripts/record-autocad2016-drawing-index-benchmark.ps1`：记录不含图名、路径或 JSON 的实机
+  数值证据。
+- `M2_DRAWING_INDEX_BENCHMARK_FIXTURES_20260722.md`：三档 fixture 生成、哈希、外部工作集
+  采样和脱敏 evidence 写入说明。
 - `M2_DRAWING_INDEX_RUNTIME_TEST_20260722.md`：AutoCAD 2016 唯一人工测试入口。
 
 ## 7. 自动化候选
 
 候选目录：
 
-`C:\\tmp\\CodexForAutoCAD-m2-drawing-index\\artifacts\\autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd`
+`C:\\tmp\\CodexForAutoCAD-m2-benchmark\\artifacts\\autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2`
 
 | 项目 | 值 |
 | --- | --- |
 | Host 版本 | `0.4.0.0` |
-| Host SHA-256 | `597A7A3DC047B7A8188C0E4C7768032A5D8DA428AE210AE615713B8497AB0637` |
-| AgentHost EXE SHA-256 | `432E7CF97D9E968D96C83FDE4FDD3C40961326E90CCD16D90BC3E34F21C968F6` |
-| manifest SHA-256 | `7E6116AF0F2D6BDBEB64DB6D009705E21358CB55609E36697EC179D17B690C18` |
+| Host SHA-256 | `E85D97EC02505EF69C67F710EAD5D35D18481B7D2DBB4C3D87195FCDE4156B7E` |
+| AgentHost EXE SHA-256 | `FA16355C185F61CD7E85446E884C2FF9D7C745E5E2EB0CC40747C916C215371B` |
+| manifest SHA-256 | `95427BD85E70870C483512CD4401228B70F63608802512119F5ECB6486844356` |
 | Contracts net8/net45 | `84/84` |
 | Bridge Client net8/net45 | `29/29` |
 | Bridge/AgentHost | `39/39` |
 | AgentRuntime | `33/33` |
-| Host MVP | `52/52` |
-| 完整 Phase 2 | `307/307` |
+| Host MVP | `53/53` |
+| 完整 Phase 2 | `308/308` |
+| Benchmark fixture/evidence | `6/6` |
 | R20.1 Release x64 | 通过 |
 | Host A/B | 逐字节一致 |
 | AutoCAD live / NETLOAD | 未验证 |
 
 证据：
 
-`handoff/autocad2016/evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd.json`
+`handoff/autocad2016/evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2.json`
 
 ## 8. M2 剩余完成条件
 

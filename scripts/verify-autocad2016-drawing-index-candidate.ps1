@@ -19,6 +19,8 @@ $packageRoot = Join-Path $stageRoot 'packages'
 $publishRoot = Join-Path $stageRoot 'agenthost-publish'
 $net45ReferencePath = Join-Path $packageRoot 'microsoft.netframework.referenceassemblies.net45\1.0.3\build\.NETFramework\v4.5'
 $phase2Script = Join-Path $repoRoot 'scripts\verify-phase2.ps1'
+$benchmarkScript = Join-Path $repoRoot 'scripts\verify-autocad2016-drawing-index-benchmarks.ps1'
+$benchmarkManifestPath = Join-Path $repoRoot 'handoff\autocad2016\benchmark-fixtures\DRAWING_INDEX_BENCHMARKS_V1.expected.json'
 $hostProject = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\Codex.AutoCAD.Host.2016.csproj'
 $nugetConfig = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\NuGet.Config'
 $assemblyInfoPath = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\Properties\AssemblyInfo.cs'
@@ -187,6 +189,36 @@ function Assert-M2ReadOnlySource([string[]] $SourceFiles) {
         }
     }
 
+    $performancePath = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\DrawingIndexPerformanceMetrics.cs'
+    if ($SourceFiles -notcontains $performancePath) {
+        throw 'Host.2016 Compile 闭包缺少 DrawingIndexPerformanceMetrics.cs。'
+    }
+    $performanceText = Get-Content -LiteralPath $performancePath -Raw -Encoding UTF8
+    if ($performanceText -match '(?i)\bAutodesk\s*\.') {
+        throw 'DrawingIndex 性能遥测禁止引用 Autodesk API。'
+    }
+    foreach ($required in @(
+        'RecordIdleSlice',
+        'CompleteScan',
+        'RecordQuery',
+        'MaximumIdleSliceDuration',
+        'TotalScanDuration')) {
+        if ($performanceText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "DrawingIndex 性能遥测缺少受审要素：$required"
+        }
+    }
+    foreach ($required in @(
+        'Maximum idle slice ms:',
+        'Total scan elapsed ms:',
+        'Managed memory budget bytes:',
+        'Query page entity limit:',
+        'IPC message hard limit bytes:',
+        'Maximum query ms:')) {
+        if ($drawingText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "DrawingIndex INFO 缺少性能证据字段：$required"
+        }
+    }
+
     $snapshotPath = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\DrawingIndexAgentSnapshot.cs'
     if ($SourceFiles -notcontains $snapshotPath) {
         throw 'Host.2016 Compile 闭包缺少 DrawingIndexAgentSnapshot.cs。'
@@ -200,6 +232,7 @@ function Assert-M2ReadOnlySource([string[]] $SourceFiles) {
         'Volatile.Read',
         'DrawingIndexQueryEngine.Execute',
         'CreateFromOwnedFrozenEntities',
+        'performanceMetrics.RecordQuery(timer.Elapsed)',
         'cancellationToken.ThrowIfCancellationRequested')) {
         if ($snapshotText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
             throw "DrawingIndexAgentSnapshot 缺少纯托管快照要素：$required"
@@ -334,6 +367,23 @@ try {
     if ([string]::IsNullOrWhiteSpace($phase2Summary)) {
         throw 'Phase 2 输出缺少全部通过的动态规格摘要。'
     }
+
+    $benchmarkOutput = Invoke-CapturedOutput $powerShell @(
+        '-NoProfile',
+        '-File', $benchmarkScript
+    ) 'M2 1k/10k/50k benchmark fixture 门禁'
+    $benchmarkSummary = @(
+        foreach ($line in $benchmarkOutput) {
+            $match = [regex]::Match($line, 'benchmark fixture checks passed: (?<Passed>\d+)/(?<Total>\d+)')
+            if ($match.Success -and $match.Groups['Passed'].Value -ceq $match.Groups['Total'].Value) {
+                $match.Groups['Passed'].Value + '/' + $match.Groups['Total'].Value
+            }
+        }
+    ) | Select-Object -Last 1
+    if ([string]::IsNullOrWhiteSpace($benchmarkSummary)) {
+        throw 'Benchmark fixture 输出缺少全部通过的动态门禁摘要。'
+    }
+    $benchmarkManifest = Get-Content -LiteralPath $benchmarkManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
     foreach ($snapshot in $lockSnapshots.GetEnumerator()) {
         [IO.File]::WriteAllBytes([string] $snapshot.Key, [byte[]] $snapshot.Value)
     }
@@ -504,7 +554,19 @@ try {
             maximumReportedEntities = 2000000
             maximumEstimatedManagedBytes = 67108864
             maximumScanSeconds = 120
+            maximumIdleSliceMilliseconds = 12
+            maximumCadQueryPageSize = 200
+            maximumIpcMessageBytes = 8388608
         }
+        benchmarkFixtures = @(
+            foreach ($fixture in @($benchmarkManifest.files)) {
+                [ordered]@{
+                    fileName = [string] $fixture.fileName
+                    entityCount = [int] $fixture.entityCount
+                    sha256 = [string] $fixture.sha256
+                }
+            }
+        )
         files = $files
     }
     $manifestPath = Join-Path $candidateRoot 'manifest.json'
@@ -529,6 +591,8 @@ try {
             hostReadOnlySourceScan = $true
             earlyReverseDrawingQueryRaceCovered = $true
             frozenEntityArrayOwnershipTransfer = $true
+            benchmarkFixtures = $benchmarkSummary
+            hostLocalPerformanceTelemetry = $true
             hostCompileSourceCount = $sourceFiles.Count
             documentLockCount = 2
             lockFileHashesPreserved = $true
@@ -563,6 +627,7 @@ try {
     Write-Host "CANDIDATE_ID=$candidateId"
     Write-Host "HOST_VERSION=$hostVersion"
     Write-Host "PHASE2_SPECS=$phase2Summary"
+    Write-Host "BENCHMARK_FIXTURES=$benchmarkSummary"
     Write-Host "HOST_SHA256=$hostSha"
     Write-Host "AGENTHOST_SHA256=$agentSha"
     Write-Host "MANIFEST_SHA256=$(Get-Sha256 $manifestPath)"

@@ -18,6 +18,8 @@
              Link="DrawingIndexCore.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\DrawingIndexAgentSnapshot.cs"
              Link="DrawingIndexAgentSnapshot.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\DrawingIndexPerformanceMetrics.cs"
+             Link="DrawingIndexPerformanceMetrics.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentFailure.cs"
              Link="MvpAgentFailure.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentTurnState.cs"
