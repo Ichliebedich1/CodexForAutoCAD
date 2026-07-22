@@ -37,6 +37,11 @@ NETLOAD 证据的能力一律视为未支持。
 - 候选包内 AgentHost 已单独运行 `doctor` 并完成本机 Codex app-server 初始化；脱敏证据见
   `evidence/cad-context-v2-candidate-package-doctor-20260722-refresh.json`。该证据仍不替代
   AutoCAD `NETLOAD` 或真实 v2 对话。
+- P1 候选 AgentHost 已通过真实本机 Codex v2 live 规格：认证 capability 明确包含
+  `agent.turn.start.v2` 与 `codex.autocad.cad-context/2`，同一 thread 使用两份合成 Line v2
+  上下文完成两轮回答，上下文哈希在接收响应和 assistant 事件中一致回显，停止后残留
+  AgentHost 为 `0`。证据见 `evidence/agenthost-v2-live-two-turns-20260722.json`；该规格没有
+  启动 AutoCAD，因此仍不替代 P1 `NETLOAD`、真实选区和 Palette v2 实机证据。
 - 采集器集成后当前线完整 Phase 2 门禁再次通过 `235/235`、Release `0/0`、Host 禁用 API、
   doctor、秘密扫描和 diff；脱敏汇总见 `evidence/phase2-final-gate-20260722.json`。
 - 本轮已修正 P1 Host 的 Doctor 和 `CODEXCAD` 命令文案，使其显示 v2，不改变 v1 契约或
@@ -293,9 +298,9 @@ NETLOAD 证据的能力一律视为未支持。
   Autodesk DLL copy count 为 `0`。P1 候选和 manifest 已冻结；自动化证据见
   `evidence/cad-context-v2-candidate-build-autocad2016-mvp-context-v2-v032-4d3386d9-751b97c7-7216527a.json`。
 - 上述结果把 `HostV2CaptureImplemented`、`R201HostCompileVerified`、
-  `RuntimeIntegrationImplemented` 和 `CandidateFrozen` 提升为 `true`；
-  `BridgeV2Negotiated`、`NetLoadVerified`、`AutoCadLiveEvidence` 和实机混合选区仍为
-  `false`。
+  `RuntimeIntegrationImplemented` 和 `CandidateFrozen` 提升为 `true`。随后真实
+  AgentHost/Codex v2 两轮规格又把 `BridgeV2Negotiated` 提升为 `true`；
+  `NetLoadVerified`、`AutoCadLiveEvidence` 和实机混合选区仍为 `false`。
 - 在对象扩展候选冻结前，先修复或解释上述 AgentHost 停止残留；两项分别验证、分别提交。
 - P1 已受控吸收 P0 停止修复，候选冻结提交为 `c174166`，当前线又独立引入采集器收口提交
   `5325e35` 和证据提交 `3ea4961`；P0 与 P1 仍保持独立提交和独立 evidence。P1

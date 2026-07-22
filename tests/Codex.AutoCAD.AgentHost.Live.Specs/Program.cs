@@ -63,6 +63,17 @@ try
     True(
         capabilities.Methods.Contains(AgentBridgeMethods.StartTurn, StringComparer.Ordinal),
         "Capability response omitted turn start.");
+    True(
+        capabilities.Methods.Contains(AgentBridgeMethods.StartTurnV2, StringComparer.Ordinal),
+        "Capability response omitted v2 turn start.");
+    True(
+        capabilities.SupportedCadContextSchemas.Any(schema =>
+            string.Equals(
+                schema.Schema,
+                CadContextJsonV2Constants.Schema,
+                StringComparison.Ordinal)
+            && schema.SchemaVersion == CadContextJsonV2Constants.SchemaVersion),
+        "Capability response omitted CadContextJson v2.");
     True(!capabilities.CadWriteAvailable, "Read-only AgentHost advertised CAD write access.");
     Equal(0, capabilities.ApprovalDecisions.Length);
     passed++;
@@ -70,7 +81,7 @@ try
         "PASS REAL_AGENTHOST_CAPABILITY_HANDSHAKE "
         + "真实bootstrap-serve完成认证能力协商");
 
-    currentSpec = "REAL_CODEX_TWO_CONTEXT_TURNS";
+    currentSpec = "REAL_CODEX_V2_TWO_CONTEXT_TURNS";
     Stage("thread.start");
     var thread = await client.StartThreadAsync(
         new AgentThreadStartRequest
@@ -85,51 +96,53 @@ try
         timeout.Token);
     Equal(thread.ThreadId, threadStarted.ThreadId);
 
-    var firstContext = CreateContext(revision: 1, lineEndX: 10d);
-    var firstHash = CadContextJsonV1Codec.ComputeCanonicalSha256(firstContext);
+    var firstContext = CreateContextV2(revision: 1, lineEndX: 10d);
+    var firstHash = CadContextJsonV2Codec.ComputeCanonicalSha256(firstContext);
     Stage("turn1.start");
-    var firstTurn = await client.StartTurnAsync(
-        new AgentTurnStartRequest
+    var firstTurn = await client.StartTurnV2Async(
+        new AgentTurnStartV2Request
         {
             ThreadId = thread.ThreadId,
             ClientTurnId = "client-turn-live-1",
             Prompt = "请只根据本轮CAD上下文，用阿拉伯数字回答所选直线终点X坐标；不要调用工具。",
-            Context = firstContext,
-            ContextSha256 = firstHash,
+            ContextV2 = firstContext,
+            ContextV2Sha256 = firstHash,
         },
         timeout.Token);
     Stage("turn1.accepted");
     Equal(thread.ThreadId, firstTurn.ThreadId);
-    Equal(firstHash, firstTurn.AcceptedContextSha256);
+    Equal(firstHash, firstTurn.AcceptedContextV2Sha256);
     var firstAnswer = await ReadTurnCompletionAsync(
         events.Reader,
-        firstTurn,
+        firstTurn.ThreadId,
+        firstTurn.TurnId,
         firstHash,
         timeout.Token);
     Stage("turn1.completed");
     Contains(firstAnswer, "10");
 
-    var secondContext = CreateContext(revision: 2, lineEndX: 20d);
-    var secondHash = CadContextJsonV1Codec.ComputeCanonicalSha256(secondContext);
+    var secondContext = CreateContextV2(revision: 2, lineEndX: 20d);
+    var secondHash = CadContextJsonV2Codec.ComputeCanonicalSha256(secondContext);
     True(!string.Equals(firstHash, secondHash, StringComparison.Ordinal),
         "Synthetic context hashes unexpectedly matched.");
     Stage("turn2.start");
-    var secondTurn = await client.StartTurnAsync(
-        new AgentTurnStartRequest
+    var secondTurn = await client.StartTurnV2Async(
+        new AgentTurnStartV2Request
         {
             ThreadId = thread.ThreadId,
             ClientTurnId = "client-turn-live-2",
             Prompt = "请比较本轮CAD上下文与上一轮，使用阿拉伯数字回答终点X变化量；不要调用工具。",
-            Context = secondContext,
-            ContextSha256 = secondHash,
+            ContextV2 = secondContext,
+            ContextV2Sha256 = secondHash,
         },
         timeout.Token);
     Stage("turn2.accepted");
     Equal(thread.ThreadId, secondTurn.ThreadId);
-    Equal(secondHash, secondTurn.AcceptedContextSha256);
+    Equal(secondHash, secondTurn.AcceptedContextV2Sha256);
     var secondAnswer = await ReadTurnCompletionAsync(
         events.Reader,
-        secondTurn,
+        secondTurn.ThreadId,
+        secondTurn.TurnId,
         secondHash,
         timeout.Token);
     Stage("turn2.completed");
@@ -137,8 +150,8 @@ try
 
     passed++;
     Console.WriteLine(
-        "PASS REAL_CODEX_TWO_CONTEXT_TURNS "
-        + "同一thread完成两轮真实Codex上下文分析和assistant事件回传");
+        "PASS REAL_CODEX_V2_TWO_CONTEXT_TURNS "
+        + "同一thread完成两轮真实Codex v2上下文分析、哈希绑定和assistant事件回传");
 
     await client.StopAsync(CancellationToken.None);
     client.Dispose();
@@ -195,7 +208,8 @@ static void Stage(string value)
 
 static async Task<string> ReadTurnCompletionAsync(
     ChannelReader<AgentBridgeEvent> reader,
-    AgentTurnStartResponse turn,
+    string threadId,
+    string turnId,
     string contextSha256,
     CancellationToken cancellationToken)
 {
@@ -205,12 +219,12 @@ static async Task<string> ReadTurnCompletionAsync(
     {
         while (reader.TryRead(out var bridgeEvent))
         {
-            if (!string.Equals(bridgeEvent.TurnId, turn.TurnId, StringComparison.Ordinal))
+            if (!string.Equals(bridgeEvent.TurnId, turnId, StringComparison.Ordinal))
             {
                 continue;
             }
 
-            Equal(turn.ThreadId, bridgeEvent.ThreadId);
+            Equal(threadId, bridgeEvent.ThreadId);
             Equal(contextSha256, bridgeEvent.ContextSha256);
             if (string.Equals(
                     bridgeEvent.Kind,
@@ -278,34 +292,37 @@ static async Task<AgentBridgeEvent> ReadKindAsync(
     throw new EndOfStreamException("Agent event stream ended before " + kind + ".");
 }
 
-static CadContextJsonV1 CreateContext(long revision, double lineEndX)
+static CadContextJsonV2 CreateContextV2(long revision, double lineEndX)
 {
-    return new CadContextJsonV1
+    return new CadContextJsonV2
     {
         CapturedAtUtc = "2026-07-20T00:00:00.000Z",
-        Document = new CadContextDocumentV1
+        Document = new CadContextDocumentV2
         {
             DocumentId = "doc-live-spec",
             DrawingFingerprint = new string('a', 64),
             Revision = revision,
-            CurrentSpace = CadContextJsonV1Constants.ModelSpace,
+            CurrentSpace = CadContextJsonV2Constants.ModelSpace,
             DrawingVersion = "AC1027",
             Units = "millimeters",
         },
-        Selection = new CadContextSelectionV1
+        Selection = new CadContextSelectionV2
         {
             SnapshotHash = new string('b', 64),
             EntityCount = 1,
+            ParsedEntityCount = 1,
+            UnsupportedEntityCount = 0,
+            Complete = true,
             Entities =
             [
-                new CadContextEntityV1
+                new CadContextEntityV2
                 {
                     Handle = "1A",
                     OwnerSpaceHandle = "1",
-                    EntityType = CadContextEntityTypes.Line,
+                    EntityType = CadContextEntityTypesV2.Line,
                     StateHash = new string('c', 64),
                     Layer = "SPEC",
-                    Line = new CadContextLineV1
+                    Line = new CadContextLineV2
                     {
                         Start = new CadPoint3(0d, 0d, 0d),
                         End = new CadPoint3(lineEndX, 0d, 0d),
