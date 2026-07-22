@@ -160,7 +160,7 @@ $evidence = [ordered]@{
     build = [ordered]@{ hostR20_1A_BBitForBitEqual = $true; hostDllSha256 = $hostSha; agentHostExeSha256 = $agentSha }
     candidate = [ordered]@{ root = ('artifacts/' + $candidateId); manifestSha256 = Get-Sha256 $manifestPath; files = $files }
     gates = [ordered]@{
-        phase2Specs = '235/235'; v2ApiProbeCompileTime = $true; v2ApiProbeRuntimePassed = 19; v2ApiProbeRuntimeFailed = 8
+        phase2Specs = '259/259'; v2ApiProbeCompileTime = $true; v2ApiProbeRuntimePassed = 19; v2ApiProbeRuntimeFailed = 8
         r20_1ReleaseX64Build = $true; host禁用API扫描 = $true; sensitiveScan = $true; gitDiffCheck = $true
         AutoCADStartedOrRestarted = $false; commandsSent = $false
     }

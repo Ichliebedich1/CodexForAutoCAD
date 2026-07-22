@@ -5,9 +5,9 @@
 本手册对应候选：
 
 ```text
-C:\tmp\CodexForAutoCAD-context-v2\artifacts\autocad2016-mvp-context-v2-v032-4d3386d9-751b97c7-7216527a\Codex.AutoCAD.Host.2016.dll
-Host SHA-256: 4D3386D9A825B2842290ACB51376FBA6BE6603F49295E606F8C9F3F92B538C08
-AgentHost/Codex.AutoCAD.AgentHost.exe SHA-256: 751B97C7B17B970D01D625DDD197E1868150AAB5C235812C662AB70B919B0C67
+C:\tmp\CodexForAutoCAD-context-v2\artifacts\autocad2016-mvp-context-v2-v032-0d72edc3-10bea363-af580c30\Codex.AutoCAD.Host.2016.dll
+Host SHA-256: 0D72EDC38A30E7BF33AAEE4DCB1D50D341C4C883146677537C4BB5E7551D0AD7
+AgentHost/Codex.AutoCAD.AgentHost.exe SHA-256: 10BEA363AC80C856FA513F4312B60410DB62BBF4917CE634B589CBA59DA65442
 ```
 
 执行前请确认 AutoCAD 2016 已由用户自行启动，且不要把 P0 候选与本 P1 候选混用。
@@ -15,7 +15,7 @@ AgentHost/Codex.AutoCAD.AgentHost.exe SHA-256: 751B97C7B17B970D01D625DDD197E1868
 
 1. P0 `0.3.2` 停止生命周期候选已人工通过并形成独立提交 `8a4ee57`。
 2. P0 提交已受控引入 P1，候选冻结提交为 `c174166`；当前线另含采集器和门禁证据提交。
-3. 合并后完整门禁为 `235/235`，已生成上述候选 ID、Host/AgentHost SHA-256 和只读包。
+3. 重新冻结后完整门禁为 `259/259`，已生成上述候选 ID、Host/AgentHost SHA-256 和只读包。
 
 ## 预期测试范围
 

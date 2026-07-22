@@ -16,6 +16,8 @@
              Link="MvpAgentCapabilityPolicy.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentStopCoordinator.cs"
              Link="MvpAgentStopCoordinator.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentTerminationCoordinator.cs"
+             Link="MvpAgentTerminationCoordinator.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentClient.cs"
              Link="MvpAgentClient.cs" />
   </ItemGroup>

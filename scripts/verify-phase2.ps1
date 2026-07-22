@@ -32,7 +32,8 @@ $specProjects = @(
     "tests\Codex.AutoCAD.Bridge.Specs\Codex.AutoCAD.Bridge.Specs.csproj",
     "tests\Codex.AutoCAD.Bridge.Client.Specs\Codex.AutoCAD.Bridge.Client.Specs.csproj",
     "tests\Codex.AutoCAD.AgentRuntime.Specs\Codex.AutoCAD.AgentRuntime.Specs.csproj",
-    "tests\Codex.AutoCAD.Chat.Specs\Codex.AutoCAD.Chat.Specs.csproj"
+    "tests\Codex.AutoCAD.Chat.Specs\Codex.AutoCAD.Chat.Specs.csproj",
+    "tests\Codex.AutoCAD.Host.2016.Mvp.Specs\Codex.AutoCAD.Host.2016.Mvp.Specs.csproj"
 )
 
 $solutionRequiredProjects = @(

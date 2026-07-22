@@ -59,8 +59,8 @@
 - v2 固定向量保持 `6678` bytes / `21cc9378...c3b4`。
 - 历史阶段 Phase 2 为 Release `0` warning / `0` error、8 个规格项目 `199/199`；合并
   P0 后当前线最终门禁已提升为 `235/235`，具体以 `phase2-final-gate-20260722.json` 为准。
-- 本次继续开发后，Bridge 新增真实 v2 `StartTurnV2Async` 回合并达到 `38/38`；P0 停止
-  修复受控引入后完整 Phase 2 本机门禁动态汇总为 `235/235`，同时通过 Host 禁用 API、
+- 本次继续开发后，Bridge 新增真实 v2 `StartTurnV2Async` 回合并达到 `38/38`；退出清理
+  重试回归纳入后完整 Phase 2 本机门禁动态汇总为 `259/259`，同时通过 Host 禁用 API、
   AgentHost doctor、`git diff --check` 和秘密扫描。
 - 当前 Contracts 已扩展为 `71/71`，Host v2 能力策略为 `6/6`；缺少 v2 方法、缺少 v2
   schema、null 或空 schema 列表均 fail-closed，不回退到 v1。
@@ -69,11 +69,11 @@
 
 ### P1 候选冻结
 
-- 候选目录：`artifacts/autocad2016-mvp-context-v2-v032-4d3386d9-751b97c7-7216527a/`。
-- Host SHA-256：`4D3386D9A825B2842290ACB51376FBA6BE6603F49295E606F8C9F3F92B538C08`。
-- AgentHost EXE SHA-256：`751B97C7B17B970D01D625DDD197E1868150AAB5C235812C662AB70B919B0C67`。
-- `manifest.json` SHA-256：`7DBA2BEAD1FB2146B8A60A913545CA8EB6BD4BFADE1F037D1161BD2B70F448B1`。
-- 候选 evidence：`handoff/autocad2016/evidence/cad-context-v2-candidate-build-autocad2016-mvp-context-v2-v032-4d3386d9-751b97c7-7216527a.json`。
+- 候选目录：`artifacts/autocad2016-mvp-context-v2-v032-0d72edc3-10bea363-af580c30/`。
+- Host SHA-256：`0D72EDC38A30E7BF33AAEE4DCB1D50D341C4C883146677537C4BB5E7551D0AD7`。
+- AgentHost EXE SHA-256：`10BEA363AC80C856FA513F4312B60410DB62BBF4917CE634B589CBA59DA65442`。
+- `manifest.json` SHA-256：`A16831703985906F724B8EB93BDB0BC801A5781A3228F0694CB1A20A4AC5960F`。
+- 候选 evidence：`handoff/autocad2016/evidence/cad-context-v2-candidate-build-autocad2016-mvp-context-v2-v032-0d72edc3-10bea363-af580c30.json`。
 - 自动化证据明确 `NetLoadVerified=false`、`AutoCadLiveEvidence=false`；P0 live 证据不向 P1 继承。
 
 ## 证据边界

@@ -1,0 +1,25 @@
+{
+  "evidenceType": "phase2-final-gate",
+  "recordedAtUtc": "2026-07-22T02:29:44.4540270Z",
+  "candidateId": "autocad2016-mvp-context-v2-v032-0d72edc3-10bea363-af580c30",
+  "configuration": "Release",
+  "specProjects": 9,
+  "specs": "259/259",
+  "build": {
+    "warnings": 0,
+    "errors": 0,
+    "hostForbiddenApiScan": true,
+    "agentHostDoctor": true,
+    "secretScan": true,
+    "gitDiffCheck": true
+  },
+  "boundaries": {
+    "autoCadStartedOrRestarted": false,
+    "commandsSent": false,
+    "autoCadLiveEvidence": false
+  },
+  "notes": [
+    "本次将 Host.2016.Mvp.Specs 纳入 Phase 2，新增退出清理重试回归。",
+    "该门禁不替代 AutoCAD 2016 人工 NETLOAD、Palette 或退出实机验证。"
+  ]
+}

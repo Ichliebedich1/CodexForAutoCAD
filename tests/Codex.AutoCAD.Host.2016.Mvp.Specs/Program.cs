@@ -75,6 +75,30 @@ var specs = new[]
         "HOST2016_STATUS_CALLBACK_CANNOT_BLOCK_STOP",
         "A failing Palette status observer cannot prevent AgentHost cleanup",
         StatusCallbackCannotBlockStop),
+    new SpecCase(
+        "HOST2016_TERMINATE_SUCCESS_STOPS_ONCE",
+        "AutoCAD termination performs one cleanup when it succeeds",
+        TerminateSuccessStopsOnce),
+    new SpecCase(
+        "HOST2016_TERMINATE_ASYNC_FAILURE_RETRIES",
+        "AutoCAD termination retries one asynchronous cleanup failure",
+        TerminateAsyncFailureRetries),
+    new SpecCase(
+        "HOST2016_TERMINATE_SYNC_FAILURE_RETRIES",
+        "AutoCAD termination retries one synchronous cleanup failure",
+        TerminateSynchronousFailureRetries),
+    new SpecCase(
+        "HOST2016_TERMINATE_NULL_TASK_RETRIES",
+        "AutoCAD termination treats a null cleanup task as retryable failure",
+        TerminateNullTaskRetries),
+    new SpecCase(
+        "HOST2016_TERMINATE_FINAL_FAILURE_IS_SANITIZED",
+        "AutoCAD termination reports one sanitized error after both attempts fail",
+        TerminateFinalFailureIsSanitized),
+    new SpecCase(
+        "HOST2016_TERMINATE_STATUS_FAILURE_IS_ISOLATED",
+        "A failing exit status observer cannot escape termination cleanup",
+        TerminateStatusFailureIsIsolated),
 };
 
 var failed = 0;
@@ -514,6 +538,120 @@ static async Task StatusCallbackCannotBlockStop()
     await client.StopAsync(CancellationToken.None).ConfigureAwait(false);
     True(callbackCount >= 2, "Stop status callbacks were not exercised.");
     client.Dispose();
+}
+
+static Task TerminateSuccessStopsOnce()
+{
+    var stopCount = 0;
+    var statusCount = 0;
+    MvpAgentTerminationCoordinator.Terminate(
+        () =>
+        {
+            stopCount++;
+            return Task.CompletedTask;
+        },
+        _ => statusCount++);
+
+    Equal(1, stopCount, "Successful termination stop count");
+    Equal(0, statusCount, "Successful termination failure status count");
+    return Task.CompletedTask;
+}
+
+static Task TerminateAsyncFailureRetries()
+{
+    var stopCount = 0;
+    var statusCount = 0;
+    MvpAgentTerminationCoordinator.Terminate(
+        () =>
+        {
+            stopCount++;
+            return stopCount == 1
+                ? Task.FromException(new TimeoutException("first async stop failed"))
+                : Task.CompletedTask;
+        },
+        _ => statusCount++);
+
+    Equal(2, stopCount, "Asynchronous termination retry count");
+    Equal(0, statusCount, "Recovered asynchronous termination status count");
+    return Task.CompletedTask;
+}
+
+static Task TerminateSynchronousFailureRetries()
+{
+    var stopCount = 0;
+    var statusCount = 0;
+    MvpAgentTerminationCoordinator.Terminate(
+        () =>
+        {
+            stopCount++;
+            if (stopCount == 1)
+            {
+                throw new InvalidOperationException("first synchronous stop failed");
+            }
+
+            return Task.CompletedTask;
+        },
+        _ => statusCount++);
+
+    Equal(2, stopCount, "Synchronous termination retry count");
+    Equal(0, statusCount, "Recovered synchronous termination status count");
+    return Task.CompletedTask;
+}
+
+static Task TerminateNullTaskRetries()
+{
+    var stopCount = 0;
+    var statusCount = 0;
+    MvpAgentTerminationCoordinator.Terminate(
+        () =>
+        {
+            stopCount++;
+            return stopCount == 1 ? (Task)null! : Task.CompletedTask;
+        },
+        _ => statusCount++);
+
+    Equal(2, stopCount, "Null termination task retry count");
+    Equal(0, statusCount, "Recovered null termination task status count");
+    return Task.CompletedTask;
+}
+
+static Task TerminateFinalFailureIsSanitized()
+{
+    var stopCount = 0;
+    var statuses = new List<string>();
+    MvpAgentTerminationCoordinator.Terminate(
+        () =>
+        {
+            stopCount++;
+            return Task.FromException(
+                new InvalidOperationException("sensitive-local-detail"));
+        },
+        statuses.Add);
+
+    Equal(2, stopCount, "Final termination failure attempt count");
+    Equal(1, statuses.Count, "Final termination failure status count");
+    True(
+        statuses[0].Contains("InvalidOperationException", StringComparison.Ordinal),
+        "Final termination status omitted the structured exception type.");
+    True(
+        !statuses[0].Contains("sensitive-local-detail", StringComparison.Ordinal),
+        "Final termination status leaked exception details.");
+    return Task.CompletedTask;
+}
+
+static Task TerminateStatusFailureIsIsolated()
+{
+    var stopCount = 0;
+    MvpAgentTerminationCoordinator.Terminate(
+        () =>
+        {
+            stopCount++;
+            throw new TimeoutException("cleanup timeout");
+        },
+        _ => throw new InvalidOperationException("Palette observer failed"));
+
+    Equal(2, stopCount, "Termination attempts before status callback failure");
+    return Task.CompletedTask;
 }
 
 static async Task ExpectStopFailure(Task task)

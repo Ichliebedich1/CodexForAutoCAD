@@ -23,27 +23,31 @@ NETLOAD 证据的能力一律视为未支持。
   `agent-stop-live-observation-20260722.json`，该证据不继承给 P1。
 - P1 `codex/cad-context-v2` 已在隔离 Worktree 完成 CadContextJson v2 的产品 Runtime、
   Palette、Bridge/AgentHost v2 测试接入；v1 固定向量未修改，源码级回归与托管门禁为
-  `235/235`，R20.1 Host 编译和双 Shell v2 API Probe 证据已保留。
+  `259/259`，R20.1 Host 编译和双 Shell v2 API Probe 证据已保留。
 - P1 当前明确支持的协议标识为 `codex.autocad.cad-context/2`，Agent 回合方法为
   `agent.turn.start.v2`；未知/读取失败/超限对象使用受限占位，并通过
   `entityCount`、`parsedEntityCount`、`unsupportedEntityCount`、`complete` 表达完整性。
 - P1 当前已冻结自动化候选，但仍未取得 AutoCAD `NETLOAD`、真实混合选区、Palette v2
   字段显示、真实 v2 对话、DBMOD 不变和插件保存等 live 证据；因此候选可以供用户测试，
   但不能标记为实机通过或正式发布。
-- P1 候选：`artifacts/autocad2016-mvp-context-v2-v032-4d3386d9-751b97c7-7216527a/`；
-  Host SHA-256 `4D3386D9A825B2842290ACB51376FBA6BE6603F49295E606F8C9F3F92B538C08`，
-  AgentHost EXE SHA-256 `751B97C7B17B970D01D625DDD197E1868150AAB5C235812C662AB70B919B0C67`，
-  manifest SHA-256 `7DBA2BEAD1FB2146B8A60A913545CA8EB6BD4BFADE1F037D1161BD2B70F448B1`。
+- P1 候选：`artifacts/autocad2016-mvp-context-v2-v032-0d72edc3-10bea363-af580c30/`；
+  Host SHA-256 `0D72EDC38A30E7BF33AAEE4DCB1D50D341C4C883146677537C4BB5E7551D0AD7`，
+  AgentHost EXE SHA-256 `10BEA363AC80C856FA513F4312B60410DB62BBF4917CE634B589CBA59DA65442`，
+  manifest SHA-256 `A16831703985906F724B8EB93BDB0BC801A5781A3228F0694CB1A20A4AC5960F`。
 - 候选包内 AgentHost 已单独运行 `doctor` 并完成本机 Codex app-server 初始化；脱敏证据见
   `evidence/cad-context-v2-candidate-package-doctor-20260722-refresh.json`。该证据仍不替代
   AutoCAD `NETLOAD` 或真实 v2 对话。
 - P1 候选 AgentHost 已通过真实本机 Codex v2 live 规格：认证 capability 明确包含
   `agent.turn.start.v2` 与 `codex.autocad.cad-context/2`，同一 thread 使用两份合成 Line v2
   上下文完成两轮回答，上下文哈希在接收响应和 assistant 事件中一致回显，停止后残留
-  AgentHost 为 `0`。证据见 `evidence/agenthost-v2-live-two-turns-20260722.json`；该规格没有
+  AgentHost 为 `0`。最新证据见 `evidence/agenthost-v2-live-two-turns-20260722-refresh.json`；该规格没有
   启动 AutoCAD，因此仍不替代 P1 `NETLOAD`、真实选区和 Palette v2 实机证据。
-- 采集器集成后当前线完整 Phase 2 门禁再次通过 `235/235`、Release `0/0`、Host 禁用 API、
-  doctor、秘密扫描和 diff；脱敏汇总见 `evidence/phase2-final-gate-20260722.json`。
+- 采集器集成和退出清理重试回归后当前线完整 Phase 2 门禁通过 `259/259`、Release `0/0`、
+  Host 禁用 API、doctor、秘密扫描和 diff；新候选构建证据为
+  `evidence/cad-context-v2-candidate-build-autocad2016-mvp-context-v2-v032-0d72edc3-10bea363-af580c30.json`。
+- `MvpAgentRuntime.Terminate()` 现在最多执行两次有界清理；首次同步/异步失败或空任务时
+  自动重试，连续失败才报告脱敏错误。退出清理自动化为 `24/24`，证据见
+  `evidence/host2016-terminate-exit-retry-20260722.json`。
 - 本轮已修正 P1 Host 的 Doctor 和 `CODEXCAD` 命令文案，使其显示 v2，不改变 v1 契约或
   历史验证记录。
 - Host 的 v2 能力判定已抽成独立 fail-closed 策略，并增加 `6/6` 回归：只有同时声明
@@ -340,7 +344,7 @@ NETLOAD 证据的能力一律视为未支持。
 完整命令清单后才请求测试；仍不得由 Codex 启动、唤醒、关闭或重启 AutoCAD。当前队列：
 
 1. P0 停止生命周期已通过，不再重复请求 P0 实机测试。
-2. P1 人工测试：NETLOAD 候选 `autocad2016-mvp-context-v2-v032-4d3386d9-751b97c7-7216527a`，
+2. P1 人工测试：NETLOAD 候选 `autocad2016-mvp-context-v2-v032-0d72edc3-10bea363-af580c30`，
    按 `MVP_CONTEXT_V2_RUNTIME_TEST_DRAFT.md` 验证 v2 混合选区、unknown placeholder、
    完整性计数、Palette JSON、v2 Agent 两轮对话、文档切换和 DBMOD 不变。
 3. 之后补测 P1 的 125%/150% DPI、退出生命周期、离线/断线/超时 fail-closed。
@@ -349,7 +353,7 @@ NETLOAD 证据的能力一律视为未支持。
 ## 下一步顺序
 
 1. 核心 Agent MVP、P0 停止生命周期已分别提交：`7f10d60`、`8a4ee57`。
-2. P1 已受控吸收 P0，候选冻结提交 `c174166`；当前线含采集器和门禁证据提交，Phase 2 `235/235`、v2 API Probe 双 Shell 通过。
+2. P1 已受控吸收 P0，当前候选已重新冻结；Phase 2 `259/259`、v2 API Probe 双 Shell 通过。
 3. P1 候选已冻结，但 `NetLoadVerified=false`；等待用户执行 v2 人工测试。
 4. 人工通过后再补齐高 DPI、退出生命周期和离线/断线/超时证据。
 5. 只读 MVP 运行门槛通过后，再进入预览、拒绝、一次允许、锁内重校验和单事务写入。

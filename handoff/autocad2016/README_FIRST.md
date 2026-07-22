@@ -12,13 +12,13 @@
   Unified Runtime、Palette 状态、Bridge/AgentHost 测试路径，包含 19 类强类型对象和受限
   unknown/read-failed/limit placeholder。v1 固定向量和历史证据保持不变。
 - P1 本机门禁当前为：Contracts `71/71`、Host v2 `12/12`、Host v2 capability policy
-  `6/6`、完整 Phase 2 `235/235`、R20.1 net45/x64 Host Release `0` warning / `0` error；
+  `6/6`、完整 Phase 2 `259/259`、R20.1 net45/x64 Host Release `0` warning / `0` error；
   v2 API Probe 在 PowerShell 7/5.1 均通过，编译期检查全部通过，运行时反射探测为 `19` 通过、
   `8` 失败。
 - P1 已增加发送前旧上下文 fail-closed 重校验，但尚无 AutoCAD 实机竞态证据。
-- P1 自动化候选已冻结：`artifacts/autocad2016-mvp-context-v2-v032-4d3386d9-751b97c7-7216527a/`；
-  Host SHA-256 `4D3386D9A825B2842290ACB51376FBA6BE6603F49295E606F8C9F3F92B538C08`，
-  AgentHost EXE SHA-256 `751B97C7B17B970D01D625DDD197E1868150AAB5C235812C662AB70B919B0C67`。
+- P1 自动化候选已冻结：`artifacts/autocad2016-mvp-context-v2-v032-0d72edc3-10bea363-af580c30/`；
+  Host SHA-256 `0D72EDC38A30E7BF33AAEE4DCB1D50D341C4C883146677537C4BB5E7551D0AD7`，
+  AgentHost EXE SHA-256 `10BEA363AC80C856FA513F4312B60410DB62BBF4917CE634B589CBA59DA65442`。
   该候选现在可供用户人工 NETLOAD，但 `NetLoadVerified=false`，不得当作已通过。
 - 该候选的真实 AgentHost/Codex v2 live 规格已通过 `2/2`：认证 capability、
   `agent.turn.start.v2`、同一 thread 两轮合成 v2 上下文、上下文哈希事件绑定和停止后残留
@@ -73,7 +73,7 @@ AutoCAD 2016 工作已完成目标机环境采集、独立诊断宿主建立、�
 | CadContextJson v1 / 公共契约 | 双 PowerShell、net45/net8 门禁通过 | net45/net8 `27/27`；canonical `2225` 字节、SHA-256 `c5a03d...4423`；Phase 2 `157/157`；未构建或 NETLOAD 统一 Host.2016 |
 | 具体 IAgentBridgeClient | 自动化门禁与真实 Codex v2 live 通过 | net45/net8 `22/22`、Bridge `34/34`、历史 Phase 2 `184/184`；当前 AgentHost/Codex v2 两轮 `2/2`、哈希绑定和残留 `0`；仍未连接 P1 AutoCAD Host |
 | P0 AgentHost 停止生命周期 | 已提交并实机通过 | `8a4ee57`；Host `1CC9...478C`、AgentHost `8E6B...4FA2`；用户确认多次启停、DBMOD 不变、残留 `0` |
-| P1 CadContextJson v2 候选 | 自动化冻结，等待 AutoCAD 实机 | Host `4D3386...8C08`；AgentHost `751B97...0C67`；Phase 2 `235/235`；真实 AgentHost/Codex v2 两轮 `2/2`；`NetLoadVerified=false` |
+| P1 CadContextJson v2 候选 | 自动化冻结，等待 AutoCAD 实机 | Host `0D72ED...1D0AD7`；AgentHost `10BEA3...A65442`；Phase 2 `259/259`；真实 AgentHost/Codex v2 两轮 `2/2`；退出重试 `24/24`；`NetLoadVerified=false` |
 | AutoCAD 2016 完整产品支持 | 未成立 | 仍缺 P1 统一 Host 实机、Palette 高 DPI/退出生命周期、AutoCAD Host-Agent-Codex v2 live 链路、审批写入和发布验证 |
 
 不要把以上不同层级的证据合并成一个模糊百分比。历史 v1 AutoCAD happy path 和 P0 停止生命周期已有实机证据；本次新增的是非 AutoCAD 的真实 AgentHost/Codex v2 live。它仍不能替代 P1 统一 Host NETLOAD、真实混合选区、Palette v2 和端到端 AutoCAD v2 对话。
@@ -172,9 +172,14 @@ AutoCAD 2016 / .NET Framework 4.5 / x64
 - `handoff/autocad2016/evidence/environment-collector-location-verification-20260722.json`：当前机器 PS7/PS5.1 环境采集器自测 `24/24`、只读真实采集结果和脱敏边界。
 - `handoff/autocad2016/evidence/cad-context-v2-candidate-package-doctor-20260722.json`：P1 候选包内 AgentHost doctor 成功加载并完成本机 Codex app-server 初始化；不等同于 AutoCAD live 证据。
 - `handoff/autocad2016/evidence/cad-context-v2-candidate-package-doctor-20260722-refresh.json`：新 P1 候选包的 AgentHost doctor 结果；不等同于 AutoCAD live 证据。
+- `handoff/autocad2016/evidence/cad-context-v2-candidate-build-autocad2016-mvp-context-v2-v032-0d72edc3-10bea363-af580c30.json`：最新 P1 候选的 R20.1 双构建、AgentHost 发布、259/259 门禁和哈希身份；明确 `NetLoadVerified=false`、`AutoCadLiveEvidence=false`。
+- `handoff/autocad2016/evidence/host2016-terminate-exit-retry-20260722.json`：AutoCAD 正常退出清理重试的 24/24 自动化证据；不等同于 AutoCAD 退出实机证据。
+- `handoff/autocad2016/evidence/phase2-final-gate-20260722-exit-retry.json`：纳入 Host.2016.Mvp.Specs 后的 9 个规格项目、259/259、Release、禁用 API、doctor、秘密扫描和 diff 门禁汇总。
 - `handoff/autocad2016/evidence/agenthost-v2-live-two-turns-20260722.json`：冻结 P1 候选的
   真实 AgentHost/Codex v2 capability、同一 thread 两轮合成上下文、哈希绑定、assistant
   完成事件和残留 `0` 证据；明确 `autoCadLive=false`。
+- `handoff/autocad2016/evidence/agenthost-v2-live-two-turns-20260722-refresh.json`：最新候选
+  `0d72edc3-10bea363-af580c30` 的真实 AgentHost/Codex v2 两轮 live 证据；明确 `autoCadLive=false`。
 - `handoff/autocad2016/evidence/phase2-final-gate-20260722.json`：采集器集成后当前线重新执行的 Release、235/235 Specs、Host 禁用 API、doctor、秘密扫描和 diff 门禁汇总。
 - `handoff/autocad2016/TEST_REPORT_TEMPLATE.md`：当前实机记录与剩余测试矩阵。
 

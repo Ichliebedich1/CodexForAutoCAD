@@ -24,15 +24,9 @@ namespace Codex.AutoCAD.Host2016
 
         internal static void Terminate()
         {
-            try
-            {
-                StopAsync().GetAwaiter().GetResult();
-            }
-            catch (Exception exception)
-            {
-                UpdateAgentStatusSafely(
-                    "AgentHost 退出清理失败：" + exception.GetType().Name);
-            }
+            MvpAgentTerminationCoordinator.Terminate(
+                () => StopAsync(),
+                UpdateAgentStatusSafely);
         }
 
         internal static Task StartAsync()

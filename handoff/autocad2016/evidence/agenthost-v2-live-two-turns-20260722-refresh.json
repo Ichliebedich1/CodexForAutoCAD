@@ -1,0 +1,23 @@
+{
+  "evidenceType": "agenthost-v2-live-two-turns",
+  "recordedAtUtc": "2026-07-22T02:26:49.6759709Z",
+  "candidateId": "autocad2016-mvp-context-v2-v032-0d72edc3-10bea363-af580c30",
+  "agentHostSha256": "10BEA363AC80C856FA513F4312B60410DB62BBF4917CE634B589CBA59DA65442",
+  "transport": "authenticated-bootstrap-serve-bridge",
+  "codexProtocol": "codex app-server --stdio",
+  "tests": {
+    "capabilityHandshake": "passed",
+    "cadContextSchema": "codex.autocad.cad-context/2",
+    "turnMethod": "agent.turn.start.v2",
+    "sameThreadTwoTurns": "passed",
+    "contextHashEchoBinding": "passed",
+    "assistantEventCompletion": "passed",
+    "agentHostResidualProcess": 0
+  },
+  "autoCadLive": false,
+  "notes": [
+    "使用最新 R20.1 v2 候选和合成 Line v2 上下文进行真实 AgentHost/Codex 两轮验证。",
+    "未启动或操作 AutoCAD；该证据不替代 P1 AutoCAD NETLOAD 实机验收。",
+    "未记录图纸路径、图名、选择哈希、上下文哈希、用户名或凭据。"
+  ]
+}
