@@ -1,6 +1,6 @@
 # AutoCAD 2016 CadContextJson v2 实机测试草案
 
-状态：**P1 候选已自动化冻结，允许用户人工执行；当前仍未取得 live 证据。**
+状态：**P1 候选已自动化冻结；AgentHost -> 本机 Codex 的 v2 live 规格已通过，当前仍未取得 AutoCAD 2016 live 证据。**
 
 本手册对应候选：
 
@@ -70,6 +70,11 @@ DBMOD
 `complete=false`，已支持对象仍被解析；不得回退为 v1，也不得泄露异常堆栈或外部路径。
 
 ### D. v2 Agent 对话
+
+非 CAD 预验证已通过：认证 capability、`agent.turn.start.v2`、同一 thread 两轮合成 v2
+上下文、上下文哈希事件绑定和停止后残留 `0`。对应证据为
+`evidence/agenthost-v2-live-two-turns-20260722.json`。本节仍必须在 AutoCAD 2016 中执行，
+因为只有人工 `NETLOAD` 才能证明 Host.2016 到该链路的实际连接。
 
 ```text
 CODEX16AGENTSTART
