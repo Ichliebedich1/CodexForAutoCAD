@@ -1,14 +1,16 @@
-# M2-A：图纸级只读索引垂直切片
+# M2-A/M2-B：图纸级只读索引与 Codex 按需查询
 
 最后更新：2026-07-22（北京时间）
 
-本文件记录 M2 的第一条可编译、可验证垂直切片。它不是 M2 完成声明，也不把尚未接入
-Codex 的查询命令描述成 Agent 工具。
+本文件记录 M2 的可编译、可验证调用链：M2-A 建立只读图纸索引，M2-B 将同一索引作为
+Codex 的结构化按需查询工具。它不是 M2 完成声明；AutoCAD 2016 实机和 1k/10k/50k
+性能证据仍未取得。
 
 ## 1. 目标和边界
 
-M2-A 解决的问题是：选择上下文仍保留 `CadContextJson v2` 的小快照边界，同时让 Host
-能够在 AutoCAD 进程内以只读、分片方式建立图纸级摘要和可分页实体索引。
+M2-A 保留 `CadContextJson v2` 的小快照边界，同时让 Host 在 AutoCAD 进程内以只读、
+分片方式建立图纸级摘要和可分页实体索引。M2-B 让 Codex 通过现有 AgentRuntime、
+AgentHost 和认证 Bridge 按需查询该索引，不复制扫描器。
 
 明确不做：
 
@@ -16,7 +18,7 @@ M2-A 解决的问题是：选择上下文仍保留 `CadContextJson v2` 的小快
 - 不把整张图纸 JSON 一次发送到 Bridge、AgentHost 或 Codex。
 - 不启用 CAD 写入、插件保存、命令字符串、LISP、脚本或反射式 CAD 调用。
 - 不引入 Provider-neutral 抽象、Direct API Provider 或第二套 Agent Loop。
-- 不把当前 Host 命令当作最终的 Codex 动态工具；该接入属于 M2-B。
+- 不允许模型提供 indexId、documentId 或 documentRevision，也不把 Autodesk 类型跨进程。
 
 ## 2. 当前架构
 
@@ -27,17 +29,24 @@ AutoCAD 2016 R20.1 / net45 / x64
   DrawingIndexRuntime
     -> Idle 小片 + DocumentLock + ForRead Transaction
     -> DrawingIndexDescriptor v1 + CadQueryEntity[]（内存只读快照）
+    -> DrawingIndexAgentSnapshot（纯托管、可失效冻结视图）
   UnifiedPalette
     -> 进度、完整性和最近查询摘要
   CODEX16INDEX / INFO / CANCEL / QUERY / QUERYNEXT
 
+  MvpAgentClient
+    <- 认证反向 cad.drawing.query 请求
+    -> 只查询绑定当前回合的 DrawingIndexAgentSnapshot
+
 AgentHost / codex app-server
-  -> 当前仍只处理既有 v2 对话
-  -> M2-A 尚未暴露 drawing-query 工具
+  CodexAgentRuntime -> cad.query_drawing 动态只读工具
+  AgentHostCadQueryBroker -> 认证反向 Bridge -> Host 冻结快照
 ```
 
-CAD 对象读取、索引累计和查询响应目前都在 Host 的受控生命周期内完成；M2-B 才会把
-深拷贝后的查询请求通过现有认证 Bridge 交给进程外 AgentHost。
+CAD 对象读取和索引累计只在 Host 的受控 AutoCAD 生命周期内完成。Agent 查询使用已脱离
+Autodesk 对象的纯托管冻结快照，Bridge worker 不进入 Autodesk API。模型只提供过滤器、
+页大小和游标；Host 绑定 index/document/revision，系统 request、Provider thread/turn、
+tool call 和 query ID 分离并逐项校验。
 
 ## 3. 冻结契约
 
@@ -78,6 +87,21 @@ CAD 对象读取、索引累计和查询响应目前都在 Host 的受控生命�
 代理、超长字段和读取异常分别用 `unsupported`、`data_limited`、`read_failed` 状态表达，
 不会让整个索引静默伪装成完整。
 
+### Codex 动态查询
+
+AgentRuntime 只在当前 AgentHost Bridge 会话中注册 `cad.query_drawing`。输入支持实体类型、
+图层、空间、块名、对象令牌、文字包含、包围盒、是否包含受限项、页大小和游标；模型侧
+schema 不包含受信索引身份。工具结果继续使用 `codex.autocad.cad-query/1` 的受限摘要。
+
+当没有已发布 CadContext v2 选择快照，但存在 `ready`、`partial` 或 `limited` 的有效
+DrawingIndex 冻结快照时，`CODEX16ASK` 可以继续；两者都不存在时必须拒绝。每个 ASK
+只绑定当时的快照。合法反向查询即使早于 `agent.turn.start.v2` 响应到达，也只能凭精确的
+request/thread 身份临时绑定，随后必须与 Provider turn 再次匹配。
+
+启动失败、STOP、Bridge 断线、回合取消、超时或终态会取消并排空查询，清除 pending 与
+临时 turn。文档修改、撤销、切换、索引替换或显式取消会使旧快照失效，后续查询返回结构化
+拒绝，不能读取旧结果。
+
 ## 4. 资源和线程边界
 
 - 每个准备片最多处理 4,096 个 ObjectId 或 12 ms。
@@ -86,6 +110,8 @@ CAD 对象读取、索引累计和查询响应目前都在 Host 的受控生命�
 - 累计实体估算内存预算为 64 MiB；超限返回 `limited`，不抛出未处理异常。
 - AutoCAD 对象只在合法文档线程、`DocumentLock` 和 `ForRead` transaction 中访问。
 - 统计和查询使用脱离 AutoCAD 对象的强类型副本；不保留 Entity 引用到后台线程。
+- 索引完成时将已冻结实体数组所有权转移给 Agent 快照，避免 50k 场景的第二次数组深拷贝；
+  外部调用构造快照时仍执行深拷贝。
 - 对象事件、文档激活、关闭、撤销和 DBMOD 变化会使正在构建或已发布索引收敛到
   `stale`，旧游标不可继续使用。
 
@@ -102,8 +128,8 @@ CODEX16QUERY       查询首个分页（All/Type/Layer/Space/Block/Text/Object�
 CODEX16QUERYNEXT   继续最近一次查询的游标页
 ```
 
-这些命令只用于 M2-A 人工验收和故障排查。UI 不解析原始 Codex JSON，且 M2-A 不会把查询
-结果自动发送给 Agent。
+这些命令用于人工验收和故障排查。UI 不解析原始 Codex JSON，索引也不会整包自动发送给
+Agent；Codex 只在 ASK 回合中通过 `cad.query_drawing` 按需取得分页结果。
 
 ## 6. 代码和测试入口
 
@@ -111,6 +137,12 @@ CODEX16QUERYNEXT   继续最近一次查询的游标页
 - `src/Codex.AutoCAD.Host.2016/DrawingIndexCore.cs`：累计、状态策略、过滤、游标和查询引擎。
 - `src/Codex.AutoCAD.Host.2016/DrawingIndexEntityReader.cs`：R20.1 只读摘要和受限占位。
 - `src/Codex.AutoCAD.Host.2016/DrawingIndexRuntime.cs`：Idle 分片、文档事件和 Host 生命周期。
+- `src/Codex.AutoCAD.Host.2016/DrawingIndexAgentSnapshot.cs`：纯托管冻结快照和失效检查。
+- `src/Codex.AutoCAD.Host.2016/MvpAgentClient.cs`：回合身份绑定与 Host 反向查询处理。
+- `src/Codex.AutoCAD.Contracts/AgentBridgeContracts.cs`：反向查询请求/响应和稳定错误码。
+- `src/Codex.AutoCAD.Bridge.Client/AgentBridgeClient.cs`：双向请求、取消、STOP 和关闭排空。
+- `src/Codex.AutoCAD.AgentHost/AgentHostCadQueryBroker.cs`：AgentHost 认证反向查询 broker。
+- `src/Codex.AutoCAD.AgentRuntime/CadDynamicTools.cs`：`cad.query_drawing` schema 和参数验证。
 - `tests/Codex.AutoCAD.Contracts.Specs/DrawingIndexContractsSpecs.cs`：契约、50k 合成数据、
   分页、失效、预算和重复令牌测试。
 - `scripts/verify-autocad2016-drawing-index-candidate.ps1`：锁文件恢复、R20.1 构建、
@@ -121,30 +153,35 @@ CODEX16QUERYNEXT   继续最近一次查询的游标页
 
 候选目录：
 
-`C:\\tmp\\CodexForAutoCAD-m2-drawing-index\\artifacts\\autocad2016-m2-drawing-index-v040-2cfbadd8-4028850a-8af00fa8`
+`C:\\tmp\\CodexForAutoCAD-m2-drawing-index\\artifacts\\autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd`
 
 | 项目 | 值 |
 | --- | --- |
 | Host 版本 | `0.4.0.0` |
-| Host SHA-256 | `2CFBADD8FF57F6DAAA4727F1B6DE871D509B92E47A680ECCA669A024CBA786A5` |
-| AgentHost EXE SHA-256 | `4028850AD9B9EECB8812B07CF3C401AE5287744D839AE66C57AD193C1DB3CE0C` |
-| manifest SHA-256 | `3CF194EB69B8C33E8D6B3C7B7D33838D6CB847036819CAC074D9DB7E1AFEF20A` |
-| Contracts net8/net45 | `83/83` |
-| 完整 Phase 2 | `287/287` |
+| Host SHA-256 | `597A7A3DC047B7A8188C0E4C7768032A5D8DA428AE210AE615713B8497AB0637` |
+| AgentHost EXE SHA-256 | `432E7CF97D9E968D96C83FDE4FDD3C40961326E90CCD16D90BC3E34F21C968F6` |
+| manifest SHA-256 | `7E6116AF0F2D6BDBEB64DB6D009705E21358CB55609E36697EC179D17B690C18` |
+| Contracts net8/net45 | `84/84` |
+| Bridge Client net8/net45 | `29/29` |
+| Bridge/AgentHost | `39/39` |
+| AgentRuntime | `33/33` |
+| Host MVP | `52/52` |
+| 完整 Phase 2 | `307/307` |
 | R20.1 Release x64 | 通过 |
 | Host A/B | 逐字节一致 |
 | AutoCAD live / NETLOAD | 未验证 |
 
 证据：
 
-`handoff/autocad2016/evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-2cfbadd8-4028850a-8af00fa8.json`
+`handoff/autocad2016/evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd.json`
 
-## 8. M2-A 之后
+## 8. M2 剩余完成条件
 
-M2-A 通过自动化门禁并形成独立提交后，下一步是 M2-B：在现有认证 Bridge/AgentHost 上增加
-结构化只读 `drawing.query` 请求、响应和 Codex 工具适配。它必须复用本契约和同一索引，
-不复制第二套扫描器，不把 Agent 直接绑定 AutoCAD 类型，也不允许模型绕过查询分页和
-完整性状态。
+M2-A 和 M2-B 已进入同一真实调用链并通过自动化门禁。下一步不是继续扩展协议，而是由用户
+在精确候选上完成 AutoCAD 2016 实机：五种索引范围、本地分页、仅索引无选择集 ASK、
+`cad.query_drawing` 多页查询、修改/撤销/切图 stale、查询/回合取消、退出清理，以及
+1k/10k/50k 响应性和性能记录。
 
 M2 总完成条件仍是：1k/10k/50k 脱敏图纸可扫描和查询，AutoCAD 可操作、DBMOD 不被读取
-改变，未知对象只降低完整性，超预算明确返回 `partial/limited`。
+改变，未知对象只降低完整性，超预算明确返回 `partial/limited`，且 Codex 能在不接收整图
+JSON 的前提下按需查询并在索引失效后 fail-closed。

@@ -26,6 +26,8 @@ namespace Codex.AutoCAD.Host2016
         private static DrawingIndexBuildSession activeSession;
         private static CadQueryRequest lastQueryRequest;
         private static CadQueryResponse lastQueryResponse;
+        private static DrawingIndexAgentSnapshot publishedAgentSnapshot;
+        private static DrawingIndexSnapshotValidity publishedAgentSnapshotValidity;
         private static Database observedDatabase;
         private static bool initialized;
         private static bool idleAttached;
@@ -63,6 +65,7 @@ namespace Codex.AutoCAD.Host2016
             {
                 session.Dispose();
             }
+            InvalidatePublishedAgentSnapshot();
             publishedEntities = EmptyEntities;
             lastQueryRequest = null;
             lastQueryResponse = null;
@@ -93,6 +96,7 @@ namespace Codex.AutoCAD.Host2016
 
             var metadata = UnifiedReadOnlyContextRuntime.CaptureDocumentMetadata(document);
             DiscardActiveSession();
+            InvalidatePublishedAgentSnapshot();
             generation++;
             var startedAt = DateTimeOffset.UtcNow;
             descriptor = new DrawingIndexDescriptor
@@ -150,6 +154,23 @@ namespace Codex.AutoCAD.Host2016
             Initialize();
             EnsureCurrentRevision();
             return CloneDescriptor(descriptor);
+        }
+
+        /// <summary>
+        /// Must be called on the AutoCAD document thread. The returned object is already a deep,
+        /// pure-managed snapshot and is safe for authenticated Bridge worker threads to query.
+        /// </summary>
+        internal static bool TryFreezeAgentSnapshot(out DrawingIndexAgentSnapshot snapshot)
+        {
+            Initialize();
+            EnsureCurrentRevision();
+            snapshot = publishedAgentSnapshot;
+            if (snapshot == null || !snapshot.IsCurrent)
+            {
+                snapshot = null;
+                return false;
+            }
+            return true;
         }
 
         internal static CadQueryResponse QueryFirst(CadQueryFilter filter, int pageSize)
@@ -837,6 +858,7 @@ namespace Codex.AutoCAD.Host2016
             activeSession = null;
             DetachIdle();
             session.Dispose();
+            InvalidatePublishedAgentSnapshot();
             descriptor.Status = status;
             descriptor.Complete = complete;
             descriptor.Limited = limited;
@@ -874,6 +896,34 @@ namespace Codex.AutoCAD.Host2016
                 lastQueryRequest = null;
                 lastQueryResponse = null;
                 DetachDatabaseEvents();
+            }
+            else if (descriptor.Status == DrawingIndexStatuses.Ready
+                     || descriptor.Status == DrawingIndexStatuses.Partial
+                     || descriptor.Status == DrawingIndexStatuses.Limited)
+            {
+                var validity = new DrawingIndexSnapshotValidity();
+                try
+                {
+                    publishedAgentSnapshot =
+                        DrawingIndexAgentSnapshot.CreateFromOwnedFrozenEntities(
+                        generation,
+                        descriptor,
+                        publishedEntities,
+                        validity);
+                    publishedAgentSnapshotValidity = validity;
+                }
+                catch (DrawingIndexQueryException)
+                {
+                    validity.Invalidate();
+                    descriptor.Status = DrawingIndexStatuses.Failed;
+                    descriptor.Complete = false;
+                    descriptor.Limited = false;
+                    descriptor.LimitReason = "agent_snapshot_invalid";
+                    publishedEntities = EmptyEntities;
+                    lastQueryRequest = null;
+                    lastQueryResponse = null;
+                    DetachDatabaseEvents();
+                }
             }
             NotifyPalette();
         }
@@ -952,6 +1002,7 @@ namespace Codex.AutoCAD.Host2016
             descriptor.Limited = false;
             descriptor.CompletedAtUtc = FormatTimestamp(DateTimeOffset.UtcNow);
             descriptor.LimitReason = reason ?? "stale";
+            InvalidatePublishedAgentSnapshot();
             publishedEntities = EmptyEntities;
             lastQueryRequest = null;
             lastQueryResponse = null;
@@ -968,6 +1019,17 @@ namespace Codex.AutoCAD.Host2016
             if (session != null)
             {
                 session.Dispose();
+            }
+        }
+
+        private static void InvalidatePublishedAgentSnapshot()
+        {
+            var validity = publishedAgentSnapshotValidity;
+            publishedAgentSnapshotValidity = null;
+            publishedAgentSnapshot = null;
+            if (validity != null)
+            {
+                validity.Invalidate();
             }
         }
 

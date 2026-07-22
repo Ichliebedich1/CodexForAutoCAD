@@ -2,6 +2,7 @@ using Codex.AutoCAD.Contracts;
 using Codex.AutoCAD.Bridge.Client;
 using Codex.AutoCAD.AgentLauncher;
 using Codex.AutoCAD.Host2016;
+using System.Reflection;
 
 var specs = new[]
 {
@@ -29,6 +30,54 @@ var specs = new[]
         "HOST2016_V2_CAPABILITIES_REJECT_EMPTY_SCHEMA_LIST",
         "empty schema list is rejected",
         V2CapabilitiesRejectEmptySchemaList),
+    new SpecCase(
+        "HOST2016_DRAWING_QUERY_CAPABILITIES_ACCEPT",
+        "drawing query capability is accepted only when explicitly advertised",
+        DrawingQueryCapabilitiesAccept),
+    new SpecCase(
+        "HOST2016_DRAWING_QUERY_CAPABILITIES_REJECT_MISSING",
+        "missing drawing query capability is rejected",
+        DrawingQueryCapabilitiesRejectMissing),
+    new SpecCase(
+        "HOST2016_DRAWING_SNAPSHOT_IS_DEEP_MANAGED",
+        "the Agent drawing snapshot is detached from mutable source contracts",
+        DrawingSnapshotIsDeepManaged),
+    new SpecCase(
+        "HOST2016_DRAWING_SNAPSHOT_TAKES_FROZEN_OWNERSHIP",
+        "runtime publication reuses the already frozen private entity array",
+        DrawingSnapshotTakesFrozenOwnership),
+    new SpecCase(
+        "HOST2016_DRAWING_SNAPSHOT_CANCEL_AND_STALE",
+        "snapshot queries honor cancellation and reject invalidated generations",
+        DrawingSnapshotCancelAndStale),
+    new SpecCase(
+        "HOST2016_DRAWING_INDEX_ONLY_TURN_AND_QUERY",
+        "a valid DrawingIndex can start a context-free turn and serve a bound query",
+        DrawingIndexOnlyTurnAndQuery),
+    new SpecCase(
+        "HOST2016_DRAWING_QUERY_BEFORE_START_RESPONSE",
+        "an exact early reverse query binds the Provider turn before start returns",
+        DrawingQueryBeforeStartResponse),
+    new SpecCase(
+        "HOST2016_DRAWING_QUERY_IDENTITY_MISMATCH",
+        "request, thread, turn and snapshot identities cannot be mixed",
+        DrawingQueryIdentityMismatch),
+    new SpecCase(
+        "HOST2016_DRAWING_QUERY_REJECTS_STALE_INDEX",
+        "an invalidated DrawingIndex cannot serve an active turn",
+        DrawingQueryRejectsStaleIndex),
+    new SpecCase(
+        "HOST2016_DRAWING_QUERY_REJECTS_TERMINAL_TURN",
+        "a completed turn rejects late drawing queries",
+        DrawingQueryRejectsTerminalTurn),
+    new SpecCase(
+        "HOST2016_SELECTION_AND_INDEX_DOCUMENT_MUST_MATCH",
+        "selection context and DrawingIndex from different drawings fail closed",
+        SelectionAndIndexDocumentMustMatch),
+    new SpecCase(
+        "HOST2016_DRAWING_QUERY_BOUNDARY_HAS_NO_AUTODESK_REFERENCE",
+        "the tested drawing query worker boundary has no Autodesk assembly dependency",
+        DrawingQueryBoundaryHasNoAutodeskReference),
     new SpecCase(
         "HOST2016_STOP_STARTS_BOTH_CLEANUPS",
         "Bridge and AgentHost cleanup begin before either side is awaited",
@@ -237,13 +286,391 @@ static Task V2CapabilitiesRejectEmptySchemaList()
     return Task.CompletedTask;
 }
 
-static AgentCapabilitiesResponse CreateCapabilities(bool includeV2Method, bool includeV2Schema)
+static Task DrawingQueryCapabilitiesAccept()
 {
+    True(
+        MvpAgentCapabilityPolicy.SupportsDrawingQuery(
+            CreateCapabilities(true, true, true)),
+        "drawing query capability should be accepted.");
+    return Task.CompletedTask;
+}
+
+static Task DrawingQueryCapabilitiesRejectMissing()
+{
+    True(
+        !MvpAgentCapabilityPolicy.SupportsDrawingQuery(
+            CreateCapabilities(true, true, false)),
+        "missing drawing query capability should be rejected.");
+    True(
+        !MvpAgentCapabilityPolicy.SupportsDrawingQuery(null),
+        "null drawing query capabilities should be rejected.");
+    return Task.CompletedTask;
+}
+
+static Task DrawingSnapshotIsDeepManaged()
+{
+    var descriptor = CreateReadyDrawingDescriptor("deep-managed-document");
+    var entity = CreateDrawingEntity("object-deep-managed", "Layer-A");
+    var validity = new DrawingIndexSnapshotValidity();
+    var snapshot = new DrawingIndexAgentSnapshot(
+        7,
+        descriptor,
+        new[] { entity },
+        validity);
+
+    descriptor.DocumentId = "mutated-document";
+    descriptor.IndexId = "mutated-index";
+    entity.Layer = "Mutated-Layer";
+    entity.EntityType = "circle";
+
+    var request = CreateDrawingQueryRequest(
+        "request-deep-managed",
+        "thread-deep-managed",
+        "turn-deep-managed",
+        "query-deep-managed");
+    var response = snapshot.Query(request, CancellationToken.None);
+    True(snapshot.Generation == 7, "snapshot generation changed.");
+    True(
+        string.Equals(response.DocumentId, "deep-managed-document", StringComparison.Ordinal),
+        "snapshot document identity was mutated through its source descriptor.");
+    True(
+        string.Equals(response.Entities[0].Layer, "Layer-A", StringComparison.Ordinal),
+        "snapshot entity was mutated through its source contract.");
+    True(
+        string.Equals(response.Entities[0].EntityType, "line", StringComparison.Ordinal),
+        "snapshot entity type was mutated through its source contract.");
+    return Task.CompletedTask;
+}
+
+static Task DrawingSnapshotTakesFrozenOwnership()
+{
+    var descriptor = CreateReadyDrawingDescriptor("owned-frozen-document");
+    var frozenEntities = new[] { CreateDrawingEntity("object-owned-frozen", "Layer-A") };
+    var snapshot = DrawingIndexAgentSnapshot.CreateFromOwnedFrozenEntities(
+        19,
+        descriptor,
+        frozenEntities,
+        new DrawingIndexSnapshotValidity());
+    var entitiesField = typeof(DrawingIndexAgentSnapshot).GetField(
+        "entities",
+        BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new InvalidOperationException("snapshot entity storage field was not found.");
+
+    True(
+        ReferenceEquals(frozenEntities, entitiesField.GetValue(snapshot)),
+        "runtime publication cloned the already frozen entity array.");
+    return Task.CompletedTask;
+}
+
+static Task DrawingSnapshotCancelAndStale()
+{
+    DrawingIndexSnapshotValidity validity;
+    var snapshot = CreateDrawingSnapshot("cancel-stale-document", 8, out validity);
+    var request = CreateDrawingQueryRequest(
+        "request-cancel-stale",
+        "thread-cancel-stale",
+        "turn-cancel-stale",
+        "query-cancel-stale");
+
+    var cancellationObserved = false;
+    try
+    {
+        snapshot.Query(request, new CancellationToken(true));
+    }
+    catch (OperationCanceledException)
+    {
+        cancellationObserved = true;
+    }
+    True(cancellationObserved, "snapshot query ignored cancellation.");
+
+    validity.Invalidate();
+    DrawingIndexQueryException? stale = null;
+    try
+    {
+        snapshot.Query(request, CancellationToken.None);
+    }
+    catch (DrawingIndexQueryException exception)
+    {
+        stale = exception;
+    }
+    True(
+        stale != null
+        && string.Equals(stale.Code, "drawing_index_stale", StringComparison.Ordinal),
+        "invalidated snapshot did not return the stable stale code.");
+    return Task.CompletedTask;
+}
+
+static async Task DrawingIndexOnlyTurnAndQuery()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-index-only",
+        "system-session-index-only");
+    DrawingIndexSnapshotValidity validity;
+    var snapshot = CreateDrawingSnapshot("document-index-only", 9, out validity);
+
+    await client.AskAsync(
+            "summarize the indexed drawing",
+            null,
+            null,
+            snapshot,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var turnRequest = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("index-only turn request was not captured.");
+    True(turnRequest.ContextV2 == null, "index-only turn unexpectedly sent selection context.");
+    True(
+        string.IsNullOrEmpty(turnRequest.ContextV2Sha256),
+        "index-only turn unexpectedly sent a selection context hash.");
+
+    var queryRequest = CreateDrawingQueryRequest(
+        turnRequest.ClientTurnId,
+        turnRequest.ThreadId,
+        "fake-turn-1",
+        "query-index-only");
+    var response = await client.HandleDrawingQueryAsync(
+            queryRequest,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    True(
+        AgentBridgeContractValidator.ValidateDrawingQueryResponse(
+            queryRequest,
+            response).Length == 0,
+        "index-only query response violated the Bridge contract.");
+    True(
+        string.Equals(
+            response.Query.DocumentId,
+            "document-index-only",
+            StringComparison.Ordinal),
+        "index-only query was not bound to the Host-owned document.");
+    Equal(1, response.Query.ReturnedCount, "Index-only returned entity count");
+}
+
+static async Task DrawingQueryBeforeStartResponse()
+{
+    var bridge = new FakeAgentBridgeClient
+    {
+        DelayStartTurnResponse = true,
+    };
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-query-before-start-response",
+        "system-session-query-before-start-response");
+    DrawingIndexSnapshotValidity validity;
+    var snapshot = CreateDrawingSnapshot("document-query-before-start-response", 18, out validity);
+
+    var askTask = client.AskAsync(
+        "query before Provider start response",
+        null,
+        null,
+        snapshot,
+        CancellationToken.None);
+    var turnRequest = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("early query turn request was not captured.");
+    var pendingResponse = bridge.PendingStartTurnResponse
+        ?? throw new InvalidOperationException("early query Provider response was not delayed.");
+    var queryRequest = CreateDrawingQueryRequest(
+        turnRequest.ClientTurnId,
+        turnRequest.ThreadId,
+        pendingResponse.TurnId,
+        "query-before-start-response");
+
+    var response = await client.HandleDrawingQueryAsync(
+            queryRequest,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    True(
+        AgentBridgeContractValidator.ValidateDrawingQueryResponse(
+            queryRequest,
+            response).Length == 0,
+        "early drawing query response violated the Bridge contract.");
+    bridge.CompletePendingStartTurn();
+    await askTask.ConfigureAwait(false);
+}
+
+static async Task DrawingQueryIdentityMismatch()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-query-identity",
+        "system-session-query-identity");
+    DrawingIndexSnapshotValidity validity;
+    var snapshot = CreateDrawingSnapshot("document-query-identity", 10, out validity);
+    await client.AskAsync(
+            "query identity",
+            null,
+            null,
+            snapshot,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var turnRequest = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("query identity turn request was not captured.");
+    var mismatched = CreateDrawingQueryRequest(
+        "different-request-id",
+        turnRequest.ThreadId,
+        "fake-turn-1",
+        "query-identity-mismatch");
+
+    var failure = await InvokeAndExpectBridgeClientFailure(
+            () => client.HandleDrawingQueryAsync(mismatched, CancellationToken.None))
+        .ConfigureAwait(false);
+    True(
+        string.Equals(
+            failure.Code,
+            AgentBridgeErrorCodes.ResultIdentityMismatch,
+            StringComparison.Ordinal),
+        "drawing query identity mismatch returned the wrong stable code.");
+}
+
+static async Task DrawingQueryRejectsStaleIndex()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-query-stale",
+        "system-session-query-stale");
+    DrawingIndexSnapshotValidity validity;
+    var snapshot = CreateDrawingSnapshot("document-query-stale", 11, out validity);
+    await client.AskAsync(
+            "stale index",
+            null,
+            null,
+            snapshot,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var turnRequest = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("stale query turn request was not captured.");
+    validity.Invalidate();
+    var queryRequest = CreateDrawingQueryRequest(
+        turnRequest.ClientTurnId,
+        turnRequest.ThreadId,
+        "fake-turn-1",
+        "query-stale-index");
+
+    var failure = await InvokeAndExpectBridgeClientFailure(
+            () => client.HandleDrawingQueryAsync(queryRequest, CancellationToken.None))
+        .ConfigureAwait(false);
+    True(
+        string.Equals(
+            failure.Code,
+            AgentBridgeErrorCodes.DrawingQueryUnavailable,
+            StringComparison.Ordinal),
+        "stale DrawingIndex returned the wrong stable code.");
+}
+
+static async Task DrawingQueryRejectsTerminalTurn()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-query-terminal",
+        "system-session-query-terminal");
+    DrawingIndexSnapshotValidity validity;
+    var snapshot = CreateDrawingSnapshot("document-query-terminal", 12, out validity);
+    await client.AskAsync(
+            "terminal query",
+            null,
+            null,
+            snapshot,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var turnRequest = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("terminal query turn request was not captured.");
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.TurnCompleted,
+        ThreadId = turnRequest.ThreadId,
+        TurnId = "fake-turn-1",
+    });
+    var queryRequest = CreateDrawingQueryRequest(
+        turnRequest.ClientTurnId,
+        turnRequest.ThreadId,
+        "fake-turn-1",
+        "query-terminal-turn");
+
+    var failure = await InvokeAndExpectBridgeClientFailure(
+            () => client.HandleDrawingQueryAsync(queryRequest, CancellationToken.None))
+        .ConfigureAwait(false);
+    True(
+        string.Equals(
+            failure.Code,
+            AgentBridgeErrorCodes.ResultIdentityMismatch,
+            StringComparison.Ordinal),
+        "late terminal query returned the wrong stable code.");
+}
+
+static async Task SelectionAndIndexDocumentMustMatch()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-document-mismatch",
+        "system-session-document-mismatch");
+    DrawingIndexSnapshotValidity validity;
+    var snapshot = CreateDrawingSnapshot("index-document", 13, out validity);
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2
+        {
+            Document = new CadContextDocumentV2 { DocumentId = "selection-document" },
+        },
+        ContextSha256 = new string('e', 64),
+    };
+
+    var rejected = false;
+    try
+    {
+        await client.AskAsync(
+                "mismatched drawing inputs",
+                context,
+                () => true,
+                snapshot,
+                CancellationToken.None)
+            .ConfigureAwait(false);
+    }
+    catch (InvalidOperationException)
+    {
+        rejected = true;
+    }
+    True(rejected, "selection context and index from different drawings were mixed.");
+    Equal(0, bridge.StartTurnV2Count, "Mismatched document turn start count");
+}
+
+static Task DrawingQueryBoundaryHasNoAutodeskReference()
+{
+    var references = typeof(DrawingIndexAgentSnapshot).Assembly.GetReferencedAssemblies();
+    True(
+        !references.Any(reference =>
+            string.Equals(reference.Name, "acmgd", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(reference.Name, "acdbmgd", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(reference.Name, "accoremgd", StringComparison.OrdinalIgnoreCase)
+            || (reference.Name ?? string.Empty).StartsWith(
+                "Autodesk.",
+                StringComparison.OrdinalIgnoreCase)),
+        "drawing query boundary acquired an Autodesk assembly dependency.");
+    return Task.CompletedTask;
+}
+
+static AgentCapabilitiesResponse CreateCapabilities(
+    bool includeV2Method,
+    bool includeV2Schema,
+    bool includeDrawingQuery = false)
+{
+    var methods = new List<string> { AgentBridgeMethods.StartTurn };
+    if (includeV2Method)
+    {
+        methods.Add(AgentBridgeMethods.StartTurnV2);
+    }
+    if (includeDrawingQuery)
+    {
+        methods.Add(AgentBridgeMethods.QueryDrawing);
+    }
     return new AgentCapabilitiesResponse
     {
-        Methods = includeV2Method
-            ? new[] { AgentBridgeMethods.StartTurn, AgentBridgeMethods.StartTurnV2 }
-            : new[] { AgentBridgeMethods.StartTurn },
+        Methods = methods.ToArray(),
         SupportedCadContextSchemas = includeV2Schema
             ? new[]
             {
@@ -261,6 +688,78 @@ static AgentCapabilitiesResponse CreateCapabilities(bool includeV2Method, bool i
                     SchemaVersion = CadContextJsonV1Constants.SchemaVersion,
                 },
             },
+    };
+}
+
+static DrawingIndexAgentSnapshot CreateDrawingSnapshot(
+    string documentId,
+    int generation,
+    out DrawingIndexSnapshotValidity validity)
+{
+    validity = new DrawingIndexSnapshotValidity();
+    return new DrawingIndexAgentSnapshot(
+        generation,
+        CreateReadyDrawingDescriptor(documentId),
+        new[] { CreateDrawingEntity("object-" + generation, "Layer-A") },
+        validity);
+}
+
+static DrawingIndexDescriptor CreateReadyDrawingDescriptor(string documentId)
+{
+    return new DrawingIndexDescriptor
+    {
+        IndexId = "index-" + documentId,
+        DocumentId = documentId,
+        DrawingFingerprint = new string('a', 64),
+        DocumentRevision = 17,
+        Scope = DrawingIndexScopes.Drawing,
+        Status = DrawingIndexStatuses.Ready,
+        Complete = true,
+        Limited = false,
+        EntityCount = 1,
+        IndexedEntityCount = 1,
+        UnsupportedEntityCount = 0,
+        FailedEntityCount = 0,
+        ProgressPercent = 100,
+        EstimatedManagedBytes = 512,
+        StartedAtUtc = "2026-07-22T00:00:00.000Z",
+        CompletedAtUtc = "2026-07-22T00:00:01.000Z",
+        LimitReason = string.Empty,
+    };
+}
+
+static CadQueryEntity CreateDrawingEntity(string objectId, string layer)
+{
+    return new CadQueryEntity
+    {
+        ObjectId = objectId,
+        EntityType = "line",
+        ActualType = "Line",
+        Layer = layer,
+        Space = "model_space",
+        BlockName = string.Empty,
+        TextExcerpt = string.Empty,
+        Unsupported = false,
+        ReadStatus = CadQueryReadStatuses.Parsed,
+    };
+}
+
+static AgentDrawingQueryRequest CreateDrawingQueryRequest(
+    string requestId,
+    string threadId,
+    string turnId,
+    string queryId)
+{
+    return new AgentDrawingQueryRequest
+    {
+        RequestId = requestId,
+        ThreadId = threadId,
+        TurnId = turnId,
+        ToolCallId = "tool-" + queryId,
+        QueryId = queryId,
+        Filter = new CadQueryFilter(),
+        PageSize = 20,
+        Cursor = string.Empty,
     };
 }
 
@@ -1718,6 +2217,21 @@ static async Task<AgentBridgeClientException> ExpectBridgeClientFailure(Task tas
     try
     {
         await task.ConfigureAwait(false);
+    }
+    catch (AgentBridgeClientException exception)
+    {
+        return exception;
+    }
+
+    throw new InvalidOperationException("Expected Agent Bridge failure was not observed.");
+}
+
+static async Task<AgentBridgeClientException> InvokeAndExpectBridgeClientFailure(
+    Func<Task> action)
+{
+    try
+    {
+        await action().ConfigureAwait(false);
     }
     catch (AgentBridgeClientException exception)
     {

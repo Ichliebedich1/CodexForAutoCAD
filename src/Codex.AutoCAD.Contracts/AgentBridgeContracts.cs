@@ -16,6 +16,7 @@ public static class AgentBridgeMethods
     public const string InterruptTurn = "agent.turn.interrupt";
     public const string ResolveApproval = "agent.approval.resolve";
     public const string ProposeLine = "cad.line.propose";
+    public const string QueryDrawing = "cad.drawing.query";
     public const string EventNotification = "agent.event";
 }
 
@@ -68,10 +69,12 @@ public static class AgentBridgeErrorCodes
     public const string ConnectionLost = "connection_lost";
     public const string Timeout = "timeout";
     public const string Busy = "busy";
+    public const string RequestCancelled = "request_cancelled";
     public const string TurnNotFound = "turn_not_found";
     public const string ApprovalInvalid = "approval_invalid";
     public const string ApprovalExpired = "approval_expired";
     public const string ApprovalAlreadyConsumed = "approval_already_consumed";
+    public const string DrawingQueryUnavailable = "drawing_query_unavailable";
     public const string ResultIdentityMismatch = "result_identity_mismatch";
     public const string InternalError = "internal_error";
 }
@@ -339,6 +342,52 @@ public sealed class CadLineProposalResponse
     public string CreatedHandle { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// AgentHost发往受信AutoCAD Host的只读整图查询。索引、文档和修订身份由Host绑定，
+/// 因此不能出现在这个请求中。
+/// </summary>
+public sealed class AgentDrawingQueryRequest
+{
+    public int ContractVersion { get; set; } = AgentBridgeContractConstants.CurrentVersion;
+
+    public string RequestId { get; set; } = string.Empty;
+
+    public string ThreadId { get; set; } = string.Empty;
+
+    public string TurnId { get; set; } = string.Empty;
+
+    public string ToolCallId { get; set; } = string.Empty;
+
+    public string QueryId { get; set; } = string.Empty;
+
+    public CadQueryFilter Filter { get; set; } = new();
+
+    public int PageSize { get; set; } = DrawingIndexContractConstants.DefaultPageSize;
+
+    public string Cursor { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 受信AutoCAD Host返回的只读整图查询结果。外层身份必须逐项回显，内层CadQueryResponse
+/// 则携带Host拥有的索引、文档和修订绑定。
+/// </summary>
+public sealed class AgentDrawingQueryResponse
+{
+    public int ContractVersion { get; set; } = AgentBridgeContractConstants.CurrentVersion;
+
+    public string RequestId { get; set; } = string.Empty;
+
+    public string ThreadId { get; set; } = string.Empty;
+
+    public string TurnId { get; set; } = string.Empty;
+
+    public string ToolCallId { get; set; } = string.Empty;
+
+    public string QueryId { get; set; } = string.Empty;
+
+    public CadQueryResponse Query { get; set; } = new();
+}
+
 public static class AgentBridgeContractValidator
 {
     private const int MaximumIdentifierLength = 256;
@@ -356,6 +405,7 @@ public static class AgentBridgeContractValidator
         AgentBridgeMethods.InterruptTurn,
         AgentBridgeMethods.ResolveApproval,
         AgentBridgeMethods.ProposeLine,
+        AgentBridgeMethods.QueryDrawing,
         AgentBridgeMethods.EventNotification,
     ];
 
@@ -408,10 +458,12 @@ public static class AgentBridgeContractValidator
         AgentBridgeErrorCodes.ConnectionLost,
         AgentBridgeErrorCodes.Timeout,
         AgentBridgeErrorCodes.Busy,
+        AgentBridgeErrorCodes.RequestCancelled,
         AgentBridgeErrorCodes.TurnNotFound,
         AgentBridgeErrorCodes.ApprovalInvalid,
         AgentBridgeErrorCodes.ApprovalExpired,
         AgentBridgeErrorCodes.ApprovalAlreadyConsumed,
+        AgentBridgeErrorCodes.DrawingQueryUnavailable,
         AgentBridgeErrorCodes.ResultIdentityMismatch,
         AgentBridgeErrorCodes.InternalError,
     ];
@@ -817,6 +869,84 @@ public static class AgentBridgeContractValidator
                 && request.Layer.Length <= 255
                 && request.Layer.All(static character => !char.IsControl(character)),
             failures, "layer_invalid", "$.layer", "图层提示无效。");
+        return failures.ToArray();
+    }
+
+    public static CadValidationFailure[] Validate(AgentDrawingQueryRequest? request)
+    {
+        var failures = new List<CadValidationFailure>();
+        if (request is null)
+        {
+            return [new CadValidationFailure(
+                "drawing_query_request_required", "$", "反向整图查询请求不能为空。")];
+        }
+
+        ValidateContractVersion(request.ContractVersion, "$.contractVersion", failures);
+        RequireIdentifier(request.RequestId, "request_id", "$.requestId", failures);
+        RequireIdentifier(request.ThreadId, "thread_id", "$.threadId", failures);
+        RequireIdentifier(request.TurnId, "turn_id", "$.turnId", failures);
+        RequireIdentifier(request.ToolCallId, "tool_call_id", "$.toolCallId", failures);
+        RequireIdentifier(request.QueryId, "drawing_query_id", "$.queryId", failures);
+
+        failures.AddRange(DrawingIndexContractValidator.Validate(new CadQueryRequest
+        {
+            IndexId = "host-owned-index",
+            DocumentId = "host-owned-document",
+            DocumentRevision = 0,
+            QueryId = request.QueryId,
+            Filter = request.Filter,
+            PageSize = request.PageSize,
+            Cursor = request.Cursor,
+        }));
+        return failures.ToArray();
+    }
+
+    public static CadValidationFailure[] ValidateDrawingQueryResponse(
+        AgentDrawingQueryRequest? request,
+        AgentDrawingQueryResponse? response)
+    {
+        var failures = new List<CadValidationFailure>(Validate(request));
+        if (response is null)
+        {
+            failures.Add(new CadValidationFailure(
+                "drawing_query_response_required", "$", "反向整图查询响应不能为空。"));
+            return failures.ToArray();
+        }
+
+        ValidateContractVersion(response.ContractVersion, "$.contractVersion", failures);
+        RequireIdentifier(response.RequestId, "request_id", "$.requestId", failures);
+        RequireIdentifier(response.ThreadId, "thread_id", "$.threadId", failures);
+        RequireIdentifier(response.TurnId, "turn_id", "$.turnId", failures);
+        RequireIdentifier(response.ToolCallId, "tool_call_id", "$.toolCallId", failures);
+        RequireIdentifier(response.QueryId, "drawing_query_id", "$.queryId", failures);
+        failures.AddRange(DrawingIndexContractValidator.Validate(response.Query));
+
+        if (request is not null)
+        {
+            Require(string.Equals(response.RequestId, request.RequestId, StringComparison.Ordinal),
+                failures, "drawing_query_response_request_mismatch", "$.requestId",
+                "整图查询响应RequestId与请求不一致。");
+            Require(string.Equals(response.ThreadId, request.ThreadId, StringComparison.Ordinal),
+                failures, "drawing_query_response_thread_mismatch", "$.threadId",
+                "整图查询响应ThreadId与请求不一致。");
+            Require(string.Equals(response.TurnId, request.TurnId, StringComparison.Ordinal),
+                failures, "drawing_query_response_turn_mismatch", "$.turnId",
+                "整图查询响应TurnId与请求不一致。");
+            Require(string.Equals(response.ToolCallId, request.ToolCallId, StringComparison.Ordinal),
+                failures, "drawing_query_response_tool_call_mismatch", "$.toolCallId",
+                "整图查询响应ToolCallId与请求不一致。");
+            Require(string.Equals(response.QueryId, request.QueryId, StringComparison.Ordinal),
+                failures, "drawing_query_response_query_mismatch", "$.queryId",
+                "整图查询响应QueryId与请求不一致。");
+        }
+
+        if (response.Query is not null)
+        {
+            Require(string.Equals(response.Query.QueryId, response.QueryId, StringComparison.Ordinal),
+                failures, "drawing_query_response_payload_mismatch", "$.query.queryId",
+                "CadQuery响应QueryId与外层响应不一致。");
+        }
+
         return failures.ToArray();
     }
 

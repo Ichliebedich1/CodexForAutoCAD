@@ -169,6 +169,7 @@ internal static class AgentHostProgram
                     MaximumJsonDepth = 32,
                     ShutdownTimeout = TimeSpan.FromSeconds(5),
                 };
+                var cadQueryBroker = new AgentHostCadQueryBroker();
                 await using var runtime = new CodexAgentRuntime(
                     appServerOptions,
                     new AgentRuntimeOptions
@@ -179,10 +180,12 @@ internal static class AgentHostProgram
                         WorkingDirectory = workspace.Work,
                         ManagedWorkspaceRoot = workspace.Root,
                         MaximumPromptCharacters = 320 * 1024,
-                    });
+                    },
+                    cadDrawingQueryBroker: cadQueryBroker);
                 var session = new AgentHostBridgeSession(
                     runtime,
-                    "agenthost-" + directionKeys.SessionId);
+                    "agenthost-" + directionKeys.SessionId,
+                    cadQueryBroker);
                 await session.RunAsync(directionKeys, shutdown.Token).ConfigureAwait(false);
                 return 0;
             }

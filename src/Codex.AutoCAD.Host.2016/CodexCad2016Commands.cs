@@ -35,7 +35,8 @@ namespace Codex.AutoCAD.Host2016
             editor.WriteMessage("\nCadContextJson: codex.autocad.cad-context/2");
             editor.WriteMessage("\nDrawingIndex: codex.autocad.drawing-index/1; Idle-chunked read-only scan");
             editor.WriteMessage("\nCadQuery: codex.autocad.cad-query/1; cursor pagination");
-            editor.WriteMessage("\nCodex drawing-query tool: not connected in this host slice");
+            editor.WriteMessage(
+                "\nCodex drawing-query tool: authenticated AgentHost Bridge; manual Agent start");
             editor.WriteMessage("\nAgent/IPC: authenticated MVP candidate; manual start");
             editor.WriteMessage("\nCAD write capability: disabled");
             editor.WriteMessage("\nPlugin-initiated save: disabled");
@@ -61,7 +62,7 @@ namespace Codex.AutoCAD.Host2016
             }
 
             document.Editor.WriteMessage(
-                "\nHost.2016 当前为 M2 只读整图索引开发候选：保留 CadContextJson v2 选择快照，新增 DrawingIndex v1、CadQuery v1、Idle 分片扫描和分页命令；Codex 动态查询工具尚未接入。CAD 写入和插件保存保持禁用。\n");
+                "\nHost.2016 当前为 M2 只读整图查询候选：保留 CadContextJson v2 选择快照，DrawingIndex v1/CadQuery v1 通过认证 AgentHost Bridge 向 Codex 提供按需分页查询；Agent 仍需手动启动。CAD 写入和插件保存保持禁用。\n");
         }
 
         [CommandMethod("CODEX16PAL", CommandFlags.Modal)]

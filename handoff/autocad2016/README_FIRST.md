@@ -29,7 +29,7 @@ AutoCAD 2016 R20.1 已建立一个真实运行的 CadContextJson v2 只读 AI �
 - 对话按图纸隔离；切换图纸立即清空旧回答，下一次 ASK 建立新 thread。
 - CAD 写入和插件保存仍保持禁用。
 
-M2-A `0.4.0.0` 又增加了一条独立、只读的整图索引垂直切片：
+M2 `0.4.0.0` 已把独立只读整图索引和 Codex 按需查询接成一条调用链：
 
 - 选择快照仍使用 `codex.autocad.cad-context/2` 和原 64 实体/256 KiB 上限。
 - 整图能力使用 `codex.autocad.drawing-index/1` 和 `codex.autocad.cad-query/1`。
@@ -37,7 +37,10 @@ M2-A `0.4.0.0` 又增加了一条独立、只读的整图索引垂直切片：
 - Idle 分片读取支持进度、幂等取消、2 分钟超时、100,000 实体索引和 64 MiB 估算预算。
 - 类型、图层、空间、块、文字、包围盒和对象令牌可过滤并用稳定游标分页。
 - 文档/revision/DBMOD/空间变化使旧索引 `stale`；未知或读取失败对象形成受限占位。
-- 当前仅 Host 命令可查询；Codex 动态 drawing-query 工具属于 M2-B，尚未接入。
+- M2-B 已注册只读 `cad.query_drawing` 动态工具，通过 AgentHost 和认证反向 Bridge 查询
+  Host 冻结快照；模型不能提供或覆盖索引、文档和 revision 身份。
+- 无有效选择上下文但有有效 DrawingIndex 时，`CODEX16ASK` 仍可启动同一 Codex 对话；
+  取消、断线、回合终态、文档修改、撤销或切换均使旧绑定 fail-closed。
 
 脱敏实机范围证据：
 `evidence/cad-context-v2-live-observation-20260722.json`。
@@ -45,8 +48,8 @@ M2-A `0.4.0.0` 又增加了一条独立、只读的整图索引垂直切片：
 这仍不是完整产品：
 
 - `0.3.3.0` 尚未按精确哈希在 AutoCAD 2016 中 `NETLOAD`，M1 实机矩阵仍待执行。
-- M2-A `0.4.0.0` 也尚未人工 `NETLOAD`；1k/10k/50k 响应性、Idle 枚举器生命周期、
-  取消、失效和退出清理均是未验证项。
+- M2 `0.4.0.0` 尚未人工 `NETLOAD`；五种范围、无选择集 ASK、Agent 动态分页、
+  1k/10k/50k 响应性、Idle 枚举器生命周期、取消、失效和退出清理均是未验证项。
 - 当前选择快照仍最多 64 个实体、canonical JSON 最多 256 KiB；大图走独立索引。
 - 19 类对象尚未逐类完成字段实机核对。
 - AutoCAD 正常退出、125%/150% DPI 和故障矩阵尚未完成。
@@ -54,7 +57,7 @@ M2-A `0.4.0.0` 又增加了一条独立、只读的整图索引垂直切片：
 
 ## 2. 当前候选身份
 
-当前开发候选是 M2-A：
+当前开发候选是 M2-A/M2-B 合并候选：
 
 ```text
 Module version: 0.4.0.0
@@ -62,30 +65,31 @@ CadContext schema: codex.autocad.cad-context/2
 DrawingIndex schema: codex.autocad.drawing-index/1
 CadQuery schema: codex.autocad.cad-query/1
 Candidate directory:
-C:\tmp\CodexForAutoCAD-m2-drawing-index\artifacts\autocad2016-m2-drawing-index-v040-2cfbadd8-4028850a-8af00fa8
+C:\tmp\CodexForAutoCAD-m2-drawing-index\artifacts\autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd
 
 Host:
 Codex.AutoCAD.Host.2016.dll
 SHA-256:
-2CFBADD8FF57F6DAAA4727F1B6DE871D509B92E47A680ECCA669A024CBA786A5
+597A7A3DC047B7A8188C0E4C7768032A5D8DA428AE210AE615713B8497AB0637
 
 AgentHost:
 AgentHost\Codex.AutoCAD.AgentHost.exe
 SHA-256:
-4028850AD9B9EECB8812B07CF3C401AE5287744D839AE66C57AD193C1DB3CE0C
+432E7CF97D9E968D96C83FDE4FDD3C40961326E90CCD16D90BC3E34F21C968F6
 
 Manifest SHA-256:
-3CF194EB69B8C33E8D6B3C7B7D33838D6CB847036819CAC074D9DB7E1AFEF20A
+7E6116AF0F2D6BDBEB64DB6D009705E21358CB55609E36697EC179D17B690C18
 ```
 
-该候选通过 Contracts net8/net45 `83/83`、完整 Phase 2 `287/287`、28 文件 Host.2016
-只读 Compile 闭包、R20.1/net45/x64 双构建位级一致、敏感信息扫描和候选包自身 AgentHost
-doctor。构建证据为
-`evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-2cfbadd8-4028850a-8af00fa8.json`。
+该候选通过 Contracts net8/net45 `84/84`、Bridge Client net8/net45 `29/29`、
+Bridge/AgentHost `39/39`、AgentRuntime `33/33`、Host MVP `52/52`、完整 Phase 2
+`307/307`、29 文件 Host.2016 只读 Compile 闭包、R20.1/net45/x64 双构建位级一致、
+敏感信息扫描和候选包自身 AgentHost doctor。构建证据为
+`evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd.json`。
 
 它尚未按精确哈希在 AutoCAD 内人工 NETLOAD，因此保持 `NetLoadVerified=false`。已经取得
 实机证据的仍是旧 `0.3.2.0` P1 候选 Host `0D72EDC3...`、AgentHost `10BEA363...`；M1
-`0.3.3.0` 与 M2-A `0.4.0.0` 的自动化证据都不能继承该实机结论。
+`0.3.3.0` 与 M2 `0.4.0.0` 的自动化证据都不能继承该实机结论。
 
 ## 3. 当前架构
 
@@ -97,20 +101,24 @@ AutoCAD 2016 R20.1 / x64
   - CadContextJson v2
   - DrawingIndex v1 / CadQuery v1
   - Idle 分片扫描与本地分页命令
+  - 纯托管冻结查询快照
   - 认证 Bridge Client
                  |
-                 | 当前用户命名管道
+                 | 当前用户命名管道（双向请求）
                  | HMAC + sequence + nonce + 防重放
                  v
   AgentHost / .NET 8
   - CodexAgentRuntime
   - codex app-server --stdio
+  - cad.query_drawing 动态只读工具
+  - 认证反向 CadQuery broker
   - 结构化事件返回 Palette
 ```
 
 AutoCAD UI 不直接启动或解析 Codex 控制台文本。当前没有 Provider-neutral 抽象，也不开发
-Direct API Provider 或第二套 Agent Loop。M2-A 索引尚未连接到 AgentHost；M2-B 将复用现有
-Bridge，而不是增加另一条 Agent 调用链。
+Direct API Provider 或第二套 Agent Loop。M2-B 复用 M2-A 的同一索引、现有 AgentRuntime
+和认证 Bridge，没有增加第二套扫描器或 Agent 调用链；Bridge 工作线程只查询脱离 Autodesk
+对象的冻结托管快照。
 
 ## 4. 常用命令
 
@@ -146,8 +154,10 @@ CODEX16PALRESET
 - 活动回合期间执行新建对话或清除全部会返回结构化 `busy`，不会覆盖活动回合。
 - `CODEX16ASK` 能弹出输入提示不代表旧上下文可发送；必须实际提交后才算 fail-closed
   验证。
-- `CODEX16INDEX` 建立与 CadContext v2 分离的图纸级内存索引；它不会自动发送给 Codex。
+- `CODEX16INDEX` 建立与 CadContext v2 分离的图纸级内存索引；它不会整包自动发送给 Codex，
+  但有效冻结快照可在 ASK 回合内由 `cad.query_drawing` 按需分页查询。
 - `CODEX16QUERY`/`CODEX16QUERYNEXT` 只查询已完成的当前索引，索引失效后必须重建。
+- 没有已发布选择上下文时，只要 DrawingIndex 仍有效也可 ASK；两者都没有时必须拒绝。
 
 ## 5. 已通过的实机项目
 
@@ -163,7 +173,7 @@ CODEX16PALRESET
 
 ## 6. 尚需实机验证
 
-M1 仍使用 `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 和精确 `0.3.3.0` 候选；M2-A
+M1 仍使用 `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 和精确 `0.3.3.0` 候选；M2
 使用 `M2_DRAWING_INDEX_RUNTIME_TEST_20260722.md` 和上述 `0.4.0.0` 候选。当前允许延期，
 但不得写成已通过：
 
@@ -176,29 +186,33 @@ M1 仍使用 `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 和精确 `0.3.3.0
 7. 正常退出 AutoCAD，不先 STOP，确认 AgentHost/Codex 残留为 0。
 8. 125% 和 150% DPI。
 9. AgentHost 启动失败、Bridge 断线、请求超时和迟到事件。
-10. M2-A 五种范围、分页、未知占位、取消、失效和退出清理。
-11. M2-A 1k/10k/50k 图纸扫描、查询、UI 响应、内存和 DBMOD 基准。
-12. 19 类强类型对象逐类字段核对放在 M3。
+10. M2 五种范围、本地分页、未知占位、取消、失效和退出清理。
+11. 仅有 DrawingIndex、无选择上下文时 ASK，并明确触发 `cad.query_drawing` 多页查询。
+12. 索引修改/撤销/切图失效、查询/回合取消及断线后的 fail-closed。
+13. M2 1k/10k/50k 图纸扫描、Agent 查询、UI 响应、内存和 DBMOD 基准。
+14. 19 类强类型对象逐类字段核对放在 M3。
 
 ## 7. 当前开发顺序
 
 1. M0：已完成 P0/P1 集成、evidence/文档收拢、门禁复跑和统一候选冻结。
 2. M1：代码、自动化和 `0.3.3.0` 候选冻结完成；当前只剩实机矩阵与 evidence 绑定。
-3. M2-A：图纸索引、分页命令、自动化和 `0.4.0.0` 候选完成；等待实机与性能 evidence。
-4. M2-B：接入现有 AgentHost/Bridge 的结构化 Codex drawing-query 工具。
-5. M3：读取对象语义与覆盖。
-6. M4：进程沙箱、配置和审计基础。
-7. M5：AutoCAD 2016 `create_line` 安全写入最小闭环。
-8. 后续阶段见 `LONG_TERM_MEMORY_TODO.md`。
+3. M2-A/M2-B：图纸索引、分页命令、Codex `cad.query_drawing`、自动化和 `0.4.0.0`
+   候选均完成；等待实机与性能 evidence。
+4. M3：读取对象语义与覆盖。
+5. M4：进程沙箱、配置和审计基础。
+6. M5：AutoCAD 2016 `create_line` 安全写入最小闭环。
+7. 后续阶段见 `LONG_TERM_MEMORY_TODO.md`。
 
 ## 8. 构建与自动化边界
 
-M2-A `0.4.0.0` 候选已重跑以下门禁：
+M2 `0.4.0.0` 候选已重跑以下门禁：
 
-- Contracts net8/net45：`83/83`。
-- 完整 Phase 2：`287/287`。
+- Contracts net8/net45：`84/84`。
+- Bridge Client net8/net45：`29/29`。
+- Bridge/AgentHost：`39/39`；AgentRuntime：`33/33`；Host MVP：`52/52`。
+- 完整 Phase 2：`307/307`。
 - R20.1 Host Release：0 warning / 0 error。
-- Host.2016 真实 Compile 闭包：28 个源文件，CAD 写入/命令/保存 API 扫描通过。
+- Host.2016 真实 Compile 闭包：29 个源文件，CAD 写入/命令/保存 API 扫描通过。
 - R20.1/net45/x64 A/B 输出位级一致。
 - Host 禁止 API、秘密扫描、diff 和候选包自身 AgentHost doctor。
 
@@ -230,10 +244,10 @@ M2-A `0.4.0.0` 候选已重跑以下门禁：
 - `evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3.json`：
   M1 `0.3.3.0` 自动化冻结、候选身份和未实机边界。
 - `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md`：M1 唯一当前实机测试入口。
-- `M2_DRAWING_INDEX_VERTICAL_SLICE_20260722.md`：M2-A 架构、契约与边界。
-- `M2_DRAWING_INDEX_RUNTIME_TEST_20260722.md`：M2-A 唯一实机测试入口。
-- `evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-2cfbadd8-4028850a-8af00fa8.json`：
-  M2-A 自动化冻结、候选身份和未实机边界。
+- `M2_DRAWING_INDEX_VERTICAL_SLICE_20260722.md`：M2-A/M2-B 架构、契约与边界。
+- `M2_DRAWING_INDEX_RUNTIME_TEST_20260722.md`：M2 唯一实机测试入口。
+- `evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd.json`：
+  M2 自动化冻结、候选身份和未实机边界。
 
 ## 11. 支持声明
 
@@ -241,8 +255,9 @@ M2-A `0.4.0.0` 候选已重跑以下门禁：
 
 > AutoCAD 2016 R20.1 已实机跑通 CadContextJson v2 的只读选择、Palette、本机 Codex 和
 > 两轮连续对话基线；50 对象混合选区中的未知对象不会中断发布。M1 `0.3.3.0` 已完成
-> 只读稳定化代码与自动化冻结。M2-A `0.4.0.0` 已实现独立 DrawingIndex/CadQuery、Idle
-> 分片和本地分页命令并通过自动化，但尚未 AutoCAD 实机与 1k/10k/50k 性能验证，Codex
-> 动态整图查询也尚未接入。安全 CAD 写入、完整沙箱、长期记忆和发布安装尚未完成。
+> 只读稳定化代码与自动化冻结。M2 `0.4.0.0` 已实现独立 DrawingIndex/CadQuery、Idle
+> 分片、本地分页命令和 Codex `cad.query_drawing` 认证反向查询，并通过自动化，但尚未
+> AutoCAD 实机与 1k/10k/50k 性能验证。安全 CAD 写入、完整沙箱、长期记忆和发布安装
+> 尚未完成。
 
 不得表述为完整支持 AutoCAD 2016，也不得表述为已经支持安全 CAD 写入。

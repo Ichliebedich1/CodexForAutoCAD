@@ -2,6 +2,10 @@ using Codex.AutoCAD.Contracts;
 
 namespace Codex.AutoCAD.Bridge.Client;
 
+public delegate Task<AgentDrawingQueryResponse> AgentDrawingQueryHandler(
+    AgentDrawingQueryRequest request,
+    CancellationToken cancellationToken);
+
 public interface IAgentBridgeClient : IDisposable
 {
     event EventHandler<AgentBridgeEventReceivedEventArgs>? EventReceived;
@@ -72,4 +76,12 @@ public sealed class AgentBridgeClientOptions
     public TimeSpan ShutdownTimeout { get; set; } = TimeSpan.FromSeconds(5);
 
     public int MaximumFrameBytes { get; set; } = ProtocolConstants.MaximumMessageBytes;
+
+    /// <summary>
+    /// Optional, read-only reverse query handler. No generic method dispatcher is exposed to the
+    /// AutoCAD host process.
+    /// </summary>
+    public AgentDrawingQueryHandler? DrawingQueryHandler { get; set; }
+
+    public int MaximumConcurrentDrawingQueries { get; set; } = 2;
 }
