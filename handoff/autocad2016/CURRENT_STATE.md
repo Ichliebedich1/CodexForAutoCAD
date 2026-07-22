@@ -70,13 +70,25 @@ NETLOAD 证据的能力一律视为未支持。
   自动化复验和候选冻结；本地 `main` 已安全快进并吸收冻结提交 `4833e76`。主工作树中的
   Host.2025 UI/选择/写入原型不属于本阶段，仍保留且未被清理、覆盖或误提交；远端尚未
   因本次收尾自动推送。
-- 生命周期审计补上了一个窄边界：`MvpAgentRuntime` 保存上下文引用后，在 Agent 启动完成
-  以及发送 v2 turn 前都会执行 generation/reference fail-closed 重校验；文档切换或清除
-  若在竞态窗口发生，旧上下文会被拒绝。文档激活清缓存已实测，但用户在 post-switch
-  `CODEX16ASK` 提示阶段取消，没有真正提交问题，因此实际发送拒绝仍未验证。
-- `CODEX16CTXCLEAR` 当前只清除 CAD 上下文，不创建新 Codex thread；用户观察到清除后
-  仍记得旧对话标记。这不是 CAD 缓存未清，而是产品尚未提供“新建对话/清除全部”的明确
-  语义，列入 M1。
+- M1 `codex/m1-readonly-stability` 已完成 Bridge 断线 fail-closed、结构化脱敏错误、Host
+  自有 request_id、唯一终态、幂等取消、10 分钟回合超时和迟到事件拒绝；相关运行时代码
+  提交为 `eb4e36c`、`9f1ffb6`、`8455000`、`41d184b`。
+- M1 已新增 `CODEX16NEWCHAT` 和 `CODEX16CLEARALL`；`CODEX16CTXCLEAR` 明确只清 CAD
+  上下文。系统 conversation ID 与 Provider thread ID 分离，活动回合期间新建/清除返回
+  结构化 `busy`。相关提交为 `ba84047`、`924cab2`。
+- 对话现按图纸隔离；图纸切换会终止旧活动回合、清空旧可见回答，并使下一次 ASK 建立新
+  Provider thread。图 A 的迟到事件不能更新图 B，即使 Provider turn ID 碰撞。相关提交为
+  `621b057`、`8b695fb`。
+- M1 已冻结 `0.3.3.0` 自动化候选
+  `artifacts/autocad2016-m1-readonly-v033-c3478920-a47d86a6-7fc17895/`。Host SHA-256 为
+  `C34789205C56D125C363962FEA8BA0EDCED0C23589D21EFB1586535DE348DAF3`，AgentHost EXE 为
+  `A47D86A6512B23694B566B0FF272EA3C22183F691ABF3334EE639A7A0EF03FE0`，manifest 为
+  `2702D4F1E86ECD87F31A84541D96DECDE48C9632E67EF8473FB4CEC41C947EFF`。
+- 该候选通过 Host MVP `40/40`、Phase 2 `275/275`、25 文件 Host.2016 只读 Compile
+  闭包、R20.1/net45/x64 双构建位级一致、敏感信息扫描、diff 和候选包自身 AgentHost
+  doctor。证据为
+  `evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-c3478920-a47d86a6-7fc17895.json`。
+  它尚未按精确哈希在 AutoCAD 内 NETLOAD，不能继承 `0.3.2.0` 的实机结论。
 - 当前 v2 选择快照仍有 `64` 实体和 `256 KiB` canonical JSON 硬上限。用户已明确要求
   整图数量级支持；M2 将保留 v2 兼容快照，新增 DrawingIndex、分页和按需 CadQuery，
   不通过简单放大常量实现。
@@ -365,23 +377,26 @@ NETLOAD 证据的能力一律视为未支持。
 
 ## 待实机验证队列
 
-P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 冻结新候选后，按
-`READONLY_MVP_REMAINING_LIVE_TESTS_20260722.md` 依次验证：
+P0 与 P1 happy path 已通过，不再重复请求相同测试。当前使用 M1 `0.3.3.0` 精确候选，按
+`M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 依次验证：
 
-1. 文档切换后不重新捕获，实际提交问题并确认 fail-closed。
-2. 已发布 v2 上下文时 Palette Reset 后仍保留上下文。
-3. 不先 STOP，正常退出 AutoCAD 后 AgentHost/Codex 残留为 0。
-4. 125%/150% DPI。
-5. 启动失败、Bridge 断线、超时、取消、重复取消和迟到事件。
-6. 19 类对象逐类字段核对放在 M3；超过 64 对象和整图规模放在 M2。
+1. 新建对话、只清 CAD 上下文、清除全部和活动回合 `busy`。
+2. 图 A/图 B 上下文、可见回答和对话隔离。
+3. 取消、重复取消和终态不回退。
+4. 已发布 v2 上下文时 Palette Reset 后仍保留上下文。
+5. 不先 STOP，正常退出 AutoCAD 后 AgentHost/Codex 残留为 0。
+6. 125%/150% DPI。
+7. 启动失败、Bridge 断线、超时和迟到事件。
+8. 19 类对象逐类字段核对放在 M3；超过 64 对象和整图规模放在 M2。
 
 ## 下一步顺序
 
 1. 核心 Agent MVP、P0 停止生命周期已分别提交：`7f10d60`、`8a4ee57`。
 2. P1 已完成自动化、冻结和 AutoCAD 2016 live 基线。
 3. M0 自动化、候选冻结和本地 `main` 收拢均已完成。
-4. 当前进入 M1 只读稳定化；M1 冻结稳定候选后再进入 M2 整图扫描/索引/查询。
-5. M4 沙箱与审计基础完成前，不启用 M5 CAD 写入。
+4. M1 代码、自动化和 `0.3.3.0` 候选冻结已完成；当前等待精确候选实机矩阵与 evidence。
+5. M1 实机通过后进入 M2 整图扫描/索引/查询。
+6. M4 沙箱与审计基础完成前，不启用 M5 CAD 写入。
 
 ## 更新纪律
 

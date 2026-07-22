@@ -121,14 +121,38 @@ Host.2025 原型和未跟踪辅助文件仍保留且未纳入提交。远端推�
 
 完成定义：形成可长期日常使用的稳定只读 MVP 候选。
 
-- [ ] Bridge 断线时原子切换 offline，终止当前回合，后续 ASK 必须拒绝。
-- [ ] 启动失败、异常退出、协议错误、超时和取消使用稳定错误码。
-- [ ] UI、日志和 evidence 不输出原始路径、凭据或未脱敏异常。
-- [ ] 每个请求维护 request_id、回合状态、超时和唯一终态。
-- [ ] 重复取消幂等；终态后拒绝迟到事件，状态不得回退。
-- [ ] 修正 Palette 中完成、已清除、已断线、已停止等状态语义。
-- [ ] 明确提供“清除 CAD 上下文”“新建 Codex 对话”“全部清除”。
-- [ ] 对话按图纸隔离，图 A 的 CAD 上下文或记忆不得混入图 B。
+当前冻结候选：
+
+- Host 版本：`0.3.3.0`。
+- 候选：`autocad2016-m1-readonly-v033-c3478920-a47d86a6-7fc17895`。
+- Host SHA-256：
+  `C34789205C56D125C363962FEA8BA0EDCED0C23589D21EFB1586535DE348DAF3`。
+- AgentHost SHA-256：
+  `A47D86A6512B23694B566B0FF272EA3C22183F691ABF3334EE639A7A0EF03FE0`。
+- manifest SHA-256：
+  `2702D4F1E86ECD87F31A84541D96DECDE48C9632E67EF8473FB4CEC41C947EFF`。
+- 自动化：Host MVP `40/40`、Phase 2 `275/275`、25 文件 Host.2016 只读闭包、
+  R20.1/net45/x64 双构建位级一致、候选 AgentHost doctor、diff 和敏感信息扫描通过。
+- 证据：
+  `cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-c3478920-a47d86a6-7fc17895.json`。
+- 实机入口：`M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md`。
+
+代码与自动化已完成：
+
+- [x] Bridge 断线时原子切换 offline，终止当前回合，后续 ASK 必须拒绝。
+- [x] 启动失败、异常退出、协议错误、超时和取消使用稳定错误码。
+- [x] UI、日志和 evidence 不输出原始路径、凭据或未脱敏异常。
+- [x] 每个请求维护 Host 自有 request_id、回合状态、10 分钟超时和唯一终态。
+- [x] 重复取消幂等；终态后拒绝迟到事件，状态不得回退。
+- [x] 修正 Palette 中完成、已清除、已断线、已停止和图纸切换后的可见状态。
+- [x] 明确提供“清除 CAD 上下文”“新建 Codex 对话”“全部清除”。
+- [x] 对话按图纸隔离，图 A 的 CAD 上下文、可见回答或 Provider thread 不得混入图 B。
+
+仍需用户实机绑定；完成前 M1 不得标记完成：
+
+- [ ] 按精确 `0.3.3.0` Host/AgentHost 哈希在 AutoCAD 2016 人工 `NETLOAD`。
+- [ ] 验证新建对话、只清 CAD 上下文、清除全部和图 A/图 B 对话隔离。
+- [ ] 验证取消、重复取消和活动回合期间新建/清除返回 `busy`。
 - [ ] 验证 v2 上下文存在时 Palette Reset 后仍保留。
 - [ ] 验证 AutoCAD 正常退出后 AgentHost、管道和 Codex 子进程残留为零。
 - [ ] 完成 125% 和 150% DPI。
