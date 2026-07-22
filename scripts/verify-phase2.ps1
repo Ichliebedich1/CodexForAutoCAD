@@ -3,7 +3,9 @@ param(
     [ValidateSet("Debug", "Release")]
     [string] $Configuration = "Release",
 
-    [string] $CodexExecutable
+    [string] $CodexExecutable,
+
+    [switch] $NoRestore
 )
 
 Set-StrictMode -Version Latest
@@ -512,13 +514,18 @@ try {
     Assert-PinnedSdk
     $resolvedCodexExecutable = Resolve-CodexExecutablePath -RequestedPath $CodexExecutable
 
+    $solutionBuildArguments = @(
+        "build", $solutionPath,
+        "--configuration", $Configuration,
+        "--nologo", "--disable-build-servers", "-m:1"
+    )
+    if ($NoRestore) {
+        $solutionBuildArguments += "--no-restore"
+    }
+
     Invoke-CheckedCommand `
         -FilePath $dotnetCommand `
-        -ArgumentList @(
-            "build", $solutionPath,
-            "--configuration", $Configuration,
-            "--nologo", "--disable-build-servers", "-m:1"
-        ) `
+        -ArgumentList $solutionBuildArguments `
         -Description "构建托管核心解决方案（CAD Host 按目标版本独立验证，$Configuration）"
 
     $bridgeClientTestServer = Join-Path $repoRoot (

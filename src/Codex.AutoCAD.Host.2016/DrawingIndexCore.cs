@@ -124,6 +124,8 @@ namespace Codex.AutoCAD.Host2016
             new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, int> blockCounts =
             new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        private readonly CadReadIssueAccumulator readIssueAccumulator =
+            new CadReadIssueAccumulator();
         private long estimatedBytes;
         private int unsupportedCount;
         private int failedCount;
@@ -201,6 +203,7 @@ namespace Codex.AutoCAD.Host2016
             if (clone.Unsupported)
             {
                 unsupportedCount++;
+                readIssueAccumulator.AddDrawingIndexEntity(clone);
             }
             if (clone.ReadStatus == CadQueryReadStatuses.ReadFailed)
             {
@@ -243,6 +246,11 @@ namespace Codex.AutoCAD.Host2016
         internal DrawingIndexCountBucket[] SnapshotBlockCounts()
         {
             return SnapshotCounts(blockCounts);
+        }
+
+        internal CadReadIssueSnapshot SnapshotReadIssues()
+        {
+            return readIssueAccumulator.Snapshot();
         }
 
         private void Increment(Dictionary<string, int> counts, string key)

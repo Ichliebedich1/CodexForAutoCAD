@@ -88,6 +88,7 @@ var specs = new[]
     new SpecCase("INDEX-V1-003 完成状态不会把占位或预算超限伪装为完整", DrawingIndexContractsSpecs.CompletionPolicyIsFailClosed),
     new SpecCase("INDEX-V1-004 图纸身份或revision变化使索引失效", DrawingIndexContractsSpecs.IdentityPolicyRejectsStaleIndex),
     new SpecCase("INDEX-V1-005 重复实体令牌在累积与响应层均fail-closed", DrawingIndexContractsSpecs.DuplicateObjectTokensFailClosed),
+    new SpecCase("INDEX-M3-001 占位原因和实际类型统计有界且不混入实体数据", DrawingIndexContractsSpecs.ReadIssueStatisticsStayStructuredAndBounded),
 };
 
 var failed = 0;

@@ -30,6 +30,7 @@ namespace Codex.AutoCAD.Host2016
         private static DrawingIndexSnapshotValidity publishedAgentSnapshotValidity;
         private static DrawingIndexPerformanceMetrics performanceMetrics =
             new DrawingIndexPerformanceMetrics();
+        private static CadReadIssueSnapshot readIssues = CadReadIssueSnapshot.Empty();
         private static Database observedDatabase;
         private static bool initialized;
         private static bool idleAttached;
@@ -73,6 +74,7 @@ namespace Codex.AutoCAD.Host2016
             lastQueryResponse = null;
             descriptor = CreateEmptyDescriptor();
             performanceMetrics = new DrawingIndexPerformanceMetrics();
+            readIssues = CadReadIssueSnapshot.Empty();
             indexedCurrentSpace = string.Empty;
             initialized = false;
         }
@@ -126,6 +128,7 @@ namespace Codex.AutoCAD.Host2016
             lastQueryResponse = null;
             indexedCurrentSpace = ReadCurrentSpaceToken(document.Database);
             performanceMetrics = new DrawingIndexPerformanceMetrics();
+            readIssues = CadReadIssueSnapshot.Empty();
             activeSession = new DrawingIndexBuildSession(
                 document,
                 metadata,
@@ -241,6 +244,10 @@ namespace Codex.AutoCAD.Host2016
             builder.Append("Indexed count: ").AppendLine(current.IndexedEntityCount.ToString(CultureInfo.InvariantCulture));
             builder.Append("Unsupported count: ").AppendLine(current.UnsupportedEntityCount.ToString(CultureInfo.InvariantCulture));
             builder.Append("Read-failed count: ").AppendLine(current.FailedEntityCount.ToString(CultureInfo.InvariantCulture));
+            builder.Append("Placeholder reasons: ").AppendLine(
+                CadReadTypeStatistics.FormatReasonCounts(readIssues));
+            builder.Append("Placeholder actual types: ").AppendLine(
+                CadReadTypeStatistics.FormatActualTypeCounts(readIssues, 64));
             builder.Append("Progress: ").Append(current.ProgressPercent.ToString(CultureInfo.InvariantCulture)).AppendLine("%");
             builder.Append("Complete: ").AppendLine(current.Complete ? "true" : "false");
             builder.Append("Limited: ").AppendLine(current.Limited ? "true" : "false");
@@ -926,6 +933,7 @@ namespace Codex.AutoCAD.Host2016
             descriptor.LayerCounts = session.Accumulator.SnapshotLayerCounts();
             descriptor.SpaceCounts = session.Accumulator.SnapshotSpaceCounts();
             descriptor.BlockCounts = session.Accumulator.SnapshotBlockCounts();
+            readIssues = session.Accumulator.SnapshotReadIssues();
             publishedEntities = session.Accumulator.FreezeEntities();
 
             var failures = DrawingIndexContractValidator.Validate(descriptor);
@@ -1272,6 +1280,14 @@ namespace Codex.AutoCAD.Host2016
                 {
                     builder.Append(" · 占位 ").Append(
                         current.UnsupportedEntityCount.ToString(CultureInfo.InvariantCulture));
+                    if (readIssues.TotalCount > 0)
+                    {
+                        builder.Append("（")
+                            .Append(CadReadTypeStatistics.FormatReasonCounts(readIssues))
+                            .Append("；")
+                            .Append(CadReadTypeStatistics.FormatActualTypeCounts(readIssues, 4))
+                            .Append('）');
+                    }
                 }
             }
             if (lastQueryResponse != null)

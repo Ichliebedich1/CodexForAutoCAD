@@ -16,6 +16,8 @@
              Link="MvpAgentCapabilityPolicy.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\DrawingIndexCore.cs"
              Link="DrawingIndexCore.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\CadReadTypeStatistics.cs"
+             Link="CadReadTypeStatistics.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\DrawingIndexAgentSnapshot.cs"
              Link="DrawingIndexAgentSnapshot.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\DrawingIndexPerformanceMetrics.cs"

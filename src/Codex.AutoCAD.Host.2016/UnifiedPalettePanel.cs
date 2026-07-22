@@ -45,7 +45,7 @@ namespace Codex.AutoCAD.Host2016
 
             var boundaries = new TextBlock
             {
-                Text = "M2 只读整图索引开发候选 · Agent 手动连接 · CAD 写入禁用 · 插件不会保存 DWG",
+                Text = "M3 CAD 读取语义开发候选 · Agent 手动连接 · CAD 写入禁用 · 插件不会保存 DWG",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = Brushes.DarkRed,
                 FontWeight = FontWeights.SemiBold,
@@ -271,6 +271,9 @@ namespace Codex.AutoCAD.Host2016
                         + context.UnsupportedEntityCount + "，完整性 "
                         + (context.Complete ? "完整" : "不完整") + "，"
                         + context.CanonicalBytes + " 字节。"
+                        + (string.IsNullOrEmpty(context.ReadIssueSummary)
+                            ? string.Empty
+                            : "\n" + context.ReadIssueSummary)
                     : "上下文状态：" + context.Status + "。先预选对象，再执行 CODEX16CTX。";
                 summary.Text = context.ReadableSummary;
                 json.Text = context.CanonicalJson;

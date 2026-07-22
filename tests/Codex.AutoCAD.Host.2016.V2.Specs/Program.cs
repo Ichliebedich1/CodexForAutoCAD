@@ -1,3 +1,5 @@
+#nullable enable
+
 using Codex.AutoCAD.Contracts;
 using Codex.AutoCAD.Host2016;
 using Codex.AutoCAD.Host2016.ReadOnlyContext;
@@ -19,6 +21,9 @@ var specs = new[]
     new SpecCase("HOST2016-V2-010", CoordinateLimitProducesStructuredCode),
     new SpecCase("HOST2016-V2-011", ContractFailureClassificationIsNarrow),
     new SpecCase("HOST2016-V2-012", NameFailureClassificationIsNarrow),
+    new SpecCase("HOST2016-V2-013", SelectionReadIssuesExposeActualTypes),
+    new SpecCase("HOST2016-V2-014", ChineseTypeCatalogListsNineteenSupportedTypes),
+    new SpecCase("HOST2016-V2-015", ReadableSummaryUsesActualTypeStatistics),
 };
 
 var passed = 0;
@@ -211,6 +216,94 @@ void NameFailureClassificationIsNarrow()
     Equal(false, CadContextV2CapturePolicy.IsSafeRequiredName("A\nB"), "invalid control rejected");
 }
 
+void SelectionReadIssuesExposeActualTypes()
+{
+    var selection = new CadContextSelectionV2
+    {
+        Entities = new[]
+        {
+            Unsupported("1", "ACAD_PROXY_ENTITY", CadContextUnsupportedReasonsV2.UnknownEntityType),
+            Unsupported("2", "acad_proxy_entity", CadContextUnsupportedReasonsV2.UnknownEntityType),
+            Unsupported("3", "3DSOLID", CadContextUnsupportedReasonsV2.EntityDataLimit),
+            Unsupported("4", "HATCH", CadContextUnsupportedReasonsV2.EntityReadFailed),
+            Line("5", 0d),
+        },
+    };
+
+    var statistics = CadReadTypeStatistics.FromSelection(selection);
+    Equal(4, statistics.TotalCount, "read issue total");
+    Equal(2, statistics.UnknownTypeCount, "unsupported type count");
+    Equal(1, statistics.DataLimitedCount, "data limited count");
+    Equal(1, statistics.ReadFailedCount, "read failed count");
+    Equal(3, statistics.ActualTypeCounts.Length, "actual type bucket count");
+
+    var summary = CadReadTypeStatistics.FormatSummary(statistics, 8);
+    Contains(summary, "代理对象(ACAD_PROXY_ENTITY) x2", "proxy type summary");
+    Contains(summary, "三维实体(3DSOLID) x1", "solid type summary");
+    Contains(summary, "图案填充(HATCH) x1", "hatch type summary");
+    Contains(summary, "未支持类型 2，数据超限 1，读取失败 1", "reason summary");
+    NotContains(summary, "Layer", "summary must not contain layer data");
+    NotContains(summary, "Handle", "summary must not contain handles");
+}
+
+void ChineseTypeCatalogListsNineteenSupportedTypes()
+{
+    var catalog = CadReadTypeStatistics.BuildSupportedTypeCatalog();
+    Contains(catalog, "01. 直线 (Line)", "first supported type");
+    Contains(catalog, "19. 表格 (Table)", "last supported type");
+    Contains(catalog, "高价值受限读取候选", "limited read candidates");
+    var numberedEntries = 0;
+    foreach (var line in catalog.Replace("\r", string.Empty).Split('\n'))
+    {
+        if (System.Text.RegularExpressions.Regex.IsMatch(line, "^[0-9]{2}\\. "))
+        {
+            numberedEntries++;
+        }
+    }
+    Equal(19, numberedEntries, "catalog must contain exactly nineteen numbered types");
+    NotContains(catalog, "C:\\", "catalog must not contain a local path");
+}
+
+void ReadableSummaryUsesActualTypeStatistics()
+{
+    var snapshot = CanonicalSelectionHashV2.Build(new[]
+    {
+        Line("1", 0d),
+        Unsupported(
+            "2",
+            "ACAD_PROXY_ENTITY",
+            CadContextUnsupportedReasonsV2.UnknownEntityType),
+        Unsupported(
+            "3",
+            "3DSOLID",
+            CadContextUnsupportedReasonsV2.EntityDataLimit),
+    });
+    var context = CadContextJsonV2Mapper.Build(
+        new CadContextDocumentMetadata(
+            "document-0123456789abcdef",
+            new string('a', 64),
+            42,
+            CadContextJsonV2Constants.ModelSpace,
+            "AC1027",
+            "millimeters"),
+        snapshot,
+        DateTimeOffset.Parse(
+            "2026-07-22T12:34:56.789Z",
+            System.Globalization.CultureInfo.InvariantCulture));
+    var canonicalJson = CadContextJsonV2Codec.SerializeCanonical(context);
+    var summary = CadContextJsonV2Mapper.BuildReadableSummary(
+        context,
+        CadContextJsonV2Codec.ComputeCanonicalSha256(context),
+        System.Text.Encoding.UTF8.GetByteCount(canonicalJson));
+
+    Equal(0, CadContextJsonV2Validator.Validate(context).Length, "mapped context validation");
+    Contains(summary, "选择图元：3  成功解析：1  未解析：2  完整：否", "selection completeness");
+    Contains(summary, "未支持类型 1，数据超限 1，读取失败 0", "mapped reason summary");
+    Contains(summary, "代理对象(ACAD_PROXY_ENTITY) x1", "mapped proxy summary");
+    Contains(summary, "三维实体(3DSOLID) x1", "mapped solid summary");
+    Contains(summary, "[2] 未解析对象", "mapped unsupported entity summary");
+}
+
 CadContextEntityV2 Line(string handle, double offset)
 {
     return new CadContextEntityV2
@@ -247,7 +340,10 @@ CadContextEntityV2 DbText(string handle, string text)
     };
 }
 
-CadContextEntityV2 Unsupported(string handle)
+CadContextEntityV2 Unsupported(
+    string handle,
+    string dxfName = "ACAD_PROXY_ENTITY",
+    string reason = CadContextUnsupportedReasonsV2.UnknownEntityType)
 {
     return new CadContextEntityV2
     {
@@ -258,8 +354,8 @@ CadContextEntityV2 Unsupported(string handle)
         Layer = "0",
         Unsupported = new CadContextUnsupportedV2
         {
-            DxfName = "ACAD_PROXY_ENTITY",
-            Reason = CadContextUnsupportedReasonsV2.UnknownEntityType,
+            DxfName = dxfName,
+            Reason = reason,
         },
     };
 }
@@ -300,6 +396,22 @@ void Equal<T>(T expected, T actual, string name)
 void NotEqual<T>(T unexpected, T actual, string name)
 {
     if (EqualityComparer<T>.Default.Equals(unexpected, actual))
+    {
+        throw new InvalidOperationException(name + ": unexpected=" + unexpected);
+    }
+}
+
+void Contains(string value, string expected, string name)
+{
+    if (value == null || value.IndexOf(expected, StringComparison.Ordinal) < 0)
+    {
+        throw new InvalidOperationException(name + ": missing=" + expected);
+    }
+}
+
+void NotContains(string value, string unexpected, string name)
+{
+    if (value != null && value.IndexOf(unexpected, StringComparison.Ordinal) >= 0)
     {
         throw new InvalidOperationException(name + ": unexpected=" + unexpected);
     }

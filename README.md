@@ -12,7 +12,7 @@
 
 以上是目标边界，不代表当前全部能力已经接通。实际完成状态和真机证据以 `handoff/autocad2016/CURRENT_STATE.md`、`handoff/autocad2016/README_FIRST.md` 及对应阶段证据为准。
 
-## 当前状态（2026-07-22）
+## 当前状态（2026-07-23）
 
 当前已在原版 AutoCAD 2016 R20.1 中建立 `0.3.2.0` 的 CadContextJson v2 只读 AI
 实机基线，并已完成 M2-A/M2-B `0.4.0.0` 图纸级只读索引、Codex 按需查询、确定性
@@ -36,6 +36,17 @@
   双次生成、独立解析、哈希、拒绝覆盖和脱敏 evidence 记录门禁为 `6/6`。
 - `CODEX16INDEXINFO` 现显示 Idle 分片次数/最大耗时、总扫描耗时、估算内存以及本地和
   Codex 反向查询耗时；遥测不扩展 DrawingIndex/CadQuery wire 契约。
+- M3 `0.4.1.0` 开发纵切已在同一只读调用链中增加实际 placeholder 类型/原因统计：选择
+  摘要、`CODEX16CTXINFO`、`CODEX16INDEXINFO` 和 Palette 不再只显示笼统的
+  `unsupported` 数量，`CODEX16TYPEINFO` 还会输出 19 类现有强类型对象的中文目录。
+  该版本尚未冻结候选、未取得实机 `NETLOAD`，不能继承 M2 或 P1 的实机结论。
+- M3 当前自动门禁为 Contracts `85/85`、Host v2 net45/net8 各 `15/15`、Host MVP
+  `53/53`、完整 Phase 2 `309/309`，R20.1 Release 为 0 warning / 0 error；禁止 API、
+  AgentHost doctor、敏感信息和 diff 门禁均通过。同一依赖闭包下 Host A/B 逐字节一致，
+  编译门禁 Host SHA-256 为
+   `EC1C6174893DC47DABE5C55C28D020FD607881BE435DBBD1FE9079BC8C0DB51B`。这是
+   `artifacts/m3-r201-compile-only-d67432c0d40d4aed8710f24b30602955/` 中 `compile-summary.json`
+   记录的编译证据；不是冻结候选，没有候选 manifest 或 AutoCAD 实机证据。
 - 显式 CAD 上下文清除和文档激活清除旧缓存通过；CAD 写入和插件保存仍禁用。
 - P0 停止生命周期已有独立实机证据：重复 STOP、DBMOD 不变和 AgentHost 残留为零。
 - M1 已实现 Bridge 断线 fail-closed、结构化脱敏错误、request_id/唯一终态、幂等取消、
@@ -82,8 +93,10 @@ AgentHost doctor；尚未在 AutoCAD 2016 中按精确哈希 `NETLOAD`。旧 `59
    `handoff/autocad2016/M2_DRAWING_INDEX_RUNTIME_TEST_20260722.md`。
 4. M2 的 1k/10k/50k fixture、采集字段和脱敏 evidence 写入器已完成；仍等待 AutoCAD 2016
    五种范围、无选择集 ASK、失效/取消及三档真实性能证据。
-5. M2 实机完成后再做 M3 对象语义、M4 沙箱审计，随后才启用 AutoCAD 2016 强类型安全写入。
-6. 随后完成长期记忆、安装签名、企业部署和 AutoCAD 2025 适配。
+5. M2 的实机/性能证据仍待完成；M3 已开始只读对象语义纵切，但不替代 M2 验收。M3 中文
+   目录和未来字段核对模板见 `handoff/autocad2016/M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
+6. 完成 M3 后关闭 M4 沙箱审计，随后才启用 AutoCAD 2016 强类型安全写入。
+7. 随后完成长期记忆、安装签名、企业部署和 AutoCAD 2025 适配。
 
 完整阶段与完成定义见 `handoff/autocad2016/LONG_TERM_MEMORY_TODO.md`。
 
@@ -115,7 +128,8 @@ Host.2016 必须保持 `net45`/x64，Autodesk 引用保持 `Private=false`。net
 
 构建或 Specs 通过只证明对应的静态/自动化门禁，不替代 AutoCAD 2016 人工 `NETLOAD`。M2
 候选的完整 DLL、依赖和人工步骤见 `M2_DRAWING_INDEX_VERTICAL_SLICE_20260722.md` 与
-`M2_DRAWING_INDEX_RUNTIME_TEST_20260722.md`。Codex 不启动、唤醒、关闭、重启或操作
+`M2_DRAWING_INDEX_RUNTIME_TEST_20260722.md`；M3 的对象目录和核对模板见
+`M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。Codex 不启动、唤醒、关闭、重启或操作
 AutoCAD；实机步骤由用户在现有 CAD 环境中执行。
 
 ## 安全不变量
