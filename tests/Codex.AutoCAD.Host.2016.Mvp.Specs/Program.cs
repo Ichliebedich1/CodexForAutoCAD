@@ -1,4 +1,5 @@
 using Codex.AutoCAD.Contracts;
+using Codex.AutoCAD.Bridge.Client;
 using Codex.AutoCAD.Host2016;
 
 var specs = new[]
@@ -75,6 +76,10 @@ var specs = new[]
         "HOST2016_STATUS_CALLBACK_CANNOT_BLOCK_STOP",
         "A failing Palette status observer cannot prevent AgentHost cleanup",
         StatusCallbackCannotBlockStop),
+    new SpecCase(
+        "HOST2016_BRIDGE_FAULT_TRANSITIONS_OFFLINE",
+        "A Bridge fault terminates the active turn and rejects later ASK calls before transport reuse",
+        BridgeFaultTransitionsOffline),
     new SpecCase(
         "HOST2016_TERMINATE_SUCCESS_STOPS_ONCE",
         "AutoCAD termination performs one cleanup when it succeeds",
@@ -540,6 +545,61 @@ static async Task StatusCallbackCannotBlockStop()
     client.Dispose();
 }
 
+static async Task BridgeFaultTransitionsOffline()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-bridge-fault",
+        "system-session-bridge-fault");
+    var statuses = new List<string>();
+    client.StatusChanged += statuses.Add;
+    client.ErrorChanged += statuses.Add;
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2(),
+        ContextSha256 = new string('a', 64),
+    };
+
+    await client.AskAsync(
+            "first turn",
+            context,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    Equal(1, bridge.StartTurnV2Count, "Initial turn start count");
+
+    bridge.RaiseFault(new AgentBridgeClientException(
+        AgentBridgeErrorCodes.ConnectionLost,
+        "sensitive transport detail"));
+
+    True(!client.IsStarted, "Bridge fault did not transition the Host client offline.");
+    var failure = await ExpectBridgeClientFailure(
+            client.AskAsync(
+                "must be rejected",
+                context,
+                () => true,
+                CancellationToken.None))
+        .ConfigureAwait(false);
+    True(
+        string.Equals(
+            AgentBridgeErrorCodes.ConnectionLost,
+            failure.Code,
+            StringComparison.Ordinal),
+        "Rejected ASK did not preserve the stable Bridge error code.");
+    Equal(1, bridge.StartTurnV2Count, "Turn start count after Bridge fault");
+    True(
+        statuses.Exists(value =>
+            value.Contains("当前回合已终止", StringComparison.Ordinal)
+            && value.Contains(AgentBridgeErrorCodes.ConnectionLost, StringComparison.Ordinal)),
+        "Offline status did not state that the active turn was terminated with a stable code.");
+    True(
+        statuses.TrueForAll(value =>
+            !value.Contains("sensitive transport detail", StringComparison.Ordinal)),
+        "Bridge fault status leaked transport exception details.");
+}
+
 static Task TerminateSuccessStopsOnce()
 {
     var stopCount = 0;
@@ -668,6 +728,20 @@ static async Task ExpectStopFailure(Task task)
     throw new InvalidOperationException("Expected stop failure was not observed.");
 }
 
+static async Task<AgentBridgeClientException> ExpectBridgeClientFailure(Task task)
+{
+    try
+    {
+        await task.ConfigureAwait(false);
+    }
+    catch (AgentBridgeClientException exception)
+    {
+        return exception;
+    }
+
+    throw new InvalidOperationException("Expected Agent Bridge failure was not observed.");
+}
+
 static void True(bool condition, string message)
 {
     if (!condition)
@@ -699,4 +773,89 @@ internal sealed class SpecCase
     internal string Description { get; }
 
     internal Func<Task> Body { get; }
+}
+
+internal sealed class FakeAgentBridgeClient : IAgentBridgeClient
+{
+    internal int StartTurnV2Count { get; private set; }
+
+    public event EventHandler<AgentBridgeEventReceivedEventArgs>? EventReceived
+    {
+        add { }
+        remove { }
+    }
+
+    public event EventHandler<AgentBridgeConnectionFaultedEventArgs>? ConnectionFaulted;
+
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
+    }
+
+    public Task<AgentCapabilitiesResponse> GetCapabilitiesAsync(
+        AgentCapabilitiesRequest request,
+        CancellationToken cancellationToken)
+    {
+        throw new NotSupportedException();
+    }
+
+    public Task<AgentThreadStartResponse> StartThreadAsync(
+        AgentThreadStartRequest request,
+        CancellationToken cancellationToken)
+    {
+        throw new NotSupportedException();
+    }
+
+    public Task<AgentTurnStartResponse> StartTurnAsync(
+        AgentTurnStartRequest request,
+        CancellationToken cancellationToken)
+    {
+        throw new NotSupportedException();
+    }
+
+    public Task<AgentTurnStartV2Response> StartTurnV2Async(
+        AgentTurnStartV2Request request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        StartTurnV2Count++;
+        return Task.FromResult(new AgentTurnStartV2Response
+        {
+            ThreadId = request.ThreadId,
+            TurnId = "fake-turn-" + StartTurnV2Count,
+            AcceptedContextV2Sha256 = request.ContextV2Sha256,
+        });
+    }
+
+    public Task InterruptTurnAsync(
+        AgentTurnInterruptRequest request,
+        CancellationToken cancellationToken)
+    {
+        throw new NotSupportedException();
+    }
+
+    public Task ResolveApprovalAsync(
+        AgentApprovalResolveRequest request,
+        CancellationToken cancellationToken)
+    {
+        throw new NotSupportedException();
+    }
+
+    public void RaiseFault(AgentBridgeClientException exception)
+    {
+        ConnectionFaulted?.Invoke(
+            this,
+            new AgentBridgeConnectionFaultedEventArgs(exception));
+    }
+
+    public void Dispose()
+    {
+    }
 }

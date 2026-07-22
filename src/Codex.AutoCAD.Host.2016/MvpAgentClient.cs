@@ -18,9 +18,11 @@ namespace Codex.AutoCAD.Host2016
     {
         private readonly object sync = new object();
         private AgentHostServiceSession serviceSession;
-        private AgentBridgeClient bridge;
+        private IAgentBridgeClient bridge;
         private string threadId = string.Empty;
         private string systemSessionId = string.Empty;
+        private string activeTurnId = string.Empty;
+        private string terminalBridgeErrorCode = string.Empty;
         private Task startTask;
         private Task stopTask;
         private MvpAgentStopCoordinator stopCoordinator;
@@ -33,6 +35,41 @@ namespace Codex.AutoCAD.Host2016
         internal event Action<string> TextChanged;
 
         internal event Action<string> ErrorChanged;
+
+        internal MvpAgentClient()
+        {
+        }
+
+        internal MvpAgentClient(
+            IAgentBridgeClient establishedBridge,
+            string establishedThreadId,
+            string establishedSystemSessionId)
+        {
+            if (establishedBridge == null)
+            {
+                throw new ArgumentNullException(nameof(establishedBridge));
+            }
+
+            if (string.IsNullOrWhiteSpace(establishedThreadId))
+            {
+                throw new ArgumentException("ThreadId 不能为空。", nameof(establishedThreadId));
+            }
+
+            if (string.IsNullOrWhiteSpace(establishedSystemSessionId))
+            {
+                throw new ArgumentException(
+                    "SystemSessionId 不能为空。",
+                    nameof(establishedSystemSessionId));
+            }
+
+            bridge = establishedBridge;
+            threadId = establishedThreadId;
+            systemSessionId = establishedSystemSessionId;
+            startTask = Task.FromResult(0);
+            online = true;
+            establishedBridge.EventReceived += OnBridgeEvent;
+            establishedBridge.ConnectionFaulted += OnBridgeFaulted;
+        }
 
         internal bool IsStarted
         {
@@ -53,6 +90,11 @@ namespace Codex.AutoCAD.Host2016
                 {
                     throw new InvalidOperationException(
                         "AgentHost 正在停止或等待重试清理，不能再次启动。");
+                }
+
+                if (!string.IsNullOrEmpty(terminalBridgeErrorCode))
+                {
+                    throw CreateUnavailableExceptionLocked();
                 }
 
                 if (startTask == null)
@@ -87,11 +129,12 @@ namespace Codex.AutoCAD.Host2016
             {
                 throw new InvalidOperationException("当前 CAD 上下文已失效，请重新执行 CODEX16CTX。");
             }
-            AgentBridgeClient currentBridge;
+            IAgentBridgeClient currentBridge;
             string currentThread;
             lock (sync)
             {
-                currentBridge = bridge ?? throw new InvalidOperationException("Agent Bridge 尚未连接。");
+                EnsureOnlineForAskLocked();
+                currentBridge = bridge;
                 currentThread = threadId;
             }
 
@@ -115,7 +158,17 @@ namespace Codex.AutoCAD.Host2016
                 ContextV2 = context.Context,
                 ContextV2Sha256 = context.ContextSha256,
             };
-            await currentBridge.StartTurnV2Async(request, cancellationToken).ConfigureAwait(false);
+            var turn = await currentBridge.StartTurnV2Async(request, cancellationToken)
+                .ConfigureAwait(false);
+            lock (sync)
+            {
+                if (!ReferenceEquals(bridge, currentBridge) || !online)
+                {
+                    throw CreateUnavailableExceptionLocked();
+                }
+
+                activeTurnId = turn.TurnId;
+            }
         }
 
         internal Task StopAsync(CancellationToken cancellationToken)
@@ -241,6 +294,8 @@ namespace Codex.AutoCAD.Host2016
                 serviceSession = null;
                 stopCoordinator = null;
                 online = false;
+                activeTurnId = string.Empty;
+                terminalBridgeErrorCode = string.Empty;
                 stopCompleted = true;
             }
 
@@ -248,7 +303,7 @@ namespace Codex.AutoCAD.Host2016
         }
 
         private MvpAgentStopCoordinator CreateStopCoordinator(
-            AgentBridgeClient currentBridge,
+            IAgentBridgeClient currentBridge,
             AgentHostServiceSession currentSession)
         {
             Func<Task> stopBridge = null;
@@ -346,6 +401,8 @@ namespace Codex.AutoCAD.Host2016
                     bridge = newBridge;
                     systemSessionId = newSessionId;
                     threadId = thread.ThreadId;
+                    activeTurnId = string.Empty;
+                    terminalBridgeErrorCode = string.Empty;
                     stopWasRequested = stopRequested;
                     online = !stopWasRequested;
                     newServiceSession = null;
@@ -462,6 +519,13 @@ namespace Codex.AutoCAD.Host2016
                 return;
             }
 
+            if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.TurnCompleted, StringComparison.Ordinal)
+                || string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.TurnFailed, StringComparison.Ordinal)
+                || string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.TurnCancelled, StringComparison.Ordinal))
+            {
+                ClearActiveTurn(bridgeEvent.TurnId);
+            }
+
             if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.AssistantMessageDelta, StringComparison.Ordinal))
             {
                 PublishSafely(TextChanged, bridgeEvent.Delta ?? string.Empty);
@@ -486,18 +550,126 @@ namespace Codex.AutoCAD.Host2016
             }
             else if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.ConnectionStateChanged, StringComparison.Ordinal))
             {
+                if (string.Equals(
+                        bridgeEvent.ConnectionState,
+                        AgentBridgeConnectionStates.Offline,
+                        StringComparison.Ordinal)
+                    || string.Equals(
+                        bridgeEvent.ConnectionState,
+                        AgentBridgeConnectionStates.Closed,
+                        StringComparison.Ordinal))
+                {
+                    TransitionOffline(
+                        sender as IAgentBridgeClient,
+                        new AgentBridgeClientException(
+                            AgentBridgeErrorCodes.Offline,
+                            "Agent Bridge 已报告离线状态。"));
+                    return;
+                }
+
                 PublishSafely(StatusChanged, "Agent Bridge 状态：" + bridgeEvent.ConnectionState);
             }
         }
 
         private void OnBridgeFaulted(object sender, AgentBridgeConnectionFaultedEventArgs args)
         {
-            var exception = args == null ? null : args.Exception;
+            TransitionOffline(
+                sender as IAgentBridgeClient,
+                args == null ? null : args.Exception);
+        }
+
+        private void TransitionOffline(
+            IAgentBridgeClient faultedBridge,
+            AgentBridgeClientException exception)
+        {
+            var errorCode = NormalizeBridgeErrorCode(exception);
+            bool hadActiveTurn;
+            lock (sync)
+            {
+                if (faultedBridge == null
+                    || !ReferenceEquals(bridge, faultedBridge)
+                    || stopRequested
+                    || stopCompleted
+                    || (!online && !string.IsNullOrEmpty(terminalBridgeErrorCode)))
+                {
+                    return;
+                }
+
+                hadActiveTurn = !string.IsNullOrEmpty(activeTurnId);
+                activeTurnId = string.Empty;
+                terminalBridgeErrorCode = errorCode;
+                online = false;
+            }
+
             PublishSafely(
                 ErrorChanged,
-                exception == null
-                    ? "Agent Bridge 已断开；不会自动重试。"
-                    : "Agent Bridge 已断开：" + exception.Code + "。不会自动重试。");
+                "Agent Bridge 已断开（error_code="
+                + errorCode
+                + "）；"
+                + (hadActiveTurn ? "当前回合已终止；" : string.Empty)
+                + "后续问题已拒绝。请先停止并重新启动 AgentHost。");
+        }
+
+        private void ClearActiveTurn(string completedTurnId)
+        {
+            lock (sync)
+            {
+                if (string.IsNullOrEmpty(activeTurnId)
+                    || string.IsNullOrEmpty(completedTurnId)
+                    || string.Equals(activeTurnId, completedTurnId, StringComparison.Ordinal))
+                {
+                    activeTurnId = string.Empty;
+                }
+            }
+        }
+
+        private void EnsureOnlineForAskLocked()
+        {
+            if (!online || bridge == null || string.IsNullOrWhiteSpace(threadId))
+            {
+                throw CreateUnavailableExceptionLocked();
+            }
+        }
+
+        private AgentBridgeClientException CreateUnavailableExceptionLocked()
+        {
+            var errorCode = string.IsNullOrEmpty(terminalBridgeErrorCode)
+                ? AgentBridgeErrorCodes.Offline
+                : terminalBridgeErrorCode;
+            return new AgentBridgeClientException(
+                errorCode,
+                "Agent Bridge 当前离线（error_code="
+                + errorCode
+                + "）；请先停止并重新启动 AgentHost。");
+        }
+
+        private static string NormalizeBridgeErrorCode(AgentBridgeClientException exception)
+        {
+            var code = exception == null ? null : exception.Code;
+            return IsKnownBridgeErrorCode(code)
+                ? code
+                : AgentBridgeErrorCodes.ConnectionLost;
+        }
+
+        private static bool IsKnownBridgeErrorCode(string code)
+        {
+            return string.Equals(code, AgentBridgeErrorCodes.Offline, StringComparison.Ordinal)
+                || string.Equals(code, AgentBridgeErrorCodes.ContractMismatch, StringComparison.Ordinal)
+                || string.Equals(code, AgentBridgeErrorCodes.AuthenticationFailed, StringComparison.Ordinal)
+                || string.Equals(code, AgentBridgeErrorCodes.ReplayRejected, StringComparison.Ordinal)
+                || string.Equals(code, AgentBridgeErrorCodes.RequestInvalid, StringComparison.Ordinal)
+                || string.Equals(code, AgentBridgeErrorCodes.ContextInvalid, StringComparison.Ordinal)
+                || string.Equals(code, AgentBridgeErrorCodes.ContextHashMismatch, StringComparison.Ordinal)
+                || string.Equals(code, AgentBridgeErrorCodes.AgentUnavailable, StringComparison.Ordinal)
+                || string.Equals(code, AgentBridgeErrorCodes.ConnectionLost, StringComparison.Ordinal)
+                || string.Equals(code, AgentBridgeErrorCodes.Timeout, StringComparison.Ordinal)
+                || string.Equals(code, AgentBridgeErrorCodes.Busy, StringComparison.Ordinal)
+                || string.Equals(code, AgentBridgeErrorCodes.TurnNotFound, StringComparison.Ordinal)
+                || string.Equals(code, AgentBridgeErrorCodes.ApprovalInvalid, StringComparison.Ordinal)
+                || string.Equals(code, AgentBridgeErrorCodes.ApprovalExpired, StringComparison.Ordinal)
+                || string.Equals(code, AgentBridgeErrorCodes.ApprovalAlreadyConsumed, StringComparison.Ordinal)
+                || string.Equals(code, AgentBridgeErrorCodes.ResultIdentityMismatch, StringComparison.Ordinal)
+                || string.Equals(code, AgentBridgeErrorCodes.InternalError, StringComparison.Ordinal);
         }
 
         private static void PublishSafely(Action<string> subscribers, string value)
