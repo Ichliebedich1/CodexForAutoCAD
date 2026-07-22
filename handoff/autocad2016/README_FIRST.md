@@ -24,6 +24,8 @@
   `20 -> 20` 和残留进程 `0` 验证，独立提交为 `8a4ee57`。
 - P0 完整候选为 `autocad2016-mvp-agent-stop-v032-pkg3-1cc9d294-8e6b26fd`；P1 已在该提交
   基础上完成受控集成，当前提交为 `7edf27`。集成规则见 `P0_TO_P1_CONTROLLED_INTEGRATION.md`。
+- 环境采集器 `Location` 支持已在提交 `5325e35` 受控引入；当前机器 PS7/PS5.1 自测均为
+  `24/24`，真实只读采集均发现 `1` 个可构建 R20.1 安装。该项不涉及 AutoCAD 启动或修改。
 
 ## 先看结论
 
@@ -163,6 +165,7 @@ AutoCAD 2016 / .NET Framework 4.5 / x64
 - `handoff/autocad2016/evidence/bridge-client-stage-verification-20260720.json`：具体 net45/net8 `IAgentBridgeClient` 的双 PowerShell、双隔离确定性构建、各 `22/22`、Bridge `34/34`、Phase 2 `184/184`、turn 终态消费/迟到事件拒绝、doctor、diff、秘密扫描和无残留 TestServer 脱敏证据；明确 `AutoCadLiveEvidence=false`，不证明统一 Host、长运行 AgentHost 或真实 Codex CAD 对话。
 - `handoff/autocad2016/evidence/agent-stop-live-observation-20260722.json`：P0 停止生命周期用户实机证据；不继承给 P1。
 - `handoff/autocad2016/evidence/cad-context-v2-candidate-build-autocad2016-mvp-context-v2-v032-4d3386d9-0645a745-cd07eb22.json`：P1 候选自动化构建、双重 R20.1 Host 输出、AgentHost 发布、manifest、235/235 门禁和 v2 API Probe 边界；明确 `NetLoadVerified=false`、`AutoCadLiveEvidence=false`。
+- `handoff/autocad2016/evidence/environment-collector-location-verification-20260722.json`：当前机器 PS7/PS5.1 环境采集器自测 `24/24`、只读真实采集结果和脱敏边界。
 - `handoff/autocad2016/TEST_REPORT_TEMPLATE.md`：当前实机记录与剩余测试矩阵。
 
 证据中不得写入 `TRUSTEDPATHS` 内容、用户名、真实图纸路径或网络路径。现场需要保存受信路径时，只保留在企业内部受控记录，不提交到 Git。

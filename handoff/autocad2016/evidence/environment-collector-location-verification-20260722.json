@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "scope": "autocad2016-environment-collector-location-current-machine",
+  "recordedAtLocal": "2026-07-22",
+  "collectorSha256": "BCFA796058FB24FAA313F0703D152BBCBD99F1CD08FB304254BC37883FB5651C",
+  "selfTest": {
+    "windowsPowerShell51": "24/24",
+    "powerShell7": "24/24"
+  },
+  "realCollection": {
+    "windowsPowerShell51": {
+      "schemaVersion": 5,
+      "collectionSucceeded": true,
+      "installations": 1,
+      "readyForHost2016Build": 1,
+      "registryRootsPresent": 1,
+      "keysInspected": 4,
+      "keysRead": 4,
+      "acadLocationHintCount": 1,
+      "installLocationHintCount": 0,
+      "locationHintCount": 1,
+      "failureCount": 0,
+      "environmentJsonSha256": "06482DBD4CBFB979F4C0832DBC3C026EDB60F7514C9C6C7952FE460120330441"
+    },
+    "powerShell7": {
+      "schemaVersion": 5,
+      "collectionSucceeded": true,
+      "installations": 1,
+      "readyForHost2016Build": 1,
+      "registryRootsPresent": 1,
+      "keysInspected": 4,
+      "keysRead": 4,
+      "acadLocationHintCount": 1,
+      "installLocationHintCount": 0,
+      "locationHintCount": 1,
+      "failureCount": 0,
+      "environmentJsonSha256": "F4F3E509ECFA34EF206789FFABF671B35CC02241549C06D309F160F368CA78C0"
+    }
+  },
+  "safety": {
+    "autocadStartedOrRestarted": false,
+    "cadCommandsSent": false,
+    "trustedPathsCollected": false,
+    "systemModified": false,
+    "sensitivePathsPersisted": false
+  },
+  "limitations": [
+    "本证据记录采集器自测和只读环境采集，不替代 AutoCAD NETLOAD 或 CAD 实机证据。",
+    "真实采集输出保留在本机 artifacts，不将用户路径、TRUSTEDPATHS 或完整环境 JSON 提交到 Git。"
+  ]
+}

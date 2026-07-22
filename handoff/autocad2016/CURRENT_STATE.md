@@ -298,14 +298,13 @@ NETLOAD 证据的能力一律视为未支持。
 
 ### 已验证但尚待集成的独立阶段
 
-- 环境采集器的注册表 `Location` 工作已经完成，不再是待开发项。独立分支
-  `codex/collector-discovery-hardening` 包含 `a011dd1` 和 `083f5f1` 两个已验证提交：
-  支持 `AcadLocation`、`InstallLocation`、`Location`，覆盖 Location-only 非标准安装、
-  指向 `acad.exe` 的规范化，以及 probe、根键、子键枚举和属性读取四类失败分支；
-  PowerShell 7/5.1 均为 `24/24`，真实只读采集均发现一个可构建 R20.1 安装。
-- `083f5f1` 当前尚未进入 `main` 或本 Agent MVP 分支。核心 0.3.1 Agent 阶段已提交；待
-  停止生命周期与只读对象 v2 阶段各自收口后，再独立引入 collector 两个提交；不得混入
-  未验证 Agent 提交。
+- 环境采集器的注册表 `Location` 工作已经受控引入当前 P1 线，提交为 `5325e35`：支持
+  `AcadLocation`、`InstallLocation`、`Location`，覆盖 Location-only 非标准安装、指向
+  `acad.exe` 的规范化，以及 probe、根键、子键枚举和属性读取四类失败分支。
+- 当前机器 PowerShell 7.6.3 与 Windows PowerShell 5.1.19041.6456 自测均为 `24/24`；
+  两个 Shell 的真实只读采集均发现 `1` 个可构建 R20.1 安装，`Location` 提示数为 `1`，
+  总失败计数为 `0`。脱敏证据见
+  `evidence/environment-collector-location-verification-20260722.json`。
 - 主工作树仍含用户所有的未提交 Host.2025 UI、选择和写入原型，以及其他未跟踪文件。
   这些变化没有进入 `codex/bridge-client-net45`，不能作为本 AutoCAD 2016 候选的构建或
   验证证据，也不得由本阶段清理、覆盖或提交。
