@@ -292,8 +292,9 @@ NETLOAD 证据的能力一律视为未支持。
   `BridgeV2Negotiated`、`NetLoadVerified`、`AutoCadLiveEvidence` 和实机混合选区仍为
   `false`。
 - 在对象扩展候选冻结前，先修复或解释上述 AgentHost 停止残留；两项分别验证、分别提交。
-- P1 已受控吸收 P0 停止修复，当前提交为 `7edf27`；P0 与 P1 仍保持独立提交和独立
-  evidence。P1 候选现在可以交给用户做一次人工实机测试，但在 `NetLoadVerified=true`
+- P1 已受控吸收 P0 停止修复，候选冻结提交为 `c174166`，当前线又独立引入采集器收口提交
+  `5325e35` 和证据提交 `3ea4961`；P0 与 P1 仍保持独立提交和独立 evidence。P1
+  候选现在可以交给用户做一次人工实机测试，但在 `NetLoadVerified=true`
   前不得称为已通过。
 
 ### 已验证但尚待集成的独立阶段
