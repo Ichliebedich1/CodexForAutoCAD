@@ -71,12 +71,115 @@ public static class LengthPrefixedFrameCodec
 
         try
         {
+            ValidateEnvelopeJson(payload);
             return JsonSerializer.Deserialize<IpcEnvelope>(payload, SerializerOptions)
                 ?? throw new BridgeProtocolException("IPC帧未包含有效信封。");
         }
         catch (JsonException exception)
         {
             throw new BridgeProtocolException("IPC帧不是有效JSON信封。", exception);
+        }
+    }
+
+    private static void ValidateEnvelopeJson(ReadOnlySpan<byte> payload)
+    {
+        var reader = new Utf8JsonReader(
+            payload,
+            new JsonReaderOptions
+            {
+                AllowTrailingCommas = false,
+                CommentHandling = JsonCommentHandling.Disallow,
+                MaxDepth = 4,
+            });
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new BridgeProtocolException("IPC信封JSON根节点必须是object。");
+        }
+
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+        {
+            if (reader.TokenType != JsonTokenType.PropertyName)
+            {
+                throw new BridgeProtocolException("IPC信封JSON字段结构无效。");
+            }
+
+            var propertyName = reader.GetString()
+                ?? throw new BridgeProtocolException("IPC信封JSON字段名无效。");
+            if (!seen.Add(propertyName))
+            {
+                throw new BridgeProtocolException("IPC信封JSON包含重复字段：" + propertyName + "。");
+            }
+
+            if (!reader.Read())
+            {
+                throw new BridgeProtocolException("IPC信封JSON字段缺少值。");
+            }
+
+            switch (propertyName)
+            {
+                case "protocolVersion":
+                    RequireInt32(ref reader, propertyName);
+                    break;
+                case "messageId":
+                case "correlationId":
+                case "sessionId":
+                case "messageType":
+                case "payloadJson":
+                case "nonce":
+                case "mac":
+                    RequireString(ref reader, propertyName);
+                    break;
+                case "sequence":
+                    RequireInt64(ref reader, propertyName);
+                    break;
+                default:
+                    throw new BridgeProtocolException(
+                        "IPC信封JSON包含未知字段：" + propertyName + "。");
+            }
+        }
+
+        if (reader.TokenType != JsonTokenType.EndObject)
+        {
+            throw new BridgeProtocolException("IPC信封JSON object未正常结束。");
+        }
+
+        if (seen.Count != 9)
+        {
+            throw new BridgeProtocolException("IPC信封JSON缺少必需字段。");
+        }
+
+        if (reader.Read())
+        {
+            throw new BridgeProtocolException("IPC信封JSON后存在额外数据。");
+        }
+    }
+
+    private static void RequireString(ref Utf8JsonReader reader, string propertyName)
+    {
+        if (reader.TokenType != JsonTokenType.String)
+        {
+            throw new BridgeProtocolException(
+                "IPC信封JSON字段类型无效：" + propertyName + "。");
+        }
+    }
+
+    private static void RequireInt32(ref Utf8JsonReader reader, string propertyName)
+    {
+        if (reader.TokenType != JsonTokenType.Number || !reader.TryGetInt32(out _))
+        {
+            throw new BridgeProtocolException(
+                "IPC信封JSON整数字段无效：" + propertyName + "。");
+        }
+    }
+
+    private static void RequireInt64(ref Utf8JsonReader reader, string propertyName)
+    {
+        if (reader.TokenType != JsonTokenType.Number || !reader.TryGetInt64(out _))
+        {
+            throw new BridgeProtocolException(
+                "IPC信封JSON整数字段无效：" + propertyName + "。");
         }
     }
 

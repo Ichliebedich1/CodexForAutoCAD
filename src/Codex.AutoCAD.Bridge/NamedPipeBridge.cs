@@ -43,6 +43,60 @@ public static class NamedPipeBridge
             CryptographicOperations.ZeroMemory(bootstrapSecret);
         }
     }
+    public static async Task<AuthenticatedPipeConnection> AcceptOneAsync(
+        AgentBootstrapDirectionKeys directionKeys,
+        CancellationToken cancellationToken = default,
+        BridgeConnectionOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(directionKeys);
+        var pipeName = directionKeys.PipeName;
+        var sessionId = directionKeys.SessionId;
+        ValidatePipeName(pipeName);
+        options ??= new BridgeConnectionOptions();
+        options.Validate();
+        var pipe = new NamedPipeServerStream(
+            pipeName,
+            PipeDirection.InOut,
+            MaximumConnectionsPerSession,
+            PipeTransmissionMode.Byte,
+            SecurePipeOptions);
+        IpcEnvelopeAuthenticator? authenticator = null;
+        IpcSessionGuard? incomingGuard = null;
+
+        try
+        {
+            authenticator = directionKeys.CreateOutboundAuthenticator();
+            incomingGuard = directionKeys.CreateInboundGuard(options.SessionGuard);
+            await pipe.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
+            var connection = new AuthenticatedPipeConnection(
+                pipe,
+                sessionId,
+                authenticator,
+                incomingGuard,
+                options);
+            authenticator = null;
+            incomingGuard = null;
+            return connection;
+        }
+        catch
+        {
+            await pipe.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+        finally
+        {
+            if (authenticator is not null)
+            {
+                authenticator.Dispose();
+            }
+
+            if (incomingGuard is not null)
+            {
+                incomingGuard.Dispose();
+            }
+        }
+    }
+
 
     public static async Task<AuthenticatedPipeConnection> ConnectAsync(
         string pipeName,

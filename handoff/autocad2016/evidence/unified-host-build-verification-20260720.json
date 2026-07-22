@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "recordedAtLocal": "2026-07-20T00:53:30.8939664+08:00",
+  "scope": "autocad2016-unified-readonly-host-candidate",
+  "status": "dual-powershell-build-gate-passed-runtime-pending",
+  "configuration": "Release",
+  "candidate": {
+    "id": "autocad2016-unified-host-frozen-20260720-F5D80075",
+    "fileName": "Codex.AutoCAD.Host.2016.dll",
+    "sha256": "F5D8007526467ED77A240596633892258ADC5CDC6F4B57A47B5578818AD172E0",
+    "size": 87552,
+    "targetFramework": ".NET Framework 4.5",
+    "architecture": "x64",
+    "languageVersion": "12.0",
+    "frozenCopyReadOnly": true,
+    "frozenPathCommitted": false,
+    "outputFileCount": 1,
+    "pdbProduced": false,
+    "autodeskAssembliesCopied": false
+  },
+  "powerShell7": {
+    "edition": "Core",
+    "version": "7.6.3",
+    "rawEvidenceSha256": "DB896BB4D446E0132A366D2E18505437066A0DDCA3931FCBD41E30E762F8AA37"
+  },
+  "windowsPowerShell51": {
+    "edition": "Desktop",
+    "version": "5.1.19041.6456",
+    "rawEvidenceSha256": "E619ADAE4E5D56B9EED33702423E6256242AC15596102AE4C3B4089C42233AA4"
+  },
+  "normalizedEvidenceMatch": true,
+  "normalizedComparisonScope": [
+    "candidate identity and size",
+    "normalized IL identity and metadata counts",
+    "command surface",
+    "contract vectors and Specs counts",
+    "Phase 2 and ReadOnlyContext regressions",
+    "read-only and no-save safety boundaries",
+    "AutoCAD process-set invariance"
+  ],
+  "isolatedBuildCountPerShell": 2,
+  "bitForBitRebuild": true,
+  "toolchain": {
+    "dotNetSdk": "8.0.319",
+    "dotNetHostSha256": "4377F10C78400F0370B88156773DE9843C07F14E65B3232005EC3179EF38D463",
+    "msBuildFileVersion": "17.14.40.60911",
+    "msBuildSha256": "0F7DABA445BA37B652AE4180270AB3EFF27ACBBE5D411D3B05DAD51AAB16404C",
+    "ilDasmFileVersion": "4.8.3928.0",
+    "ilDasmSha256": "F4ACDCD59B8CF35680AB3BA6E75887B0A63D083F075E135E7F9F41CAA1D7E6EB",
+    "offlineReferencePackageSha256": "23A9F94EA3E2CB88CD8341AF75B811C6FB5CB82516FC696E95ED4620279128E3",
+    "microsoftSignaturesValid": true
+  },
+  "autoCad2016": {
+    "acadFileVersion": "R20.1.49.0.0",
+    "acadSha256": "0BEDEE78AF75BAABCC6731DDDA853F76E3053D270ACE9A87BACDABFF5D0A0187",
+    "architecture": "x64",
+    "managedApiAssemblyVersion": "20.1.0.0",
+    "accoremgdSha256": "80860722FB2D40209D63E4720BE9D5018A5A4F27FE23F844DFE2951CA35E30B0",
+    "acdbmgdSha256": "9C27F4A71E4DFAEC393B53AB15A657FA37CA9F8A7B09E0522894AB3B354603BB",
+    "acmgdSha256": "CCE13839886E827C392637D4F6B670E4CA7780E1A02B660E41D049E9C492B97F",
+    "autodeskSignaturesValid": true
+  },
+  "il": {
+    "normalizedSha256": "1DFA07D870AB99EC53D303185A970D9F5939CFA5379BA7908C506CA9B1F89455",
+    "methodDefinitionCount": 509,
+    "memberReferenceCount": 326,
+    "typeDefinitionCount": 64,
+    "fieldDefinitionCount": 280,
+    "commandCount": 8,
+    "commands": [
+      "CODEXCADDOCTOR",
+      "CODEXCAD",
+      "CODEX16PAL",
+      "CODEX16PALINFO",
+      "CODEX16PALRESET",
+      "CODEX16CTX",
+      "CODEX16CTXINFO",
+      "CODEX16CTXCLEAR"
+    ]
+  },
+  "contracts": {
+    "net45Specs": "32/32",
+    "net8Specs": "32/32",
+    "crossRuntimeOutputIdentical": true,
+    "publicVectorBytes": 2225,
+    "publicVectorSha256": "c5a03d4cb73f850209a71539fc70ddc2bcd6ec2f7f45627c7285fb53ec424423",
+    "hostMappingVectorBytes": 2198,
+    "hostMappingVectorSha256": "e57ebb86e98216a501e8de0c702fe64e65a3db9e391be4a7cc7a6cfdcac71e18"
+  },
+  "regressions": {
+    "phase2Specs": "162/162",
+    "readOnlyContextSpecs": "25/25",
+    "agentHostDoctorPassed": true,
+    "gitDiffCheckPassed": true,
+    "secretScanPassed": true
+  },
+  "safety": {
+    "readOnlyGetObjectForReadVerified": true,
+    "cadWriteApiAbsent": true,
+    "saveApiAbsent": true,
+    "drawingPathReadAbsent": true,
+    "processNetworkIpcAbsent": true,
+    "agentDisabled": true,
+    "pluginInitiatedSaveDisabled": true,
+    "autoCadSaveTimeNotModified": true,
+    "autoCadProcessSetUnchanged": true,
+    "autoCadStartedOrRestarted": false,
+    "cadCommandsSent": false,
+    "drawingReadOrWrittenByVerifier": false
+  },
+  "reviewedManifestSha256": "1D826300DBF447C0AC65AC058AC484FFDA1A122AF4713C32255CE7161A4F3F1A",
+  "verifierSha256": "47576202B758B28B29194E41AD6C66C7D52118C881B61A6EA7A82FAD9C80180C",
+  "runtime": {
+    "netLoadVerified": false,
+    "runtimeToArtifactBindingVerified": false,
+    "paletteJsonRuntimeVerified": false,
+    "realEntityFieldsCompared": false,
+    "agentBridgeRuntimeVerified": false,
+    "completeAutoCad2016Support": false
+  },
+  "unverified": [
+    "manual NETLOAD of the exact frozen unified Host.2016 candidate",
+    "diagnostic command surface in the unified candidate",
+    "Palette open, reset, docking, floating, hide and reopen in the unified candidate",
+    "real six-entity selection mapped to CadContextJson v1",
+    "field-by-field comparison of coordinates, layer, text, radius, vertices and block name",
+    "readable summary and canonical JSON display in Palette",
+    "125 and 150 percent DPI",
+    "document close and AutoCAD exit lifecycle",
+    "concrete IAgentBridgeClient and long-running live Bridge",
+    "real Codex thread, turn, assistant event return and two-turn conversation"
+  ],
+  "evidenceBoundary": "Both PowerShell 7 and Windows PowerShell 5.1 independently proved deterministic Release compilation of the same net45/x64 unified read-only Host candidate against the target machine's signed AutoCAD 2016 R20.1 managed assemblies, exact IL and command surface, cross-runtime CadContextJson vectors, Phase 2 and ReadOnlyContext regressions, no CAD-write/save/Agent/IPC APIs, secret scanning, and an unchanged AutoCAD process set. This record does not prove that the frozen DLL has been NETLOADed, that real AutoCAD entities were mapped to JSON or shown in the Palette, that Agent/Codex is connected, or that AutoCAD 2016 is completely supported."
+}

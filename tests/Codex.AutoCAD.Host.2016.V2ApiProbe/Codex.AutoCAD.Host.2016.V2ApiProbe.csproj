@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <ImportDirectoryBuildProps>false</ImportDirectoryBuildProps>
+    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+  </PropertyGroup>
+
+  <Import Project="$(MSBuildToolsPath)\Microsoft.Common.props" Condition="Exists('$(MSBuildToolsPath)\Microsoft.Common.props')" />
+
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <ProjectGuid>{F2A8B3C1-7D4E-4F5A-9B6C-1E2D3F4A5B6C}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>Codex.AutoCAD.Host2016.V2ApiProbe</RootNamespace>
+    <AssemblyName>Codex.AutoCAD.Host.2016.V2ApiProbe</AssemblyName>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <TargetFrameworkProfile />
+    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>x64</Platforms>
+    <Prefer32Bit>false</Prefer32Bit>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>annotations</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode>true</RestoreLockedMode>
+    <RestoreConfigFile>$(MSBuildThisFileDirectory)NuGet.Config</RestoreConfigFile>
+    <NuGetLockFilePath>$(MSBuildThisFileDirectory)packages.lock.json</NuGetLockFilePath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\x64\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\x64\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="accoremgd, Version=20.1.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>$(AutoCad2016Dir)\accoremgd.dll</HintPath>
+      <SpecificVersion>true</SpecificVersion>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="acdbmgd, Version=20.1.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>$(AutoCad2016Dir)\acdbmgd.dll</HintPath>
+      <SpecificVersion>true</SpecificVersion>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="acmgd, Version=20.1.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>$(AutoCad2016Dir)\acmgd.dll</HintPath>
+      <SpecificVersion>true</SpecificVersion>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net45" Version="[1.0.3]">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime;build;native;contentfiles;analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="V2ApiSurfaceProbe.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+
+  <Target Name="ValidateAutoCad2016References" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(AutoCad2016Dir)' == ''" Text="请通过 /p:AutoCad2016Dir=&quot;...&quot; 指定目标机 AutoCAD 2016 原版安装目录。" />
+    <Error Condition="!Exists('$(AutoCad2016Dir)\acad.exe')" Text="指定目录中没有 acad.exe；拒绝构建 V2ApiProbe。" />
+    <Error Condition="!Exists('$(AutoCad2016Dir)\accoremgd.dll') Or !Exists('$(AutoCad2016Dir)\acdbmgd.dll') Or !Exists('$(AutoCad2016Dir)\acmgd.dll')" Text="目标机 AutoCAD 2016 的 accoremgd.dll、acdbmgd.dll、acmgd.dll 必须同目录且齐全。" />
+  </Target>
+
+  <Target Name="RejectAutodeskCopyLocal" AfterTargets="Build">
+    <Error Condition="Exists('$(TargetDir)\accoremgd.dll') Or Exists('$(TargetDir)\acdbmgd.dll') Or Exists('$(TargetDir)\acmgd.dll')" Text="禁止把 Autodesk 托管程序集复制到 V2ApiProbe 输出目录。" />
+  </Target>
+
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

@@ -943,49 +943,49 @@ $criticalBootstrapMethodNames = @(
 )
 $expectedCompiledBoundaries = @{
     net45 = @{
-        PublicApiCount = 103
-        PublicApiSha256 = '25396FDA611128175FB52304A096A30133FA22B7AD81EF4AEAF37880493C399E'
+        PublicApiCount = 105
+        PublicApiSha256 = '3774045C2DA9F89C61AD80BC9C025B84558B9C9EE036DE2857B4678147AA2491'
         MemberReferenceCount = 95
         MemberReferenceSha256 = '5663EF4CE5C6B0AB9968614703CF087758BE3F37FAAA734436602E2874A15532'
-        BootstrapImplementationMethodCount = 52
-        BootstrapImplementationIlSha256 = '627A070B5A12C66DBF31311F44529B2A93137911D4A54B7DE78C817370EA6897'
+        BootstrapImplementationMethodCount = 57
+        BootstrapImplementationIlSha256 = '30B7A3E43B5FF088099FEBA8305A32B44F2A38A725A3CD57B25C5ED955CA7B1C'
         CriticalMethodBodyHashes = @{
-            'AgentBootstrapPayload::DeriveDirectionKeys' = '279E639F341C53F80A40C41785CD0476FD4A9556BD6438A198714BCA9B3D8B6E'
-            'AgentBootstrapPayload::BeginSingleFrameWrite' = '0139A0AC76CFAB8B779DA8C811AA22CD6834D75F605160BE7189E81E69756115'
+            'AgentBootstrapPayload::DeriveDirectionKeys' = 'E9A8690EAE4C0FC8DC77480A2F5D6C946F45F062EF871BF87767999E8AAEED58'
+            'AgentBootstrapPayload::BeginSingleFrameWrite' = '6F30DA6B30B34207A499E235C6B73EF88C3500BF029C1EADD230760777908787'
             'AgentBootstrapPayload::CompleteSingleFrameWrite' = '6808F4E6A89353AD2F86889EDE52B942BEB1ADA03C7C969D7425BA04B310638D'
-            'AgentBootstrapPayload::FailSingleFrameWrite' = '544539C8A60DC7313B3A411C3BDF8118F12627F397DEE923B6630AF9A519639A'
-            'AgentBootstrapDirectionKeys::CreateOutboundAuthenticator' = '9982B255DC23768E5BA79308E85A58C77803A1E33E3D91C8594BC314F1523A18'
-            'AgentBootstrapDirectionKeys::CreateInboundGuard' = '74F008D403228A302BB1880F4F2759F9F690FA3C57800B2039558E926CA736A0'
-            'AgentBootstrapDirectionKeys::ClaimDirectionalKey' = '6C00DB867A0AE94AC9F1DB957248197688E7BA6E60A5BFFE12F4C6F2B90006D1'
-            'AgentBootstrapProtocol::CreateAuthenticationKey' = 'FEEB9449D81DBD7C393F26CFB8057130C06804A7CDDC0B826C57D4F063D12863'
-            'AgentBootstrapProtocol::WriteSingleFrameAndClearKey' = '677C74E4BAF2D636F85D21544374C9AE95DAD262A5178FCC830467B9199122FD'
-            'AgentBootstrapProtocol::ReadSingleFrameAndClearKey' = '02400E115C42EC6159BA3F78468CEC88F48DD5E206AFC8AE40BD05C437B8C9B0'
-            'AgentBootstrapProtocol::DecodeSingleFrameAndClear' = '2DFE3D1EDE6EEB24C28A428A51B9E01F90A5965F6244895601DD2E3BAA1C4C5C'
-            'AgentBootstrapProtocol::DecodeFrameCore' = 'F721380089A37596195406CBAE1378699DC091F4764F763ED2EF3CDD7873454D'
-            'AgentBootstrapProtocol::EncodeFrame' = 'B5F2B978B05E0B57B9DF3C46288A73559383E2DC3AB919C8AE4D9EFAB690DDD1'
+            'AgentBootstrapPayload::FailSingleFrameWrite' = 'A3CEF3D17938F9241E52633A36DBEE0B5F59DFCDEC4F9D6B48DC214AFEEA9F48'
+            'AgentBootstrapDirectionKeys::CreateOutboundAuthenticator' = 'CFEA5E960D2B41B6B176B7C01B63C491BC58C118F6413AE631D6424E26A8FB46'
+            'AgentBootstrapDirectionKeys::CreateInboundGuard' = '4E731ED913247C15C28AFF7AD8E7461CB6ABA125CD64D84F9338FD640E2F1F99'
+            'AgentBootstrapDirectionKeys::ClaimDirectionalKey' = 'E4AE555C67BAAE1DCA515101B4B606BE1CF2A364245CE9E801454FD381667CE4'
+            'AgentBootstrapProtocol::CreateAuthenticationKey' = 'DB119D49B5F127F24BF3F4810D9A80AA836EB9920B905A7C177F27714189D7D7'
+            'AgentBootstrapProtocol::WriteSingleFrameAndClearKey' = '8C84C05674EF6DA0E005192F5B40B2A79B245F1DED64E52E68B81A18590CBFD7'
+            'AgentBootstrapProtocol::ReadSingleFrameAndClearKey' = '35CBEAFA548BFC93D00E220D15A9847F177BA56A96E99D605607B9424D9B52BA'
+            'AgentBootstrapProtocol::DecodeSingleFrameAndClear' = 'DB37159A8AF92754CB2B888EF987DB2C4F879F0F8DB92E9F5B2A3352616C5299'
+            'AgentBootstrapProtocol::DecodeFrameCore' = '581F91771907CC99E6F3F3F269F4782B19A1492C117B78B1CDF09498FF194201'
+            'AgentBootstrapProtocol::EncodeFrame' = '2D9E3AB916F93A9A91B8640E4BEE2C3F484C5D7F13BF71B087C751E586125353'
         }
     }
     net8 = @{
-        PublicApiCount = 103
-        PublicApiSha256 = '25396FDA611128175FB52304A096A30133FA22B7AD81EF4AEAF37880493C399E'
+        PublicApiCount = 105
+        PublicApiSha256 = '3774045C2DA9F89C61AD80BC9C025B84558B9C9EE036DE2857B4678147AA2491'
         MemberReferenceCount = 99
         MemberReferenceSha256 = '0CCC0AB0DE04BAAD8C3129467E8BD119E2DAC9D9486ACC0EC3E6A8B547759A99'
-        BootstrapImplementationMethodCount = 52
-        BootstrapImplementationIlSha256 = '7CC4CED6C1FFE9D096BECE9E73102A6DE32533788CC6F61FEB7E83258C569ADE'
+        BootstrapImplementationMethodCount = 57
+        BootstrapImplementationIlSha256 = '3E4264D968CA2D6402E21D9522AFB968BEB5BDA4D17ACA3C68F49B3244562E26'
         CriticalMethodBodyHashes = @{
-            'AgentBootstrapPayload::DeriveDirectionKeys' = 'C977CC908F915678773DC7A684B1F2243B8B07E872E38F10506AD60B1E2BF110'
-            'AgentBootstrapPayload::BeginSingleFrameWrite' = 'BE580D73F4277D96A7B26908572E7A4EE74B1E042551B9A853E5284C60431B9E'
+            'AgentBootstrapPayload::DeriveDirectionKeys' = 'DF0C06C620AF67F41393D1BC546010860ADC9FB703F4B5F8DD67352DD50EF595'
+            'AgentBootstrapPayload::BeginSingleFrameWrite' = '403F0F40730D18B48B9335B8CA68B0849A1F433A2743B61008658E8C04F0842C'
             'AgentBootstrapPayload::CompleteSingleFrameWrite' = 'E0CCC53FE1F482FA4AE5E799C97CAC93E65228A8EFB0D8308A2FB8D030E8614E'
-            'AgentBootstrapPayload::FailSingleFrameWrite' = 'ED3DA19B0E63CA202574D3C5B019C45D1F320B5154C41602267C8F460288442C'
-            'AgentBootstrapDirectionKeys::CreateOutboundAuthenticator' = 'EC49FC297F3E302C0B7D388D6DA706D45CDE6195168676D25447F82954BAE432'
-            'AgentBootstrapDirectionKeys::CreateInboundGuard' = '89BA04D613DC56181F08AE019AF02C741A35CF20E1C901DB45E808D755B5A4AB'
-            'AgentBootstrapDirectionKeys::ClaimDirectionalKey' = 'BA37398EB576B160BBF565F8DBDE510ABD494040803F403226AD778B881313E7'
-            'AgentBootstrapProtocol::CreateAuthenticationKey' = 'C98DA2D0F35CDB749FA57EE325663DA116293715B0EBFDAC5443CDCC30E737A7'
-            'AgentBootstrapProtocol::WriteSingleFrameAndClearKey' = '5B95848DDCE932D0B23EACBDA7B91DB5803E7EC44630EF3F978CE6BC15C3635C'
-            'AgentBootstrapProtocol::ReadSingleFrameAndClearKey' = '38B8936DF4DD318AF019C9411959336C9DA32F2967CE62F96FC6FE470E9E9736'
-            'AgentBootstrapProtocol::DecodeSingleFrameAndClear' = 'C7BDCC81E2FE3BC8675AD4910037EA0D6658904956AE04B92E99EAEC6E8D4367'
-            'AgentBootstrapProtocol::DecodeFrameCore' = '1F148D47402FB776E20BB8061BE2E8194CBF021D802B3BDCF1950F7AFB88F802'
-            'AgentBootstrapProtocol::EncodeFrame' = '4C3DB8EE0546401612FC319FE31816AE6B8FEB35CC19C60455E2462535DABFEA'
+            'AgentBootstrapPayload::FailSingleFrameWrite' = '56D82E131B66F82F8D28CF62886A43C23085A508EC33B1B1AA8EA57F5A8808F4'
+            'AgentBootstrapDirectionKeys::CreateOutboundAuthenticator' = '65BD107B5229418E4C26E5AD53ABBA8627A8034E8234227A03A681117BD7CC5A'
+            'AgentBootstrapDirectionKeys::CreateInboundGuard' = '06BC8CC4C3CA5AB69698CB5AB676C81A568B17A655B23F8449C3832879A2A1C7'
+            'AgentBootstrapDirectionKeys::ClaimDirectionalKey' = '3FFFBD2B104F38122B0398C05919D5A4D8AEC1D8360BA4F99B6A75BCF48D6489'
+            'AgentBootstrapProtocol::CreateAuthenticationKey' = '7B931702F74A8E859A0BDD221C1A278ED27B2D5E1F045A41662A77743172311A'
+            'AgentBootstrapProtocol::WriteSingleFrameAndClearKey' = '55FB0C0F8D62AD9E13742961747AE1D309CDF27AF01ACA343A4949B666DB5A5F'
+            'AgentBootstrapProtocol::ReadSingleFrameAndClearKey' = 'EE95FDD3FDFD270CD23C3854994B1DB3CFE280C24B8572E2442E858F15080609'
+            'AgentBootstrapProtocol::DecodeSingleFrameAndClear' = '8726CF95B08EB2DEF4378CA51551018BCA878BD197D3CCCE8514F73E5642FB96'
+            'AgentBootstrapProtocol::DecodeFrameCore' = '87C5FDE2E083B490B735476DD287518DA43CF01D3D4BA5D17C24E4B0A0452389'
+            'AgentBootstrapProtocol::EncodeFrame' = '4306EDF03226E2AC1B5B4C1D17996490E629FD79B9F7E9939585B27E1F8EE37D'
         }
     }
 }
@@ -1244,8 +1244,8 @@ function Invoke-IsolatedManagedCoreRegression {
     $bridgeOutput = Invoke-Captured -FilePath $dotnetCommand -Arguments @(
         $bridgeSpecCandidates[0].FullName
     ) -Description "运行隔离 Bridge 规格"
-    if (@($bridgeOutput | Where-Object { $_ -match "^\s*29/29 specs passed\s*$" }).Count -ne 1) {
-        throw "Bridge 回归必须精确通过 29/29。"
+    if (@($bridgeOutput | Where-Object { $_ -match "^\s*37/37 specs passed\s*$" }).Count -ne 1) {
+        throw "Bridge 回归必须精确通过 37/37。"
     }
 
     return [pscustomobject]@{
@@ -1406,8 +1406,42 @@ $solutionProjectPaths = @(
         [IO.Path]::GetFullPath((Join-Path $repoRoot $match.Groups["Path"].Value))
     }
 ) | Sort-Object -Unique
-if ($solutionProjectPaths.Count -ne 15) {
-    throw "主解决方案项目清单必须精确包含15个项目，实际：$($solutionProjectPaths.Count)。"
+$expectedSolutionProjectPaths = @(
+    "src\Codex.AutoCAD.AgentHost\Codex.AutoCAD.AgentHost.csproj",
+    "src\Codex.AutoCAD.AgentLauncher\Codex.AutoCAD.AgentLauncher.csproj",
+    "src\Codex.AutoCAD.AgentRuntime\Codex.AutoCAD.AgentRuntime.csproj",
+    "src\Codex.AutoCAD.AppServer\Codex.AutoCAD.AppServer.csproj",
+    "src\Codex.AutoCAD.Bridge\Codex.AutoCAD.Bridge.csproj",
+    "src\Codex.AutoCAD.Bridge.Client\Codex.AutoCAD.Bridge.Client.csproj",
+    "src\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj",
+    "src\Codex.AutoCAD.Host.2025\Codex.AutoCAD.Host.2025.csproj",
+    "src\Codex.AutoCAD.Ipc\Codex.AutoCAD.Ipc.csproj",
+    "src\Codex.AutoCAD.Security\Codex.AutoCAD.Security.csproj",
+    "tests\Codex.AutoCAD.AgentLauncher.FakeAgentHost\Codex.AutoCAD.AgentLauncher.FakeAgentHost.csproj",
+    "tests\Codex.AutoCAD.AgentLauncher.Specs\Codex.AutoCAD.AgentLauncher.Specs.csproj",
+    "tests\Codex.AutoCAD.AgentRuntime.Specs\Codex.AutoCAD.AgentRuntime.Specs.csproj",
+    "tests\Codex.AutoCAD.AppServer.Specs\Codex.AutoCAD.AppServer.Specs.csproj",
+    "tests\Codex.AutoCAD.Bridge.Specs\Codex.AutoCAD.Bridge.Specs.csproj",
+    "tests\Codex.AutoCAD.Bridge.Client.Specs\Codex.AutoCAD.Bridge.Client.Specs.csproj",
+    "tests\Codex.AutoCAD.Bridge.Client.TestServer\Codex.AutoCAD.Bridge.Client.TestServer.csproj",
+    "tests\Codex.AutoCAD.Chat.Specs\Codex.AutoCAD.Chat.Specs.csproj",
+    "tests\Codex.AutoCAD.Contracts.Specs\Codex.AutoCAD.Contracts.Specs.csproj",
+    "tests\Codex.AutoCAD.Ipc.Specs\Codex.AutoCAD.Ipc.Specs.csproj",
+    "tests\Codex.AutoCAD.Security.Specs\Codex.AutoCAD.Security.Specs.csproj",
+    "tests\Codex.AutoCAD.Host.2016.Mvp.Specs\Codex.AutoCAD.Host.2016.Mvp.Specs.csproj"
+) | ForEach-Object { [IO.Path]::GetFullPath((Join-Path $repoRoot $_)) } |
+    Sort-Object -Unique
+$solutionProjectDifference = @(
+    Compare-Object -ReferenceObject $expectedSolutionProjectPaths `
+        -DifferenceObject $solutionProjectPaths
+)
+if ($solutionProjectPaths.Count -ne $expectedSolutionProjectPaths.Count -or
+    $solutionProjectDifference.Count -ne 0) {
+    $detail = @(
+        $solutionProjectDifference |
+            ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" }
+    ) -join "; "
+    throw "主解决方案项目清单必须精确匹配$($expectedSolutionProjectPaths.Count)个批准项目；实际：$($solutionProjectPaths.Count)；差异：$detail"
 }
 $projectObjRoots = @(
     foreach ($projectPath in $solutionProjectPaths) {
@@ -1538,7 +1572,7 @@ try {
         ArtifactHashes = $artifactHashes
         Net45Specs = "$expectedSpecCount/$expectedSpecCount"
         Net8Specs = "$expectedSpecCount/$expectedSpecCount"
-        BridgeRegressionSpecs = "29/29"
+        BridgeRegressionSpecs = "37/37"
         BridgeRegressionRuntimeArtifactHashes = $managedCoreRegression.RuntimeArtifactHashes
         BridgeProjectOutputSha256 = $managedCoreRegression.BridgeProjectOutputSha256
         BridgeRuntimeCopyMatchesProjectOutput = $managedCoreRegression.RuntimeBridgeCopyMatchesProjectOutput

@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "recordedAtLocal": "2026-07-21T10:15:00+08:00",
+  "scope": "autocad2016-unified-readonly-agent-mvp-live",
+  "status": "core-readonly-ai-mvp-live-passed-lifecycle-cleanup-open",
+  "candidate": {
+    "id": "autocad2016-mvp-agent-v031-a7bff46f-8c74b95e",
+    "hostAssemblyVersion": "0.3.1.0",
+    "hostTargetFramework": ".NET Framework 4.5",
+    "hostArchitecture": "x64",
+    "autoCadApi": "R20.1 / 20.1.0.0",
+    "hostSha256": "A7BFF46F1BA4970818ACB03F51C09EEBF1DDB8A7093D0C4C615E2D877D9236D1",
+    "agentHostSha256": "8C74B95ECD6680F9A35824DB1C2C543D42B52AB1E4D3565F5B7EE8DBB1DC900E"
+  },
+  "evidenceSource": {
+    "performedBy": "user-in-existing-autocad-2016-process",
+    "userConfirmedPrescribedRuntimeFlowPassed": true,
+    "screenshotReviewed": true,
+    "rawDrawingDataCommitted": false,
+    "canonicalJsonCommitted": false,
+    "selectionOrContextHashCommitted": false,
+    "drawingNameOrPathCommitted": false
+  },
+  "runtime": {
+    "netLoadVerified": true,
+    "runtimeToArtifactBindingVerified": true,
+    "moduleVersionVerified": true,
+    "realEntitySelectionReadOnlyVerified": true,
+    "cadContextJsonV1Published": true,
+    "paletteContextDisplayVerified": true,
+    "agentHostStartVerified": true,
+    "authenticatedBridgeVerified": true,
+    "realLocalCodexResponseVerified": true,
+    "sameThreadSecondTurnContextContinuityVerified": true,
+    "userReportedRepeatedConversationChecks": true,
+    "agentStopCommandUserConfirmed": true,
+    "dbmodUnchangedUserConfirmed": true,
+    "cadWriteObserved": false,
+    "pluginInitiatedSaveObserved": false,
+    "longTermPersistentMemoryVerified": false,
+    "completeAutoCad2016Support": false
+  },
+  "independentLocalChecksAfterUserTest": {
+    "hostArtifactSha256MatchedManifest": true,
+    "agentHostArtifactSha256MatchedManifest": true,
+    "agentHostResidualProcessCount": 1,
+    "agentHostNoResidualProcessVerified": false
+  },
+  "unverifiedOrOpen": [
+    "why one candidate AgentHost bootstrap-serve process remained after the user-confirmed stop flow",
+    "offline, disconnect and timeout fail-closed behavior inside AutoCAD",
+    "125 and 150 percent DPI",
+    "document close and AutoCAD exit lifecycle",
+    "persistent memory across AgentHost or AutoCAD process restarts",
+    "CAD preview, approval and write execution"
+  ],
+  "evidenceBoundary": "The user manually NETLOADed the exact frozen AutoCAD 2016 net45/x64 candidate and confirmed real read-only entity capture, CadContextJson v1 publication in the Palette, authenticated AgentHost startup, a real local Codex response, same-thread follow-up context continuity, unchanged DBMOD, and no CAD write or plug-in initiated save. The candidate Host and AgentHost hashes were independently rechecked after the test. A later read-only process inspection found one AgentHost bootstrap-serve process still parented by the active AutoCAD process, so bounded stop/no-residual lifecycle is explicitly not claimed. This record does not prove persistent long-term memory, high-DPI or document/AutoCAD exit lifecycle, CAD writes, or complete AutoCAD 2016 support."
+}

@@ -1,0 +1,28 @@
+{
+  "evidenceType": "host2016-terminate-exit-retry",
+  "observedAtUtc": "2026-07-22T02:26:49.6759709Z",
+  "candidateId": "autocad2016-mvp-context-v2-v032-0d72edc3-10bea363-af580c30",
+  "hostSha256": "0D72EDC38A30E7BF33AAEE4DCB1D50D341C4C883146677537C4BB5E7551D0AD7",
+  "agentHostSha256": "10BEA363AC80C856FA513F4312B60410DB62BBF4917CE634B589CBA59DA65442",
+  "tests": {
+    "host2016MvpSpecs": "24/24",
+    "phase2Specs": "259/259",
+    "r20_1ReleaseX64BitForBitHostBuild": true,
+    "hostForbiddenApiScan": true,
+    "sensitiveScan": true,
+    "terminationSuccessStopsOnce": true,
+    "terminationAsyncFailureRetries": true,
+    "terminationSynchronousFailureRetries": true,
+    "terminationNullTaskRetries": true,
+    "terminationFinalFailureSanitized": true,
+    "terminationStatusObserverIsolated": true,
+    "agentHostResidualAfterLiveSpec": 0
+  },
+  "autoCadLive": false,
+  "netLoadVerified": false,
+  "notes": [
+    "退出清理最多执行两次有界 StopAsync；仅连续失败才报告终态错误。",
+    "该证据覆盖自动化与 R20.1 候选构建，不替代用户在 AutoCAD 2016 中的退出实机验证。",
+    "未记录图纸路径、图名、选择哈希、上下文哈希、用户名或凭据。"
+  ]
+}

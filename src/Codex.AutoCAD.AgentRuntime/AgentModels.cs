@@ -89,6 +89,8 @@ public sealed record AgentThreadOptions
     public string? ServiceTier { get; init; }
 
     public bool? Ephemeral { get; init; }
+
+    public bool EnableCadDynamicTools { get; init; } = true;
 }
 
 public sealed record AgentTurnOptions

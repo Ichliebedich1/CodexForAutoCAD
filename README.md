@@ -12,35 +12,38 @@
 
 以上是目标边界，不代表当前全部能力已经接通。实际完成状态和真机证据以 `handoff/autocad2016/CURRENT_STATE.md`、`handoff/autocad2016/README_FIRST.md` 及对应阶段证据为准。
 
-## 当前状态（2026-07-21）
+## 当前状态（2026-07-22）
 
-以下结论严格区分真实 AutoCAD 2016 运行证据、自动化验证和仅存在于代码中的候选能力。
+当前已在原版 AutoCAD 2016 R20.1 中建立 `0.3.2.0` 的 CadContextJson v2 只读 AI
+实机基线：
 
-### 已在原版 AutoCAD 2016 中运行通过
+- Host/Doctor、Palette 和 v2 schema 已人工 `NETLOAD` 运行。
+- 100% DPI 下的打开、停靠、浮动、隐藏重开、重建、中文输入和布局由用户确认通过。
+- 一个 50 对象混合选区成功发布：44 个强类型实体、6 个受限 placeholder，
+  `jsonBytes=23142`，`DBMOD 21 -> 21`；未知对象没有使整组选区失败。
+- 本机 Codex 使用当前 v2 CAD 上下文完成两轮连续对话。
+- 显式 CAD 上下文清除和文档激活清除旧缓存通过；CAD 写入和插件保存仍禁用。
+- P0 停止生命周期已有独立实机证据：重复 STOP、DBMOD 不变和 AgentHost 残留为零。
 
-- `net45`/x64 Host 使用目标机原版 R20.1 托管程序集构建，并由用户人工 `NETLOAD`。
-- 原生 `PaletteSet` 已验证打开、停靠、浮动、隐藏重开、重建、中文输入与换行；已验证样本为 96 DPI。
-- 统一只读 Host 已从真实选择集读取受支持图元，生成 `CadContextJson v1`，在 Palette 显示摘要与 canonical JSON；捕获、清除和 Palette 重建过程中 `DBMOD` 保持不变。
-- Agent MVP `0.3.1`（提交 `7f10d60`）已实机验证：一条 `Line` 经
-  `CadContextJson v1 -> Palette -> 认证 AgentHost -> 本机 Codex` 返回回答，并在同一 Codex thread 中完成两轮连续对话。
+脱敏范围证据见
+`handoff/autocad2016/evidence/cad-context-v2-live-observation-20260722.json`。该证据不证明
+19 类对象均已逐类核对，也不证明 AutoCAD 正常退出、125%/150% DPI、断线、超时和取消。
 
-这些证据证明了受支持图元的最小只读 AI 链路，不等于完整对象覆盖、稳定发布版或 CAD 写入支持。
+当前选择快照仍有明确的 `64` 实体和 `256 KiB` canonical JSON 上限。下一阶段不会
+简单放大常量，而是保留 v2 兼容快照并新增整图扫描、索引、分页和按需查询能力。
 
-### 已实现基础，但尚未进入实机产品链
+当前活动路线为：
 
-- AgentHost 停止生命周期候选 `0.3.2` 尚未完成 AutoCAD 2016 实机验证，也尚未形成阶段提交；失败后的重复 `STOP` 状态仍有误报“已停止”的风险。
-- `CadContextJson v2` 已完成 19 种强类型对象和 3 种受限占位的契约基础；Contracts net45/net8 为 `71/71`，Phase 2 总门禁为 `231/231`，相关基础提交截至 `50f6cf3`。
-- 当前 Host.2016 产品运行时、Palette 文案和 Agent Client 仍使用 v1。v2 捕获、状态、能力协商和 `StartTurnV2Async` 尚未接入并完成真实认证端到端验证。
+1. 收拢并冻结上述 v2 实机基线。
+2. 修复 Bridge 断线离线化、请求取消/超时/迟到事件、上下文与对话清除语义。
+3. 建设 1k/10k/50k 对象级整图上下文和结构化查询。
+4. 完成进程沙箱与审计基础后，才启用 AutoCAD 2016 强类型安全写入。
+5. 随后完成长期记忆、安装签名、企业部署和 AutoCAD 2025 适配。
 
-### 仍未完成
+完整阶段与完成定义见 `handoff/autocad2016/LONG_TERM_MEMORY_TODO.md`。
 
-- `0.3.2` 的启动/停止双循环、异常路径、无残留进程和 `DBMOD` 不变的实机收口。
-- v2 统一 Host 产品接入、原版 R20.1 Release 构建、冻结 DLL，以及“多个支持对象 + 一个未知对象 + Codex 回答”的人工 `NETLOAD` 验证。
-- AutoCAD 退出、Agent 异常退出/断线/超时/取消、文档切换和 125%/150% DPI 等稳定性验收。
-- CAD 写入的预览、一次性审批、锁内重校验、单事务、Undo/回滚和不自动保存的 AutoCAD 2016 端到端验证。
-- 完整 OS 沙箱、长期记忆、审计链、签名、安装和企业发布验收。
-
-旧审计中的 `25%` 结论已经失效；项目进度不得按代码量或旧百分比判断，只能按上述实际运行证据逐项更新。未经原版 R20.1 编译和用户人工 `NETLOAD`，不得宣称某个新候选支持 AutoCAD 2016。
+Provider-neutral 抽象、Direct API Provider 和自研 Agent Loop 已冻结，不属于当前产品
+结束条件；除非用户以后单独重新立项，不创建对应空接口或第二套调用链。
 
 ## 本地构建
 

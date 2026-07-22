@@ -6,6 +6,9 @@
     <RootNamespace>Codex.AutoCAD.Bridge.Specs</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Codex.AutoCAD.AgentHost\Codex.AutoCAD.AgentHost.csproj" />
+    <ProjectReference Include="..\..\src\Codex.AutoCAD.AgentRuntime\Codex.AutoCAD.AgentRuntime.csproj" />
     <ProjectReference Include="..\..\src\Codex.AutoCAD.Bridge\Codex.AutoCAD.Bridge.csproj" />
+    <ProjectReference Include="..\..\src\Codex.AutoCAD.Bridge.Client\Codex.AutoCAD.Bridge.Client.csproj" />
   </ItemGroup>
 </Project>

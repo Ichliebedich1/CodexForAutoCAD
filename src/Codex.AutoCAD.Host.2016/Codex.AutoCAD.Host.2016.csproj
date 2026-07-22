@@ -20,8 +20,8 @@
     <PlatformTarget>x64</PlatformTarget>
     <Platforms>x64</Platforms>
     <Prefer32Bit>false</Prefer32Bit>
-    <LangVersion>7.3</LangVersion>
-    <Nullable>disable</Nullable>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>annotations</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
     <Deterministic>true</Deterministic>
@@ -54,8 +54,25 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Codex.AutoCAD.AgentLauncher\Codex.AutoCAD.AgentLauncher.csproj">
+      <AdditionalProperties>EnableAutoCad2016=true</AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\Codex.AutoCAD.Bridge.Client\Codex.AutoCAD.Bridge.Client.csproj">
+      <AdditionalProperties>EnableAutoCad2016=true</AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj">
+      <AdditionalProperties>EnableAutoCad2016=true</AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\Codex.AutoCAD.Ipc\Codex.AutoCAD.Ipc.csproj">
+      <AdditionalProperties>EnableAutoCad2016=true</AdditionalProperties>
+    </ProjectReference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Xaml" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
     <Reference Include="accoremgd, Version=20.1.0.0, Culture=neutral, PublicKeyToken=null">
       <HintPath>$(AutoCad2016Dir)\accoremgd.dll</HintPath>
       <SpecificVersion>true</SpecificVersion>
@@ -83,6 +100,26 @@
   <ItemGroup>
     <Compile Include="CodexAutoCad2016Extension.cs" />
     <Compile Include="CodexCad2016Commands.cs" />
+    <Compile Include="EmbeddedContractGlobalUsings.cs" />
+    <Compile Include="CadContextJsonMapper.cs" />
+    <Compile Include="CadContextV2CapturePolicy.cs" />
+    <Compile Include="CadContextJsonV2Mapper.cs" />
+    <Compile Include="CanonicalSelectionHashV2.cs" />
+    <Compile Include="ReadOnlySelectionCaptureV2.cs" />
+    <Compile Include="DocumentContextRegistry.cs" />
+    <Compile Include="UnifiedReadOnlyContextRuntime.cs" />
+    <Compile Include="UnifiedPaletteRuntime.cs" />
+    <Compile Include="UnifiedPaletteController.cs" />
+    <Compile Include="UnifiedPalettePanel.cs" />
+    <Compile Include="MvpAgentProtocolIdentity.cs" />
+    <Compile Include="MvpAgentCapabilityPolicy.cs" />
+    <Compile Include="MvpAgentClient.cs" />
+    <Compile Include="MvpAgentStopCoordinator.cs" />
+    <Compile Include="MvpAgentTerminationCoordinator.cs" />
+    <Compile Include="MvpAgentRuntime.cs" />
+    <Compile Include="..\Codex.AutoCAD.Host.2016.ReadOnlyContext\ReadOnlySelectionCapture.cs" Link="ReadOnlyContext\ReadOnlySelectionCapture.cs" />
+    <Compile Include="..\Codex.AutoCAD.Host.2016.ReadOnlyContext\ReadOnlyContextSnapshot.cs" Link="ReadOnlyContext\ReadOnlyContextSnapshot.cs" />
+    <Compile Include="..\Codex.AutoCAD.Host.2016.ReadOnlyContext\CanonicalSelectionHash.cs" Link="ReadOnlyContext\CanonicalSelectionHash.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
 

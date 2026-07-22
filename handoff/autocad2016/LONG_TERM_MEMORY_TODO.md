@@ -1,224 +1,328 @@
-# AutoCAD 2016 项目长期记忆与待办
+# AutoCAD 2016 项目长期记忆与完整待办
 
-最后更新：2026-07-21（北京时间）
+最后更新：2026-07-22（北京时间）
 
-本文件是项目长期“架构决策 + 已验证基线 + 未完成队列”入口。它必须与
-`CURRENT_STATE.md`、`README_FIRST.md`、`COMPANY_PC_RUNBOOK.md`、阶段测试说明和脱敏
-evidence 一起阅读。
+本文件是项目长期“固定目标、已验证基线、M0-M12 未完成队列和阶段纪律”的权威入口。
+运行状态细节见 `CURRENT_STATE.md`，人工测试入口见 `README_FIRST.md`，脱敏证据见
+`handoff/autocad2016/evidence/`。
 
-## 1. 固定目标和证据口径
+## 1. 总目标
 
-- AutoCAD 2016 优先：进程内 `net45/x64` 薄宿主。
-- Agent、Bridge、Codex 和 Sandbox 保持进程外 `.NET 8`。
-- 只读 MVP：选择图元 -> 结构化 CadContextJson -> Palette -> 本机 Codex -> 连续对话。
-- 当前 CAD 写入和插件保存保持关闭。
-- 插件不得自动保存 DWG，也不得修改或关闭用户的 AutoCAD 自动保存设置。
-- 未来写入固定为“计划/预览 -> 一次审批 -> 锁内重校验 -> 单事务 -> 不自动保存”。
+交付一个 AutoCAD 2016 优先的本机 Codex 插件，能够：
+
+- 理解选择集和整张图纸数量级的 CAD 信息。
+- 通过结构化查询让 Codex 按需获取图纸细节。
+- 提供稳定的多轮对话。
+- 通过强类型工具安全修改 CAD。
+- 所有写入经过计划、预览、一次审批、锁内重校验、单事务、Undo 和审计。
+- 不自动保存 DWG，也不修改或关闭用户的 AutoCAD 自动保存设置。
+- AgentHost、Codex 和沙箱均运行在 AutoCAD 进程外。
+- 最终具备长期记忆、审计、恢复、签名安装和企业部署能力。
+- AutoCAD 2016 完成后再适配 AutoCAD 2025。
+
+## 2. 明确冻结的范围
+
+除非用户以后单独重新立项，否则以下内容不属于本项目结束条件，也不得通过空接口制造进度：
+
+- Provider-neutral `IAgentProvider` 抽象。
+- Direct API Provider。
+- OpenAI、Anthropic、国产模型或本地模型的第二套调用链。
+- 自研 Agent Loop。
+- 任意 AutoCAD 命令字符串、LISP、脚本或反射式 API 调用。
+- 自动保存或覆盖 DWG。
+- Agent 对结果不确定的 CAD 写入自动重试。
+
+当前唯一实际 Agent 为本机 Codex；现有集成使用
+`codex app-server --stdio` 的结构化 JSONL/JSON-RPC，不是终端模拟或 ANSI 文本解析。
+
+## 3. 固定架构与安全不变量
+
+- AutoCAD 2016 进程内保持 `net45/x64` 薄宿主。
+- AgentHost、Bridge、Codex、沙箱、长期记忆和审计保持进程外 .NET 8。
 - HMAC、严格递增 sequence、nonce、防重放、结果身份绑定和 fail-closed 不得弱化。
+- CAD 写入固定为“强类型计划 -> 可检查预览 -> 一次审批 -> DocumentLock 内重校验 ->
+  单事务 -> 单 Undo 边界 -> 结构化终态”。
+- 审批只有“拒绝”和“一次允许”，不得增加会话级永久允许。
+- 文档、revision、选择、空间、图层和计划哈希必须在锁内重新校验。
+- 断线、超时、取消、上下文变化或结果不确定时不得开始或自动重试 CAD 写入。
 - 没有目标机原版 R20.1 编译和用户人工 `NETLOAD`，不得宣称相应能力支持 AutoCAD 2016。
-- 每个阶段验证通过后单独提交 Git。
+- 自动化门禁、模拟服务和合成上下文不能替代 AutoCAD 实机证据。
+- 每个可验证阶段通过后单独提交 Git。
 
-进度只按真实运行证据判断，不按文件数量、代码数量或接口数量判断。旧审计中的 `25%`
-属于 Agent 链尚未实机接通时的历史快照，现已失效。
+## 4. 当前已验证基线
 
-## 2. 当前最小 MVP 判断
+### P0：AgentHost 停止生命周期
 
-### 已实机成立的 happy path
+- [x] 提交 `8a4ee57`。
+- [x] AutoCAD 2016 人工启停和重复 STOP。
+- [x] DBMOD 不变，AutoCAD 可继续使用。
+- [x] 相关 AgentHost 残留为 0。
+- [x] 脱敏证据：`agent-stop-live-observation-20260722.json`。
 
-- [x] 在 AutoCAD 2016 中选择一个或多个受支持图元。
-- [x] Host 以只读方式读取真实图元信息。
-- [x] 生成 CadContextJson v1。
-- [x] 在统一 Palette 显示摘要和 canonical JSON。
-- [x] 通过认证 AgentHost 调用本机 `codex app-server --stdio`。
-- [x] Codex 使用当前 CAD 上下文回答，并在同一 thread 完成第二轮连续对话。
+### P1：CadContextJson v2 产品调用链
 
-精确边界：`0.3.1.0` 的完整 AI 实机样本是一个真实 Line；早期统一只读 Host 另对 v1
-六类对象完成过捕获和 JSON 展示。不得据此声称任意 AutoCAD 对象均受支持。
+候选身份：
 
-### 尚未达到的产品级收口
+- Host 版本：`0.3.2.0`。
+- schema：`codex.autocad.cad-context/2`。
+- Host SHA-256：
+  `0D72EDC38A30E7BF33AAEE4DCB1D50D341C4C883146677537C4BB5E7551D0AD7`。
+- AgentHost SHA-256：
+  `10BEA363AC80C856FA513F4312B60410DB62BBF4917CE634B589CBA59DA65442`。
+- manifest SHA-256：
+  `A16831703985906F724B8EB93BDB0BC801A5781A3228F0694CB1A20A4AC5960F`。
 
-- [ ] AgentHost 停止后可靠无残留。
-- [ ] v2 对象覆盖进入真实产品调用链。
-- [ ] 离线、断线、超时、取消、文档切换和 AutoCAD 退出生命周期全部实机通过。
-- [ ] 高 DPI 和稳定候选包/人工测试手册完成。
+已验证：
 
-因此“六项最小功能链已在受支持 Line 上实机成立”与“只读 MVP 已达到发布级稳定”是两个
-不同结论；后者仍未完成。
+- [x] Runtime、Palette、Bridge 和 AgentHost 使用 v2，缺少 v2 能力时不回退 v1。
+- [x] 19 类强类型契约和未知/读取失败/数据超限三类受限 placeholder。
+- [x] Host.2016 MVP `24/24`、Phase 2 `259/259` 和 AgentHost v2 两轮 live `2/2`。
+- [x] AutoCAD 2016 人工 NETLOAD、Doctor v2 和 CAD 写入/插件保存禁用。
+- [x] 100% DPI Palette 打开、停靠、浮动、隐藏重开、重建、中文输入和布局。
+- [x] 50 对象混合选区成功发布：44 个强类型、6 个 placeholder、
+  `jsonBytes=23142`、`DBMOD 21 -> 21`。
+- [x] 本机 Codex 使用真实 v2 CAD 上下文完成两轮连续对话。
+- [x] 显式 CAD 上下文清除和文档激活清除旧缓存。
+- [x] 脱敏范围证据：
+  `cad-context-v2-live-observation-20260722.json`。
 
-## 3. 已验证并应长期保留的基线
+证据边界：
 
-### AutoCAD 2016 与 Palette
+- [ ] 19 类对象尚未逐类完成字段实机核对。
+- [ ] 文档切换后真正提交问题的 fail-closed 尚未实测；用户在提示阶段取消。
+- [ ] v2 上下文已发布时 Palette Reset 后保留上下文尚未实测。
+- [ ] AutoCAD 正常退出清理、125%/150% DPI、启动失败、断线、超时、取消和迟到事件待验证。
+- [ ] `CODEX16CTXCLEAR` 只清 CAD 上下文，不新建 Codex thread；需补充明确的对话清除语义。
+- [ ] 选择快照仍有 64 实体和 256 KiB JSON 上限，不能满足整图规模。
 
-- [x] 目标机原版 R20.1/x64/CLR/AcMgd/AcDbMgd 环境采集。
-- [x] 诊断薄宿主人工 `NETLOAD`，`CODEXCADDOCTOR`/`CODEXCAD` 可运行。
-- [x] Palette 100% DPI 打开、停靠、浮动、隐藏重开、释放重建、中文输入和换行。
-- [x] 只读选择捕获、清除和文档激活清除旧缓存；相关样本 `DBMOD` 不变。
-- [x] v1 六类：Line、Circle、Polyline、DBText、MText、BlockReference。
+## 5. M0：收拢当前基线
 
-### 认证和进程边界
+完成定义：主分支真实包含已实机验证的 v2 调用链，文档与证据一致。
 
-- [x] net45/net8 HMAC、sequence、nonce、防重放和固定向量兼容。
-- [x] 受限继承句柄、启动身份/哈希校验、启动截止、取消和有界清理的非 CAD bootstrap
-  检查点。
-- [x] 具体认证 Bridge Client 的能力协商、thread/turn、文本事件、interrupt 和一次审批
-  响应协议检查点。
+- [x] 建立独立 `codex/m0-baseline` 集成 Worktree。
+- [x] 将 P1 代码、测试、脚本和历史 evidence 合入集成线，代码无冲突。
+- [x] 创建本次 v2 AutoCAD 实机脱敏 observation evidence。
+- [ ] 更新 README、CURRENT_STATE、README_FIRST、测试手册和本文件。
+- [ ] 运行 JSON、Markdown、禁止敏感信息和 diff 检查。
+- [ ] 重新运行 R20.1 Release、Host MVP、Phase 2、AgentHost live 和候选包身份门禁。
+- [ ] 冻结新的统一只读 v2 基线提交、版本、DLL 哈希和候选目录。
+- [ ] 建立现有 Worktree 的“已合并、保留、可删除”清单。
+- [ ] 在不覆盖主工作树 Host.2025 原型的前提下，让 `main` 前进到已验证基线。
 
-### `0.3.1.0` 只读 Agent MVP
+## 6. M1：只读 MVP 稳定化
 
-- [x] 已验证阶段提交 `7f10d60`。
-- [x] 用户人工 `NETLOAD` 精确候选并确认 Palette 模块版本 `0.3.1.0`。
-- [x] 真实 Line -> CadContextJson v1 -> AgentHost -> 本机 Codex -> 第一轮回答。
-- [x] 同一 thread 第二轮问题复用前文；用户另确认多次连续对话正常。
-- [x] CAD 写入和插件保存保持禁用。
-- [ ] AgentHost 停止后无残留；现有证据明确为 `false`。
+完成定义：形成可长期日常使用的稳定只读 MVP 候选。
 
-## 4. 当前 P0：AgentHost 停止生命周期
+- [ ] Bridge 断线时原子切换 offline，终止当前回合，后续 ASK 必须拒绝。
+- [ ] 启动失败、异常退出、协议错误、超时和取消使用稳定错误码。
+- [ ] UI、日志和 evidence 不输出原始路径、凭据或未脱敏异常。
+- [ ] 每个请求维护 request_id、回合状态、超时和唯一终态。
+- [ ] 重复取消幂等；终态后拒绝迟到事件，状态不得回退。
+- [ ] 修正 Palette 中完成、已清除、已断线、已停止等状态语义。
+- [ ] 明确提供“清除 CAD 上下文”“新建 Codex 对话”“全部清除”。
+- [ ] 对话按图纸隔离，图 A 的 CAD 上下文或记忆不得混入图 B。
+- [ ] 验证 v2 上下文存在时 Palette Reset 后仍保留。
+- [ ] 验证 AutoCAD 正常退出后 AgentHost、管道和 Codex 子进程残留为零。
+- [ ] 完成 125% 和 150% DPI。
+- [ ] 完成启动失败、断线、超时、取消、文档切换和退出实机矩阵。
 
-工作位置：`C:\tmp\CodexForAutoCAD-bridge-client2016`，基线提交 `7f10d60`。
+## 7. M2：整图规模上下文与查询
 
-- [x] 已形成 `0.3.2.0` 原版 R20.1 构建候选。
-- [x] 已有聚焦停止 Specs `4/4` 的阶段性结果。
-- [ ] 修复停止失败后重复 `STOP` 的状态转移风险，确保未清理成功时不能误报“已停止”。
-- [ ] 增加失败后再次停止/重试清理的回归测试。
-- [ ] 修正 build evidence 早于实际产物的时间顺序问题。
-- [ ] 删除/收窄 evidence 对 Palette wiring 的过度声明。
-- [ ] 重新运行完整门禁、原版 R20.1 编译并冻结新候选；旧 hash 不作为最终测试身份。
-- [ ] 用户在干净 AutoCAD 2016 中人工 `NETLOAD`。
-- [ ] 连续两轮 `AGENTSTART -> AGENTSTOP`，Palette 都到达真实终态。
-- [ ] 首尾 `DBMOD` 相同；只读进程检查确认 AgentHost 数量为 `0`。
-- [ ] 更新运行 evidence 和状态文档后单独提交。
+完成定义：50,000 对象级测试图可扫描、总结和按需查询；AutoCAD 保持可操作，读取不改变
+DBMOD。
 
-在上述修复和重新冻结前，不请求用户加载现有 `0.3.2.0` 旧候选。
+不得把 `MaximumEntities` 简单改成几万。
 
-## 5. 当前 P1：CadContextJson v2
+- [ ] 保留 CadContextJson v2 作为兼容选择快照。
+- [ ] 新增版本化 DrawingIndex 和 CadQuery 契约。
+- [ ] 支持选择集、当前空间、模型空间、布局和整张图纸扫描范围。
+- [ ] AutoCAD API 读取在合法文档线程中分片；深拷贝后的统计、哈希和序列化可后台执行。
+- [ ] 支持进度、取消、超时和资源预算。
+- [ ] 建立类型、图层、空间、块、包围盒和对象数量索引。
+- [ ] 支持安全游标分页和按需查询，不一次发送整图 JSON。
+- [ ] 为 Codex 提供按类型、图层、块、范围、文字和对象 ID 的只读查询工具。
+- [ ] 大选择集发布总数、摘要、分页引用和完整性，不因数量直接失败。
+- [ ] 文档修改、撤销、切换或关闭后使旧索引失效。
+- [ ] 未知和代理对象形成受限占位，不中断整图扫描。
+- [ ] 建立 1,000、10,000、50,000 对象的脱敏基准图。
+- [ ] 冻结 UI 卡顿、总扫描时间、内存和 IPC 大小预算。
+- [ ] 超出预算返回 partial/limited，不崩溃、不假装完整。
 
-工作位置：`C:\tmp\CodexForAutoCAD-context-v2`；分支 `codex/cad-context-v2`；当前已知
-HEAD `50f6cf3`。
+## 8. M3：CAD 读取语义和对象覆盖
 
-### 已提交基础
+完成定义：不支持对象只降低完整性，不使整次捕获失败。
 
-- [x] 冻结独立 v2 契约，保持 v1 wire 和固定向量不变。
-- [x] 19 类强类型对象：v1 六类，加 Arc、Ellipse、Spline、Point、Ray、Xline、
-  Polyline2d、Polyline3d、Dimension、Hatch、Leader、MLeader、Table。
-- [x] 未知类型、读取失败、数据超限使用三类受限占位；合法对象继续发布。
-- [x] `entityCount`、`parsedEntityCount`、`unsupportedEntityCount`、`complete` 一致性和
-  大小/数量/文字限额。
-- [x] Contracts net45/net8 `71/71`；完整 Phase 2 `231/231`；Release 0 warning/error。
-- [x] 原版 R20.1 API probe 在 PowerShell 7/5.1 均为 `19 present / 8 absent`。
-- [x] Host v2 捕获、选择哈希、Mapper 和 Codec 候选通过原版 R20.1 构建。
-- [x] Bridge Client `StartTurnV2Async` 和 AgentHost v1/v2 capability/handler 已存在。
+- [ ] 逐类实机验证现有 19 种强类型对象。
+- [ ] 提供中文对象名称、创建方法和脱敏示例测试图。
+- [ ] Palette 显示不支持对象的实际类型和数量。
+- [ ] 完善块属性、动态块、嵌套块、布局和空间信息。
+- [ ] Xref 只公开安全元数据，不公开外部真实路径。
+- [ ] 完善 Dimension、Hatch、Leader、MLeader、Table 的 R20.1 字段语义。
+- [ ] 增加 Region、Solid、Mesh、Surface、Image/Underlay 等高价值受限读取。
+- [ ] 垂直产品代理对象至少提供类型、图层、范围和占位信息。
+- [ ] 长文字、复杂 Hatch、Table、Spline 受限但不拖垮整体。
+- [ ] 每类对象具有契约、边界、R20.1 API Probe 和实机字段证据。
 
-### 必须进入真实调用链的工作
+## 9. M4：进程沙箱、配置和审计基础
 
-- [ ] `UnifiedReadOnlyContextRuntime` 改用 v2 捕获、选择哈希、Mapper 和 Codec。
-- [ ] `UnifiedContextState` 保存 schema/version、四个选择完整性字段和 v2 JSON。
-- [ ] Palette 显示 v2 schema、已解析数、占位数和 `complete`。
-- [ ] Doctor、命令提示和 BuildInfo 从“v1/六类”更新为准确 v2 文案。
-- [ ] `MvpAgentClient` 显式协商 `codex.autocad.cad-context/2` 与
-  `agent.turn.start.v2`，随后调用 `StartTurnV2Async`。
-- [ ] 缺少 v2 能力时 fail-closed，不回退到未认证通道或伪装成 v1。
-- [ ] 修复显式空 `supportedCadContextSchemas` 被 DTO 默认值恢复为 v1 的 fail-open，并
-  增加 net45/net8 回归测试。
-- [ ] 增加 Host -> Bridge -> AgentHost 的真实 v2 调用链测试，而不是只测试独立类型。
-- [ ] 完成最终集成 Runtime 的原版 R20.1 Release 编译和冻结候选。
-- [ ] 用户人工 `NETLOAD`，验证多个支持对象 + 一个未知对象仍发布、
-  `unsupportedEntityCount=1`、`complete=false`、`DBMOD` 不变。
-- [ ] 证明 Agent 使用 v2 上下文回答；更新 evidence 后单独提交。
+完成定义：AutoCAD 或 AgentHost 异常退出后进程树可确定清理；凭据和用户配置不进入日志或
+普通工作目录。此阶段是启用 CAD 写入前置条件。
 
-### 仍需确认的 v2 语义风险
+- [ ] Codex 路径、兼容版本、超时和工作目录进入正式配置。
+- [ ] 启动前执行 Codex 版本和 app-server 健康检查。
+- [ ] 每会话独立 CODEX_HOME。
+- [ ] 默认空 MCP、空插件配置和独立凭据边界。
+- [ ] 子进程仅继承白名单环境变量。
+- [ ] 使用 Windows Job Object 管理 AgentHost 与 Codex 整个进程树。
+- [ ] 评估并实现受限令牌或 AppContainer。
+- [ ] 设置 CPU、内存、进程数、运行时间和工作目录配额。
+- [ ] 工作目录使用最小 ACL 并按策略清理。
+- [ ] Codex stderr、异常、配置和环境变量统一脱敏。
+- [ ] 建立启动、停止、请求、取消、断线、审批和写入终态的结构化审计。
+- [ ] 增加安全故障注入和僵尸进程测试。
 
-- [ ] MLeader 文本 getter 的 R20.1 语义与脱敏边界。
-- [ ] Table 单元格只公开显示文本，不泄露字段表达式、公式内部结构或数据链接。
-- [ ] `entity-read-failed` 与 `entity-data-limit` 的分类在所有异常/限额路径保持稳定。
+## 10. M5：AutoCAD 2016 安全写入最小闭环
 
-## 6. 只读 MVP 稳定化队列
+完成定义：Codex 可安全创建一条直线，但无法绕过预览、审批和事务边界。
 
-- [ ] AgentHost 启动失败、异常退出、断线和请求超时均有明确 fail-closed UI 状态。
-- [ ] 取消进行中的回合，重复取消幂等，终态后不再接受迟到事件。
-- [ ] 文档切换、上下文清除和重新捕获后拒绝旧 context/thread 绑定。
-- [ ] AutoCAD 正常退出后线程、管道和 AgentHost 无残留。
-- [ ] Palette 125% 和 150% DPI。
-- [ ] 流式完成、失败、取消、断线状态的 AutoCAD 2016 实机验证。
-- [ ] 冻结可重复加载的只读 MVP 包，整理统一命令清单和脱敏反馈模板。
-- [ ] 每个独立阶段验证后单独提交，不将 P0、P1、DPI 或退出生命周期混为一项。
+现有 `CadApprovalGate` 和 `IAgentCadProposalBroker` 保留；Host.2025 的
+`LineWriteWorkflow` 只作原型参考，不是 2016 产品证据。
 
-## 7. GPT Provider 建议与本机实际结论
+- [ ] Host.2016 实现真实 CAD Broker 和主线程调度。
+- [ ] 首个唯一写入工具保持 `create_line`。
+- [ ] Agent 只能提交强类型计划。
+- [ ] 计划进入审批前完成 Schema、策略、数量和坐标验证。
+- [ ] 生成确定性预览和增删改摘要。
+- [ ] 零修改、无效几何和不可预览计划直接拒绝。
+- [ ] 审批只有拒绝和一次允许。
+- [ ] token 绑定图纸、revision、选择、空间、图层和计划哈希并防重放。
+- [ ] DocumentLock 内重新核对全部状态。
+- [ ] 使用一个事务和一个 Undo 边界。
+- [ ] 失败全部回滚；结果不确定时停止并要求人工检查。
+- [ ] 取消或断线后不再开始新写操作。
+- [ ] 写入成功后不调用保存。
+- [ ] 记录结构化执行结果和审计事件。
+- [ ] 实机覆盖批准、拒绝、过期/重复 token、状态变化、取消、事务异常、Undo 和关闭提示。
 
-### 可采用，但当前延后
+## 11. M6：写入类型扩展与恢复
 
-- Codex 应封装成可替换 Provider，UI、任务系统和 CAD 工具不得依赖 Codex 专有类型。
-- Provider 抽象位于 `.NET 8 AgentHost`，不进入 AutoCAD `net45` Host。
-- 系统 session/task/request ID 与 Codex thread/turn ID 分离。
-- Codex 原始事件只在 Codex Adapter 中转换为统一事件。
-- Direct API 当前只预留配置、能力和明确的未启用响应，不实现第二套 Agent Loop。
-- CAD 工具保持 Provider 无关。
+完成定义：支持操作形成稳定白名单；未列入白名单的操作无法由 Agent 执行。
 
-### 必须以现有实现为迁移起点
+按风险开放：
 
-- 当前已使用 `codex app-server --stdio` 和结构化 JSONL/JSON-RPC，不是终端模拟、ANSI
-  解析或 MCP，无需更换协议再开始工作。
-- 当前没有产品级通用任务队列；主要是 Runtime 内存 thread/turn、请求表、事件 Channel
-  和 UI reducer。
-- `AgentHostBridgeSession` 目前直接依赖 `CodexAgentRuntime`；未来先增加适配器，再替换
-  组合根，不进行大规模重写。
-- v1 的 `threadId` 已冻结为真实 Codex thread，不能在 v1 中静默改成系统 session ID；
-  只能通过兼容映射和后续协议版本迁移。
-- Runtime、Bridge DTO 和历史 Host.2025 UI 存在事件模型重复，未来要收敛，不能增加
-  第四套平行状态系统。
-- Bridge/Contracts 有审批语义，但 live AutoCAD 产品链尚未完成审批与写入；代码存在不能
-  视为运行通过。
-- Codex 路径发现、配置和 health/preflight 仍需从现有 bootstrap 硬编码迁出。
+1. Circle、Arc、Polyline、DBText、MText。
+2. 插入已有 Block、Dimension、Hatch。
+3. 修改图层、颜色、文字和有限几何参数。
+4. Move、Copy、Rotate、Scale。
+5. 删除、批量替换和其他高风险操作最后开放。
 
-### Provider 抽象的启动条件
+每种操作必须有强类型契约、限额、风险等级、预览、锁内重校验、事务、Undo、回滚、
+不确定结果处理、自动化和 AutoCAD 2016 实机证据。批量或删除操作需要用户明确批准的
+恢复检查点。禁止以命令字符串、LISP 或脚本实现。
 
-只有 P0、P1 和只读稳定化主要门槛通过后，才开始：
+## 12. M7：会话、长期记忆和恢复
 
-- [ ] `IAgentProvider`、统一请求/事件/错误/健康模型。
-- [ ] 系统 session/task/request ID 与 Provider ID 映射。
-- [ ] Codex Adapter 接入现有真实调用链。
-- [ ] 任务状态幂等、取消和断线处理收敛为唯一系统。
-- [ ] `DirectApiAgentProvider` 配置与 `ProviderNotEnabled`，不实现 Agent Loop。
+完成定义：重启后可恢复安全的聊天和任务信息，但不会自动继续未确认写入。
 
-## 8. CAD 写入安全闭环（只读 MVP 后）
+- [ ] 建立系统 conversation、turn、request 和 CAD operation ID。
+- [ ] Codex thread ID 仅作为内部映射元数据。
+- [ ] 使用 SQLite 保存图纸级会话、摘要、用户偏好和任务终态。
+- [ ] 默认不保存完整 canonical JSON、真实图纸路径或敏感提示词。
+- [ ] 图纸身份使用稳定但脱敏的标识。
+- [ ] 支持记忆启用、暂停、查看、导出和清除。
+- [ ] 支持保留期限和容量限制。
+- [ ] 写入审计使用追加式记录和哈希链。
+- [ ] 实现迁移、损坏检测、备份和崩溃恢复。
+- [ ] 重启后不自动恢复任何未确认 CAD 写入。
 
-- [ ] 计划和可检查预览。
-- [ ] 零修改结果拒绝。
-- [ ] 只有“拒绝”与“一次允许”；token 使用后不可重放。
-- [ ] CAD Broker 正确调度 AutoCAD 主线程。
-- [ ] `DocumentLock` 内重新核对图纸、revision、选择、图层和空间。
-- [ ] 单事务执行，异常完全回滚，并提供正确 Undo 边界。
-- [ ] 上下文变化时拒绝执行，不自动重规划/重试写入。
-- [ ] Agent 中断、超时、连接不确定时禁止自动重试 CAD 写入。
-- [ ] 写入成功后插件不调用保存，关闭图纸仍由 AutoCAD 正常提示用户。
-- [ ] 以上项目逐项在 AutoCAD 2016 实机验证后才可声明支持写入。
+## 13. M8：UI、设置和可用性
 
-## 9. 沙箱、记忆和发布（后续）
+完成定义：普通用户无需理解 thread、JSON、AgentHost 或实体内部类型即可判断状态和操作。
 
-- [ ] 受限令牌/AppContainer、Job Object、CPU/内存配额和进程树强制清理。
-- [ ] 每会话独立 `CODEX_HOME`，空 MCP/插件/凭据隔离和最小可写目录。
-- [ ] SQLite 图纸级长期记忆、脱敏日志、审计哈希链和保留/导出/清除策略。
-- [ ] R4 恢复点、断电/崩溃恢复和结果不确定处理。
-- [ ] 环境采集器 `Location` 分支的已验证提交独立集成，不重复实现或混入 P0/P1。
-- [ ] `.bundle`、签名/时间戳、AppLocker/WDAC/EDR 策略。
-- [ ] 安装、升级、修复、卸载、回滚、普通用户和干净机验收。
-- [ ] 扩展更多 CAD 读取/写入类型；每类都有明确白名单、限额和实机证据。
+- [ ] 整图扫描进度、取消和完整性。
+- [ ] 可解析、不支持、超限和失败对象的中文统计。
+- [ ] 明确区分当前选择、整张图纸和当前对话。
+- [ ] 新对话、清除 CAD 上下文、清除全部。
+- [ ] 流式回答、取消、失败、断线和重连状态。
+- [ ] 写入计划、预览、风险、一次审批和执行结果。
+- [ ] Codex 路径、健康、超时、沙箱和记忆设置。
+- [ ] 日志导出前自动脱敏。
+- [ ] 100%、125%、150%、多显示器和 Windows 缩放测试。
+- [ ] 键盘操作、中文输入、无障碍和小尺寸 Palette。
 
-## 10. Worktree 和所有权纪律
+Kimi 可以后参与 UI，但项目不以 Kimi 可用为继续开发的前置条件。
 
-- P0 与 P1 是两个独立阶段，必须分别验证、分别提交，再按受控方式集成。
-- 主工作树可能含用户所有的未提交 Host.2025 UI、选择和写入原型及未跟踪文件；不得
-  清理、覆盖或混入 AutoCAD 2016 阶段提交。
-- MiMo 交付只能作为候选；必须由本项目真实复查 Git、源码、门禁和证据，不按 MCP
-  Review Package 的摘要直接合并。
-- 不把真实图纸路径、图名、选择哈希、用户名、受信路径、网络路径、许可证、API Key、
-  token 或完整环境变量写入 Git 文档或日志。
+## 14. M9：工程质量、CI 和性能
 
-## 11. 阶段纪律
+完成定义：任何提交都不能绕过关键构建、安全和回归门禁。
 
-每个阶段必须按以下顺序完成：
+- [ ] 建立 Windows CI。
+- [ ] 固定 .NET SDK、离线 net45 参考程序集和依赖锁。
+- [ ] 自动运行 Contracts、IPC、Bridge、AppServer、AgentRuntime、Host 和安全 Specs。
+- [ ] R20.1 API Probe、禁止 API、秘密扫描和包身份检查成为门禁。
+- [ ] 增加覆盖率报告，关键状态机要求分支覆盖。
+- [ ] 对协议、JSON、游标和审批状态机进行属性或模糊测试。
+- [ ] 增加并发、断线、取消、迟到事件和重复请求压力测试。
+- [ ] 建立 1k/10k/50k 性能回归。
+- [ ] 建立 AgentHost 长运行和反复启停 soak test。
+- [ ] 生成 SBOM、第三方许可证和依赖漏洞报告。
+- [ ] 每个可验证阶段单独提交。
 
-1. 修改最小范围，保持安全不变量和兼容边界。
-2. 运行对应 Release 构建、Specs、禁止 API、秘密扫描和证据检查。
-3. 需要 AutoCAD 时只提供精确冻结候选和人工命令，不由 Codex 操作 AutoCAD。
-4. 用户实机验证通过后更新脱敏 evidence 与状态文档。
-5. 单独提交一次 Git；未通过项目继续明确保留为待办。
+## 15. M10：.bundle、签名和企业部署
+
+完成定义：不依赖源码目录、手工环境变量或开发工具即可安装运行。
+
+- [ ] 完成真实 .bundle 和完整命令注册。
+- [ ] 包含 Host、AgentHost、依赖、哈希 sidecar、默认配置和文档。
+- [ ] DLL、EXE、Bundle/安装包数字签名和可信时间戳。
+- [ ] 支持当前用户和全机安装。
+- [ ] 支持安装、升级、修复、卸载和回滚。
+- [ ] 升级时安全迁移配置和 SQLite。
+- [ ] 卸载后无进程、计划任务、PATH 污染或危险残留。
+- [ ] 普通用户、管理员、干净机和无开发工具环境验收。
+- [ ] SECURELOAD、TRUSTEDPATHS、AppLocker、WDAC 和常见 EDR 验证。
+- [ ] 企业静默部署、版本锁定和禁用写入策略。
+- [ ] 用户、管理员、故障排查和应急响应文档。
+
+## 16. M11：AutoCAD 2025 兼容
+
+完成定义：2016 与 2025 共享产品核心，版本差异仅位于 Autodesk Host 适配层。
+
+- [ ] 只在 AutoCAD 2016 GA 后开始正式移植。
+- [ ] 复用 Contracts、AgentHost、Bridge、安全和存储核心。
+- [ ] Host.2025 保持独立薄宿主。
+- [ ] 不把当前未提交原型直接当作产品实现。
+- [ ] 完成 2025 Palette、整图索引、查询和安全写入。
+- [ ] 使用原版 2025 托管程序集编译。
+- [ ] 重复功能、生命周期、DPI、写入、安全和安装矩阵。
+- [ ] 两个版本使用独立产物和 evidence，共享协议版本。
+
+## 17. M12：最终发布验收
+
+项目仅在以下全部成立后完成：
+
+- [ ] AutoCAD 2016 全部功能与故障矩阵通过。
+- [ ] 50,000 对象级整图扫描和查询达到冻结性能预算。
+- [ ] 未知对象不会导致整图失败。
+- [ ] CAD 写入无法绕过预览和一次审批。
+- [ ] 写入失败可回滚，成功操作可一次 Undo。
+- [ ] 插件永不自动保存。
+- [ ] 异常退出无残留进程。
+- [ ] 沙箱、凭据、日志和长期记忆安全审计通过。
+- [ ] 安装、升级、修复、卸载和回滚通过。
+- [ ] 普通用户、干净机和企业策略环境通过。
+- [ ] 版本、签名、SBOM、evidence 和文档全部冻结。
+- [ ] 完成独立安全复核和发布回滚演练。
+- [ ] 若 AutoCAD 2025 仍属于范围，其验收也全部通过。
+
+## 18. Worktree、隐私和阶段纪律
+
+- 主工作树含用户所有的 Host.2025 UI、选择和写入原型及未跟踪文件；不得清理、覆盖或
+  混入 AutoCAD 2016 阶段提交。
+- MiMo、Kimi 或其他 Agent 交付只作为候选，必须复查 Git、源码、门禁和证据。
+- 不把真实图纸路径、图名、选择/上下文哈希、用户名、受信/网络路径、许可证、API Key、
+  token、完整环境变量或 canonical JSON 写入 Git 文档与普通日志。
+- 删除 Worktree 前必须确认：提交已合并或有保留分支/标签、工作树干净、必要 evidence 与
+  artifact 已归档。删除 Worktree 不等于删除分支；删除未提交工作树会丢失本地修改。
+- 每个阶段按“最小范围实现 -> Release/Specs/安全门禁 -> 冻结候选 -> 用户实机 ->
+  脱敏 evidence -> 独立提交”的顺序推进。

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "scope": "autocad2016-context-v2-candidate-package-doctor",
+  "candidateId": "autocad2016-mvp-context-v2-v032-4d3386d9-751b97c7-7216527a",
+  "hostSha256": "4D3386D9A825B2842290ACB51376FBA6BE6603F49295E606F8C9F3F92B538C08",
+  "agentHostExeSha256": "751B97C7B17B970D01D625DDD197E1868150AAB5C235812C662AB70B919B0C67",
+  "doctor": {
+    "exitCode": 0,
+    "ok": true,
+    "state": "Running",
+    "packageRuntimeLoaded": true,
+    "codexAppServerHandshake": true
+  },
+  "safety": {
+    "autoCadStartedOrRestarted": false,
+    "cadCommandsSent": false,
+    "dwgModified": false,
+    "sensitivePathsPersisted": false
+  },
+  "limitations": [
+    "该 doctor 只验证新候选包内 AgentHost 能启动并完成本机 Codex app-server 初始化，不验证 AutoCAD NETLOAD 或 CAD 实机链路。"
+  ]
+}

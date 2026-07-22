@@ -321,6 +321,8 @@ public sealed class AgentBootstrapPayload : IDisposable
 /// </summary>
 public sealed class AgentBootstrapDirectionKeys : IDisposable
 {
+    private static readonly byte[] ConfirmationKeyDomain = Encoding.ASCII.GetBytes(
+        "Codex.AutoCAD.AgentBootstrap.Confirmation.v1\0");
     private readonly object _sync = new object();
     private readonly string _sessionId;
     private readonly string _pipeName;
@@ -329,6 +331,8 @@ public sealed class AgentBootstrapDirectionKeys : IDisposable
     private byte[] _agentToHostKey;
     private bool _outboundClaimed;
     private bool _inboundClaimed;
+    private bool _confirmationOutboundClaimed;
+    private bool _confirmationInboundClaimed;
     private bool _disposed;
 
     internal AgentBootstrapDirectionKeys(
@@ -397,6 +401,33 @@ public sealed class AgentBootstrapDirectionKeys : IDisposable
         }
     }
 
+    public IpcEnvelopeAuthenticator CreateConfirmationOutboundAuthenticator()
+    {
+        var key = ClaimConfirmationKey(outbound: true);
+        try
+        {
+            return new IpcEnvelopeAuthenticator(key);
+        }
+        finally
+        {
+            AgentBootstrapProtocol.Clear(key);
+        }
+    }
+
+    public IpcSessionGuard CreateConfirmationInboundGuard(
+        IpcSessionGuardOptions? options = null)
+    {
+        var key = ClaimConfirmationKey(outbound: false);
+        try
+        {
+            return new IpcSessionGuard(_sessionId, key, options);
+        }
+        finally
+        {
+            AgentBootstrapProtocol.Clear(key);
+        }
+    }
+
     public void Dispose()
     {
         lock (_sync)
@@ -415,6 +446,25 @@ public sealed class AgentBootstrapDirectionKeys : IDisposable
     }
 
     private byte[] ClaimDirectionalKey(bool outbound)
+        => ClaimEndpointKey(outbound, confirmation: false);
+
+    private byte[] ClaimConfirmationKey(bool outbound)
+    {
+        var directionKey = ClaimEndpointKey(outbound, confirmation: true);
+        try
+        {
+            using (var hmac = new HMACSHA256(directionKey))
+            {
+                return hmac.ComputeHash(ConfirmationKeyDomain);
+            }
+        }
+        finally
+        {
+            AgentBootstrapProtocol.Clear(directionKey);
+        }
+    }
+
+    private byte[] ClaimEndpointKey(bool outbound, bool confirmation)
     {
         lock (_sync)
         {
@@ -423,14 +473,29 @@ public sealed class AgentBootstrapDirectionKeys : IDisposable
                 throw new ObjectDisposedException(nameof(AgentBootstrapDirectionKeys));
             }
 
-            if ((outbound && _outboundClaimed) || (!outbound && _inboundClaimed))
+            var alreadyClaimed = confirmation
+                ? outbound
+                    ? _confirmationOutboundClaimed
+                    : _confirmationInboundClaimed
+                : outbound
+                    ? _outboundClaimed
+                    : _inboundClaimed;
+            if (alreadyClaimed)
             {
                 throw new AgentBootstrapException(
                     AgentBootstrapValidationCode.AlreadyConsumed,
                     "Bootstrap endpoint direction has already been claimed.");
             }
 
-            if (outbound)
+            if (confirmation && outbound)
+            {
+                _confirmationOutboundClaimed = true;
+            }
+            else if (confirmation)
+            {
+                _confirmationInboundClaimed = true;
+            }
+            else if (outbound)
             {
                 _outboundClaimed = true;
             }

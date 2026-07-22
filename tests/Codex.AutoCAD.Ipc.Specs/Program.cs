@@ -727,6 +727,24 @@ static void BootstrapDirectionRolesAndReflection()
     using var hostKeys = DeriveFixedHostBootstrapDirectionKeys();
     using var agentKeys = DeriveFixedInboundBootstrapDirectionKeys();
 
+    using var hostConfirmationInbound = hostKeys.CreateConfirmationInboundGuard();
+    using var agentConfirmationOutbound = agentKeys.CreateConfirmationOutboundAuthenticator();
+    using var agentConfirmationInbound = agentKeys.CreateConfirmationInboundGuard();
+    var confirmationEnvelope = CreateBootstrapEnvelope(1, "agent-confirmation-nonce");
+    confirmationEnvelope.Mac = agentConfirmationOutbound.Sign(confirmationEnvelope);
+    Equal(
+        IpcValidationCode.Accepted,
+        hostConfirmationInbound.ValidateAndAccept(confirmationEnvelope));
+    Equal(
+        IpcValidationCode.InvalidMac,
+        agentConfirmationInbound.ValidateAndAccept(confirmationEnvelope));
+    BootstrapFails(
+        AgentBootstrapValidationCode.AlreadyConsumed,
+        () => hostKeys.CreateConfirmationInboundGuard());
+    BootstrapFails(
+        AgentBootstrapValidationCode.AlreadyConsumed,
+        () => agentKeys.CreateConfirmationOutboundAuthenticator());
+
     using var hostOutbound = hostKeys.CreateOutboundAuthenticator();
     using var hostInbound = hostKeys.CreateInboundGuard();
     using var agentOutbound = agentKeys.CreateOutboundAuthenticator();

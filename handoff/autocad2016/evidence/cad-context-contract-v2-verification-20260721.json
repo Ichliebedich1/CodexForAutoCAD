@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "recordedAtLocal": "2026-07-21T12:22:27+08:00",
+  "scope": "cad-context-json-v2-contract-and-r20.1-public-api-audit",
+  "status": "contracts-frozen-cross-framework-passed-host-runtime-pending",
+  "sourceBaselineCommit": "7f10d60",
+  "autoCad2016ManagedAssembly": {
+    "source": "target-machine-original-installation",
+    "assembly": "Acdbmgd, Version=20.1.0.0",
+    "fileVersion": "20.1.49.0.0",
+    "bytes": 6436792,
+    "sha256": "9C27F4A71E4DFAEC393B53AB15A657FA37CA9F8A7B09E0522894AB3B354603BB",
+    "authenticodeStatus": "Valid",
+    "signer": "Autodesk, Inc."
+  },
+  "v1Compatibility": {
+    "schema": "codex.autocad.cad-context/1",
+    "canonicalBytes": 2225,
+    "canonicalSha256": "c5a03d4cb73f850209a71539fc70ddc2bcd6ec2f7f45627c7285fb53ec424423",
+    "sourceFilesModified": false,
+    "net45Verified": true,
+    "net8Verified": true
+  },
+  "v2Contract": {
+    "schema": "codex.autocad.cad-context/2",
+    "canonicalBytes": 6678,
+    "canonicalSha256": "21cc9378a618022c5bc21cb35c58db7818272c33d0adc5b5bd8618b4a638c3b4",
+    "parsedEntityTypes": 19,
+    "explicitUnsupportedPlaceholder": true,
+    "selectionCounts": [
+      "entityCount",
+      "parsedEntityCount",
+      "unsupportedEntityCount"
+    ],
+    "completeFlagBoundToUnsupportedCount": true,
+    "inputEntitiesSortedByNumericHandle": true,
+    "tableCellsSortedByRowAndColumn": true,
+    "canonicalJsonMaximumBytes": 262144
+  },
+  "addedEntityTypes": [
+    "arc",
+    "ellipse",
+    "spline",
+    "point",
+    "ray",
+    "xline",
+    "polyline2d",
+    "polyline3d",
+    "dimension",
+    "hatch",
+    "leader",
+    "mLeader",
+    "table"
+  ],
+  "unsupportedReasons": [
+    "unknown-entity-type",
+    "entity-read-failed",
+    "entity-data-limit"
+  ],
+  "automatedVerification": {
+    "net8ContractsSpecs": "39/39",
+    "net45ContractsSpecs": "39/39",
+    "sameV1BytesAcrossFrameworks": true,
+    "phase2Specs": "199/199",
+    "releaseWarnings": 0,
+    "releaseErrors": 0,
+    "agentHostDoctor": true,
+    "hostForbiddenApiScan": true,
+    "gitDiffCheck": true,
+    "secretScan": true,
+    "sameV2BytesAcrossFrameworks": true,
+    "mixedSelectionSpec": true,
+    "payloadUniquenessSpec": true,
+    "complexEntityLimitsSpec": true,
+    "privacyBoundarySpec": true,
+    "schemaSeparationSpec": true
+  },
+  "privacyBoundary": {
+    "drawingNameCaptured": false,
+    "drawingPathCaptured": false,
+    "externalReferencePathCaptured": false,
+    "exceptionMessageCaptured": false,
+    "stackTraceCaptured": false,
+    "proxyPrivateDataCaptured": false,
+    "extensionDictionaryCaptured": false
+  },
+  "runtime": {
+    "host2016SnapshotAndMappingImplemented": false,
+    "bridgeV2NegotiationImplemented": false,
+    "targetR20.1HostBuildVerified": false,
+    "netLoadVerified": false,
+    "mixedSelectionVerifiedInAutoCad": false,
+    "dbmodUnchangedVerified": false,
+    "pluginNoSaveVerified": false
+  },
+  "evidenceBoundary": "This record proves the independent CadContextJson v2 model, validator and deterministic codec across net45 and net8, preserves the exact v1 fixed vector, and documents a read-only public-API audit of the target machine original Autodesk R20.1 managed assembly. It does not prove Host.2016 entity capture, Bridge or AgentHost v2 negotiation, target Host compilation, NETLOAD, real mixed selection, unchanged DBMOD, or no-save runtime behavior."
+}

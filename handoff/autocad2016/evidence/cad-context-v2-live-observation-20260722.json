@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "autocad2016-cad-context-v2-live-observation",
+  "observedDate": "2026-07-22",
+  "source": "User-provided AutoCAD 2016 command transcript and explicit visual confirmations in the Codex task",
+  "candidate": {
+    "moduleVersion": "0.3.2.0",
+    "cadContextSchema": "codex.autocad.cad-context/2",
+    "hostSha256": "0D72EDC38A30E7BF33AAEE4DCB1D50D341C4C883146677537C4BB5E7551D0AD7",
+    "agentHostSha256": "10BEA363AC80C856FA513F4312B60410DB62BBF4917CE634B589CBA59DA65442",
+    "manifestSha256": "A16831703985906F724B8EB93BDB0BC801A5781A3228F0694CB1A20A4AC5960F"
+  },
+  "environment": {
+    "autoCadRelease": "R20.1",
+    "processArchitecture": "x64",
+    "managedApiVersion": "20.1.0.0",
+    "hostTarget": ".NET Framework 4.5",
+    "dpiScaleVerified": "100%"
+  },
+  "observations": {
+    "netloadAndDoctor": {
+      "status": "passed",
+      "notes": "Host loaded, Doctor reported CadContextJson v2, CAD write disabled, plugin save disabled, and the observed DBMOD sample remained 0."
+    },
+    "paletteAt100PercentDpi": {
+      "status": "passed",
+      "userConfirmed": [
+        "open",
+        "dock",
+        "float",
+        "hide-and-reopen",
+        "reset-and-rebuild",
+        "Chinese input",
+        "layout and clipping"
+      ]
+    },
+    "mixedSelectionCapture": {
+      "status": "passed-with-unsupported-placeholders",
+      "selectedCount": 50,
+      "parsedCountInferredFromTypeCounts": 44,
+      "unsupportedPlaceholderCount": 6,
+      "canonicalJsonBytes": 23142,
+      "dbmodBefore": 21,
+      "dbmodAfter": 21,
+      "publishedStatus": "published-read-only-json-v2",
+      "notes": "Six unsupported entities did not abort publication. Complete=false is required by the v2 contract but was not independently copied from Palette telemetry in this observation."
+    },
+    "agentTwoTurnConversation": {
+      "status": "passed",
+      "notes": "The user confirmed that Codex consumed the current CAD context and retained an earlier conversational marker across the second turn."
+    },
+    "explicitCadContextClear": {
+      "status": "passed",
+      "publishedAfterClear": false,
+      "selectedCountAfterClear": 0,
+      "canonicalJsonBytesAfterClear": 0,
+      "dbmodBefore": 21,
+      "dbmodAfter": 21,
+      "conversationMemoryStillPresent": true,
+      "notes": "CODEX16CTXCLEAR clears only the in-memory CAD context. It does not create a new Codex thread; that distinction must be made explicit in the product UI and commands."
+    },
+    "documentActivationInvalidation": {
+      "status": "passed-for-cache-clear",
+      "contextStatus": "cleared-document-activated",
+      "publishedAfterSwitch": false,
+      "selectedCountAfterSwitch": 0,
+      "notes": "The actual post-switch question submission was not completed; the user invoked CODEX16ASK and cancelled at the prompt. Fail-closed send behavior therefore remains unverified."
+    },
+    "paletteResetWithPublishedV2Context": {
+      "status": "not-verified",
+      "notes": "The recorded reset samples occurred before capture or after document activation had already cleared the context."
+    },
+    "agentStop": {
+      "status": "passed-for-visible-terminal-state",
+      "notes": "The current candidate reached the visible stopped state. The stronger no-residual-process evidence remains the separate P0 observation."
+    },
+    "normalAutoCadExitCleanup": {
+      "status": "deferred"
+    },
+    "dpi125And150": {
+      "status": "deferred"
+    },
+    "startupFailureDisconnectTimeoutCancelAndLateEvents": {
+      "status": "deferred"
+    },
+    "allNineteenStrongEntityKindsFieldChecked": {
+      "status": "not-verified"
+    }
+  },
+  "privacy": {
+    "drawingNameOrPathRecorded": false,
+    "canonicalJsonRecorded": false,
+    "selectionOrContextHashesRecorded": false,
+    "entityHandlesRecorded": false,
+    "credentialsOrEnvironmentRecorded": false
+  },
+  "conclusion": {
+    "p1AutoCadLiveBaselinePassed": true,
+    "stableReadOnlyMvpComplete": false,
+    "cadWriteEnabled": false,
+    "pluginInitiatedSaveEnabled": false,
+    "remainingScope": [
+      "Bridge fault forces offline and ASK fail-closed",
+      "request timeout, cancellation and late-event state",
+      "post-document-switch actual send rejection",
+      "Palette reset while v2 context is published",
+      "normal AutoCAD exit cleanup",
+      "125% and 150% DPI",
+      "per-kind field verification",
+      "large-selection and whole-drawing scale beyond the 64-entity snapshot limit"
+    ]
+  }
+}
