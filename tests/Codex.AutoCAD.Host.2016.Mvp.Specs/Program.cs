@@ -1286,10 +1286,20 @@ static async Task DocumentActivationInvalidatesActiveConversation()
         .ConfigureAwait(false);
     var request = bridge.LastStartTurnV2Request
         ?? throw new InvalidOperationException("Drawing A request was not captured.");
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.AssistantMessageDelta,
+        TurnId = "fake-turn-1",
+        Delta = "visible-text-from-drawing-a",
+    });
 
     client.InvalidateConversationForDocumentChange();
 
     Equal(1, bridge.InterruptTurnCount, "Document activation Provider interrupt count");
+    True(
+        textEvents.Count > 0
+        && string.Equals(textEvents[textEvents.Count - 1], string.Empty, StringComparison.Ordinal),
+        "Document activation did not clear drawing A's visible answer text.");
     True(
         errors.Exists(value =>
             value.Contains("error_code=context_invalid", StringComparison.Ordinal)
