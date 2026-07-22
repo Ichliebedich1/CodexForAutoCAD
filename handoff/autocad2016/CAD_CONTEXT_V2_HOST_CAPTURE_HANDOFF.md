@@ -57,8 +57,8 @@
 - Contracts：net45 `39/39`、net8 `39/39`，stdout 完全一致。
 - v1 固定向量保持 `2225` bytes / `c5a03d4c...4423`。
 - v2 固定向量保持 `6678` bytes / `21cc9378...c3b4`。
-- Phase 2：Release `0` warning / `0` error，8 个规格项目动态汇总 `199/199`；Host
-  禁止 API、AgentHost doctor、秘密扫描和 `git diff --check` 通过。
+- 历史阶段 Phase 2 为 Release `0` warning / `0` error、8 个规格项目 `199/199`；合并
+  P0 后当前线最终门禁已提升为 `235/235`，具体以 `phase2-final-gate-20260722.json` 为准。
 - 本次继续开发后，Bridge 新增真实 v2 `StartTurnV2Async` 回合并达到 `38/38`；P0 停止
   修复受控引入后完整 Phase 2 本机门禁动态汇总为 `235/235`，同时通过 Host 禁用 API、
   AgentHost doctor、`git diff --check` 和秘密扫描。

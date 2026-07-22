@@ -228,7 +228,7 @@ NETLOAD 证据的能力一律视为未支持。
   “有界停止且无残留”写成已验证。
 - CAD 写入和插件保存继续禁用；本阶段不触碰一次审批、事务写入或自动保存设置。
 
-### 当前活动阶段：AgentHost 停止生命周期
+### P0 已完成检查点：AgentHost 停止生命周期
 
 - 根因已限定在 Host 停止编排：旧实现先等待 Bridge 停止；Bridge 在 net45 管道读未及时
   解除时可能超时抛错，随后 AgentHost 会话终止被跳过，而命令层只观察异常、不显示结果。
@@ -255,7 +255,7 @@ NETLOAD 证据的能力一律视为未支持。
   `recordedAtUtc` 均晚于本次最终构建；候选哈希与固定目录保持一致。该证据仍明确保留
   `NetLoadVerified=true`、`AutoCadLiveEvidence=true`；该候选已完成本轮人工实机验证。
 
-### 后续活动阶段：只读对象覆盖率
+### 当前活动阶段：CadContextJson v2 AutoCAD 实机验证
 
 - 当前 CadContextJson v1 只对白名单中的 Line、Circle、Polyline、DBText、MText、
   BlockReference 提供强类型 payload；选区中任一其他实体会以
@@ -344,7 +344,7 @@ NETLOAD 证据的能力一律视为未支持。
 ## 下一步顺序
 
 1. 核心 Agent MVP、P0 停止生命周期已分别提交：`7f10d60`、`8a4ee57`。
-2. P1 已受控吸收 P0，提交 `7edf27`；Phase 2 `235/235`、v2 API Probe 双 Shell 通过。
+2. P1 已受控吸收 P0，候选冻结提交 `c174166`；当前线含采集器和门禁证据提交，Phase 2 `235/235`、v2 API Probe 双 Shell 通过。
 3. P1 候选已冻结，但 `NetLoadVerified=false`；等待用户执行 v2 人工测试。
 4. 人工通过后再补齐高 DPI、退出生命周期和离线/断线/超时证据。
 5. 只读 MVP 运行门槛通过后，再进入预览、拒绝、一次允许、锁内重校验和单事务写入。
