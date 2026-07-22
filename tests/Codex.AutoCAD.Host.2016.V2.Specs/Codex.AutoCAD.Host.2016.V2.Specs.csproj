@@ -3,6 +3,7 @@
     <OutputType>Exe</OutputType>
     <TargetFramework Condition="'$(EnableAutoCad2016)' != 'true'">net8.0</TargetFramework>
     <TargetFrameworks Condition="'$(EnableAutoCad2016)' == 'true'">net45;net8.0</TargetFrameworks>
+    <Nullable>annotations</Nullable>
     <AssemblyName>Codex.AutoCAD.Host.2016.V2.Specs</AssemblyName>
     <RootNamespace>Codex.AutoCAD.Host.2016.V2.Specs</RootNamespace>
     <AutomaticallyUseReferenceAssemblyPackages Condition="'$(EnableAutoCad2016)' == 'true'">false</AutomaticallyUseReferenceAssemblyPackages>
@@ -22,5 +23,11 @@
              Link="Host2016\CadContextV2CapturePolicy.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\CanonicalSelectionHashV2.cs"
              Link="Host2016\CanonicalSelectionHashV2.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\CadReadTypeStatistics.cs"
+             Link="Host2016\CadReadTypeStatistics.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\CadContextJsonMapper.cs"
+             Link="Host2016\CadContextJsonMapper.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\CadContextJsonV2Mapper.cs"
+             Link="Host2016\CadContextJsonV2Mapper.cs" />
   </ItemGroup>
 </Project>

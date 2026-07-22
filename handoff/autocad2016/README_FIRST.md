@@ -46,6 +46,19 @@ M2 `0.4.0.0` 已把独立只读整图索引和 Codex 按需查询接成一条调
 - 查询页硬上限为 `200` 个实体，IPC 单帧硬上限为 `8,388,608` 字节；两项均写入候选
   manifest 并由 `CODEX16INDEXINFO` 显示，不依赖人工记忆常量。
 
+M3 `0.4.1.0` 正在开发第一条读取语义纵切，不是冻结候选：
+
+- 选择快照、整图索引、Palette 和 `CODEX16CTXINFO` / `CODEX16INDEXINFO` 会按实际类型
+  显示未支持、数据超限和读取失败对象的数量；统计不带图层、Handle、路径或对象内容。
+- `CODEX16TYPEINFO` 显示 19 类现有强类型对象的中文名称与人工创建入口。
+- 自动门禁已通过 Contracts `85/85`、Host v2 net45/net8 各 `15/15`、Host MVP `53/53`、
+  完整 Phase 2 `309/309` 和 R20.1 Release 0 warning / 0 error；同一依赖闭包下 Host A/B
+  逐字节一致，编译门禁 Host SHA-256 为
+   `EC1C6174893DC47DABE5C55C28D020FD607881BE435DBBD1FE9079BC8C0DB51B`；编译证据目录为
+   `artifacts/m3-r201-compile-only-d67432c0d40d4aed8710f24b30602955/`。
+- 中文字段核对目录见 `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`；它不替代脱敏
+  示例测试图、R20.1 Probe 或实机逐类字段证据。
+
 脱敏实机范围证据：
 `evidence/cad-context-v2-live-observation-20260722.json`。
 
@@ -138,6 +151,7 @@ CODEX16PAL
 CODEX16PALINFO
 CODEX16CTX
 CODEX16CTXINFO
+CODEX16TYPEINFO
 CODEX16CTXCLEAR
 CODEX16INDEX
 CODEX16INDEXINFO
@@ -165,6 +179,7 @@ CODEX16PALRESET
   验证。
 - `CODEX16INDEX` 建立与 CadContext v2 分离的图纸级内存索引；它不会整包自动发送给 Codex，
   但有效冻结快照可在 ASK 回合内由 `cad.query_drawing` 按需分页查询。
+- `CODEX16TYPEINFO` 只显示 M3 中文对象目录，不读取、修改或保存当前图纸。
 - `CODEX16QUERY`/`CODEX16QUERYNEXT` 只查询已完成的当前索引，索引失效后必须重建。
 - 没有已发布选择上下文时，只要 DrawingIndex 仍有效也可 ASK；两者都没有时必须拒绝。
 
@@ -199,7 +214,7 @@ M1 仍使用 `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 和精确 `0.3.3.0
 11. 仅有 DrawingIndex、无选择上下文时 ASK，并明确触发 `cad.query_drawing` 多页查询。
 12. 索引修改/撤销/切图失效、查询/回合取消及断线后的 fail-closed。
 13. M2 1k/10k/50k 图纸扫描、Agent 查询、UI 响应、内存和 DBMOD 基准。
-14. 19 类强类型对象逐类字段核对放在 M3。
+14. M3 的 19 类强类型对象逐类字段核对、R20.1 API Probe、示例图资产和高价值受限读取。
 
 ## 7. 当前开发顺序
 
@@ -207,7 +222,8 @@ M1 仍使用 `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 和精确 `0.3.3.0
 2. M1：代码、自动化和 `0.3.3.0` 候选冻结完成；当前只剩实机矩阵与 evidence 绑定。
 3. M2-A/M2-B：图纸索引、分页命令、Codex `cad.query_drawing`、自动化和 `0.4.0.0`
    候选均完成；等待实机与性能 evidence。
-4. M3：读取对象语义与覆盖。
+4. M3：读取对象语义与覆盖已开始开发纵切；当前中文目录和占位实际类型统计不等于实机
+   逐类字段通过。
 5. M4：进程沙箱、配置和审计基础。
 6. M5：AutoCAD 2016 `create_line` 安全写入最小闭环。
 7. 后续阶段见 `LONG_TERM_MEMORY_TODO.md`。
@@ -227,6 +243,14 @@ M2 `0.4.0.0` 候选已重跑以下门禁：
 
 这些门禁不替代 AutoCAD 2016 人工 `NETLOAD`。历史 `0.3.2.0` 实机结果也不能自动证明
 新的 `0.4.0.0` 候选，更不能证明 50k 运行时性能。
+
+M3 当前自动门禁已完整运行：Contracts `85/85`、Host v2 net45/net8 各 `15/15`、Host MVP
+`53/53`、完整 Phase 2 `309/309`，R20.1 Release 0 warning / 0 error；禁止 API、AgentHost
+doctor、敏感信息、diff 与同一依赖闭包下 Host A/B 位级一致门禁均通过。编译门禁产物位于
+`artifacts/m3-r201-compile-only-d67432c0d40d4aed8710f24b30602955/`，Host SHA-256 为
+`EC1C6174893DC47DABE5C55C28D020FD607881BE435DBBD1FE9079BC8C0DB51B`。其中的
+`compile-summary.json` 不是候选 manifest，不是冻结候选，也尚未 AutoCAD `NETLOAD`；候选冻结、R20.1 逐类 Probe 和实机
+测试仍须在对应纵切完成后单独执行。
 
 ## 9. 安全与隐私
 
@@ -258,6 +282,7 @@ M2 `0.4.0.0` 候选已重跑以下门禁：
 - `M2_DRAWING_INDEX_BENCHMARK_FIXTURES_20260722.md`：固定三档性能图生成、哈希和脱敏记录。
 - `evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-bc6011d3-6de30db9-a43ac024.json`：
   M2 自动化冻结、候选身份和未实机边界。
+- `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`：M3 中文对象目录、字段核对模板和边界。
 
 ## 11. 支持声明
 
@@ -270,6 +295,8 @@ M2 `0.4.0.0` 候选已重跑以下门禁：
 > fixture、性能遥测和脱敏记录器已经通过自动化。Autodesk 枚举器生命周期已收口到单个
 > transaction，但 50k preparation 最大 Idle 分片和 AutoCAD 实机性能仍未验证，因此
 > M2.3、M2.13、M2.14 尚未完成。
+> M3 `0.4.1.0` 的 placeholder 类型统计和中文对象目录正在接入修正后的 M2 基线，尚未
+> 冻结新候选或取得逐类实机字段证据。
 > 安全 CAD 写入、完整沙箱、长期记忆和发布安装
 > 尚未完成。
 

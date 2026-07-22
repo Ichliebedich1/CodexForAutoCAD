@@ -242,9 +242,23 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 
 完成定义：不支持对象只降低完整性，不使整次捕获失败。
 
+当前开发纵切为 `0.4.1.0`，不是冻结候选，也没有 AutoCAD `NETLOAD` 证据。说明与人工
+字段核对模板见 `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
+
+- [x] 在选择快照、整图索引、Palette 和诊断中按实际类型/数量显示未支持、数据超限和
+  读取失败对象；统计不包含图层、Handle、路径或对象内容，且类型桶有界。
+- [x] 新增 `CODEX16TYPEINFO`，为 19 类现有强类型对象列出中文名称和人工创建入口。
+- [x] 为选择统计、DrawingIndex 累积边界、中文目录和真实 mapper → 可读摘要调用链增加
+  源码级回归；当前自动门禁为 Contracts `85/85`、Host v2 net45/net8 各 `15/15`、Host
+  MVP `53/53`、完整 Phase 2 `309/309`、R20.1 Release 0 warning / 0 error，并通过禁止
+  API、AgentHost doctor、敏感信息和 diff 检查。同一依赖闭包下 Host A/B 逐字节一致，
+  编译门禁 SHA-256 为
+   `EC1C6174893DC47DABE5C55C28D020FD607881BE435DBBD1FE9079BC8C0DB51B`；compile-only
+   目录为 `artifacts/m3-r201-compile-only-d67432c0d40d4aed8710f24b30602955/`，这不是冻结候选
+   或实机证据。
+- [x] 提供 M3 中文对象目录、首要字段和未来实机记录模板。
+- [ ] 为 19 类对象提供或冻结脱敏示例测试图；目录和创建入口不能替代测试资产。
 - [ ] 逐类实机验证现有 19 种强类型对象。
-- [ ] 提供中文对象名称、创建方法和脱敏示例测试图。
-- [ ] Palette 显示不支持对象的实际类型和数量。
 - [ ] 完善块属性、动态块、嵌套块、布局和空间信息。
 - [ ] Xref 只公开安全元数据，不公开外部真实路径。
 - [ ] 完善 Dimension、Hatch、Leader、MLeader、Table 的 R20.1 字段语义。
@@ -350,6 +364,9 @@ Kimi 可以后参与 UI，但项目不以 Kimi 可用为继续开发的前置条
 - [ ] 固定 .NET SDK、离线 net45 参考程序集和依赖锁。
 - [ ] 自动运行 Contracts、IPC、Bridge、AppServer、AgentRuntime、Host 和安全 Specs。
 - [ ] R20.1 API Probe、禁止 API、秘密扫描和包身份检查成为门禁。
+- [ ] 让完整依赖闭包的独立 R20.1 构建可位级复现。当前同一新鲜依赖闭包下 Host A/B
+  输出一致；独立依赖构建仍会改变 timestamp、MVID 和 TargetFramework metadata，虽然
+  归一化后的 Host IL 主体相同，不能把这一诊断当作完整可重复构建已完成。
 - [ ] 增加覆盖率报告，关键状态机要求分支覆盖。
 - [ ] 对协议、JSON、游标和审批状态机进行属性或模糊测试。
 - [ ] 增加并发、断线、取消、迟到事件和重复请求压力测试。

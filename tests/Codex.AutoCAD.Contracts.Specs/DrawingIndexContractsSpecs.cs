@@ -433,6 +433,65 @@ internal static class DrawingIndexContractsSpecs
         True(!CadQueryEntityTokens.IsValid("1A"));
     }
 
+    internal static void ReadIssueStatisticsStayStructuredAndBounded()
+    {
+        var accumulator = new DrawingIndexAccumulator(2_000_000);
+        True(accumulator.TryAdd(UnsupportedEntity(
+            "1",
+            "Solid3d",
+            CadQueryReadStatuses.DataLimited)));
+        True(accumulator.TryAdd(UnsupportedEntity(
+            "2",
+            "solid3d",
+            CadQueryReadStatuses.Unsupported)));
+        True(accumulator.TryAdd(UnsupportedEntity(
+            "3",
+            "ProxyEntity",
+            CadQueryReadStatuses.ReadFailed)));
+
+        var statistics = accumulator.SnapshotReadIssues();
+        Equal(3, statistics.TotalCount);
+        Equal(1, statistics.UnknownTypeCount);
+        Equal(1, statistics.DataLimitedCount);
+        Equal(1, statistics.ReadFailedCount);
+        Equal(2, statistics.ActualTypeCounts.Length);
+        var summary = CadReadTypeStatistics.FormatSummary(statistics, 8);
+        True(summary.IndexOf("三维实体(Solid3d) x2", StringComparison.Ordinal) >= 0);
+        True(summary.IndexOf("代理对象(ProxyEntity) x1", StringComparison.Ordinal) >= 0);
+        True(summary.IndexOf("A-SECRET", StringComparison.Ordinal) < 0);
+        True(summary.IndexOf("object-secret", StringComparison.Ordinal) < 0);
+
+        var unsafeAccumulator = new DrawingIndexAccumulator(100_000);
+        True(unsafeAccumulator.TryAdd(UnsupportedEntity(
+            "4", "C:/private/drawing.dwg", CadQueryReadStatuses.Unsupported)));
+        True(unsafeAccumulator.TryAdd(UnsupportedEntity(
+            "5", "/srv/private/model.dwg", CadQueryReadStatuses.ReadFailed)));
+        var unsafeSummary = CadReadTypeStatistics.FormatSummary(
+            unsafeAccumulator.SnapshotReadIssues(), 8);
+        True(unsafeSummary.IndexOf("未知类型(UNKNOWN) x2", StringComparison.Ordinal) >= 0);
+        True(unsafeSummary.IndexOf("private", StringComparison.OrdinalIgnoreCase) < 0);
+        True(unsafeSummary.IndexOf(".dwg", StringComparison.OrdinalIgnoreCase) < 0);
+
+        var bounded = new DrawingIndexAccumulator(2_000_000);
+        for (var index = 0;
+             index <= DrawingIndexContractConstants.MaximumCountBuckets;
+             index++)
+        {
+            True(bounded.TryAdd(UnsupportedEntity(
+                (index + 1).ToString("X"),
+                "CustomType" + index,
+                CadQueryReadStatuses.Unsupported)));
+        }
+        var boundedStatistics = bounded.SnapshotReadIssues();
+        Equal(
+            DrawingIndexContractConstants.MaximumCountBuckets,
+            boundedStatistics.ActualTypeCounts.Length);
+        Equal(1, boundedStatistics.UnlistedTypeEntityCount);
+        Equal(
+            DrawingIndexContractConstants.MaximumCountBuckets + 1,
+            boundedStatistics.TotalCount);
+    }
+
     private static DrawingIndexDescriptor CreateDescriptor(
         int count,
         string status,
@@ -506,6 +565,25 @@ internal static class DrawingIndexContractsSpecs
             System.Globalization.NumberStyles.AllowHexSpecifier,
             System.Globalization.CultureInfo.InvariantCulture);
         return CadQueryEntityTokens.Create(ordinal);
+    }
+
+    private static CadQueryEntity UnsupportedEntity(
+        string objectId,
+        string actualType,
+        string readStatus)
+    {
+        return new CadQueryEntity
+        {
+            ObjectId = Token(objectId),
+            EntityType = CadContextEntityTypesV2.Unsupported,
+            ActualType = actualType,
+            Layer = "A-SECRET",
+            Space = "model",
+            BlockName = string.Empty,
+            TextExcerpt = string.Empty,
+            Unsupported = true,
+            ReadStatus = readStatus,
+        };
     }
 
     private static void Contains(CadValidationFailure[] failures, string code)

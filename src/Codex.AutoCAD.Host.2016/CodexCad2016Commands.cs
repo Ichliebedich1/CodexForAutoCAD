@@ -35,6 +35,7 @@ namespace Codex.AutoCAD.Host2016
             editor.WriteMessage("\nCadContextJson: codex.autocad.cad-context/2");
             editor.WriteMessage("\nDrawingIndex: codex.autocad.drawing-index/1; Idle-chunked read-only scan");
             editor.WriteMessage("\nCadQuery: codex.autocad.cad-query/1; cursor pagination");
+            editor.WriteMessage("\nCAD read type telemetry: enabled; bounded actual-type counts");
             editor.WriteMessage(
                 "\nCodex drawing-query tool: authenticated AgentHost Bridge; manual Agent start");
             editor.WriteMessage("\nAgent/IPC: authenticated MVP candidate; manual start");
@@ -62,7 +63,7 @@ namespace Codex.AutoCAD.Host2016
             }
 
             document.Editor.WriteMessage(
-                "\nHost.2016 当前为 M2 只读整图查询候选：保留 CadContextJson v2 选择快照，DrawingIndex v1/CadQuery v1 通过认证 AgentHost Bridge 向 Codex 提供按需分页查询；Agent 仍需手动启动。CAD 写入和插件保存保持禁用。\n");
+                "\nHost.2016 当前为 M3 CAD 读取语义候选：保留 M2 的 DrawingIndex/CadQuery 调用链，并在选择快照、整图索引和 Palette 中按实际类型统计未支持、数据超限和读取失败对象。执行 CODEX16TYPEINFO 查看中文测试目录。CAD 写入和插件保存保持禁用。\n");
         }
 
         [CommandMethod("CODEX16PAL", CommandFlags.Modal)]
@@ -136,6 +137,18 @@ namespace Codex.AutoCAD.Host2016
             }
 
             editor.WriteMessage("\n{0}\n", UnifiedReadOnlyContextRuntime.BuildInfo());
+        }
+
+        [CommandMethod("CODEX16TYPEINFO", CommandFlags.Modal)]
+        public void ShowReadTypeCatalog()
+        {
+            var editor = GetActiveEditor();
+            if (editor == null)
+            {
+                return;
+            }
+
+            editor.WriteMessage("\n{0}\n", CadReadTypeStatistics.BuildSupportedTypeCatalog());
         }
 
         [CommandMethod("CODEX16CTXCLEAR", CommandFlags.Modal)]
