@@ -110,6 +110,10 @@ var specs = new[]
         "A failed Provider interrupt restores running state and allows one explicit retry",
         CancelFailureCanRetry),
     new SpecCase(
+        "HOST2016_TURN_TIMEOUT_FAILS_CLOSED",
+        "A turn without a terminal event times out, interrupts once, and rejects late work",
+        TurnTimeoutFailsClosed),
+    new SpecCase(
         "HOST2016_TERMINATE_SUCCESS_STOPS_ONCE",
         "AutoCAD termination performs one cleanup when it succeeds",
         TerminateSuccessStopsOnce),
@@ -1006,6 +1010,77 @@ static async Task CancelFailureCanRetry()
 
     await client.CancelActiveTurnAsync(CancellationToken.None).ConfigureAwait(false);
     Equal(2, bridge.InterruptTurnCount, "Cancellation retry Provider interrupt count");
+}
+
+static async Task TurnTimeoutFailsClosed()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-turn-timeout",
+        "system-session-turn-timeout",
+        TimeSpan.FromMilliseconds(40));
+    var statuses = new List<string>();
+    var textEvents = new List<string>();
+    var timeoutStatus = new TaskCompletionSource<string>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    client.ErrorChanged += value =>
+    {
+        statuses.Add(value);
+        if (value.Contains("error_code=timeout", StringComparison.Ordinal))
+        {
+            timeoutStatus.TrySetResult(value);
+        }
+    };
+    client.TextChanged += textEvents.Add;
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2(),
+        ContextSha256 = new string('2', 64),
+    };
+
+    await client.AskAsync(
+            "request that never reaches a terminal event",
+            context,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var request = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("Timed Host request was not captured.");
+    var completed = await Task.WhenAny(
+            timeoutStatus.Task,
+            Task.Delay(TimeSpan.FromSeconds(2)))
+        .ConfigureAwait(false);
+    True(ReferenceEquals(completed, timeoutStatus.Task), "Host turn timeout did not fire.");
+    var timeoutDisplay = await timeoutStatus.Task.ConfigureAwait(false);
+    True(
+        timeoutDisplay.Contains("request_id=" + request.ClientTurnId, StringComparison.Ordinal)
+        && timeoutDisplay.Contains("state=failed", StringComparison.Ordinal)
+        && timeoutDisplay.Contains("retryable=true", StringComparison.Ordinal),
+        "Turn timeout lost structured request identity or terminal state.");
+    Equal(1, bridge.InterruptTurnCount, "Turn timeout best-effort interrupt count");
+
+    var failure = await ExpectBridgeClientFailure(
+            client.AskAsync(
+                "must fail closed after timeout",
+                context,
+                () => true,
+                CancellationToken.None))
+        .ConfigureAwait(false);
+    True(
+        string.Equals(failure.Code, AgentBridgeErrorCodes.Timeout, StringComparison.Ordinal),
+        "ASK after timeout did not preserve the stable timeout code.");
+    var statusCountAtTimeout = statuses.Count;
+    var textCountAtTimeout = textEvents.Count;
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.AssistantMessageDelta,
+        TurnId = "fake-turn-1",
+        Delta = "late-after-timeout",
+    });
+    Equal(statusCountAtTimeout, statuses.Count, "Late timeout status event count");
+    Equal(textCountAtTimeout, textEvents.Count, "Late timeout text event count");
 }
 
 static Task TerminateSuccessStopsOnce()

@@ -16,7 +16,9 @@ namespace Codex.AutoCAD.Host2016
     /// </summary>
     internal sealed class MvpAgentClient : IDisposable
     {
+        private static readonly TimeSpan DefaultTurnTimeout = TimeSpan.FromMinutes(10);
         private readonly object sync = new object();
+        private readonly TimeSpan turnTimeout;
         private AgentHostServiceSession serviceSession;
         private IAgentBridgeClient bridge;
         private string threadId = string.Empty;
@@ -38,12 +40,14 @@ namespace Codex.AutoCAD.Host2016
 
         internal MvpAgentClient()
         {
+            turnTimeout = DefaultTurnTimeout;
         }
 
         internal MvpAgentClient(
             IAgentBridgeClient establishedBridge,
             string establishedThreadId,
-            string establishedSystemSessionId)
+            string establishedSystemSessionId,
+            TimeSpan? configuredTurnTimeout = null)
         {
             if (establishedBridge == null)
             {
@@ -65,6 +69,12 @@ namespace Codex.AutoCAD.Host2016
             bridge = establishedBridge;
             threadId = establishedThreadId;
             systemSessionId = establishedSystemSessionId;
+            turnTimeout = configuredTurnTimeout ?? DefaultTurnTimeout;
+            if (turnTimeout <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(configuredTurnTimeout));
+            }
+
             startTask = Task.FromResult(0);
             online = true;
             establishedBridge.EventReceived += OnBridgeEvent;
@@ -160,7 +170,8 @@ namespace Codex.AutoCAD.Host2016
                 currentThread = threadId;
                 requestTurn = new MvpAgentTurnState(
                     Guid.NewGuid().ToString("N"),
-                    DateTimeOffset.UtcNow);
+                    DateTimeOffset.UtcNow,
+                    turnTimeout);
                 activeTurn = requestTurn;
             }
 
@@ -228,6 +239,7 @@ namespace Codex.AutoCAD.Host2016
                             : "Codex 正在分析当前图纸上下文",
                         requestTurn.RequestId,
                         currentState));
+                BeginTurnTimeoutMonitor(requestTurn);
                 if (dispatchCancellation)
                 {
                     BeginCancellationDispatch(
@@ -249,6 +261,8 @@ namespace Codex.AutoCAD.Host2016
                     cancellationCompletion = requestTurn.MarkTerminal(terminalState);
                     currentState = requestTurn.State;
                 }
+
+                requestTurn.CancelTimeout();
 
                 var turnException = exception as MvpAgentTurnException
                     ?? new MvpAgentTurnException(
@@ -387,6 +401,97 @@ namespace Codex.AutoCAD.Host2016
             }
         }
 
+        private void BeginTurnTimeoutMonitor(MvpAgentTurnState requestTurn)
+        {
+            _ = MonitorTurnTimeoutAsync(requestTurn);
+        }
+
+        private async Task MonitorTurnTimeoutAsync(MvpAgentTurnState requestTurn)
+        {
+            try
+            {
+                await Task.Delay(turnTimeout, requestTurn.TimeoutToken).ConfigureAwait(false);
+                await HandleTurnTimeoutAsync(requestTurn).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // A normal terminal event or AgentHost shutdown ended the timeout monitor.
+            }
+            finally
+            {
+                requestTurn.DisposeTimeout();
+            }
+        }
+
+        private async Task HandleTurnTimeoutAsync(MvpAgentTurnState requestTurn)
+        {
+            IAgentBridgeClient currentBridge;
+            string currentThread;
+            string providerTurnId;
+            bool dispatchInterrupt;
+            TaskCompletionSource<bool> cancellationCompletion;
+            lock (sync)
+            {
+                if (!ReferenceEquals(activeTurn, requestTurn)
+                    || requestTurn.IsTerminal
+                    || !online)
+                {
+                    return;
+                }
+
+                currentBridge = bridge;
+                currentThread = threadId;
+                providerTurnId = requestTurn.ProviderTurnId;
+                dispatchInterrupt = requestTurn.TryBeginForcedInterrupt();
+                cancellationCompletion = requestTurn.MarkTerminal(
+                    MvpAgentTurnStates.Failed);
+                terminalBridgeErrorCode = AgentBridgeErrorCodes.Timeout;
+                online = false;
+            }
+
+            var timeoutException = new MvpAgentTurnException(
+                requestTurn.RequestId,
+                requestTurn.State,
+                new AgentBridgeClientException(
+                    AgentBridgeErrorCodes.Timeout,
+                    "Host 只读回合已超时。"));
+            if (cancellationCompletion != null)
+            {
+                cancellationCompletion.TrySetException(timeoutException);
+            }
+
+            PublishSafely(
+                ErrorChanged,
+                MvpAgentFailureFormatter
+                    .FromErrorCode(
+                        AgentBridgeErrorCodes.Timeout,
+                        MvpAgentFailureStages.RunningTurn)
+                    .WithRequest(requestTurn.RequestId, requestTurn.State)
+                    .FormatForUser("Codex 回合"));
+
+            if (!dispatchInterrupt || currentBridge == null)
+            {
+                return;
+            }
+
+            try
+            {
+                await currentBridge.InterruptTurnAsync(
+                        new AgentTurnInterruptRequest
+                        {
+                            ThreadId = currentThread,
+                            TurnId = providerTurnId,
+                        },
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch
+            {
+                // Timeout is already terminal and fail-closed. Best-effort interrupt failure is
+                // observed here and remaining process cleanup stays owned by CODEX16AGENTSTOP.
+            }
+        }
+
         internal Task StopAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -501,6 +606,7 @@ namespace Codex.AutoCAD.Host2016
                 throw;
             }
 
+            MvpAgentTurnState stoppedTurn;
             TaskCompletionSource<bool> turnCancellationCompletion;
             lock (sync)
             {
@@ -513,11 +619,17 @@ namespace Codex.AutoCAD.Host2016
                 serviceSession = null;
                 stopCoordinator = null;
                 online = false;
-                turnCancellationCompletion = activeTurn == null
+                stoppedTurn = activeTurn;
+                turnCancellationCompletion = stoppedTurn == null
                     ? null
-                    : activeTurn.MarkTerminal(MvpAgentTurnStates.Cancelled);
+                    : stoppedTurn.MarkTerminal(MvpAgentTurnStates.Cancelled);
                 terminalBridgeErrorCode = string.Empty;
                 stopCompleted = true;
+            }
+
+            if (stoppedTurn != null)
+            {
+                stoppedTurn.CancelTimeout();
             }
 
             if (turnCancellationCompletion != null)
@@ -793,6 +905,7 @@ namespace Codex.AutoCAD.Host2016
 
             MvpAgentTurnState requestTurn;
             TaskCompletionSource<bool> cancellationCompletion = null;
+            bool becameTerminal = false;
             string requestId;
             string currentState;
             lock (sync)
@@ -833,6 +946,7 @@ namespace Codex.AutoCAD.Host2016
                 {
                     cancellationCompletion = requestTurn.MarkTerminal(
                         MvpAgentTurnStates.Completed);
+                    becameTerminal = true;
                 }
                 else if (string.Equals(
                         bridgeEvent.Kind,
@@ -841,6 +955,7 @@ namespace Codex.AutoCAD.Host2016
                 {
                     cancellationCompletion = requestTurn.MarkTerminal(
                         MvpAgentTurnStates.Failed);
+                    becameTerminal = true;
                 }
                 else if (string.Equals(
                         bridgeEvent.Kind,
@@ -849,10 +964,16 @@ namespace Codex.AutoCAD.Host2016
                 {
                     cancellationCompletion = requestTurn.MarkTerminal(
                         MvpAgentTurnStates.Cancelled);
+                    becameTerminal = true;
                 }
 
                 requestId = requestTurn.RequestId;
                 currentState = requestTurn.State;
+            }
+
+            if (becameTerminal)
+            {
+                requestTurn.CancelTimeout();
             }
 
             if (cancellationCompletion != null)
@@ -973,6 +1094,11 @@ namespace Codex.AutoCAD.Host2016
                 currentState = requestTurn == null ? string.Empty : requestTurn.State;
                 terminalBridgeErrorCode = errorCode;
                 online = false;
+            }
+
+            if (requestTurn != null)
+            {
+                requestTurn.CancelTimeout();
             }
 
             if (cancellationCompletion != null)
