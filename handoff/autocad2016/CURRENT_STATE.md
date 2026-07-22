@@ -30,10 +30,10 @@ NETLOAD 证据的能力一律视为未支持。
 - P1 当前已冻结自动化候选，但仍未取得 AutoCAD `NETLOAD`、真实混合选区、Palette v2
   字段显示、真实 v2 对话、DBMOD 不变和插件保存等 live 证据；因此候选可以供用户测试，
   但不能标记为实机通过或正式发布。
-- P1 候选：`artifacts/autocad2016-mvp-context-v2-v032-4d3386d9-0645a745-cd07eb22/`；
+- P1 候选：`artifacts/autocad2016-mvp-context-v2-v032-4d3386d9-751b97c7-7216527a/`；
   Host SHA-256 `4D3386D9A825B2842290ACB51376FBA6BE6603F49295E606F8C9F3F92B538C08`，
-  AgentHost EXE SHA-256 `0645A745441717F73BB79F1AEED295ADA51D5A29D74660085BF003E1ACEE514F`，
-  manifest SHA-256 `719160E9EF9B46D6B49144F9F201AE7723DD9FDD4F21C99BE642A074121D5232`。
+  AgentHost EXE SHA-256 `751B97C7B17B970D01D625DDD197E1868150AAB5C235812C662AB70B919B0C67`，
+  manifest SHA-256 `7DBA2BEAD1FB2146B8A60A913545CA8EB6BD4BFADE1F037D1161BD2B70F448B1`。
 - 候选包内 AgentHost 已单独运行 `doctor` 并完成本机 Codex app-server 初始化；脱敏证据见
   `evidence/cad-context-v2-candidate-package-doctor-20260722.json`。该证据仍不替代
   AutoCAD `NETLOAD` 或真实 v2 对话。
@@ -291,7 +291,7 @@ NETLOAD 证据的能力一律视为未支持。
 - 两份独立临时输出使用目标机原版 R20.1 程序集完成 locked Release 重建，Host DLL
   逐字节一致，SHA-256 为 `4D3386D9A825B2842290ACB51376FBA6BE6603F49295E606F8C9F3F92B538C08`，
   Autodesk DLL copy count 为 `0`。P1 候选和 manifest 已冻结；自动化证据见
-  `evidence/cad-context-v2-candidate-build-autocad2016-mvp-context-v2-v032-4d3386d9-0645a745-cd07eb22.json`。
+  `evidence/cad-context-v2-candidate-build-autocad2016-mvp-context-v2-v032-4d3386d9-751b97c7-7216527a.json`。
 - 上述结果把 `HostV2CaptureImplemented`、`R201HostCompileVerified`、
   `RuntimeIntegrationImplemented` 和 `CandidateFrozen` 提升为 `true`；
   `BridgeV2Negotiated`、`NetLoadVerified`、`AutoCadLiveEvidence` 和实机混合选区仍为
@@ -335,7 +335,7 @@ NETLOAD 证据的能力一律视为未支持。
 完整命令清单后才请求测试；仍不得由 Codex 启动、唤醒、关闭或重启 AutoCAD。当前队列：
 
 1. P0 停止生命周期已通过，不再重复请求 P0 实机测试。
-2. P1 人工测试：NETLOAD 候选 `autocad2016-mvp-context-v2-v032-4d3386d9-0645a745-cd07eb22`，
+2. P1 人工测试：NETLOAD 候选 `autocad2016-mvp-context-v2-v032-4d3386d9-751b97c7-7216527a`，
    按 `MVP_CONTEXT_V2_RUNTIME_TEST_DRAFT.md` 验证 v2 混合选区、unknown placeholder、
    完整性计数、Palette JSON、v2 Agent 两轮对话、文档切换和 DBMOD 不变。
 3. 之后补测 P1 的 125%/150% DPI、退出生命周期、离线/断线/超时 fail-closed。

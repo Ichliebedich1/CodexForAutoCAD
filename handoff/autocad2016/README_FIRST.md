@@ -16,9 +16,9 @@
   v2 API Probe 在 PowerShell 7/5.1 均通过，编译期检查全部通过，运行时反射探测为 `19` 通过、
   `8` 失败。
 - P1 已增加发送前旧上下文 fail-closed 重校验，但尚无 AutoCAD 实机竞态证据。
-- P1 自动化候选已冻结：`artifacts/autocad2016-mvp-context-v2-v032-4d3386d9-0645a745-cd07eb22/`；
+- P1 自动化候选已冻结：`artifacts/autocad2016-mvp-context-v2-v032-4d3386d9-751b97c7-7216527a/`；
   Host SHA-256 `4D3386D9A825B2842290ACB51376FBA6BE6603F49295E606F8C9F3F92B538C08`，
-  AgentHost EXE SHA-256 `0645A745441717F73BB79F1AEED295ADA51D5A29D74660085BF003E1ACEE514F`。
+  AgentHost EXE SHA-256 `751B97C7B17B970D01D625DDD197E1868150AAB5C235812C662AB70B919B0C67`。
   该候选现在可供用户人工 NETLOAD，但 `NetLoadVerified=false`，不得当作已通过。
 - P0 停止生命周期已由用户完成人工 NETLOAD、三次启停请求、在线/停止状态确认、DBMOD
   `20 -> 20` 和残留进程 `0` 验证，独立提交为 `8a4ee57`。
@@ -165,7 +165,7 @@ AutoCAD 2016 / .NET Framework 4.5 / x64
 - `handoff/autocad2016/MVP_PUBLIC_CONTRACT_V1.md` 与 `handoff/autocad2016/evidence/cad-context-contract-v1-verification-20260719.json`：CadContextJson v1、Host/Agent/UI 方法/事件/错误/审批契约及双 PowerShell、net45/net8 `27/27`、Phase 2 `157/157` 的冻结证据；明确统一 Host.2016、Palette、live Bridge 和 AutoCAD 对话尚未验证。
 - `handoff/autocad2016/evidence/bridge-client-stage-verification-20260720.json`：具体 net45/net8 `IAgentBridgeClient` 的双 PowerShell、双隔离确定性构建、各 `22/22`、Bridge `34/34`、Phase 2 `184/184`、turn 终态消费/迟到事件拒绝、doctor、diff、秘密扫描和无残留 TestServer 脱敏证据；明确 `AutoCadLiveEvidence=false`，不证明统一 Host、长运行 AgentHost 或真实 Codex CAD 对话。
 - `handoff/autocad2016/evidence/agent-stop-live-observation-20260722.json`：P0 停止生命周期用户实机证据；不继承给 P1。
-- `handoff/autocad2016/evidence/cad-context-v2-candidate-build-autocad2016-mvp-context-v2-v032-4d3386d9-0645a745-cd07eb22.json`：P1 候选自动化构建、双重 R20.1 Host 输出、AgentHost 发布、manifest、235/235 门禁和 v2 API Probe 边界；明确 `NetLoadVerified=false`、`AutoCadLiveEvidence=false`。
+- `handoff/autocad2016/evidence/cad-context-v2-candidate-build-autocad2016-mvp-context-v2-v032-4d3386d9-751b97c7-7216527a.json`：P1 候选自动化构建、双重 R20.1 Host 输出、AgentHost 发布、manifest、235/235 门禁和 v2 API Probe 边界；明确 `NetLoadVerified=false`、`AutoCadLiveEvidence=false`。
 - `handoff/autocad2016/evidence/environment-collector-location-verification-20260722.json`：当前机器 PS7/PS5.1 环境采集器自测 `24/24`、只读真实采集结果和脱敏边界。
 - `handoff/autocad2016/evidence/cad-context-v2-candidate-package-doctor-20260722.json`：P1 候选包内 AgentHost doctor 成功加载并完成本机 Codex app-server 初始化；不等同于 AutoCAD live 证据。
 - `handoff/autocad2016/evidence/phase2-final-gate-20260722.json`：采集器集成后当前线重新执行的 Release、235/235 Specs、Host 禁用 API、doctor、秘密扫描和 diff 门禁汇总。

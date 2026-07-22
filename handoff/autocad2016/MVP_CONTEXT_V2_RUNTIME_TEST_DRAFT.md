@@ -5,9 +5,9 @@
 本手册对应候选：
 
 ```text
-C:\tmp\CodexForAutoCAD-context-v2\artifacts\autocad2016-mvp-context-v2-v032-4d3386d9-0645a745-cd07eb22\Codex.AutoCAD.Host.2016.dll
+C:\tmp\CodexForAutoCAD-context-v2\artifacts\autocad2016-mvp-context-v2-v032-4d3386d9-751b97c7-7216527a\Codex.AutoCAD.Host.2016.dll
 Host SHA-256: 4D3386D9A825B2842290ACB51376FBA6BE6603F49295E606F8C9F3F92B538C08
-AgentHost/Codex.AutoCAD.AgentHost.exe SHA-256: 0645A745441717F73BB79F1AEED295ADA51D5A29D74660085BF003E1ACEE514F
+AgentHost/Codex.AutoCAD.AgentHost.exe SHA-256: 751B97C7B17B970D01D625DDD197E1868150AAB5C235812C662AB70B919B0C67
 ```
 
 执行前请确认 AutoCAD 2016 已由用户自行启动，且不要把 P0 候选与本 P1 候选混用。

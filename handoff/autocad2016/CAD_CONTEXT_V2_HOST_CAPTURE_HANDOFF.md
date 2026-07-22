@@ -69,11 +69,11 @@
 
 ### P1 候选冻结
 
-- 候选目录：`artifacts/autocad2016-mvp-context-v2-v032-4d3386d9-0645a745-cd07eb22/`。
+- 候选目录：`artifacts/autocad2016-mvp-context-v2-v032-4d3386d9-751b97c7-7216527a/`。
 - Host SHA-256：`4D3386D9A825B2842290ACB51376FBA6BE6603F49295E606F8C9F3F92B538C08`。
-- AgentHost EXE SHA-256：`0645A745441717F73BB79F1AEED295ADA51D5A29D74660085BF003E1ACEE514F`。
-- `manifest.json` SHA-256：`719160E9EF9B46D6B49144F9F201AE7723DD9FDD4F21C99BE642A074121D5232`。
-- 候选 evidence：`handoff/autocad2016/evidence/cad-context-v2-candidate-build-autocad2016-mvp-context-v2-v032-4d3386d9-0645a745-cd07eb22.json`。
+- AgentHost EXE SHA-256：`751B97C7B17B970D01D625DDD197E1868150AAB5C235812C662AB70B919B0C67`。
+- `manifest.json` SHA-256：`7DBA2BEAD1FB2146B8A60A913545CA8EB6BD4BFADE1F037D1161BD2B70F448B1`。
+- 候选 evidence：`handoff/autocad2016/evidence/cad-context-v2-candidate-build-autocad2016-mvp-context-v2-v032-4d3386d9-751b97c7-7216527a.json`。
 - 自动化证据明确 `NetLoadVerified=false`、`AutoCadLiveEvidence=false`；P0 live 证据不向 P1 继承。
 
 ## 证据边界
