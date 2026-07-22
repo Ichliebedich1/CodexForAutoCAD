@@ -40,7 +40,18 @@ $requiredSpecIds = @(
     "TRAILING_DUPLICATE_REJECTED",
     "CHILD_CLEARS_INHERITANCE",
     "HANDLE_ALLOWLIST_CANARY",
-    "STDERR_BOUNDED"
+    "STDERR_BOUNDED",
+    "SERVICE_STOP_RETRIES_TERMINATION",
+    "SERVICE_STOP_RETRIES_THROWN_TERMINATION",
+    "SERVICE_STOP_PROCESS_DISPOSE_CAN_RETRY",
+    "SERVICE_STOP_ABORT_IO_CAN_RETRY",
+    "SERVICE_STOP_THROWN_ABORT_IO_CAN_RETRY",
+    "SERVICE_STOP_STDERR_CAN_RETRY",
+    "SERVICE_STOP_FAULTED_STDERR_IS_SETTLED",
+    "SERVICE_STOP_RETRY_DOES_NOT_POISON_START",
+    "SERVICE_DISPOSE_FAILURE_CAN_RETRY",
+    "SERVICE_STOP_CONCURRENT_CALLERS",
+    "SERVICE_STOP_CONCURRENT_FAILURE_SHARED"
 )
 
 $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
@@ -286,11 +297,18 @@ function Assert-SourceBoundary {
         }
     }
 
-    if ($launcherText -notmatch 'commandLine\.Append\(" bootstrap-doctor"\)') {
-        throw "CreateProcess 命令行必须只追加 bootstrap-doctor。"
+    if ($launcherText -notmatch 'AgentHostBootstrapCommand\.Doctor\s*=>\s*" bootstrap-doctor"' -or
+        $launcherText -notmatch 'AgentHostBootstrapCommand\.Serve\s*=>\s*" bootstrap-serve"' -or
+        $launcherText -notmatch '_\s*=>\s*throw new AgentBootstrapLaunchException') {
+        throw "CreateProcess 命令行必须只允许固定 bootstrap-doctor/bootstrap-serve 枚举值。"
     }
-    if ($agentHostText -notmatch 'args\.Length\s*!=\s*1') {
-        throw "AgentHost bootstrap-doctor 必须拒绝任何附加命令行材料。"
+    $singleArgumentGuards = [regex]::Matches(
+        $agentHostText,
+        'args\.Length\s*!=\s*1').Count
+    if ($singleArgumentGuards -lt 2 -or
+        $agentHostText -notmatch 'bootstrap-doctor accepts no command-line bootstrap material' -or
+        $agentHostText -notmatch 'bootstrap-serve accepts no command-line bootstrap material') {
+        throw "AgentHost 两种 bootstrap 模式都必须拒绝任何附加命令行材料。"
     }
 
     return [ordered]@{

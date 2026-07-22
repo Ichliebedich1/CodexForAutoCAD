@@ -6,6 +6,27 @@
 首次已提交诊断基线：`2d2ad3738095794c8374e916559c0c5d13702ba1`（`feat(host2016): add net45 diagnostic host and load verification`）
 适配目标：AutoCAD 2016 原版 R20.1，x64，进程内 .NET Framework 4.5 薄宿主 + 进程外 .NET 8 Agent/Sandbox。
 
+## 2026-07-22 当前检查点
+
+- 核心只读 Agent MVP 已由用户在真实 AutoCAD 2016 中验证选择、CadContextJson v1、
+  AgentHost 认证启动、本机 Codex 返回和同一 thread 连续对话；提交为 `7f10d60`。
+- 当前 P0 是停止生命周期。自动化回归已通过：Host 停止 `13/13`、Bridge Client
+  net45/net8 `25/25`、Bridge `37/37`、AgentLauncher net45/net8 `26/26`、Phase 2
+  `195/195`，并完成原版 R20.1 net45/x64 A/B 编译。
+- 唯一待实机候选为
+  `autocad2016-mvp-agent-stop-v032-pkg3-1cc9d294-8e6b26fd`；Host SHA-256
+  `1CC9D2943F1AB3C37395927B0E2EAF4189A0B3BE4B2E8FA4A61AE8470D3478DC`。实机步骤见
+  `MVP_AGENT_STOP_RUNTIME_TEST_20260722.md`。
+- 用户已对该候选完成 NETLOAD、版本确认、三次启停请求和最终停止状态检查；DBMOD 保持
+  `20 -> 20`，只读进程检查为 AgentHost 残留 `0`；用户截图明确记录了 Agent Bridge
+  `online` 和最终 AgentHost 停止状态。旧候选
+  `autocad2016-mvp-agent-v032-884413f0-8c74b95e` 已撤销，禁止加载。当前新候选为
+  `NetLoadVerified=true`、`AutoCadLiveEvidence=true`，P0 停止生命周期实机证据已收口。
+  观察记录见
+  `evidence/agent-stop-live-observation-20260722.json`。
+- 下文的 `22/22`、`34/34`、`184/184` 等数字是历史检查点，保留用于追溯，不代表当前
+  门禁倒退。
+
 ## 先看结论
 
 AutoCAD 2016 工作已完成目标机环境采集、独立诊断宿主建立、真实编译和首次实机加载：

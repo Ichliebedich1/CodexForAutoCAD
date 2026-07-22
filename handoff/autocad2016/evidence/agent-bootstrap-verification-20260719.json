@@ -1,20 +1,20 @@
 {
   "schemaVersion": 2,
-  "recordedDate": "2026-07-19",
-  "recordedAtLocal": "2026-07-19T20:37:23.2623488+08:00",
+  "recordedDate": "2026-07-22",
+  "recordedAtLocal": "2026-07-22T07:33:43.9316736+08:00",
   "generatedBy": "scripts/verify-autocad2016-agent-bootstrap-stage.ps1",
   "source": "machine-orchestrated PowerShell 7 and Windows PowerShell 5.1 stage gates",
   "scope": "autocad2016-agenthost-secure-bootstrap-stage",
-  "validatedBaseHead": "c9280f334c4bad76ca25692b021d43723ff15c53",
-  "validatedBaseHeadShort": "c9280f33",
+  "validatedBaseHead": "7f10d60c5e22e95dd0b433eb64a6a8cf41cfe884",
+  "validatedBaseHeadShort": "7f10d60c",
   "stageCommitBinding": "the single Git commit containing this generated evidence, AgentLauncher, AgentHost changes, Specs, all four verifier scripts, solution update, and handoff updates",
   "worktreeCommittedAtRecord": false,
   "autoCadLiveEvidence": false,
   "candidateTreeBinding": {
     "algorithm": "SHA-256 of sorted relative-path, byte-length, and file-SHA-256 manifest",
     "evidenceFileExcludedToAvoidSelfReference": true,
-    "fileCount": 146,
-    "manifestSha256": "AE03A56526DEF7EB9675EEBA37D3AC39C5C269AFC0FCDFF22AFC3E379BCAECC5",
+    "fileCount": 198,
+    "manifestSha256": "2775FECA870D34B0774C03A8F9E01F4BCD43B6D2DE8F0771F02D20B08C59A22C",
     "stableAcrossAllGates": true
   },
   "toolchain": {
@@ -27,34 +27,34 @@
     "crossShellPhase2SummaryEqual": true
   },
   "verifierHashes": {
-    "StageOrchestrator": "376ABC965216A9823FF21A77414D5A4F6FA0EF3BC7812BC8A1CF4BA9267B5D5B",
-    "BootstrapVerifier": "95A738081ADF2C9C8C3967A63D32E36E6D55A7D234B5608F684C1298246A164B",
-    "AuthenticationCompatibilityVerifier": "705C6421F62D9C75865A66285D87DF1A81FF9BE3F7E910FFF882598F62A72C1A",
-    "Phase2Verifier": "BDA45FD65EAA7B85877099040EDB6D2B23382DC743971296C5579B49B93D5937"
+    "StageOrchestrator": "3305F6E66AF20175D01E87A410FC1C69670566FF443E2E1884235D2185F6915F",
+    "BootstrapVerifier": "DCF77A7EC3A9A651DCF967B3173E4A53959944C4BF04FFA1FA10862956BF0E04",
+    "AuthenticationCompatibilityVerifier": "6FF21D15C05535C81BA9F96426E4C91B919EE3BDAC668E1E80EACD674F191122",
+    "Phase2Verifier": "F96F4D7DFD4C328EB2EFC56F33DE396EFDA529274D0AC59C30F5DAACD202ED1B"
   },
   "rawEvidenceBindings": {
     "bootstrap": {
       "schemaVersion": 3,
-      "powerShell7EvidenceSha256": "5DED5C77C6EA977D7CC73A0AA0646478B231C7C8AC125F56AFCFA3D0EC3C5C49",
-      "windowsPowerShell51EvidenceSha256": "BDEB5B7858913EBBF6FA5BDB988FF34CBA98F942EA67F658352AAC83898CF3BB",
-      "normalizedEvidenceSha256": "B85D9495F8A5E63D39535D4A043BE767F490EF014599D1BC619DDECB11432608",
-      "powerShell7LogSha256": "B537359FA271E272C238D079A6CC274BB38BF49EC91713E6CF729E93DCD6CC83",
-      "windowsPowerShell51LogSha256": "4B1D4B7EB58FBB4927B9CF21C87D1A38182B267AC46D2A9352317F1458AC7DD0",
+      "powerShell7EvidenceSha256": "ABB741394E01B57FE9D09A76084CA92EFC16048F75CA02CFD3C4F89736EC5481",
+      "windowsPowerShell51EvidenceSha256": "55C654DDAE83816E2B24FA6412228B18FE37481335CA6BB11B78190461A99ECE",
+      "normalizedEvidenceSha256": "8500B471A0A5C705F38150939F01B368DF0BE73824B7336258122A78A6C78ECE",
+      "powerShell7LogSha256": "7961A4AA4E7C850C5029E2F077624C5C8129A16563C4959AFD06E4B45C481F45",
+      "windowsPowerShell51LogSha256": "8C66E050D0661EFB4B94F8F495C20FB5159F236987C5221B48CD2B66B1B054D8",
       "normalizedCrossShellEqual": true
     },
     "authenticationCompatibility": {
       "schemaVersion": 3,
-      "powerShell7EvidenceSha256": "9FD59097DFF8ADC82FD5391C1123E05E7F4513B39C1317C9BFF7E7106BA964AC",
-      "windowsPowerShell51EvidenceSha256": "46A1A175F94604A0E8E283137802AAB301184C2DEF6AB1F241E99AB0F634708E",
-      "normalizedEvidenceSha256": "40E0518C0781A78ACA488A8DB10CA746A7F921919818D0DB1D05ED15D716C8FF",
-      "powerShell7LogSha256": "DF19B8C49A6954DAAAC086714F58D68D67095819259C5534EC59BC94899DE921",
-      "windowsPowerShell51LogSha256": "A46F24FF2F649C8E96A57CF7C5CF19771F1DCC1AB100D089DF8ECD682CDFC410",
+      "powerShell7EvidenceSha256": "FDDB0153E7B642155D1B225A14CA864DFEFEC0F02FFB3E0A01C8072CD6BAEA5A",
+      "windowsPowerShell51EvidenceSha256": "51B1FE91815397764B0FE1439988E2A1D01DB412CBE4D46D2EF0E585CA8DD92F",
+      "normalizedEvidenceSha256": "0F59AC6AFDAEB4278042576AB885243F9FC9D64DBD5E52C2A5464C223CA30307",
+      "powerShell7LogSha256": "2110272143B7033CE014B026B1A931E4CD3328B1379BBD469C85B18A30B3A2EE",
+      "windowsPowerShell51LogSha256": "EBFDA18E541E95326F463B49363071BF357791D06B54BBE103C89ADE39E6DF2E",
       "normalizedCrossShellEqual": true
     },
     "phase2": {
-      "powerShell7LogSha256": "31080ECB9ADE56FF4BC65B4F5B0A8074853923B4F3BF992E10EF4AECD386BECD",
-      "windowsPowerShell51LogSha256": "7E493E41417882932A39B184BB6F1FCBA918489C89F05FB143A0AD827B6CF5E3",
-      "normalizedSummarySha256": "D6748E9D84612525180D77960CFE2CB753A94E3926E2FFA0F30B257E390F941B",
+      "powerShell7LogSha256": "17E94870285A68B1870E04F4C2E042EBEA193D946B532933856DD8524D177599",
+      "windowsPowerShell51LogSha256": "C1AB9245AB7FFAEE9D5C432873856F070B3AC805A499C37DAA3F814F6CAE98CA",
+      "normalizedSummarySha256": "46F030EDE09F5C99D2E8E8BD8E8A3148AAB166F28A006029CB49D32A14A44A8A",
       "normalizedCrossShellEqual": true
     },
     "rawFilesPersistedOnlyUnderIgnoredArtifacts": true,
@@ -62,36 +62,36 @@
   },
   "reproducibility": {
     "isolatedBuildCountPerBootstrapShell": 2,
-    "bootstrapCompiledInputFileCount": 122,
-    "bootstrapRunnableOutputTreeFileCount": 106,
+    "bootstrapCompiledInputFileCount": 158,
+    "bootstrapRunnableOutputTreeFileCount": 123,
     "bootstrapOutputTreesBitForBitEqual": true,
     "bootstrapOutputTreesRecheckedAfterSpecs": true,
     "authenticationIsolatedBuildCountPerShell": 2,
     "authenticationOutputsBitForBitEqual": true
   },
   "artifactHashes": {
-    "Net45Launcher": "597D99E87FE06BA59DCBB70DE498390B92B97C18C63CF2AEAF7E66978F3AF849",
-    "Net8Launcher": "84E0E2A710F9D119160A74584802198CF3286E5F4482C2017E6C624EBD3C1FE9",
-    "AgentHostDll": "852BD92C18A72E8F5A8DFEF01C42F5560CD1C0764AF5909E7074149371786033",
-    "AgentHostExe": "002BBA9D48BBDFE8E8256C0D6D17E88C63AE4A0A34499CC3CF756A2CE1749706",
-    "FakeHostDll": "C7BD3AB5FFFA87DD1D7156E4F36CA37098015E3BFFA911129D57CF699CB24ECC",
-    "FakeHostExe": "40749AE9F08E007FAA136A8B0549DCCF963C21CEEF8C46E754DBB1D8C764713D",
-    "Net45Specs": "D8A3B5F241DACB818746E623922A16ACCBE042ED3D3EEBEE88391DF6CCF0C063",
-    "Net8Specs": "41D0C609060CD0C10E8D1099DCEF2E3D2505BCB060E4C2CE7652B46F13AD05B1"
+    "Net45Launcher": "26B30A360338049E42FD0A0F079AF00FF3DEBBB278787C11DE03DAA7783A3727",
+    "Net8Launcher": "1B7488AD85B93034BBA9E932E158EDA655A5A3CD7E0AC4158D4C8C8AEDCDC80A",
+    "AgentHostDll": "90E4260E9176FB73918341BCE0CFC740487F454FEBD66D8FFF8183ABCA5A19B8",
+    "AgentHostExe": "8E6B26FD7B20925A1CE53CAB0DBEE093C58B9AF0935219DF75FC8A7CB5C4FA2A",
+    "FakeHostDll": "EB12FB287B27214790F9C513220DFBD5958E4C6982CD4FC48293D2AFA285D2B9",
+    "FakeHostExe": "23DF9EFA6C2AB551643217793EBF6A3680E30D66672BC3A29EB4D7E075BCC71A",
+    "Net45Specs": "60E59289AFBD97FF2CCDD5E7F905D5F0BF39A31C1F0A80DD40A97AA05A63E117",
+    "Net8Specs": "E7C0CDB59883C89038BC19E7244A312CB03C9BE5F6483BD22544F7CB960E74F0"
   },
   "gates": {
     "bootstrap": {
       "powerShell7Passed": true,
       "windowsPowerShell51Passed": true,
-      "net45Specs": "15/15",
-      "net8Specs": "15/15",
+      "net45Specs": "26/26",
+      "net8Specs": "26/26",
       "exactRequiredSpecIdSetEnforced": true,
       "noResidualRelevantAgentProcesses": true
     },
     "authenticationCompatibility": {
       "powerShell7Passed": true,
       "windowsPowerShell51Passed": true,
-      "bridgeSpecs": "29/29",
+      "bridgeSpecs": "37/37",
       "net45Specs": "35/35",
       "net8Specs": "35/35",
       "fixedVectorsAndCompiledBoundariesMatch": true
@@ -102,15 +102,16 @@
       "configuration": "Release",
       "releaseBuildWarnings": 0,
       "releaseBuildErrors": 0,
-      "specProjects": 7,
-      "specsPassed": 145,
-      "specsTotal": 145,
+      "specProjects": 8,
+      "specsPassed": 195,
+      "specsTotal": 195,
       "projectResults": {
-        "Codex.AutoCAD.Contracts.Specs": "15/15",
+        "Codex.AutoCAD.Contracts.Specs": "32/32",
         "Codex.AutoCAD.Ipc.Specs": "35/35",
         "Codex.AutoCAD.Security.Specs": "19/19",
         "Codex.AutoCAD.AppServer.Specs": "7/7",
-        "Codex.AutoCAD.Bridge.Specs": "29/29",
+        "Codex.AutoCAD.Bridge.Specs": "37/37",
+        "Codex.AutoCAD.Bridge.Client.Specs": "25/25",
         "Codex.AutoCAD.AgentRuntime.Specs": "31/31",
         "Codex.AutoCAD.Chat.Specs": "9/9"
       },
@@ -122,8 +123,8 @@
     "finalGitDiffCheckPassed": true,
     "finalBasicSecretScanPassed": true,
     "autoCadProcessSetChanged": false,
-    "autoCadProcessBaselineCount": 1,
-    "autoCadProcessFinalCount": 1,
+    "autoCadProcessBaselineCount": 0,
+    "autoCadProcessFinalCount": 0,
     "autoCadStartedOrRestarted": false,
     "cadCommandsSent": false
   },
@@ -177,5 +178,5 @@
     "credentialsIncluded": false,
     "rawStandardErrorIncluded": false
   },
-  "conclusion": "The machine-orchestrated AgentHost secure-bootstrap stage passed PowerShell 7 and Windows PowerShell 5.1 bootstrap gates (15/15 net45 and net8), authentication compatibility gates (Bridge 29/29 and net45/net8 35/35), and Phase2 Release gates (0 warnings, 0 errors, 145/145 Specs, Host scan, doctor, diff, and secret scan). The configured startup deadline triggers fail-closed abort followed by no more than five seconds of bounded termination cleanup. AutoCAD was not started, restarted, or commanded. Long-running Bridge, Host.2016 integration, and complete AutoCAD 2016 support remain unverified."
+  "conclusion": "The machine-orchestrated AgentHost secure-bootstrap stage passed PowerShell 7 and Windows PowerShell 5.1 bootstrap gates (26/26 net45 and net8), authentication compatibility gates (Bridge 37/37 and net45/net8 35/35), and Phase2 Release gates (0 warnings, 0 errors, 195/195 Specs, Host scan, doctor, diff, and secret scan). The configured startup deadline triggers fail-closed abort followed by no more than five seconds of bounded termination cleanup. AutoCAD was not started, restarted, or commanded. Long-running Bridge, Host.2016 integration, and complete AutoCAD 2016 support remain unverified."
 }

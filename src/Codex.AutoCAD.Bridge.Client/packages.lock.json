@@ -8,20 +8,6 @@
         "resolved": "1.0.3",
         "contentHash": "dcSLNuUX2rfZejsyta2EWZ1W5U6ucbFt697lRg1qiTlTM5ZlYv4uAvuxE6ROy6xLWWhLhOaReCDxkhxcajRYtQ=="
       },
-      "codex.autocad.agentlauncher": {
-        "type": "Project",
-        "dependencies": {
-          "Codex.AutoCAD.Contracts": "[1.0.0, )",
-          "Codex.AutoCAD.Ipc": "[1.0.0, )"
-        }
-      },
-      "codex.autocad.bridge.client": {
-        "type": "Project",
-        "dependencies": {
-          "Codex.AutoCAD.Contracts": "[1.0.0, )",
-          "Codex.AutoCAD.Ipc": "[1.0.0, )"
-        }
-      },
       "codex.autocad.contracts": {
         "type": "Project"
       },
@@ -32,9 +18,22 @@
         }
       }
     },
-    ".NETFramework,Version=v4.5/win": {},
-    ".NETFramework,Version=v4.5/win-arm64": {},
-    ".NETFramework,Version=v4.5/win-x64": {},
-    ".NETFramework,Version=v4.5/win-x86": {}
+    "net8.0": {
+      "Microsoft.NETFramework.ReferenceAssemblies.net45": {
+        "type": "Direct",
+        "requested": "[1.0.3, 1.0.3]",
+        "resolved": "1.0.3",
+        "contentHash": "dcSLNuUX2rfZejsyta2EWZ1W5U6ucbFt697lRg1qiTlTM5ZlYv4uAvuxE6ROy6xLWWhLhOaReCDxkhxcajRYtQ=="
+      },
+      "codex.autocad.contracts": {
+        "type": "Project"
+      },
+      "codex.autocad.ipc": {
+        "type": "Project",
+        "dependencies": {
+          "Codex.AutoCAD.Contracts": "[1.0.0, )"
+        }
+      }
+    }
   }
 }

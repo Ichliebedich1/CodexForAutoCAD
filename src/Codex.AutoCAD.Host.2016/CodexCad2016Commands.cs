@@ -5,6 +5,7 @@ using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
 using AutoCadApplication = Autodesk.AutoCAD.ApplicationServices.Core.Application;
+using Codex.AutoCAD.AgentLauncher;
 
 namespace Codex.AutoCAD.Host2016
 {
@@ -156,8 +157,8 @@ namespace Codex.AutoCAD.Host2016
                 return;
             }
 
-            Observe(MvpAgentRuntime.StartAsync());
             UnifiedPaletteRuntime.Show();
+            Observe(MvpAgentRuntime.StartAsync(), "启动 AgentHost");
             editor.WriteMessage(
                 "\nAgentHost 启动请求已提交；状态将在侧边栏更新。CAD 写入仍禁用。\n");
         }
@@ -182,7 +183,7 @@ namespace Codex.AutoCAD.Host2016
             }
 
             UnifiedPaletteRuntime.Show();
-            Observe(MvpAgentRuntime.AskAsync(result.StringResult));
+            Observe(MvpAgentRuntime.AskAsync(result.StringResult), "发送只读问题");
             editor.WriteMessage("\n只读问题已提交；回答将在侧边栏流式显示。\n");
         }
 
@@ -195,11 +196,12 @@ namespace Codex.AutoCAD.Host2016
                 return;
             }
 
-            Observe(MvpAgentRuntime.StopAsync());
+            UnifiedPaletteRuntime.Show();
+            Observe(MvpAgentRuntime.StopAsync(), "停止 AgentHost");
             editor.WriteMessage("\nAgentHost 停止请求已提交。\n");
         }
 
-        private static void Observe(Task task)
+        private static void Observe(Task task, string operationName)
         {
             if (task == null)
             {
@@ -209,9 +211,32 @@ namespace Codex.AutoCAD.Host2016
             task.ContinueWith(
                 completed =>
                 {
-                    var ignored = completed.Exception;
+                    var aggregate = completed.Exception;
+                    var exception = aggregate == null
+                        ? null
+                        : aggregate.GetBaseException();
+                    UnifiedPaletteRuntime.UpdateAgentStatus(
+                        operationName
+                        + "失败："
+                        + FormatObservedFailure(exception)
+                        + "。不会自动重试。");
                 },
-                TaskContinuationOptions.OnlyOnFaulted);
+                System.Threading.CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted,
+                TaskScheduler.Default);
+        }
+
+        private static string FormatObservedFailure(System.Exception exception)
+        {
+            if (exception == null)
+            {
+                return "UnknownError";
+            }
+
+            var bootstrapFailure = exception as AgentBootstrapLaunchException;
+            return bootstrapFailure == null
+                ? exception.GetType().Name
+                : exception.GetType().Name + "/" + bootstrapFailure.Failure;
         }
 
         private static Editor GetActiveEditor()

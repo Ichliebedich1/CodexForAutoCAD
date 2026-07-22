@@ -28,19 +28,22 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
     private readonly Dictionary<string, TurnIdentity> _activeTurns =
         new Dictionary<string, TurnIdentity>(StringComparer.Ordinal);
     private readonly HashSet<string> _seenEventIds = new HashSet<string>(StringComparer.Ordinal);
-    private readonly TaskCompletionSource<bool> _stopCompletion =
-        new TaskCompletionSource<bool>();
-
     private NamedPipeClientStream? _pipe;
     private CancellationTokenSource? _lifetime;
     private IpcEnvelopeAuthenticator? _authenticator;
     private IpcSessionGuard? _incomingGuard;
     private Task? _receiveTask;
+    private Task? _stopAttempt;
     private AgentBridgeClientException? _terminalError;
     private long _outgoingSequence;
     private long _lastEventSequence;
     private int _disposeSignaled;
     private ClientState _state;
+    private bool _stopStarted;
+    private bool _sendQuiesced;
+    private bool _receiveSettled;
+    private bool _securityReleased;
+    private bool _stopCompleted;
 
     public event EventHandler<AgentBridgeEventReceivedEventArgs>? EventReceived;
 
@@ -208,51 +211,108 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
         }
     }
 
-    public async Task StopAsync(CancellationToken cancellationToken)
+    public Task StopAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        CancellationTokenSource? lifetime;
-        NamedPipeClientStream? pipe;
-        Task? receiveTask;
-        List<TaskCompletionSource<BridgeClientJsonCodec.ResponsePayloadValue>> pending;
-        Task stopTask;
-        var ownsStop = false;
+        Task attempt;
         lock (_sync)
         {
-            if (_state == ClientState.Disposed)
+            if (_state == ClientState.Disposed || _stopCompleted)
             {
-                return;
+                return Task.FromResult(0);
             }
 
-            stopTask = _stopCompletion.Task;
-            if (_state == ClientState.Stopped)
+            if (_stopAttempt is null)
             {
-                lifetime = null;
-                pipe = null;
-                receiveTask = null;
-                pending = new List<TaskCompletionSource<BridgeClientJsonCodec.ResponsePayloadValue>>();
+                CancellationTokenSource? lifetime = null;
+                NamedPipeClientStream? pipe = null;
+                var pending = new List<
+                    TaskCompletionSource<BridgeClientJsonCodec.ResponsePayloadValue>>();
+                if (!_stopStarted)
+                {
+                    _stopStarted = true;
+                    _state = ClientState.Stopped;
+                    lifetime = _lifetime;
+                    pipe = _pipe;
+                    pending = _pendingRequests.Values.ToList();
+                    _pendingRequests.Clear();
+                    _activeTurns.Clear();
+                    _seenEventIds.Clear();
+                    _lastEventSequence = 0;
+                }
+
+                var completion = new TaskCompletionSource<bool>();
+                attempt = completion.Task;
+                _stopAttempt = attempt;
+                _ = CompleteStopAttemptAsync(
+                    completion,
+                    attempt,
+                    lifetime,
+                    pipe,
+                    _receiveTask,
+                    pending);
             }
             else
             {
-                ownsStop = true;
-                _state = ClientState.Stopped;
-                lifetime = _lifetime;
-                pipe = _pipe;
-                receiveTask = _receiveTask;
-                pending = _pendingRequests.Values.ToList();
-                _pendingRequests.Clear();
-                _activeTurns.Clear();
-                _seenEventIds.Clear();
-                _lastEventSequence = 0;
+                attempt = _stopAttempt;
             }
         }
 
-        if (!ownsStop)
+        return AwaitWithCancellationAsync(attempt, cancellationToken);
+    }
+
+    private async Task CompleteStopAttemptAsync(
+        TaskCompletionSource<bool> completion,
+        Task attempt,
+        CancellationTokenSource? lifetime,
+        NamedPipeClientStream? pipe,
+        Task? receiveTask,
+        List<TaskCompletionSource<BridgeClientJsonCodec.ResponsePayloadValue>> pending)
+    {
+        Exception? stopFailure = null;
+        try
         {
-            await AwaitWithCancellationAsync(stopTask, cancellationToken).ConfigureAwait(false);
-            return;
+            stopFailure = await RunStopAttemptAsync(
+                    lifetime,
+                    pipe,
+                    receiveTask,
+                    pending)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            stopFailure = exception;
         }
 
+        lock (_sync)
+        {
+            if (ReferenceEquals(_stopAttempt, attempt))
+            {
+                _stopAttempt = null;
+            }
+
+            if (stopFailure is null)
+            {
+                _stopCompleted = true;
+            }
+        }
+
+        if (stopFailure is null)
+        {
+            completion.TrySetResult(true);
+        }
+        else
+        {
+            completion.TrySetException(stopFailure);
+        }
+    }
+
+    private async Task<Exception?> RunStopAttemptAsync(
+        CancellationTokenSource? lifetime,
+        NamedPipeClientStream? pipe,
+        Task? receiveTask,
+        List<TaskCompletionSource<BridgeClientJsonCodec.ResponsePayloadValue>> pending)
+    {
         Exception? stopFailure = null;
         try
         {
@@ -261,42 +321,95 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
             var stopped = new AgentBridgeClientException(
                 AgentBridgeErrorCodes.ConnectionLost,
                 "Agent Bridge连接已停止。");
-            foreach (var completion in pending)
+            foreach (var pendingCompletion in pending)
             {
-                completion.TrySetException(stopped);
+                pendingCompletion.TrySetException(stopped);
             }
 
-            using (var sendTimeout = new CancellationTokenSource(_shutdownTimeout))
+            bool sendQuiesced;
+            lock (_sync)
             {
-                try
+                sendQuiesced = _sendQuiesced;
+            }
+
+            if (!sendQuiesced)
+            {
+                using (var sendTimeout = new CancellationTokenSource(_shutdownTimeout))
                 {
-                    await _sendGate.WaitAsync(sendTimeout.Token).ConfigureAwait(false);
-                    _sendGate.Release();
-                }
-                catch (OperationCanceledException) when (sendTimeout.IsCancellationRequested)
-                {
-                    stopFailure = new AgentBridgeClientException(
-                        AgentBridgeErrorCodes.Timeout,
-                        "Agent Bridge发送通道未在关闭期限内释放。");
+                    try
+                    {
+                        await _sendGate.WaitAsync(sendTimeout.Token).ConfigureAwait(false);
+                        _sendGate.Release();
+                        lock (_sync)
+                        {
+                            _sendQuiesced = true;
+                        }
+                    }
+                    catch (OperationCanceledException) when (sendTimeout.IsCancellationRequested)
+                    {
+                        stopFailure = new AgentBridgeClientException(
+                            AgentBridgeErrorCodes.Timeout,
+                            "Agent Bridge发送通道未在关闭期限内释放。");
+                    }
                 }
             }
 
-            if (receiveTask is not null)
+            bool receiveSettled;
+            lock (_sync)
             {
-                var completed = await Task.WhenAny(
-                        receiveTask,
-                        Task.Delay(_shutdownTimeout))
-                    .ConfigureAwait(false);
-                if (completed == receiveTask)
+                receiveSettled = _receiveSettled;
+            }
+
+            if (!receiveSettled)
+            {
+                if (receiveTask is null)
                 {
-                    await receiveTask.ConfigureAwait(false);
+                    lock (_sync)
+                    {
+                        _receiveSettled = true;
+                    }
                 }
                 else
                 {
-                    ObserveFault(receiveTask);
-                    stopFailure = stopFailure ?? new AgentBridgeClientException(
-                        AgentBridgeErrorCodes.Timeout,
-                        "Agent Bridge接收循环未在关闭期限内结束。");
+                    var completed = await Task.WhenAny(
+                            receiveTask,
+                            Task.Delay(_shutdownTimeout))
+                        .ConfigureAwait(false);
+                    if (completed == receiveTask)
+                    {
+                        // The receive loop has ended. Its connection failure was already
+                        // projected through FailConnection; a faulted terminal task does not
+                        // mean that cleanup still owns a live pipe or thread.
+                        ObserveFault(receiveTask);
+                        lock (_sync)
+                        {
+                            _receiveSettled = true;
+                        }
+                    }
+                    else
+                    {
+                        ObserveFault(receiveTask);
+                        stopFailure = stopFailure ?? new AgentBridgeClientException(
+                            AgentBridgeErrorCodes.Timeout,
+                            "Agent Bridge接收循环未在关闭期限内结束。");
+                    }
+                }
+            }
+
+            bool releaseSecurity;
+            lock (_sync)
+            {
+                releaseSecurity = _sendQuiesced
+                    && _receiveSettled
+                    && !_securityReleased;
+            }
+
+            if (releaseSecurity)
+            {
+                DisposeSecurityMaterials();
+                lock (_sync)
+                {
+                    _securityReleased = true;
                 }
             }
         }
@@ -304,23 +417,20 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
         {
             stopFailure = stopFailure ?? exception;
         }
-        finally
+
+        if (stopFailure is null)
         {
-            DisposeSecurityMaterials();
-            if (stopFailure is null)
+            lock (_sync)
             {
-                _stopCompletion.TrySetResult(true);
-            }
-            else
-            {
-                _stopCompletion.TrySetException(stopFailure);
+                if (!_sendQuiesced || !_receiveSettled || !_securityReleased)
+                {
+                    stopFailure = new InvalidOperationException(
+                        "Agent Bridge cleanup did not complete every owned shutdown phase.");
+                }
             }
         }
 
-        if (stopFailure is not null)
-        {
-            throw stopFailure;
-        }
+        return stopFailure;
     }
 
     public async Task<AgentCapabilitiesResponse> GetCapabilitiesAsync(
@@ -432,29 +542,26 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposeSignaled, 1) != 0)
+        if (Interlocked.CompareExchange(ref _disposeSignaled, 1, 0) != 0)
         {
             return;
         }
 
-        var stopCompleted = false;
         try
         {
             StopAsync(CancellationToken.None).GetAwaiter().GetResult();
-            stopCompleted = true;
-        }
-        finally
-        {
             lock (_sync)
             {
                 _state = ClientState.Disposed;
             }
 
             DisposeSecurityMaterials();
-            if (stopCompleted)
-            {
-                _sendGate.Dispose();
-            }
+            _sendGate.Dispose();
+        }
+        catch
+        {
+            Volatile.Write(ref _disposeSignaled, 0);
+            throw;
         }
     }
 

@@ -21,8 +21,12 @@ namespace Codex.AutoCAD.Host2016
         private AgentBridgeClient bridge;
         private string threadId = string.Empty;
         private string systemSessionId = string.Empty;
-        private int started;
-        private int stopped;
+        private Task startTask;
+        private Task stopTask;
+        private MvpAgentStopCoordinator stopCoordinator;
+        private bool online;
+        private bool stopRequested;
+        private bool stopCompleted;
 
         internal event Action<string> StatusChanged;
 
@@ -32,17 +36,34 @@ namespace Codex.AutoCAD.Host2016
 
         internal bool IsStarted
         {
-            get { return Volatile.Read(ref started) != 0 && Volatile.Read(ref stopped) == 0; }
+            get
+            {
+                lock (sync)
+                {
+                    return online && !stopRequested && !stopCompleted;
+                }
+            }
         }
 
         internal Task StartAsync(CancellationToken cancellationToken)
         {
-            if (Interlocked.CompareExchange(ref started, 1, 0) != 0)
+            lock (sync)
             {
-                return Task.FromResult(0);
-            }
+                if (stopRequested || stopCompleted)
+                {
+                    throw new InvalidOperationException(
+                        "AgentHost 正在停止或等待重试清理，不能再次启动。");
+                }
 
-            return Task.Run(() => StartCoreAsync(cancellationToken), cancellationToken);
+                if (startTask == null)
+                {
+                    startTask = Task.Run(
+                        () => StartCoreAsync(cancellationToken),
+                        CancellationToken.None);
+                }
+
+                return startTask;
+            }
         }
 
         internal async Task AskAsync(
@@ -69,8 +90,8 @@ namespace Codex.AutoCAD.Host2016
                 throw new InvalidOperationException("请先预选图元并执行 CODEX16CTX。");
             }
 
-            TextChanged?.Invoke(string.Empty);
-            StatusChanged?.Invoke("正在向本机 Codex 发送只读问题……");
+            PublishSafely(TextChanged, string.Empty);
+            PublishSafely(StatusChanged, "正在向本机 Codex 发送只读问题……");
             var request = new AgentTurnStartRequest
             {
                 ThreadId = currentThread,
@@ -82,44 +103,161 @@ namespace Codex.AutoCAD.Host2016
             await currentBridge.StartTurnAsync(request, cancellationToken).ConfigureAwait(false);
         }
 
-        internal async Task StopAsync(CancellationToken cancellationToken)
+        internal Task StopAsync(CancellationToken cancellationToken)
         {
-            if (Interlocked.Exchange(ref stopped, 1) != 0)
-            {
-                return;
-            }
-
-            AgentBridgeClient currentBridge;
-            AgentHostServiceSession currentSession;
+            cancellationToken.ThrowIfCancellationRequested();
             lock (sync)
             {
-                currentBridge = bridge;
-                currentSession = serviceSession;
-                bridge = null;
-                serviceSession = null;
+                stopRequested = true;
+                if (stopCompleted)
+                {
+                    return Task.FromResult(0);
+                }
+
+                Task observedAttempt;
+                if (stopTask == null)
+                {
+                    var completion = new TaskCompletionSource<bool>();
+                    observedAttempt = completion.Task;
+                    stopTask = observedAttempt;
+                    _ = CompleteStopAttemptAsync(
+                        completion,
+                        observedAttempt);
+                }
+                else
+                {
+                    observedAttempt = stopTask;
+                }
+
+                return observedAttempt;
+            }
+        }
+
+        private async Task CompleteStopAttemptAsync(
+            TaskCompletionSource<bool> completion,
+            Task attempt)
+        {
+            Exception failure = null;
+            try
+            {
+                await Task.Run(StopCoreAsync).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
             }
 
-            StatusChanged?.Invoke("正在停止 AgentHost……");
+            lock (sync)
+            {
+                if (ReferenceEquals(stopTask, attempt))
+                {
+                    stopTask = null;
+                }
+            }
+
+            if (failure == null)
+            {
+                completion.TrySetResult(true);
+            }
+            else
+            {
+                completion.TrySetException(failure);
+            }
+        }
+
+        private async Task StopCoreAsync()
+        {
+            Task currentStart;
+            lock (sync)
+            {
+                currentStart = startTask;
+            }
+
+            if (currentStart != null)
+            {
+                try
+                {
+                    await currentStart.ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Startup reports its own failure. Stop still owns any retained partial
+                    // resources and must continue cleanup.
+                }
+            }
+
+            MvpAgentStopCoordinator currentCoordinator;
+            lock (sync)
+            {
+                if (stopCoordinator == null)
+                {
+                    stopCoordinator = CreateStopCoordinator(bridge, serviceSession);
+                }
+
+                currentCoordinator = stopCoordinator;
+            }
+
+            PublishSafely(StatusChanged, "正在停止 AgentHost……");
+            try
+            {
+                if (currentCoordinator != null)
+                {
+                    await currentCoordinator.StopAsync().ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception)
+            {
+                PublishSafely(
+                    ErrorChanged,
+                    "停止 AgentHost 失败："
+                    + exception.GetType().Name
+                    + "。可再次执行 CODEX16AGENTSTOP 重试剩余清理。");
+                throw;
+            }
+
+            lock (sync)
+            {
+                if (currentCoordinator != null && !currentCoordinator.IsComplete)
+                {
+                    throw new InvalidOperationException("AgentHost 清理尚未完成。");
+                }
+
+                bridge = null;
+                serviceSession = null;
+                stopCoordinator = null;
+                online = false;
+                stopCompleted = true;
+            }
+
+            PublishSafely(StatusChanged, "AgentHost 已停止；CAD 写入仍禁用。");
+        }
+
+        private MvpAgentStopCoordinator CreateStopCoordinator(
+            AgentBridgeClient currentBridge,
+            AgentHostServiceSession currentSession)
+        {
+            Func<Task> stopBridge = null;
+            Action disposeBridge = null;
             if (currentBridge != null)
             {
                 currentBridge.EventReceived -= OnBridgeEvent;
                 currentBridge.ConnectionFaulted -= OnBridgeFaulted;
-                try
-                {
-                    await currentBridge.StopAsync(cancellationToken).ConfigureAwait(false);
-                }
-                finally
-                {
-                    currentBridge.Dispose();
-                }
+                stopBridge = () => currentBridge.StopAsync(CancellationToken.None);
+                disposeBridge = () => currentBridge.Dispose();
             }
 
+            Func<Task> stopAgentHost = null;
             if (currentSession != null)
             {
-                await currentSession.StopAsync(cancellationToken).ConfigureAwait(false);
+                stopAgentHost = () => currentSession.StopAsync(CancellationToken.None);
             }
 
-            StatusChanged?.Invoke("AgentHost 已停止；CAD 写入仍禁用。");
+            return stopBridge == null && disposeBridge == null && stopAgentHost == null
+                ? null
+                : new MvpAgentStopCoordinator(
+                    stopBridge,
+                    disposeBridge,
+                    stopAgentHost);
         }
 
         public void Dispose()
@@ -130,7 +268,7 @@ namespace Codex.AutoCAD.Host2016
             }
             catch (Exception exception)
             {
-                ErrorChanged?.Invoke("停止 AgentHost 失败：" + exception.GetType().Name);
+                PublishSafely(ErrorChanged, "停止 AgentHost 失败：" + exception.GetType().Name);
             }
         }
 
@@ -144,7 +282,7 @@ namespace Codex.AutoCAD.Host2016
                 string executableSha256;
                 ResolveAgentHostConfiguration(out executablePath, out executableSha256);
 
-                StatusChanged?.Invoke("正在启动并验证 AgentHost……");
+                PublishSafely(StatusChanged, "正在启动并验证 AgentHost……");
                 newServiceSession = await AgentHostBootstrapService.StartAsync(
                         new AgentHostBootstrapOptions(executablePath, executableSha256),
                         cancellationToken)
@@ -180,48 +318,84 @@ namespace Codex.AutoCAD.Host2016
                     throw new InvalidOperationException("AgentHost 未返回有效 Codex thread。");
                 }
 
+                bool stopWasRequested;
                 lock (sync)
                 {
                     serviceSession = newServiceSession;
                     bridge = newBridge;
                     systemSessionId = newSessionId;
                     threadId = thread.ThreadId;
+                    stopWasRequested = stopRequested;
+                    online = !stopWasRequested;
                     newServiceSession = null;
                     newBridge = null;
                 }
 
-                StatusChanged?.Invoke("AgentHost 在线；只读 Codex 会话已建立。");
+                lock (sync)
+                {
+                    stopWasRequested = stopRequested || stopCompleted || !online;
+                    if (!stopWasRequested)
+                    {
+                        PublishSafely(StatusChanged, "AgentHost 在线；只读 Codex 会话已建立。");
+                    }
+                }
+
+                if (stopWasRequested)
+                {
+                    PublishSafely(StatusChanged, "启动期间已收到停止请求，正在清理 AgentHost……");
+                }
             }
             catch (Exception exception)
             {
-                if (newBridge != null)
-                {
-                    newBridge.EventReceived -= OnBridgeEvent;
-                    newBridge.ConnectionFaulted -= OnBridgeFaulted;
-                    try
-                    {
-                        await newBridge.StopAsync(CancellationToken.None).ConfigureAwait(false);
-                    }
-                    catch
-                    {
-                    }
-                    newBridge.Dispose();
-                }
-
-                if (newServiceSession != null)
+                var cleanupCoordinator = CreateStopCoordinator(
+                    newBridge,
+                    newServiceSession);
+                Exception cleanupFailure = null;
+                if (cleanupCoordinator != null)
                 {
                     try
                     {
-                        await newServiceSession.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                        await cleanupCoordinator.StopAsync().ConfigureAwait(false);
                     }
-                    catch
+                    catch (Exception observedCleanupFailure)
                     {
+                        cleanupFailure = observedCleanupFailure;
                     }
                 }
 
-                Interlocked.Exchange(ref started, 0);
-                Interlocked.Exchange(ref stopped, 0);
-                ErrorChanged?.Invoke("AgentHost 启动失败：" + exception.GetType().Name + "。" + exception.Message);
+                if (cleanupFailure != null)
+                {
+                    lock (sync)
+                    {
+                        bridge = newBridge;
+                        serviceSession = newServiceSession;
+                        stopCoordinator = cleanupCoordinator;
+                        stopRequested = true;
+                        online = false;
+                        newBridge = null;
+                        newServiceSession = null;
+                    }
+
+                    PublishSafely(
+                        ErrorChanged,
+                        "AgentHost 启动失败且清理未完成："
+                        + cleanupFailure.GetType().Name
+                        + "。请执行 CODEX16AGENTSTOP 重试清理。");
+                    throw new AggregateException(exception, cleanupFailure);
+                }
+
+                lock (sync)
+                {
+                    online = false;
+                    if (!stopRequested)
+                    {
+                        startTask = null;
+                    }
+                }
+
+                PublishSafely(
+                    ErrorChanged,
+                    "AgentHost 启动失败：" + exception.GetType().Name + "。" + exception.Message);
                 throw;
             }
         }
@@ -269,37 +443,61 @@ namespace Codex.AutoCAD.Host2016
 
             if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.AssistantMessageDelta, StringComparison.Ordinal))
             {
-                TextChanged?.Invoke(bridgeEvent.Delta ?? string.Empty);
+                PublishSafely(TextChanged, bridgeEvent.Delta ?? string.Empty);
             }
             else if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.AssistantMessageCompleted, StringComparison.Ordinal))
             {
-                StatusChanged?.Invoke("Codex 回答完成。");
+                PublishSafely(StatusChanged, "Codex 回答完成。");
             }
             else if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.TurnStarted, StringComparison.Ordinal))
             {
-                StatusChanged?.Invoke("Codex 正在分析当前图纸上下文……");
+                PublishSafely(StatusChanged, "Codex 正在分析当前图纸上下文……");
             }
             else if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.TurnFailed, StringComparison.Ordinal))
             {
-                ErrorChanged?.Invoke("Codex 回合失败：" + bridgeEvent.ErrorCode + "。" + bridgeEvent.Error);
+                PublishSafely(
+                    ErrorChanged,
+                    "Codex 回合失败：" + bridgeEvent.ErrorCode + "。" + bridgeEvent.Error);
             }
             else if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.TurnCancelled, StringComparison.Ordinal))
             {
-                StatusChanged?.Invoke("Codex 回合已取消。");
+                PublishSafely(StatusChanged, "Codex 回合已取消。");
             }
             else if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.ConnectionStateChanged, StringComparison.Ordinal))
             {
-                StatusChanged?.Invoke("Agent Bridge 状态：" + bridgeEvent.ConnectionState);
+                PublishSafely(StatusChanged, "Agent Bridge 状态：" + bridgeEvent.ConnectionState);
             }
         }
 
         private void OnBridgeFaulted(object sender, AgentBridgeConnectionFaultedEventArgs args)
         {
             var exception = args == null ? null : args.Exception;
-            ErrorChanged?.Invoke(
+            PublishSafely(
+                ErrorChanged,
                 exception == null
                     ? "Agent Bridge 已断开；不会自动重试。"
                     : "Agent Bridge 已断开：" + exception.Code + "。不会自动重试。");
+        }
+
+        private static void PublishSafely(Action<string> subscribers, string value)
+        {
+            if (subscribers == null)
+            {
+                return;
+            }
+
+            foreach (Action<string> subscriber in subscribers.GetInvocationList())
+            {
+                try
+                {
+                    subscriber(value);
+                }
+                catch
+                {
+                    // Palette/dispatcher observers must never acquire resource-lifecycle
+                    // ownership or prevent AgentHost cleanup.
+                }
+            }
         }
     }
 }
