@@ -19,6 +19,8 @@ var specs = new (string Name, Func<Task> Run)[]
     ("AgentHost长运行服务返回冻结v1能力", AgentHostCapabilitiesRoundTrip),
     ("AgentHost同一thread完成两轮上下文对话并映射assistant事件",
         AgentHostBridgeSessionSpecs.TwoContextTurnsReuseThreadAndMapAssistantEvents),
+    ("AgentHost实际接收v2上下文并回显v2哈希",
+        AgentHostBridgeSessionSpecs.V2ContextTurnUsesV2MethodAndEchoesHash),
     ("当前用户命名管道可完成请求响应", RequestResponseWorks),
     ("bootstrap方向密钥可完成具体Client到服务端认证", BootstrapDirectionKeysAuthenticateConcreteClient),
     ("通知可单向投递", NotificationWorks),
@@ -211,6 +213,13 @@ static async Task AgentHostCapabilitiesRoundTrip()
         Equal(CadContextJsonV1Constants.SchemaVersion, response.CadContextSchemaVersion);
         Equal(false, response.CadWriteAvailable);
         Equal(true, response.Methods.Contains(AgentBridgeMethods.GetCapabilities, StringComparer.Ordinal));
+        Equal(true, response.Methods.Contains(AgentBridgeMethods.StartTurnV2, StringComparer.Ordinal));
+        Equal(true, response.SupportedCadContextSchemas.Any(schema =>
+            string.Equals(schema.Schema, CadContextJsonV1Constants.Schema, StringComparison.Ordinal)
+            && schema.SchemaVersion == CadContextJsonV1Constants.SchemaVersion));
+        Equal(true, response.SupportedCadContextSchemas.Any(schema =>
+            string.Equals(schema.Schema, CadContextJsonV2Constants.Schema, StringComparison.Ordinal)
+            && schema.SchemaVersion == CadContextJsonV2Constants.SchemaVersion));
         Equal(true, response.EventKinds.Contains(
             AgentBridgeEventKinds.ConnectionStateChanged,
             StringComparer.Ordinal));

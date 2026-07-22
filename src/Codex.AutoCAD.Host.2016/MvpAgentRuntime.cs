@@ -79,9 +79,16 @@ namespace Codex.AutoCAD.Host2016
                 }
             }
 
+            var context = UnifiedReadOnlyContextRuntime.GetCurrentState();
+            if (!UnifiedReadOnlyContextRuntime.IsCurrentPublishedState(context))
+            {
+                throw new InvalidOperationException("请先预选图元并执行 CODEX16CTX。");
+            }
+
             await current.AskAsync(
                     prompt,
-                    UnifiedReadOnlyContextRuntime.GetCurrentState(),
+                    context,
+                    () => UnifiedReadOnlyContextRuntime.IsCurrentPublishedState(context),
                     token)
                 .ConfigureAwait(false);
         }

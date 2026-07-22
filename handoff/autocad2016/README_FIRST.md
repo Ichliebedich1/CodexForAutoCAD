@@ -6,6 +6,18 @@
 首次已提交诊断基线：`2d2ad3738095794c8374e916559c0c5d13702ba1`（`feat(host2016): add net45 diagnostic host and load verification`）
 适配目标：AutoCAD 2016 原版 R20.1，x64，进程内 .NET Framework 4.5 薄宿主 + 进程外 .NET 8 Agent/Sandbox。
 
+## 2026-07-22 当前活动快照
+
+- 当前 P1 Worktree 使用 `codex.autocad.cad-context/2` 和 `agent.turn.start.v2`；v2 已接入
+  Unified Runtime、Palette 状态、Bridge/AgentHost 测试路径，包含 19 类强类型对象和受限
+  unknown/read-failed/limit placeholder。v1 固定向量和历史证据保持不变。
+- P1 本机门禁当前为：Contracts `71/71`、Host v2 `12/12`、Host v2 capability policy
+  `6/6`、完整 Phase 2 `232/232`、R20.1 net45/x64 Host Release `0` warning / `0` error。
+- P1 已增加发送前旧上下文 fail-closed 重校验，但尚无 AutoCAD 实机竞态证据；仍不得把
+  P1 当前 DLL 交给用户加载或标记为 live 通过。
+- P0 `0.3.2` 停止生命周期候选仍等待人工 AutoCAD 验证。P0 通过并单独提交前，不得将
+  P0 与 P1 合并或冻结新的产品候选。集成规则见 `P0_TO_P1_CONTROLLED_INTEGRATION.md`。
+
 ## 先看结论
 
 AutoCAD 2016 工作已完成目标机环境采集、独立诊断宿主建立、真实编译和首次实机加载：

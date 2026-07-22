@@ -12,6 +12,105 @@ using Codex.AutoCAD.Ipc;
 
 internal static class AgentHostBridgeSessionSpecs
 {
+    public static async Task V2ContextTurnUsesV2MethodAndEchoesHash()
+    {
+        var keyPair = CreateBootstrapDirectionKeyPair();
+        try
+        {
+            await using var appServer = new ScriptedAgentAppServer();
+            appServer.QueueResponse("thread/start", """
+                {"thread":{"id":"thread-v2-1"}}
+                """);
+            appServer.QueueResponse("turn/start", """
+                {"turn":{"id":"turn-v2-1","status":"inProgress","items":[]}}
+                """, () =>
+                {
+                    appServer.EmitNotification("turn/completed", """
+                        {"threadId":"thread-v2-1","turn":{"id":"turn-v2-1","status":"completed","items":[]}}
+                        """);
+                });
+
+            await using var runtime = new CodexAgentRuntime(
+                appServer,
+                new AgentRuntimeOptions
+                {
+                    Sandbox = AgentSandboxMode.ReadOnly,
+                    ApprovalPolicy = AgentApprovalPolicy.OnRequest,
+                    ApprovalsReviewer = AgentApprovalsReviewer.User,
+                });
+            var service = new AgentHostBridgeSession(runtime, "agenthost-v2-turn-spec");
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var serviceTask = service.RunAsync(keyPair.AgentKeys, timeout.Token);
+            using var client = new AgentBridgeClient(
+                keyPair.HostKeys,
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromSeconds(5));
+            var events = Channel.CreateUnbounded<AgentBridgeEvent>();
+            client.EventReceived += (_, args) => events.Writer.TryWrite(args.BridgeEvent);
+            await client.StartAsync(timeout.Token);
+
+            var capabilities = await client.GetCapabilitiesAsync(
+                new AgentCapabilitiesRequest
+                {
+                    ClientName = "Codex.AutoCAD.Host.2016",
+                    ClientVersion = "0.3.2.0",
+                    HostTarget = "autocad-r20.1-net45-x64",
+                },
+                timeout.Token);
+            Contains(capabilities.Methods, AgentBridgeMethods.StartTurnV2);
+            if (!capabilities.SupportedCadContextSchemas.Any(schema =>
+                    string.Equals(schema.Schema, CadContextJsonV2Constants.Schema, StringComparison.Ordinal)
+                    && schema.SchemaVersion == CadContextJsonV2Constants.SchemaVersion))
+            {
+                throw new InvalidOperationException("AgentHost未公布v2 CadContext schema。");
+            }
+
+            var thread = await client.StartThreadAsync(
+                new AgentThreadStartRequest { ConversationId = "conversation-v2-1" },
+                timeout.Token);
+            var context = CreateContextV2();
+            var hash = CadContextJsonV2Codec.ComputeCanonicalSha256(context);
+            var turn = await client.StartTurnV2Async(
+                new AgentTurnStartV2Request
+                {
+                    ThreadId = thread.ThreadId,
+                    ClientTurnId = "client-turn-v2-1",
+                    Prompt = "只读分析当前v2上下文。",
+                    ContextV2 = context,
+                    ContextV2Sha256 = hash,
+                },
+                timeout.Token);
+
+            Equal(thread.ThreadId, turn.ThreadId);
+            Equal("turn-v2-1", turn.TurnId);
+            Equal(hash, turn.AcceptedContextV2Sha256);
+            var terminal = await ReadKindAsync(
+                events.Reader,
+                AgentBridgeEventKinds.TurnCompleted,
+                timeout.Token);
+            Equal(turn.ThreadId, terminal.ThreadId);
+            Equal(turn.TurnId, terminal.TurnId);
+            Equal(hash, terminal.ContextSha256);
+
+            var requests = appServer.Requests;
+            Equal(2, requests.Count);
+            Equal("thread/start", requests[0].Method);
+            Equal("turn/start", requests[1].Method);
+            var input = requests[1].Params.GetProperty("input");
+            Contains(input[1].GetProperty("text").GetString() ?? string.Empty, hash);
+            Contains(input[1].GetProperty("text").GetString() ?? string.Empty,
+                CadContextJsonV2Codec.SerializeCanonical(context));
+
+            await client.StopAsync(CancellationToken.None);
+            await serviceTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            keyPair.HostKeys.Dispose();
+            keyPair.AgentKeys.Dispose();
+        }
+    }
+
     public static async Task TwoContextTurnsReuseThreadAndMapAssistantEvents()
     {
         var keyPair = CreateBootstrapDirectionKeyPair();
@@ -308,6 +407,47 @@ internal static class AgentHostBridgeSessionSpecs
                         },
                     },
                 ],
+            },
+        };
+    }
+
+    private static CadContextJsonV2 CreateContextV2()
+    {
+        return new CadContextJsonV2
+        {
+            CapturedAtUtc = "2026-07-21T00:00:00.000Z",
+            Document = new CadContextDocumentV2
+            {
+                DocumentId = "doc-v2-1",
+                DrawingFingerprint = new string('a', 64),
+                Revision = 1,
+                CurrentSpace = CadContextJsonV2Constants.ModelSpace,
+                DrawingVersion = "R20.1",
+                Units = "millimeters",
+            },
+            Selection = new CadContextSelectionV2
+            {
+                SnapshotHash = new string('b', 64),
+                EntityCount = 1,
+                ParsedEntityCount = 1,
+                UnsupportedEntityCount = 0,
+                Complete = true,
+                Entities = new[]
+                {
+                    new CadContextEntityV2
+                    {
+                        Handle = "1A",
+                        OwnerSpaceHandle = "1",
+                        EntityType = CadContextEntityTypesV2.Line,
+                        StateHash = new string('c', 64),
+                        Layer = "SPEC",
+                        Line = new CadContextLineV2
+                        {
+                            Start = new CadPoint3(0d, 0d, 0d),
+                            End = new CadPoint3(10d, 0d, 0d),
+                        },
+                    },
+                },
             },
         };
     }

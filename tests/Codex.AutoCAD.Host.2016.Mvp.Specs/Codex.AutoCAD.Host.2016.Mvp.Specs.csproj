@@ -9,5 +9,7 @@
     <ProjectReference Include="..\..\src\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentProtocolIdentity.cs"
              Link="MvpAgentProtocolIdentity.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentCapabilityPolicy.cs"
+             Link="MvpAgentCapabilityPolicy.cs" />
   </ItemGroup>
 </Project>

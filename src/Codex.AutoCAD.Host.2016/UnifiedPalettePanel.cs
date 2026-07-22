@@ -168,8 +168,12 @@ namespace Codex.AutoCAD.Host2016
             RunOnDispatcher(() =>
             {
                 status.Text = context.Published
-                    ? "已发布只读 CadContextJson v1：" + context.SelectedCount
-                        + " 个图元，" + context.CanonicalBytes + " 字节。"
+                    ? "已发布只读 CadContextJson v" + context.SchemaVersion
+                        + "：" + context.SelectedCount + " 个图元，已解析 "
+                        + context.ParsedEntityCount + "，占位 "
+                        + context.UnsupportedEntityCount + "，完整性 "
+                        + (context.Complete ? "完整" : "不完整") + "，"
+                        + context.CanonicalBytes + " 字节。"
                     : "上下文状态：" + context.Status + "。先预选对象，再执行 CODEX16CTX。";
                 summary.Text = context.ReadableSummary;
                 json.Text = context.CanonicalJson;

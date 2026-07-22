@@ -1,6 +1,6 @@
 # AutoCAD 2016 当前状态索引
 
-最后更新：2026-07-21（北京时间）
+最后更新：2026-07-22（北京时间）
 
 本文件是项目的长期“当前状态索引”。它不替代 `README_FIRST.md`、
 `COMPANY_PC_RUNBOOK.md`、测试报告、证据 JSON 或 Git 历史；只把当前成立的结论、
@@ -15,6 +15,34 @@
 
 若摘要与原始证据冲突，以更具体、更新且可复现的原始证据为准。没有真实编译和
 NETLOAD 证据的能力一律视为未支持。
+
+## 当前活动快照（2026-07-22）
+
+- P0 `codex/bridge-client-net45` 的 0.3.2 停止生命周期候选仍等待用户在 AutoCAD 2016
+  中完成人工 `AGENTSTART -> AGENTSTOP` 两轮、重复 STOP 和 DBMOD/残留检查；在此之前
+  不提交 P0，也不把停止闭环标记为实机通过。
+- P1 `codex/cad-context-v2` 已在隔离 Worktree 完成 CadContextJson v2 的产品 Runtime、
+  Palette、Bridge/AgentHost v2 测试接入；v1 固定向量未修改，源码级回归与托管门禁为
+  `232/232`，R20.1 Host 编译证据已保留。
+- P1 当前明确支持的协议标识为 `codex.autocad.cad-context/2`，Agent 回合方法为
+  `agent.turn.start.v2`；未知/读取失败/超限对象使用受限占位，并通过
+  `entityCount`、`parsedEntityCount`、`unsupportedEntityCount`、`complete` 表达完整性。
+- P1 仍未取得 AutoCAD `NETLOAD`、真实混合选区、Palette v2 字段显示、真实 v2 对话、
+  DBMOD 不变和插件保存等 live 证据；当前 P1 DLL 不得交给用户加载，也不得冻结为产品候选。
+- 最近一次本机 Host.2016 net45/x64 Release 复编译产物为 `108544` 字节，SHA-256
+  `718F439AED0DEF50ADA3244618A6AA04E5274A58A1B070C701E4A07502A3AC61`；该哈希仅是本地
+  工作树产物，尚未 NETLOAD，不继承任何历史实机结论。
+- 本轮已修正 P1 Host 的 Doctor 和 `CODEXCAD` 命令文案，使其显示 v2，不改变 v1 契约或
+  历史验证记录。
+- Host 的 v2 能力判定已抽成独立 fail-closed 策略，并增加 `6/6` 回归：只有同时声明
+  `agent.turn.start.v2` 与 `codex.autocad.cad-context/2` 才接受；null、空 schema、缺方法或
+  只有 v1 schema 均拒绝。目标机 R20.1 net45/x64 Release 复编译为 0 错误。
+- P0 与 P1 当前共有 7 个冲突敏感文件；受控引入原则、测试并集和禁止整文件覆盖规则见
+  `P0_TO_P1_CONTROLLED_INTEGRATION.md`。该清单仅用于 P0 实机通过后的合并准备。
+- 生命周期审计补上了一个窄边界：`MvpAgentRuntime` 保存上下文引用后，在 Agent 启动完成
+  以及发送 v2 turn 前都会执行 generation/reference fail-closed 重校验；文档切换或清除
+  若在竞态窗口发生，旧上下文会被拒绝。该逻辑尚未取得 AutoCAD 实机竞态证据，仍需在
+  只读稳定化阶段做人工切换/发问验证。
 
 ## 已验证检查点
 
@@ -219,15 +247,23 @@ NETLOAD 证据的能力一律视为未支持。
 - Host.2016 的真实对象读取、v2 JSON 映射、逐实体降级和选择状态哈希已经形成构建
   候选。Host v2 Specs 在 net45/net8 均为 `12/12` 且 stdout 一致；Contracts 保持
   `39/39`，v1/v2 固定向量不变。Phase 2 当前动态回归为 `199/199`。
+- 之后已将 v2 捕获器接入 `UnifiedReadOnlyContextRuntime`，并让统一 Palette 显示
+  schema/version、解析数、占位数和 `complete`；`MvpAgentClient` 已显式要求 v2 能力并
+  调用 `agent.turn.start.v2`。这些是源码编译证据，不是 AutoCAD live 证据。
+- 新增真实 Bridge → AgentHost v2 turn 规格后，Bridge 为 `38/38`，完整 Phase 2 本机门禁
+  动态汇总为 `232/232`；Host 禁用 API、AgentHost doctor、diff 和秘密扫描均通过。
 - 两份独立临时源码副本使用目标机原版 R20.1 程序集完成 locked Release 重建，Host DLL
   均为 `105984` 字节、SHA-256
   `700A0BF9CBD976625F1EF4D7BE820DD257263295466EDA13FBC8109D89F96DD0`，Autodesk DLL
   copy count 为 `0`。证据见
   `evidence/cad-context-v2-host-capture-verification-20260721.json`。
-- 上述结果只把 `HostV2CaptureImplemented` 和 `R201HostCompileVerified` 提升为 `true`；
-  `RuntimeIntegrated`、`BridgeV2Negotiated`、`NetLoadVerified`、`AutoCadLiveEvidence` 和
-  实机混合选区仍为 `false`。
+- 上述结果把 `HostV2CaptureImplemented`、`R201HostCompileVerified` 和
+  `RuntimeIntegrationImplemented` 提升为 `true`；`BridgeV2Negotiated`、
+  `NetLoadVerified`、`AutoCadLiveEvidence` 和实机混合选区仍为 `false`。
 - 在对象扩展候选冻结前，先修复或解释上述 AgentHost 停止残留；两项分别验证、分别提交。
+- 当前 P1 分支仍以 `7f10d60` 为基线，未包含待实机确认的 P0 `0.3.2` 停止修复；因此
+  P1 源码可以继续做非 CAD 集成验证，但在 P0 单独提交并受控引入前，不冻结、不请求
+  用户加载 P1 产品候选。
 
 ### 已验证但尚待集成的独立阶段
 

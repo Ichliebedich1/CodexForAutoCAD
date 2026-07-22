@@ -67,24 +67,24 @@ namespace Codex.AutoCAD.Host2016
                 return Fail("dbmod-before-unavailable", 0, null, null);
             }
 
-            SelectionCaptureData capture;
-            ContextSelectionSnapshot snapshot;
-            CadContextJsonV1 context;
+            SelectionCaptureDataV2 capture;
+            V2SelectionSnapshot snapshot;
+            CadContextJsonV2 context;
             string canonicalJson;
             string contextSha256;
             int canonicalBytes;
             try
             {
-                capture = ReadOnlySelectionCapture.Capture(document);
-                snapshot = CanonicalSelectionHash.Build(capture.Entities);
+                capture = ReadOnlySelectionCaptureV2.Capture(document);
+                snapshot = CanonicalSelectionHashV2.Build(capture.Entities);
                 var documentMetadata = Documents.Capture(document);
-                context = CadContextJsonMapper.Build(
+                context = CadContextJsonV2Mapper.Build(
                     documentMetadata,
                     snapshot,
                     DateTimeOffset.UtcNow);
-                canonicalJson = CadContextJsonV1Codec.SerializeCanonical(context);
+                canonicalJson = CadContextJsonV2Codec.SerializeCanonical(context);
                 canonicalBytes = StrictUtf8.GetByteCount(canonicalJson);
-                contextSha256 = CadContextJsonV1Codec.ComputeCanonicalSha256(context);
+                contextSha256 = CadContextJsonV2Codec.ComputeCanonicalSha256(context);
             }
             catch (ContextValidationException exception)
             {
@@ -129,7 +129,7 @@ namespace Codex.AutoCAD.Host2016
 
             generation++;
             state = new UnifiedContextState(
-                "published-read-only-json-v1",
+                "published-read-only-json-v2",
                 generation,
                 capture.SelectedCount,
                 dbmodBefore,
@@ -139,7 +139,7 @@ namespace Codex.AutoCAD.Host2016
                 canonicalJson,
                 contextSha256,
                 canonicalBytes,
-                CadContextJsonMapper.BuildReadableSummary(
+                CadContextJsonV2Mapper.BuildReadableSummary(
                     context,
                     contextSha256,
                     canonicalBytes));
@@ -150,6 +150,13 @@ namespace Codex.AutoCAD.Host2016
         internal static UnifiedContextState GetCurrentState()
         {
             return state;
+        }
+
+        internal static bool IsCurrentPublishedState(UnifiedContextState candidate)
+        {
+            return candidate != null
+                && ReferenceEquals(state, candidate)
+                && candidate.Published;
         }
 
         internal static void Clear(string reason)
@@ -172,6 +179,11 @@ namespace Codex.AutoCAD.Host2016
                 current.Status,
                 current.Published,
                 current.SelectedCount,
+                CadContextJsonV2Constants.Schema,
+                CadContextJsonV2Constants.SchemaVersion,
+                current.Context == null ? 0 : current.Context.Selection.ParsedEntityCount,
+                current.Context == null ? 0 : current.Context.Selection.UnsupportedEntityCount,
+                current.Context != null && current.Context.Selection.Complete,
                 current.ContextSha256,
                 current.CanonicalBytes,
                 current.ReadableSummary,
@@ -181,12 +193,12 @@ namespace Codex.AutoCAD.Host2016
         internal static string BuildInfo()
         {
             var current = state;
-            var typeCounts = new SortedDictionary<ContextEntityKind, int>();
+            var typeCounts = new SortedDictionary<string, int>(StringComparer.Ordinal);
             if (current.Snapshot != null)
             {
-                for (var index = 0; index < current.Snapshot.Entities.Count; index++)
+                for (var index = 0; index < current.Snapshot.Selection.Entities.Length; index++)
                 {
-                    var kind = current.Snapshot.Entities[index].Draft.Kind;
+                    var kind = current.Snapshot.Selection.Entities[index].EntityType;
                     int count;
                     typeCounts.TryGetValue(kind, out count);
                     typeCounts[kind] = count + 1;
@@ -204,13 +216,13 @@ namespace Codex.AutoCAD.Host2016
             builder.Append("Selected count: ").AppendLine(current.SelectedCount.ToString(CultureInfo.InvariantCulture));
             builder.Append("Entity types: ").AppendLine(FormatTypeCounts(typeCounts));
             builder.Append("Selection hash: ").AppendLine(
-                current.Snapshot == null ? "unavailable" : current.Snapshot.SnapshotHash);
+                current.Snapshot == null ? "unavailable" : current.Snapshot.Selection.SnapshotHash);
             builder.Append("Binary canonical bytes: ").AppendLine(
                 current.Snapshot == null
                     ? "0"
                     : current.Snapshot.CanonicalLength.ToString(CultureInfo.InvariantCulture));
-            builder.Append("CadContext schema: ").Append(CadContextJsonV1Constants.Schema);
-            builder.Append('/').AppendLine(CadContextJsonV1Constants.SchemaVersion.ToString(CultureInfo.InvariantCulture));
+            builder.Append("CadContext schema: ").Append(CadContextJsonV2Constants.Schema);
+            builder.Append('/').AppendLine(CadContextJsonV2Constants.SchemaVersion.ToString(CultureInfo.InvariantCulture));
             builder.Append("CadContext JSON SHA-256: ").AppendLine(
                 current.Published ? current.ContextSha256 : "unavailable");
             builder.Append("CadContext JSON bytes: ").AppendLine(
@@ -326,7 +338,7 @@ namespace Codex.AutoCAD.Host2016
         }
 
         private static string FormatTypeCounts(
-            SortedDictionary<ContextEntityKind, int> typeCounts)
+            SortedDictionary<string, int> typeCounts)
         {
             if (typeCounts.Count == 0)
             {
@@ -378,8 +390,8 @@ namespace Codex.AutoCAD.Host2016
             int selectedCount,
             int? dbmodBefore,
             int? dbmodAfter,
-            ContextSelectionSnapshot snapshot,
-            CadContextJsonV1 context,
+            V2SelectionSnapshot snapshot,
+            CadContextJsonV2 context,
             string canonicalJson,
             string contextSha256,
             int canonicalBytes,
@@ -408,9 +420,9 @@ namespace Codex.AutoCAD.Host2016
 
         internal int? DbmodAfter { get; private set; }
 
-        internal ContextSelectionSnapshot Snapshot { get; private set; }
+        internal V2SelectionSnapshot Snapshot { get; private set; }
 
-        internal CadContextJsonV1 Context { get; private set; }
+        internal CadContextJsonV2 Context { get; private set; }
 
         internal string CanonicalJson { get; private set; }
 

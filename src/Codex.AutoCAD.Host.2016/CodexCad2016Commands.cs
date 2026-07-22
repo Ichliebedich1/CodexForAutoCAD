@@ -31,7 +31,7 @@ namespace Codex.AutoCAD.Host2016
             editor.WriteMessage("\nAcDbMgd assembly: {0}", typeof(Database).Assembly.GetName().Version);
             editor.WriteMessage("\nPalette capability: enabled");
             editor.WriteMessage("\nRead-only selection capability: enabled");
-            editor.WriteMessage("\nCadContextJson: codex.autocad.cad-context/1");
+            editor.WriteMessage("\nCadContextJson: codex.autocad.cad-context/2");
             editor.WriteMessage("\nAgent/IPC: authenticated MVP candidate; manual start");
             editor.WriteMessage("\nCAD write capability: disabled");
             editor.WriteMessage("\nPlugin-initiated save: disabled");
@@ -57,7 +57,7 @@ namespace Codex.AutoCAD.Host2016
             }
 
             document.Editor.WriteMessage(
-                "\nHost.2016 当前为统一只读 AI MVP 候选：诊断、Palette、六类选择、CadContextJson v1 和认证 Agent Bridge 已整合；CAD 写入和插件保存保持禁用。\n");
+                "\nHost.2016 当前为统一只读 AI MVP 候选：诊断、Palette、CadContextJson v2 选择读取和认证 Agent Bridge 已整合；CAD 写入和插件保存保持禁用。\n");
         }
 
         [CommandMethod("CODEX16PAL", CommandFlags.Modal)]

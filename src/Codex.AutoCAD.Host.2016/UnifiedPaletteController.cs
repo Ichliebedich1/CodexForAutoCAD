@@ -152,7 +152,12 @@ namespace Codex.AutoCAD.Host2016
             builder.Append("DBMOD: ").AppendLine(ReadDbmod());
             builder.Append("Context status: ").AppendLine(context.Status);
             builder.Append("Context published: ").AppendLine(context.Published ? "true" : "false");
+            builder.Append("CadContext schema: ").Append(context.Schema).Append('/').AppendLine(
+                context.SchemaVersion.ToString(CultureInfo.InvariantCulture));
             builder.Append("Selected count: ").AppendLine(context.SelectedCount.ToString(CultureInfo.InvariantCulture));
+            builder.Append("Parsed count: ").AppendLine(context.ParsedEntityCount.ToString(CultureInfo.InvariantCulture));
+            builder.Append("Unsupported placeholder count: ").AppendLine(context.UnsupportedEntityCount.ToString(CultureInfo.InvariantCulture));
+            builder.Append("Context complete: ").AppendLine(context.Complete ? "true" : "false");
             builder.Append("CadContext JSON bytes: ").AppendLine(context.CanonicalBytes.ToString(CultureInfo.InvariantCulture));
             builder.AppendLine("Readable summary: enabled");
             builder.AppendLine("Canonical JSON display: enabled");

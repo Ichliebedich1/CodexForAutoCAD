@@ -48,6 +48,7 @@ namespace Codex.AutoCAD.Host2016
         internal async Task AskAsync(
             string prompt,
             UnifiedContextState context,
+            Func<bool> isCurrentContext,
             CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(prompt))
@@ -55,7 +56,16 @@ namespace Codex.AutoCAD.Host2016
                 throw new ArgumentException("提示词不能为空。", nameof(prompt));
             }
 
+            if (isCurrentContext == null || !isCurrentContext())
+            {
+                throw new InvalidOperationException("当前 CAD 上下文已失效，请重新执行 CODEX16CTX。");
+            }
+
             await StartAsync(cancellationToken).ConfigureAwait(false);
+            if (!isCurrentContext())
+            {
+                throw new InvalidOperationException("当前 CAD 上下文已失效，请重新执行 CODEX16CTX。");
+            }
             AgentBridgeClient currentBridge;
             string currentThread;
             lock (sync)
@@ -69,17 +79,22 @@ namespace Codex.AutoCAD.Host2016
                 throw new InvalidOperationException("请先预选图元并执行 CODEX16CTX。");
             }
 
+            if (!isCurrentContext())
+            {
+                throw new InvalidOperationException("当前 CAD 上下文已失效，请重新执行 CODEX16CTX。");
+            }
+
             TextChanged?.Invoke(string.Empty);
             StatusChanged?.Invoke("正在向本机 Codex 发送只读问题……");
-            var request = new AgentTurnStartRequest
+            var request = new AgentTurnStartV2Request
             {
                 ThreadId = currentThread,
                 ClientTurnId = Guid.NewGuid().ToString("N"),
                 Prompt = prompt,
-                Context = context.Context,
-                ContextSha256 = context.ContextSha256,
+                ContextV2 = context.Context,
+                ContextV2Sha256 = context.ContextSha256,
             };
-            await currentBridge.StartTurnAsync(request, cancellationToken).ConfigureAwait(false);
+            await currentBridge.StartTurnV2Async(request, cancellationToken).ConfigureAwait(false);
         }
 
         internal async Task StopAsync(CancellationToken cancellationToken)
@@ -168,6 +183,12 @@ namespace Codex.AutoCAD.Host2016
                 if (capabilities == null || capabilities.ContractVersion != AgentBridgeContractConstants.CurrentVersion)
                 {
                     throw new InvalidOperationException("AgentHost Bridge 契约版本不匹配。");
+                }
+
+                if (!MvpAgentCapabilityPolicy.SupportsCadContextV2(capabilities))
+                {
+                    throw new InvalidOperationException(
+                        "AgentHost 不支持 CadContextJson v2 或 agent.turn.start.v2；已拒绝回退到 v1。");
                 }
 
                 var newSessionId = Guid.NewGuid().ToString("N");
@@ -301,5 +322,6 @@ namespace Codex.AutoCAD.Host2016
                     ? "Agent Bridge 已断开；不会自动重试。"
                     : "Agent Bridge 已断开：" + exception.Code + "。不会自动重试。");
         }
+
     }
 }

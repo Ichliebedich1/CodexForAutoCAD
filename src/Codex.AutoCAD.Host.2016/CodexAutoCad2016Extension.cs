@@ -4,7 +4,7 @@ using Autodesk.AutoCAD.Runtime;
 namespace Codex.AutoCAD.Host2016
 {
     /// <summary>
-    /// AutoCAD 2016 进程内统一薄宿主入口。当前阶段整合诊断、Palette 和只读选择，
+    /// AutoCAD 2016 进程内统一薄宿主入口。当前阶段整合诊断、Palette 和 CadContextJson v2 只读选择，
     /// 不启动 Agent、不建立未认证通道，也不执行或保存 CAD 写入。
     /// </summary>
     public sealed class CodexAutoCad2016Extension : IExtensionApplication

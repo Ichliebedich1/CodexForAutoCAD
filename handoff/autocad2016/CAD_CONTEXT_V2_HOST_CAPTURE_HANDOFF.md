@@ -2,7 +2,7 @@
 
 日期：2026-07-21（北京时间）
 
-状态：构建与规格检查点通过；尚未接入运行时，尚未执行 AutoCAD 2016 `NETLOAD`。
+状态：v2 捕获层、统一 Runtime、Palette 字段和 Agent v2 turn 已接入并通过本机编译/规格；尚未执行 AutoCAD 2016 `NETLOAD`。
 
 ## 本阶段完成内容
 
@@ -59,15 +59,22 @@
 - v2 固定向量保持 `6678` bytes / `21cc9378...c3b4`。
 - Phase 2：Release `0` warning / `0` error，8 个规格项目动态汇总 `199/199`；Host
   禁止 API、AgentHost doctor、秘密扫描和 `git diff --check` 通过。
+- 本次继续开发后，Bridge 新增真实 v2 `StartTurnV2Async` 回合并达到 `38/38`；随后完整
+  Phase 2 本机门禁动态汇总为 `232/232`，同时通过 Host 禁用 API、AgentHost doctor、
+  `git diff --check` 和秘密扫描。历史 `199/199` evidence 尚未重生成，仍保留为历史记录。
+- 当前 Contracts 已扩展为 `71/71`，Host v2 能力策略为 `6/6`；缺少 v2 方法、缺少 v2
+  schema、null 或空 schema 列表均 fail-closed，不回退到 v1。
+- 文档切换或清除若发生在 Agent 异步启动期间，发送 v2 turn 前会重新校验当前状态引用；
+  旧上下文会被拒绝。该竞态保护已通过 R20.1 编译，但尚无 AutoCAD live 证据。
 
 ## 证据边界
 
 本阶段没有启动、唤醒、关闭、重启或操作 AutoCAD，没有执行 `NETLOAD`，没有读取真实
-DWG，也没有发送 CAD 命令。以下能力仍未成立：
+DWG，也没有发送 CAD 命令。以下能力仍未由运行证据证明：
 
-- `UnifiedReadOnlyContextRuntime` 调用 v2 捕获器。
-- Palette 显示 v2 摘要和 canonical JSON。
-- Bridge/AgentHost 显式协商 v1/v2。
+- `UnifiedReadOnlyContextRuntime` 在真实 AutoCAD 进程中调用 v2 捕获器。
+- Palette 在真实 AutoCAD 进程中显示 v2 摘要、完整性计数和 canonical JSON。
+- Bridge/AgentHost 在真实 AutoCAD 进程中完成 v2 能力协商和 `agent.turn.start.v2`。
 - AutoCAD 2016 实机混合选区。
 - DBMOD、不保存和文档切换的 v2 运行时证据。
 
@@ -77,9 +84,11 @@ restore 的方式强行让它通过，而是用两份独立源码副本完成可
 
 ## 下一步
 
-1. 审核 Bridge v2 跨版本兼容夹具，冻结旧 v1 Client 与新 Host/Agent 的行为矩阵。
-2. 将本捕获器接入统一 Runtime 和 Palette，同时继续保留 v1 路径。
-3. 接入显式 Bridge v2 能力协商；旧 Client 不得静默解释 v2。
-4. 重新建立适用于当前项目图的 v2 Host 验证器并冻结可运行 DLL。
-5. 由用户在现有 AutoCAD 2016 中人工 `NETLOAD`，验证多种支持对象加一个未知对象、
+1. 先让 P0 的 `0.3.2` AgentHost 停止生命周期修复通过人工实机验证并单独提交；当前
+   P1 分支基于 `7f10d60`，不得冻结一个重新带回旧停止残留风险的可加载候选。
+2. 受控引入已验证 P0 提交后，审核 Bridge v2 跨版本兼容夹具并重新运行完整门禁。
+3. 重新建立适用于合并后项目图的 v2 Host 验证器并冻结可运行 DLL。
+4. 由用户在现有 AutoCAD 2016 中人工 `NETLOAD`，验证多种支持对象加一个未知对象、
    `complete=false`、计数、DBMOD 不变和插件不保存。
+5. 具体人工步骤以合并并冻结候选后生成的正式手册为准；当前预备草案见
+   `MVP_CONTEXT_V2_RUNTIME_TEST_DRAFT.md`。

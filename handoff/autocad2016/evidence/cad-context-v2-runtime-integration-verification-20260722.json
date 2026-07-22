@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "scope": "autocad2016-cad-context-v2-runtime-integration",
+  "recordedAtUtc": "2026-07-21T19:59:44.7253653Z",
+  "gitHead": "50f6cf3",
+  "workingTreeModified": true,
+  "runtimeIntegrationImplemented": true,
+  "bridgeV2Integration": {
+    "focusedSpec": "1/1",
+    "bridgeSpecs": "38/38",
+    "v2Method": "agent.turn.start.v2",
+    "contextHashEchoVerified": true,
+    "canonicalV2PayloadForwarded": true
+  },
+  "contractsAndHost": {
+    "contractsSpecs": "71/71",
+    "hostV2Specs": "12/12",
+    "hostV2CapabilityPolicySpecs": "6/6",
+    "r20_1Net45X64ReleaseBuild": true,
+    "r20_1BuildWarnings": 0,
+    "r20_1BuildErrors": 0,
+    "latestLocalBuild": {
+      "sizeBytes": 108544,
+      "sha256": "718F439AED0DEF50ADA3244618A6AA04E5274A58A1B070C701E4A07502A3AC61",
+      "netLoadVerified": false,
+      "frozenCandidate": false
+    },
+    "v2ApiProbePowerShell7": "19 present / 8 absent",
+    "v2ApiProbePowerShell51": "19 present / 8 absent",
+    "v2ApiProbeCrossShellEqual": true
+  },
+  "phase2": {
+    "specs": "232/232",
+    "hostForbiddenApiScan": true,
+    "agentHostDoctor": true,
+    "gitDiffCheck": true,
+    "secretScan": true,
+    "agentHostResidualsAfterGate": 0
+  },
+  "runtime": {
+    "unifiedRuntimeUsesV2": true,
+    "paletteV2FieldsImplemented": true,
+    "agentClientRequiresV2SchemaAndMethod": true,
+    "v1FallbackWhenV2Missing": false,
+    "nullOrEmptyCapabilityResponseFailsClosed": true,
+    "staleContextSendGuardImplemented": true,
+    "netLoadVerified": false,
+    "autoCadLiveEvidence": false,
+    "mixedSelectionVerified": false,
+    "dbmodRuntimeVerified": false,
+    "pluginSaveVerified": false
+  },
+  "evidenceBoundary": "This record proves local source integration, deterministic managed-core specifications, authenticated Bridge to AgentHost v2 turn forwarding, R20.1 compilation and API-surface checks. It does not prove AutoCAD 2016 NETLOAD, real mixed-entity capture, Palette rendering in AutoCAD, live Codex v2 conversation from AutoCAD, DBMOD invariance in v2, or plugin save behavior.",
+  "limitations": [
+    "P1 worktree is uncommitted and remains separate from the P0 stop-lifecycle candidate.",
+    "P1 candidate freeze must wait until the P0 0.3.2 stop fix is manually verified and separately committed.",
+    "No AutoCAD process was started, restarted, or commanded by this verification."
+  ]
+}
