@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Codex.AutoCAD.Host2016
@@ -20,16 +21,27 @@ namespace Codex.AutoCAD.Host2016
     internal sealed class MvpAgentTurnState
     {
         private TaskCompletionSource<bool> cancellationCompletion;
+        private readonly CancellationTokenSource timeoutCancellation =
+            new CancellationTokenSource();
 
-        internal MvpAgentTurnState(string requestId, DateTimeOffset createdAtUtc)
+        internal MvpAgentTurnState(
+            string requestId,
+            DateTimeOffset createdAtUtc,
+            TimeSpan timeout)
         {
             if (string.IsNullOrWhiteSpace(requestId))
             {
                 throw new ArgumentException("RequestId 不能为空。", nameof(requestId));
             }
 
+            if (timeout <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(timeout));
+            }
+
             RequestId = requestId;
             CreatedAtUtc = createdAtUtc;
+            DeadlineAtUtc = createdAtUtc.Add(timeout);
             State = MvpAgentTurnStates.StartingProvider;
         }
 
@@ -44,6 +56,8 @@ namespace Codex.AutoCAD.Host2016
 
         internal DateTimeOffset CreatedAtUtc { get; private set; }
 
+        internal DateTimeOffset DeadlineAtUtc { get; private set; }
+
         internal string State { get; private set; }
 
         internal bool CancellationRequested { get; private set; }
@@ -53,6 +67,11 @@ namespace Codex.AutoCAD.Host2016
         internal TaskCompletionSource<bool> CancellationCompletion
         {
             get { return cancellationCompletion; }
+        }
+
+        internal CancellationToken TimeoutToken
+        {
+            get { return timeoutCancellation.Token; }
         }
 
         internal bool IsTerminal
@@ -132,6 +151,19 @@ namespace Codex.AutoCAD.Host2016
             return true;
         }
 
+        internal bool TryBeginForcedInterrupt()
+        {
+            if (IsTerminal
+                || CancellationDispatchStarted
+                || string.IsNullOrEmpty(ProviderTurnId))
+            {
+                return false;
+            }
+
+            CancellationDispatchStarted = true;
+            return true;
+        }
+
         internal TaskCompletionSource<bool> MarkTerminal(string terminalState)
         {
             if (IsTerminal || !IsTerminalState(terminalState))
@@ -158,6 +190,23 @@ namespace Codex.AutoCAD.Host2016
                 ? MvpAgentTurnStates.StartingProvider
                 : MvpAgentTurnStates.Running;
             return completion;
+        }
+
+        internal void CancelTimeout()
+        {
+            try
+            {
+                timeoutCancellation.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // The timeout monitor already released this per-turn resource.
+            }
+        }
+
+        internal void DisposeTimeout()
+        {
+            timeoutCancellation.Dispose();
         }
 
         private static bool IsTerminalState(string state)
