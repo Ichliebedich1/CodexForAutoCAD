@@ -33,28 +33,32 @@ AutoCAD 2016 R20.1 已建立一个真实运行的 CadContextJson v2 只读 AI �
 
 ## 2. 当前候选身份
 
+M0 当前统一自动化候选：
+
 ```text
 Module version: 0.3.2.0
 CadContext schema: codex.autocad.cad-context/2
 Candidate directory:
-C:\tmp\CodexForAutoCAD-context-v2\artifacts\autocad2016-mvp-context-v2-v032-0d72edc3-10bea363-af580c30
+C:\tmp\CodexForAutoCAD-m0-baseline\artifacts\autocad2016-mvp-context-v2-v032-37c1953d-ab1ce675-8926ed54
 
 Host:
 Codex.AutoCAD.Host.2016.dll
 SHA-256:
-0D72EDC38A30E7BF33AAEE4DCB1D50D341C4C883146677537C4BB5E7551D0AD7
+37C1953D9AD996F9892486300295E69043F8E020D506E0683FC1301F8FC4C532
 
 AgentHost:
 AgentHost\Codex.AutoCAD.AgentHost.exe
 SHA-256:
-10BEA363AC80C856FA513F4312B60410DB62BBF4917CE634B589CBA59DA65442
+AB1CE675EF48947F670E0A4FC013E09108AF9A91D5D14F49874039F42018CD3A
 
 Manifest SHA-256:
-A16831703985906F724B8EB93BDB0BC801A5781A3228F0694CB1A20A4AC5960F
+FF11069F766A055D3F2DEA7D9D320CB1B4A5D874260FB4E47EE083D42E12F8BD
 ```
 
-该身份对应已完成的 P1 实机基线。M0 集成完成后会重新从集成提交构建并冻结新的统一候选；
-在新候选生成前不要混用其他 Worktree 的 DLL。
+该身份从源码提交 `c96e9a3` 构建，完整自动化、真实本机 Codex v2 两轮、manifest 和
+候选 doctor 已通过。它尚未按精确哈希在 AutoCAD 内人工 NETLOAD，因此保持
+`NetLoadVerified=false`。已完成实机绑定的 P1 候选仍是 Host `0D72EDC3...`、AgentHost
+`10BEA363...`；两份证据不能互相替代。详见 `M0_BASELINE_RELEASE_20260722.md`。
 
 ## 3. 当前架构
 
@@ -128,8 +132,8 @@ CODEX16PALRESET
 
 ## 7. 当前开发顺序
 
-1. M0：集成 P0/P1、更新 evidence/文档、重跑门禁并冻结统一基线。
-2. M1：Bridge offline、请求状态/取消/超时、对话清除语义和剩余生命周期。
+1. M0：已完成 P0/P1 集成、evidence/文档收拢、门禁复跑和统一候选冻结。
+2. M1：当前下一阶段；Bridge offline、请求状态/取消/超时、对话清除语义和剩余生命周期。
 3. M2：整图扫描、索引、分页、按需查询和 1k/10k/50k 基准。
 4. M3：读取对象语义与覆盖。
 5. M4：进程沙箱、配置和审计基础。
@@ -138,7 +142,7 @@ CODEX16PALRESET
 
 ## 8. 构建与自动化边界
 
-当前 P1 已有以下历史门禁：
+M0 已从精确源码提交 `c96e9a3` 重跑以下门禁：
 
 - Host.2016 MVP：`24/24`。
 - 完整 Phase 2：`259/259`。
@@ -169,6 +173,8 @@ M0 必须从集成提交重新运行这些门禁。历史绿色结果不能自�
 - `evidence/agenthost-v2-live-two-turns-20260722-refresh.json`：非 AutoCAD 的真实 Codex v2 两轮。
 - `evidence/phase2-final-gate-20260722-exit-retry.json`：P1 Phase 2 `259/259`。
 - `evidence/host2016-terminate-exit-retry-20260722.json`：退出清理重试自动化 `24/24`。
+- `evidence/m0-baseline-verification-20260722.json`：M0 聚合门禁、候选身份和实机边界。
+- `M0_BASELINE_RELEASE_20260722.md`：M0 冻结记录与下一阶段入口。
 
 ## 11. 支持声明
 

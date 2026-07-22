@@ -24,6 +24,9 @@
 - 本机 Codex 使用当前 v2 CAD 上下文完成两轮连续对话。
 - 显式 CAD 上下文清除和文档激活清除旧缓存通过；CAD 写入和插件保存仍禁用。
 - P0 停止生命周期已有独立实机证据：重复 STOP、DBMOD 不变和 AgentHost 残留为零。
+- M0 已在 `c96e9a3` 冻结新的统一自动化候选：Host SHA-256 前缀 `37C1953D`、
+  AgentHost 前缀 `AB1CE675`；Phase 2 `259/259`、Host MVP `24/24`、真实本机 Codex v2
+  两轮 `2/2`、R20.1 双 Shell API Probe、manifest 和候选 doctor 均通过。
 
 脱敏范围证据见
 `handoff/autocad2016/evidence/cad-context-v2-live-observation-20260722.json`。该证据不证明
@@ -34,9 +37,10 @@
 
 当前活动路线为：
 
-1. 收拢并冻结上述 v2 实机基线。
-2. 修复 Bridge 断线离线化、请求取消/超时/迟到事件、上下文与对话清除语义。
-3. 建设 1k/10k/50k 对象级整图上下文和结构化查询。
+1. M0 已完成 P0/P1 受控集成、自动化复验和统一候选冻结；精确结果见
+   `handoff/autocad2016/M0_BASELINE_RELEASE_20260722.md`。
+2. M1 修复 Bridge 断线离线化、请求取消/超时/迟到事件、上下文与对话清除语义。
+3. M2 建设 1k/10k/50k 对象级整图上下文和结构化查询。
 4. 完成进程沙箱与审计基础后，才启用 AutoCAD 2016 强类型安全写入。
 5. 随后完成长期记忆、安装签名、企业部署和 AutoCAD 2025 适配。
 

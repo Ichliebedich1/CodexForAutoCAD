@@ -1,6 +1,6 @@
 ﻿# AutoCAD 2016 实机测试记录
 
-## 2026-07-22 当前 P1 v2 补充
+## 2026-07-22 当前 M0/P1 v2 补充
 
 本文件保留早期诊断、独立 Palette、独立 ReadOnlyContext 和 AgentHost 引导的历史记录。
 最新统一 Host P1 候选已经取得 AutoCAD 2016 live 基线，权威脱敏摘要为：
@@ -28,9 +28,16 @@
 剩余人工步骤见 `READONLY_MVP_REMAINING_LIVE_TESTS_20260722.md`。下文出现的“尚未接入
 统一 Host/Bridge”属于历史阶段快照，不得覆盖本节较新的 P1 结论。
 
+M0 已从提交 `c96e9a3` 冻结新的自动化候选
+`autocad2016-mvp-context-v2-v032-37c1953d-ab1ce675-8926ed54`。Host SHA-256 为
+`37C1953D...C532`，AgentHost 为 `AB1CE675...CD3A`，manifest 为 `FF11069F...F8BD`；
+Phase 2 `259/259`、Host MVP `24/24`、R20.1 双 Shell Probe、真实本机 Codex v2 两轮
+`2/2`、manifest 和 doctor 通过。该精确候选尚未 AutoCAD NETLOAD，必须保持
+`NetLoadVerified=false`。聚合证据见 `evidence/m0-baseline-verification-20260722.json`。
+
 ## 证据来源与适用边界
 
-本报告严格分开八类证据：
+本报告严格分开九类证据：
 
 1. **用户实机命令记录**：用户在目标机已打开的原版 AutoCAD 2016 命令行中手工执行 `NETLOAD`、`CODEXCADDOCTOR`、`CODEXCAD` 和 `DBMOD`。
 2. **环境采集器证据**：schema v4 只读采集；不启动 AutoCAD、不读取 `TRUSTEDPATHS` 内容。
@@ -42,6 +49,9 @@
 8. **统一 P1 v2 AutoCAD live 证据**：冻结候选的人工 NETLOAD、50 对象混合选择、
    placeholder、100% DPI Palette、真实 Codex 两轮对话、上下文清除和文档激活清除；
    精确边界以上述 `cad-context-v2-live-observation-20260722.json` 为准。
+9. **M0 集成与候选冻结证据**：P0/P1 受控合并、精确源码提交的完整自动化、R20.1
+   A/B、双 Shell Probe、真实 Codex v2 两轮、manifest 和候选 doctor；不替代 M0 精确
+   候选在 AutoCAD 内的 NETLOAD 身份绑定。
 
 以下身份缺口只适用于首次诊断薄宿主的历史实机命令记录；Palette 与 ReadOnlyContext 均有各自独立的冻结候选身份绑定，三者不得互相继承：
 

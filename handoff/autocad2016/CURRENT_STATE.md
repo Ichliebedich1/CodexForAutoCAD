@@ -38,6 +38,15 @@ NETLOAD 证据的能力一律视为未支持。
   Host SHA-256 `0D72EDC38A30E7BF33AAEE4DCB1D50D341C4C883146677537C4BB5E7551D0AD7`，
   AgentHost EXE SHA-256 `10BEA363AC80C856FA513F4312B60410DB62BBF4917CE634B589CBA59DA65442`，
   manifest SHA-256 `A16831703985906F724B8EB93BDB0BC801A5781A3228F0694CB1A20A4AC5960F`。
+- M0 已在合并提交 `e66ef1e` 和构建稳定化提交 `c96e9a3` 上冻结统一自动化候选
+  `artifacts/autocad2016-mvp-context-v2-v032-37c1953d-ab1ce675-8926ed54/`。Host SHA-256
+  为 `37C1953D9AD996F9892486300295E69043F8E020D506E0683FC1301F8FC4C532`，AgentHost EXE
+  为 `AB1CE675EF48947F670E0A4FC013E09108AF9A91D5D14F49874039F42018CD3A`，manifest 为
+  `FF11069F766A055D3F2DEA7D9D320CB1B4A5D874260FB4E47EE083D42E12F8BD`。
+- 该 M0 候选已从精确提交通过 Phase 2 `259/259`、Host MVP `24/24`、R20.1 A/B、双 Shell
+  API Probe、真实本机 Codex v2 两轮 `2/2`、manifest 和候选 doctor。其精确哈希尚未在
+  AutoCAD 内 NETLOAD，不能把 P1 的实机哈希绑定自动迁移过来；边界见
+  `evidence/m0-baseline-verification-20260722.json`。
 - 候选包内 AgentHost 已单独运行 `doctor` 并完成本机 Codex app-server 初始化；脱敏证据见
   `evidence/cad-context-v2-candidate-package-doctor-20260722-refresh.json`。该证据仍不替代
   AutoCAD `NETLOAD` 或真实 v2 对话。
@@ -57,8 +66,9 @@ NETLOAD 证据的能力一律视为未支持。
 - Host 的 v2 能力判定已抽成独立 fail-closed 策略，并增加 `6/6` 回归：只有同时声明
   `agent.turn.start.v2` 与 `codex.autocad.cad-context/2` 才接受；null、空 schema、缺方法或
   只有 v1 schema 均拒绝。目标机 R20.1 net45/x64 Release 复编译为 0 错误。
-- M0 正在独立 `codex/m0-baseline` Worktree 中把 P1、P0 和主分支文档受控整合；
-  主工作树中的 Host.2025 UI/选择/写入原型不属于本阶段，不清理、不覆盖、不误提交。
+- M0 已在独立 `codex/m0-baseline` Worktree 中完成 P1、P0 和主分支文档的受控整合、
+  自动化复验和候选冻结；当前最后一步是让 `main` 安全前进。主工作树中的 Host.2025
+  UI/选择/写入原型不属于本阶段，不清理、不覆盖、不误提交。
 - 生命周期审计补上了一个窄边界：`MvpAgentRuntime` 保存上下文引用后，在 Agent 启动完成
   以及发送 v2 turn 前都会执行 generation/reference fail-closed 重校验；文档切换或清除
   若在竞态窗口发生，旧上下文会被拒绝。文档激活清缓存已实测，但用户在 post-switch
@@ -368,8 +378,8 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 冻结新�
 
 1. 核心 Agent MVP、P0 停止生命周期已分别提交：`7f10d60`、`8a4ee57`。
 2. P1 已完成自动化、冻结和 AutoCAD 2016 live 基线。
-3. 当前执行 M0：把 P0/P1、主分支文档和本次 live evidence 收拢到统一基线。
-4. M0 通过后执行 M1 稳定化，再进入 M2 整图扫描/索引/查询。
+3. M0 自动化与候选冻结已完成；只剩在不覆盖主工作树原型的前提下让 `main` 前进。
+4. `main` 前进后立即进入 M1 稳定化，再进入 M2 整图扫描/索引/查询。
 5. M4 沙箱与审计基础完成前，不启用 M5 CAD 写入。
 
 ## 更新纪律

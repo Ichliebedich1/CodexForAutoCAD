@@ -99,14 +99,19 @@
 
 完成定义：主分支真实包含已实机验证的 v2 调用链，文档与证据一致。
 
+M0 源码集成提交为 `e66ef1e`，候选构建稳定化提交为 `c96e9a3`。冻结自动化候选为
+`autocad2016-mvp-context-v2-v032-37c1953d-ab1ce675-8926ed54`；聚合证据见
+`m0-baseline-verification-20260722.json`。该精确候选尚未 NETLOAD，不能替代 P1 实机
+候选的哈希绑定。
+
 - [x] 建立独立 `codex/m0-baseline` 集成 Worktree。
 - [x] 将 P1 代码、测试、脚本和历史 evidence 合入集成线，代码无冲突。
 - [x] 创建本次 v2 AutoCAD 实机脱敏 observation evidence。
-- [ ] 更新 README、CURRENT_STATE、README_FIRST、测试手册和本文件。
-- [ ] 运行 JSON、Markdown、禁止敏感信息和 diff 检查。
-- [ ] 重新运行 R20.1 Release、Host MVP、Phase 2、AgentHost live 和候选包身份门禁。
-- [ ] 冻结新的统一只读 v2 基线提交、版本、DLL 哈希和候选目录。
-- [ ] 建立现有 Worktree 的“已合并、保留、可删除”清单。
+- [x] 更新 README、CURRENT_STATE、README_FIRST、测试手册和本文件。
+- [x] 运行 JSON、Markdown、禁止敏感信息和 diff 检查。
+- [x] 重新运行 R20.1 Release、Host MVP、Phase 2、AgentHost live 和候选包身份门禁。
+- [x] 冻结新的统一只读 v2 基线提交、版本、DLL 哈希和候选目录。
+- [x] 建立现有 Worktree 的“已合并、保留、可删除”清单。
 - [ ] 在不覆盖主工作树 Host.2025 原型的前提下，让 `main` 前进到已验证基线。
 
 ## 6. M1：只读 MVP 稳定化

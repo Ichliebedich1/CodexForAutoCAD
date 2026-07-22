@@ -29,6 +29,20 @@ AgentHost SHA-256:
 权威范围证据：
 `evidence/cad-context-v2-live-observation-20260722.json`。
 
+M0 已另外冻结统一自动化候选：
+
+```text
+C:\tmp\CodexForAutoCAD-m0-baseline\artifacts\autocad2016-mvp-context-v2-v032-37c1953d-ab1ce675-8926ed54\Codex.AutoCAD.Host.2016.dll
+Host SHA-256:
+37C1953D9AD996F9892486300295E69043F8E020D506E0683FC1301F8FC4C532
+AgentHost SHA-256:
+AB1CE675EF48947F670E0A4FC013E09108AF9A91D5D14F49874039F42018CD3A
+```
+
+该 M0 候选已通过完整自动化、真实本机 Codex v2 两轮和候选 doctor，但尚未按精确哈希
+人工 NETLOAD。不要把 P1 的 AutoCAD live 记录自动绑定到 M0 二进制；详见
+`M0_BASELINE_RELEASE_20260722.md`。
+
 当前不要求重复上述 happy path。只在 M1 冻结新候选后执行
 `READONLY_MVP_REMAINING_LIVE_TESTS_20260722.md` 中的文档切换实际发送、Palette Reset、
 正常退出、高 DPI、断线、超时和取消测试。
@@ -48,8 +62,8 @@ AgentHost SHA-256:
   AgentHost/Codex v2 live `2/2` 和 R20.1 Release 0 warning/error。
 - P1 实机只证明已观察范围，不证明 19 类对象全部字段、AutoCAD 正常退出、
   125%/150% DPI 或故障矩阵。
-- M0 正在独立集成 Worktree 中收拢 P0/P1、实机 evidence 和文档；完成后会从集成提交
-  重新构建并冻结统一候选。
+- M0 已在独立集成 Worktree 中完成 P0/P1、实机 evidence、文档、完整门禁和统一候选
+  冻结；当前只剩安全推进 `main`。
 - 主工作树的 Host.2025 UI、选择和写入原型归用户所有，不属于本阶段。
 
 ## 1. 源码与交接包校验
