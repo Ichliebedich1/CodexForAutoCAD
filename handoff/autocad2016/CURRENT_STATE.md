@@ -213,13 +213,42 @@ NETLOAD 证据的能力一律视为未支持。
   标记；用户另确认多次连续上下文对话正常。核心只读 AI 链路因此可记为
   `NetLoadVerified=true`、`AutoCadLiveEvidence=true`。脱敏证据见
   `handoff/autocad2016/evidence/agent-mvp-runtime-verification-20260721.json`。
+- 核心只读 Agent MVP 已在自动化门禁和上述实机证据通过后单独提交：`7f10d60`
+  (`feat(host2016): connect verified readonly Agent MVP`)。
 - 用户确认执行了规定的停止与 `DBMOD` 检查，但随后独立只读进程检查仍发现 `1` 个由
   当前 AutoCAD 进程创建的候选 `AgentHost bootstrap-serve` 进程。因此核心问答通过不等于
   停止生命周期通过；`agentHostNoResidualProcessVerified=false`，在定位并复验前不得把
   “有界停止且无残留”写成已验证。
 - CAD 写入和插件保存继续禁用；本阶段不触碰一次审批、事务写入或自动保存设置。
 
-### 下一活动阶段：只读对象覆盖率
+### 当前活动阶段：AgentHost 停止生命周期
+
+- 根因已限定在 Host 停止编排：旧实现先等待 Bridge 停止；Bridge 在 net45 管道读未及时
+  解除时可能超时抛错，随后 AgentHost 会话终止被跳过，而命令层只观察异常、不显示结果。
+  底层 AgentHost 终止器及测试进程清理仍保持 AgentService `7/7`、net45 Launcher
+  `15/15` 和 Bridge Client `22/22`。
+- 修复已改为分阶段、可重试的停止协调器：Bridge Stop、Bridge Dispose 与 AgentHost Stop
+  分别记录；成功阶段不会重复，失败阶段可由下一次 STOP 重试；并发 STOP 共享同一 attempt，
+  Palette/状态回调异常不能阻止资源清理。Host 停止规格为 `13/13`。
+- 当前自动化门禁：Bridge Client net45/net8 `25/25`、Bridge `37/37`、Phase 2 `195/195`；
+  AgentLauncher net45/net8 `26/26`；认证兼容 net45/net8 `35/35`。PowerShell 7 与 Windows
+  PowerShell 5.1 均通过，目标机原版 R20.1 程序集 net45/x64 A/B 构建逐字节一致。
+- 新待实机候选：`autocad2016-mvp-agent-stop-v032-pkg3-1cc9d294-8e6b26fd`；
+  Host `0.3.2.0`，SHA-256
+  `1CC9D2943F1AB3C37395927B0E2EAF4189A0B3BE4B2E8FA4A61AE8470D3478DC`；AgentHost SHA-256
+  `8E6B26FD7B20925A1CE53CAB0DBEE093C58B9AF0935219DF75FC8A7CB5C4FA2A`。用户已确认
+  `NETLOAD`、模块版本、三次启停请求、Palette 的 `Agent Bridge 状态: online`、最终
+  `AgentHost 已停止`、`DBMOD 20 -> 20`；本机只读进程检查为 AgentHost 残留 `0`。
+  对应观察记录见 `evidence/agent-stop-live-observation-20260722.json`。当前为
+  `NetLoadVerified=true`、`AutoCadLiveEvidence=true`。测试步骤见
+  `MVP_AGENT_STOP_RUNTIME_TEST_20260722.md`。
+- 旧候选 `autocad2016-mvp-agent-v032-884413f0-8c74b95e` 已撤销并标记
+  `revoked-do-not-load`；其旧 evidence 时间早于最终产物，不得用于 P0 结论。
+- 2026-07-22 重新运行候选冻结脚本后，`sourceSnapshotAtUtc`、`candidateFrozenAtUtc` 和
+  `recordedAtUtc` 均晚于本次最终构建；候选哈希与固定目录保持一致。该证据仍明确保留
+  `NetLoadVerified=true`、`AutoCadLiveEvidence=true`；该候选已完成本轮人工实机验证。
+
+### 后续活动阶段：只读对象覆盖率
 
 - 当前 CadContextJson v1 只对白名单中的 Line、Circle、Polyline、DBText、MText、
   BlockReference 提供强类型 payload；选区中任一其他实体会以
@@ -272,8 +301,8 @@ NETLOAD 证据的能力一律视为未支持。
   支持 `AcadLocation`、`InstallLocation`、`Location`，覆盖 Location-only 非标准安装、
   指向 `acad.exe` 的规范化，以及 probe、根键、子键枚举和属性读取四类失败分支；
   PowerShell 7/5.1 均为 `24/24`，真实只读采集均发现一个可构建 R20.1 安装。
-- `083f5f1` 当前尚未进入 `main` 或本 Agent MVP 分支。先完成并提交精确 0.3.1 Agent
-  候选的实机阶段，再以独立集成操作引入 collector 两个提交；不得重复实现或把它们混入
+- `083f5f1` 当前尚未进入 `main` 或本 Agent MVP 分支。核心 0.3.1 Agent 阶段已提交；待
+  停止生命周期与只读对象 v2 阶段各自收口后，再独立引入 collector 两个提交；不得混入
   未验证 Agent 提交。
 - 主工作树仍含用户所有的未提交 Host.2025 UI、选择和写入原型，以及其他未跟踪文件。
   这些变化没有进入 `codex/bridge-client-net45`，不能作为本 AutoCAD 2016 候选的构建或
@@ -300,8 +329,9 @@ NETLOAD 证据的能力一律视为未支持。
 
 1. 核心 `0.3.1.0` NETLOAD、真实选择、Palette JSON、Agent 在线、本机 Codex 回答和
    同一 thread 两轮对话已通过；不再重复请求用户粘贴敏感上下文或完整命令输出。
-2. 定位并修复 `CODEX16AGENTSTOP` 后仍存在一个 AgentHost 进程的问题，冻结新候选后只做
-   最小启动/停止复验；`DBMOD` 必须不变。
+2. 用户在方便时自行重启 AutoCAD，人工 NETLOAD 精确 `0.3.2.0` 新候选，按
+   `MVP_AGENT_STOP_RUNTIME_TEST_20260722.md` 连续执行两轮启动/停止并补一次重复 STOP；Palette 必须显示最终
+   成功或结构化失败，`DBMOD` 不变，随后由 Codex 只读确认该候选 AgentHost 数量为 `0`。
 3. AutoCAD 内补测 AgentHost 离线、断线和超时 fail-closed；不得回退到未认证通道。
 4. CadContextJson v2 混合选区：新增高频类型、一个仍未知类型、部分解析完整性标志和
    `DBMOD` 不变。
@@ -312,13 +342,12 @@ NETLOAD 证据的能力一律视为未支持。
 
 ## 下一步顺序
 
-1. 核心 Agent MVP 实机证据已收集；运行最终自动化门禁并单独提交该核心阶段，同时保留
-   “停止后无残留”未通过的明确边界。
-2. 修复 AgentHost 停止结果不可见/进程残留问题，自动化验证后冻结新候选并完成最小
-   AutoCAD 启停复验，单独提交生命周期修复。
-3. CadContextJson v2 契约、Host.2016 捕获/映射、net45/net8 固定向量和 R20.1 构建候选
-   已完成；下一步吸收跨版本兼容夹具结论，接入统一 Runtime/Palette 和显式 Bridge v2
-   协商。冻结可运行候选后再请求实机混合选区验证并单独提交。
+1. 核心 Agent MVP 已在 `7f10d60` 单独提交；P0 停止生命周期已在 `8a4ee57` 独立提交，
+   并绑定用户 live evidence、DBMOD 不变和残留进程为零。
+2. P1 CadContextJson v2 已完成 v2 Runtime/Palette/Bridge 代码和非 CAD 门禁；当前正在
+   受控吸收 `8a4ee57` 的停止协调、完整 AgentHost 打包和结构化错误显示。
+3. P0/P1 合并后必须重新运行 v2 能力策略、Host Stop、Bridge/Client、AgentLauncher、
+   Phase 2、R20.1 编译和候选冻结；新的 P1 候选在这些门禁完成前不得 NETLOAD。
 4. 按 `MVP_LIFECYCLE_RUNTIME_TEST_20260721.md` 补测离线/断线/超时、125%/150% DPI、
    文档关闭和 AutoCAD 退出生命周期。
 5. 只读 MVP 与生命周期运行门槛通过后，再进入预览、拒绝、一次允许、锁内重校验和

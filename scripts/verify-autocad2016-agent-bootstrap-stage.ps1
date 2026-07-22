@@ -25,19 +25,19 @@ $windowsPowerShellCommand = Join-Path `
     $env:SystemRoot `
     "System32\WindowsPowerShell\v1.0\powershell.exe"
 $expectedPhase2ProjectResults = [ordered]@{
-    "Codex.AutoCAD.Contracts.Specs" = 27
+    "Codex.AutoCAD.Contracts.Specs" = 32
     "Codex.AutoCAD.Ipc.Specs" = 35
     "Codex.AutoCAD.Security.Specs" = 19
     "Codex.AutoCAD.AppServer.Specs" = 7
-    "Codex.AutoCAD.Bridge.Specs" = 34
-    "Codex.AutoCAD.Bridge.Client.Specs" = 22
+    "Codex.AutoCAD.Bridge.Specs" = 37
+    "Codex.AutoCAD.Bridge.Client.Specs" = 25
     "Codex.AutoCAD.AgentRuntime.Specs" = 31
     "Codex.AutoCAD.Chat.Specs" = 9
 }
 $expectedPhase2Specs = [int] (
     ($expectedPhase2ProjectResults.Values | Measure-Object -Sum).Sum)
-if ($expectedPhase2Specs -ne 184) {
-    throw "冻结 Phase2 项目计数必须精确合计为 184。"
+if ($expectedPhase2Specs -ne 195) {
+    throw "冻结 Phase2 项目计数必须精确合计为 195。"
 }
 
 $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
@@ -159,8 +159,8 @@ function Get-AutoCadProcessSnapshot {
 
 function Assert-AutoCadProcessSetUnchanged {
     param(
-        [Parameter(Mandatory = $true)][string[]] $Before,
-        [Parameter(Mandatory = $true)][string[]] $After
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]] $Before,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]] $After
     )
 
     if (($Before -join ",") -cne ($After -join ",")) {
@@ -297,8 +297,8 @@ function Assert-BootstrapEvidence {
     Assert-PropertyEquals $Evidence "Status" `
         "live-agenthost-bootstrap-doctor-gate-passed"
     Assert-PropertyEquals $Evidence "Configuration" "Release"
-    Assert-PropertyEquals $Evidence "Net45Specs" "15/15"
-    Assert-PropertyEquals $Evidence "Net8Specs" "15/15"
+    Assert-PropertyEquals $Evidence "Net45Specs" "26/26"
+    Assert-PropertyEquals $Evidence "Net8Specs" "26/26"
     Assert-PropertyEquals $Evidence "RelevantProcessBaselineCount" 0
     Assert-PropertyEquals $Evidence "RelevantProcessFinalCount" 0
 
@@ -369,7 +369,7 @@ function Assert-AuthEvidence {
     Assert-PropertyEquals $Evidence "Configuration" "Release"
     Assert-PropertyEquals $Evidence "Net45Specs" "35/35"
     Assert-PropertyEquals $Evidence "Net8Specs" "35/35"
-    Assert-PropertyEquals $Evidence "BridgeRegressionSpecs" "34/34"
+    Assert-PropertyEquals $Evidence "BridgeRegressionSpecs" "37/37"
 
     foreach ($name in @(
         "AuthCompatIsolatedRestoreOffline",
@@ -868,7 +868,7 @@ try {
             credentialsIncluded = $false
             rawStandardErrorIncluded = $false
         }
-        conclusion = "The machine-orchestrated AgentHost secure-bootstrap stage passed PowerShell 7 and Windows PowerShell 5.1 bootstrap gates (15/15 net45 and net8), authentication compatibility gates (Bridge 34/34 and net45/net8 35/35), and Phase2 Release gates (0 warnings, 0 errors, 184/184 Specs, Host scan, doctor, diff, and secret scan). The configured startup deadline triggers fail-closed abort followed by no more than five seconds of bounded termination cleanup. AutoCAD was not started, restarted, or commanded. Long-running Bridge, Host.2016 integration, and complete AutoCAD 2016 support remain unverified."
+    conclusion = "The machine-orchestrated AgentHost secure-bootstrap stage passed PowerShell 7 and Windows PowerShell 5.1 bootstrap gates (26/26 net45 and net8), authentication compatibility gates (Bridge 37/37 and net45/net8 35/35), and Phase2 Release gates (0 warnings, 0 errors, 195/195 Specs, Host scan, doctor, diff, and secret scan). The configured startup deadline triggers fail-closed abort followed by no more than five seconds of bounded termination cleanup. AutoCAD was not started, restarted, or commanded. Long-running Bridge, Host.2016 integration, and complete AutoCAD 2016 support remain unverified."
     }
 
     $finalJson = $finalEvidence | ConvertTo-Json -Depth 30

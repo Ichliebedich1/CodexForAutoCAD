@@ -10,6 +10,9 @@ const string interruptSpecId = "bridge-client-turn-interrupt-cross-runtime";
 const string terminalLateEventSpecId = "bridge-client-terminal-turn-rejects-late-event";
 const string approvalSpecId = "bridge-client-approval-resolve-cross-runtime";
 const string stopIdempotentSpecId = "bridge-client-concurrent-stop-idempotent";
+const string stopRetrySpecId = "bridge-client-stop-timeout-can-retry";
+const string faultedReceiveStopSpecId = "bridge-client-faulted-receive-is-stop-settled";
+const string disposeRetrySpecId = "bridge-client-dispose-after-stop-failure-can-retry";
 const string offlineSpecId = "bridge-client-offline-fail-closed";
 const string disconnectSpecId = "bridge-client-disconnect-fail-closed";
 const string timeoutSpecId = "bridge-client-request-timeout-fail-closed";
@@ -208,6 +211,68 @@ try
         throw new InvalidOperationException(
             "Bridge test server failed with exit code " + server.ExitCode + ".");
     }
+
+    currentSpecId = stopRetrySpecId;
+    var retryClient = new AgentBridgeClient(new AgentBridgeClientOptions
+    {
+        PipeName = "codex-bridge-stop-retry-" + Guid.NewGuid().ToString("N"),
+        SessionId = "stop-retry-session-" + Guid.NewGuid().ToString("N"),
+        SessionSecret = secret,
+        ConnectTimeout = TimeSpan.FromSeconds(1),
+        RequestTimeout = TimeSpan.FromSeconds(1),
+        ShutdownTimeout = TimeSpan.FromMilliseconds(100),
+    });
+    var receiveCompletion = new TaskCompletionSource<bool>();
+    var receiveTaskField = typeof(AgentBridgeClient).GetField(
+        "_receiveTask",
+        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    Require(receiveTaskField is not null, "stop retry receive task field");
+    receiveTaskField!.SetValue(retryClient, receiveCompletion.Task);
+    var firstStopFailure = CaptureAgentBridgeFailure(
+        () => retryClient.StopAsync(CancellationToken.None).GetAwaiter().GetResult());
+    Require(firstStopFailure.Code == AgentBridgeErrorCodes.Timeout,
+        "first stop timeout code");
+    receiveCompletion.TrySetResult(true);
+    retryClient.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+    retryClient.Dispose();
+    Console.WriteLine("[PASS] " + stopRetrySpecId);
+
+    currentSpecId = faultedReceiveStopSpecId;
+    var faultedReceiveClient = new AgentBridgeClient(new AgentBridgeClientOptions
+    {
+        PipeName = "codex-bridge-faulted-receive-" + Guid.NewGuid().ToString("N"),
+        SessionId = "faulted-receive-session-" + Guid.NewGuid().ToString("N"),
+        SessionSecret = secret,
+        ConnectTimeout = TimeSpan.FromSeconds(1),
+        RequestTimeout = TimeSpan.FromSeconds(1),
+        ShutdownTimeout = TimeSpan.FromMilliseconds(100),
+    });
+    var faultedReceive = new TaskCompletionSource<bool>();
+    faultedReceive.TrySetException(new IOException("simulated terminal receive failure"));
+    receiveTaskField.SetValue(faultedReceiveClient, faultedReceive.Task);
+    faultedReceiveClient.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+    faultedReceiveClient.Dispose();
+    Console.WriteLine("[PASS] " + faultedReceiveStopSpecId);
+
+    currentSpecId = disposeRetrySpecId;
+    var disposeRetryClient = new AgentBridgeClient(new AgentBridgeClientOptions
+    {
+        PipeName = "codex-bridge-dispose-retry-" + Guid.NewGuid().ToString("N"),
+        SessionId = "dispose-retry-session-" + Guid.NewGuid().ToString("N"),
+        SessionSecret = secret,
+        ConnectTimeout = TimeSpan.FromSeconds(1),
+        RequestTimeout = TimeSpan.FromSeconds(1),
+        ShutdownTimeout = TimeSpan.FromMilliseconds(100),
+    });
+    var disposeReceiveCompletion = new TaskCompletionSource<bool>();
+    receiveTaskField.SetValue(disposeRetryClient, disposeReceiveCompletion.Task);
+    var firstDisposeFailure = CaptureAgentBridgeFailure(disposeRetryClient.Dispose);
+    Require(firstDisposeFailure.Code == AgentBridgeErrorCodes.Timeout,
+        "first dispose timeout code");
+    disposeReceiveCompletion.TrySetResult(true);
+    disposeRetryClient.Dispose();
+    disposeRetryClient.Dispose();
+    Console.WriteLine("[PASS] " + disposeRetrySpecId);
 
     currentSpecId = terminalLateEventSpecId;
     var terminalPipe = "codex-bridge-terminal-late-" + Guid.NewGuid().ToString("N");
@@ -633,7 +698,7 @@ try
         "oversized-frame",
         oversizedFrameSpecId);
 
-    Console.WriteLine("22/22 specs passed");
+    Console.WriteLine("25/25 specs passed");
     return 0;
 }
 catch (Exception exception)

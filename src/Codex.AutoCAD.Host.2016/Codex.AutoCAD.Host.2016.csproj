@@ -114,6 +114,7 @@
     <Compile Include="MvpAgentProtocolIdentity.cs" />
     <Compile Include="MvpAgentCapabilityPolicy.cs" />
     <Compile Include="MvpAgentClient.cs" />
+    <Compile Include="MvpAgentStopCoordinator.cs" />
     <Compile Include="MvpAgentRuntime.cs" />
     <Compile Include="..\Codex.AutoCAD.Host.2016.ReadOnlyContext\ReadOnlySelectionCapture.cs" Link="ReadOnlyContext\ReadOnlySelectionCapture.cs" />
     <Compile Include="..\Codex.AutoCAD.Host.2016.ReadOnlyContext\ReadOnlyContextSnapshot.cs" Link="ReadOnlyContext\ReadOnlyContextSnapshot.cs" />

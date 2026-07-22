@@ -4,6 +4,20 @@
 
 本手册用于复验已成立的 AutoCAD 2016 诊断候选，并继续完成 Palette、只读上下文、Agent/Bridge 和审批写入阶段。
 
+## 2026-07-22 当前操作入口
+
+当前只需要验证 AgentHost 停止生命周期。唯一允许加载的候选和完整步骤见
+`MVP_AGENT_STOP_RUNTIME_TEST_20260722.md`：
+
+```text
+C:\tmp\CodexForAutoCAD-bridge-client2016\artifacts\autocad2016-mvp-agent-stop-v032-pkg3-1cc9d294-8e6b26fd\Codex.AutoCAD.Host.2016.dll
+```
+
+Host SHA-256：`1CC9D2943F1AB3C37395927B0E2EAF4189A0B3BE4B2E8FA4A61AE8470D3478DC`。
+旧候选 `884413F0...` 已撤销，禁止加载。自动化门禁已经通过 Host `13/13`、Bridge Client
+net45/net8 `25/25`、Bridge `37/37`、AgentLauncher net45/net8 `26/26`、Phase 2
+`195/195`；新候选仍必须由用户人工 NETLOAD 并完成两轮启停后，才能把 P0 标记为实机通过。
+
 ## 当前已知状态
 
 - 首次已提交诊断基线：`2d2ad3738095794c8374e916559c0c5d13702ba1`。

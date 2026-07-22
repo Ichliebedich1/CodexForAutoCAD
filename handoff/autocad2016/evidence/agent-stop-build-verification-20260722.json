@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "scope": "autocad2016-agent-stop-candidate-build",
+  "sourceSnapshotAtUtc": "2026-07-22T00:36:50.0810727+00:00",
+  "candidateFrozenAtUtc": "2026-07-22T00:36:58.8854780+00:00",
+  "recordedAtUtc": "2026-07-22T00:36:58.8875405+00:00",
+  "candidateId": "autocad2016-mvp-agent-stop-v032-pkg3-1cc9d294-8e6b26fd",
+  "hostVersion": "0.3.2.0",
+  "autoCadLiveEvidence": true,
+  "netLoadVerified": true,
+  "build": {
+    "hostR20_1A_BBitForBitEqual": true,
+    "hostDllSha256": "1CC9D2943F1AB3C37395927B0E2EAF4189A0B3BE4B2E8FA4A61AE8470D3478DC"
+  },
+  "candidate": {
+    "root": "artifacts/autocad2016-mvp-agent-stop-v032-pkg3-1cc9d294-8e6b26fd",
+    "manifestSha256": "6EE63CC4269F140E97EC631B8E697E91D8CF5078B465E053AED07D7284827231",
+    "files": {
+      "AgentHost/Codex.AutoCAD.AgentHost.deps.json": {
+        "Length": 3147,
+        "Sha256": "1BBA5D877ECB935A27FFDE235452AD2D870B0F97237D193AAF9239F304B7545C"
+      },
+      "AgentHost/Codex.AutoCAD.AgentHost.dll": {
+        "Length": 62464,
+        "Sha256": "C6C8CC075D5731ACAF8FC7C2B032F4C0DD24E2CA646522C9F152BBDEE1E41C5A"
+      },
+      "AgentHost/Codex.AutoCAD.AgentHost.exe": {
+        "Length": 151552,
+        "Sha256": "8E6B26FD7B20925A1CE53CAB0DBEE093C58B9AF0935219DF75FC8A7CB5C4FA2A"
+      },
+      "AgentHost/Codex.AutoCAD.AgentHost.exe.sha256": {
+        "Length": 94,
+        "Sha256": "AF48875043878A65A3E0B83AC6F4F1D8BFE62C25DDB3E220BC9615F3FB3796EC"
+      },
+      "AgentHost/Codex.AutoCAD.AgentHost.runtimeconfig.json": {
+        "Length": 340,
+        "Sha256": "28329CF08F6505E73806B17558B187C02F0C1C516FE47EBFB7A013D082AAA306"
+      },
+      "AgentHost/Codex.AutoCAD.AgentLauncher.dll": {
+        "Length": 75264,
+        "Sha256": "2C4149D02641741B677D2A98681AF80B2EFFC635DF7D8DC888EB52E2F5F93684"
+      },
+      "AgentHost/Codex.AutoCAD.AgentRuntime.dll": {
+        "Length": 147968,
+        "Sha256": "71AACC2F4002F22234E197DF8346BAB1E3E038E84EC46855B05A9EC939D70DF4"
+      },
+      "AgentHost/Codex.AutoCAD.AppServer.dll": {
+        "Length": 118272,
+        "Sha256": "0CAE5ECE03971F5DB18CF10FE35F78204A9B4BDE754345DFA73E91D546499CDE"
+      },
+      "AgentHost/Codex.AutoCAD.Bridge.dll": {
+        "Length": 52224,
+        "Sha256": "E48BD372FFF7EAD8B939304F917FD39EBE882C8E0584257E3B6A64F2275BB449"
+      },
+      "AgentHost/Codex.AutoCAD.Contracts.dll": {
+        "Length": 84992,
+        "Sha256": "E748960F2E489496F0D129DC5DAD51B0B2DAFB5E0652B24D26D55B2FE34BC136"
+      },
+      "AgentHost/Codex.AutoCAD.Ipc.dll": {
+        "Length": 30208,
+        "Sha256": "02049B8D061337043E17E3EF081021DB25A7477D15DDE540BC2108EFA0B0FC19"
+      },
+      "AgentHost/Codex.AutoCAD.Security.dll": {
+        "Length": 75776,
+        "Sha256": "2DBE21CAC3A1A3B72D2984681DFFDE0A3D85081022FA7B5D06DB5429DA2A310F"
+      },
+      "Codex.AutoCAD.AgentLauncher.dll": {
+        "Length": 76288,
+        "Sha256": "4BBE2E4EB4CDFD1798DE5338F02D32B81458ECB68EA2A955650DCE4F7E47745E"
+      },
+      "Codex.AutoCAD.Bridge.Client.dll": {
+        "Length": 70144,
+        "Sha256": "04FBC58763B3DCB366DE52E3D5707FCBC6BFF6734FCDE4777B7B263CEAC54E93"
+      },
+      "Codex.AutoCAD.Contracts.dll": {
+        "Length": 85504,
+        "Sha256": "004FC881E2EE20383A982210E26D0598E50687A8C346EBB07022E8853165B6FA"
+      },
+      "Codex.AutoCAD.Host.2016.dll": {
+        "Length": 90112,
+        "Sha256": "1CC9D2943F1AB3C37395927B0E2EAF4189A0B3BE4B2E8FA4A61AE8470D3478DC"
+      },
+      "Codex.AutoCAD.Ipc.dll": {
+        "Length": 30208,
+        "Sha256": "BC796A7C47392FFA7D3226A2F8AA8DBDE4514731279D5E573428BC5BB90EB48A"
+      }
+    }
+  },
+  "gates": {
+    "sourceBuild": true,
+    "candidateLayout": true,
+    "candidateFinalRehash": true,
+    "hostStopSpecs": "13/13",
+    "bridgeClientNet45Specs": "25/25",
+    "bridgeClientNet8Specs": "25/25",
+    "bridgeSpecs": "37/37",
+    "agentLauncherNet45Specs": "26/26",
+    "agentLauncherNet8Specs": "26/26",
+    "phase2Specs": "195/195",
+    "authenticationCompatibilityNet45Specs": "35/35",
+    "authenticationCompatibilityNet8Specs": "35/35",
+    "crossShellPowerShell7And51": true,
+    "r20_1ReleaseX64Build": true,
+    "gitDiffCheck": true,
+    "secretScan": true,
+    "agentHostResidualsFromAutomation": 0,
+    "AutoCADStartedOrRestarted": false,
+    "commandsSent": false
+  },
+  "live": {
+    "moduleVersion": "0.3.2.0",
+    "dbmodBefore": 20,
+    "dbmodAfter": 20,
+    "dbmodUnchanged": true,
+    "startStopCyclesObserved": 3,
+    "onlineStatusObserved": true,
+    "stoppedStatusObserved": true,
+    "autoCadResponsive": true,
+    "cadWriteDisabled": true,
+    "pluginInitiatedSaveDisabled": true,
+    "residualAgentHostProcessCount": 0,
+    "evidenceSource": "用户提供的两张脱敏 Palette 截图与命令记录"
+  },
+  "upstreamEvidenceBindings": {
+    "bridgeClientStageSha256": "9C95B4F3013BAC7A553103E54A4A7143B30D0150B4F9E97B68AE977C57178A64",
+    "bootstrapStageSha256": "67A1637999D4717B207E58E5CDDAA832E388687A152543E4640B7068261F704B",
+    "rawPathsPersistedInGitEvidence": false
+  },
+  "limitations": [
+    "AutoCAD live 结论来自用户人工 NETLOAD、命令记录和脱敏 Palette 截图；Codex 未启动、重启或操作 AutoCAD。",
+    "本证据不包含图纸路径、选择哈希、canonical JSON 或敏感进程命令行。"
+  ]
+}

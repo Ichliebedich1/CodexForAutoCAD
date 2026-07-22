@@ -423,12 +423,18 @@ public sealed class AgentHostServiceSession : IDisposable
     private static readonly TimeSpan StandardErrorDrainTimeout = TimeSpan.FromSeconds(1);
 
     private readonly object _sync = new object();
-    private WindowsInheritedBootstrapProcess? _child;
+    private readonly Func<int, bool> _terminateAndWait;
+    private readonly Func<Exception?> _abortIo;
+    private readonly Action _disposeProcess;
     private AgentBootstrapDirectionKeys? _directionKeys;
     private Task<AgentHostStandardErrorCapture>? _standardErrorTask;
     private Task? _stopTask;
     private int _disposeSignaled;
     private bool _stopping;
+    private bool _terminationProved;
+    private bool _standardErrorSettled;
+    private bool _ioAborted;
+    private bool _processDisposed;
     private int _standardErrorBytes;
     private bool _standardErrorTruncated;
 
@@ -438,8 +444,42 @@ public sealed class AgentHostServiceSession : IDisposable
         Task<AgentHostStandardErrorCapture> standardErrorTask,
         AgentBootstrapDoctorResult result)
     {
-        _child = child ?? throw new ArgumentNullException(nameof(child));
+        if (child == null)
+        {
+            throw new ArgumentNullException(nameof(child));
+        }
+
+        _terminateAndWait = child.TerminateAndWait;
+        _abortIo = child.AbortIo;
+        _disposeProcess = child.Dispose;
         _directionKeys = directionKeys ?? throw new ArgumentNullException(nameof(directionKeys));
+        _standardErrorTask = standardErrorTask
+            ?? throw new ArgumentNullException(nameof(standardErrorTask));
+        if (result == null)
+        {
+            throw new ArgumentNullException(nameof(result));
+        }
+
+        ProcessId = result.ProcessId;
+        ProcessCreationFileTime = result.ProcessCreationFileTime;
+        BootstrapId = result.BootstrapId;
+        SessionId = result.SessionId;
+        PipeName = result.PipeName;
+        ExecutableSha256 = result.ExecutableSha256;
+    }
+
+    internal AgentHostServiceSession(
+        Func<int, bool> terminateAndWait,
+        Func<Exception?> abortIo,
+        Action disposeProcess,
+        Task<AgentHostStandardErrorCapture> standardErrorTask,
+        AgentBootstrapDoctorResult result)
+    {
+        _terminateAndWait = terminateAndWait
+            ?? throw new ArgumentNullException(nameof(terminateAndWait));
+        _abortIo = abortIo ?? throw new ArgumentNullException(nameof(abortIo));
+        _disposeProcess = disposeProcess
+            ?? throw new ArgumentNullException(nameof(disposeProcess));
         _standardErrorTask = standardErrorTask
             ?? throw new ArgumentNullException(nameof(standardErrorTask));
         if (result == null)
@@ -520,12 +560,13 @@ public sealed class AgentHostServiceSession : IDisposable
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposeSignaled, 1) != 0)
+        if (Volatile.Read(ref _disposeSignaled) != 0)
         {
             return;
         }
 
         GetOrStartStopTask().GetAwaiter().GetResult();
+        Interlocked.Exchange(ref _disposeSignaled, 1);
     }
 
     private Task GetOrStartStopTask()
@@ -538,32 +579,73 @@ public sealed class AgentHostServiceSession : IDisposable
             }
 
             _stopping = true;
-            var child = _child;
             var directionKeys = _directionKeys;
-            var standardErrorTask = _standardErrorTask;
-            _child = null;
             _directionKeys = null;
-            _standardErrorTask = null;
-            _stopTask = Task.Run(
-                () => StopCore(child, directionKeys, standardErrorTask));
-            return _stopTask;
+            var completion = new TaskCompletionSource<bool>();
+            var attempt = completion.Task;
+            _stopTask = attempt;
+            _ = CompleteStopAttemptAsync(completion, attempt, directionKeys);
+            return attempt;
         }
     }
 
-    private void StopCore(
-        WindowsInheritedBootstrapProcess? child,
-        AgentBootstrapDirectionKeys? directionKeys,
-        Task<AgentHostStandardErrorCapture>? standardErrorTask)
+    private async Task CompleteStopAttemptAsync(
+        TaskCompletionSource<bool> completion,
+        Task attempt,
+        AgentBootstrapDirectionKeys? directionKeys)
+    {
+        Exception? failure = null;
+        try
+        {
+            await Task.Run(() => StopCore(directionKeys)).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            failure = exception;
+        }
+
+        lock (_sync)
+        {
+            if (ReferenceEquals(_stopTask, attempt)
+                && failure != null)
+            {
+                _stopTask = null;
+            }
+        }
+
+        if (failure == null)
+        {
+            completion.TrySetResult(true);
+        }
+        else
+        {
+            completion.TrySetException(failure);
+        }
+    }
+
+    private void StopCore(AgentBootstrapDirectionKeys? directionKeys)
     {
         var failures = new List<Exception>();
         directionKeys?.Dispose();
-        var terminationProved = child == null;
-        if (child != null)
+        bool terminationProved;
+        lock (_sync)
+        {
+            terminationProved = _terminationProved;
+        }
+
+        if (!terminationProved)
         {
             try
             {
-                terminationProved = child.TerminateAndWait(TerminationWaitMilliseconds);
-                if (!terminationProved)
+                terminationProved = _terminateAndWait(TerminationWaitMilliseconds);
+                if (terminationProved)
+                {
+                    lock (_sync)
+                    {
+                        _terminationProved = true;
+                    }
+                }
+                else
                 {
                     failures.Add(new InvalidOperationException(
                         "AgentHost service did not terminate inside the hard cleanup deadline."));
@@ -573,6 +655,17 @@ public sealed class AgentHostServiceSession : IDisposable
             {
                 failures.Add(exception);
             }
+        }
+
+        if (!terminationProved)
+        {
+            throw CreateStopFailure(failures);
+        }
+
+        Task<AgentHostStandardErrorCapture>? standardErrorTask;
+        lock (_sync)
+        {
+            standardErrorTask = _standardErrorSettled ? null : _standardErrorTask;
         }
 
         if (standardErrorTask != null)
@@ -589,6 +682,19 @@ public sealed class AgentHostServiceSession : IDisposable
                     failures.Add(new TimeoutException(
                         "AgentHost stderr drain did not settle after process termination."));
                 }
+                else if (standardErrorTask.Status != TaskStatus.RanToCompletion)
+                {
+                    // AbortIo can make the bounded stderr reader finish faulted or cancelled.
+                    // The task is nevertheless terminal and no longer owns running I/O, so it is
+                    // cleanup-settled; the launch/runtime path already reports the underlying
+                    // diagnostic failure separately.
+                    var ignored = standardErrorTask.Exception;
+                    lock (_sync)
+                    {
+                        _standardErrorSettled = true;
+                        _standardErrorTask = null;
+                    }
+                }
                 else
                 {
                     var capture = standardErrorTask.GetAwaiter().GetResult();
@@ -596,6 +702,49 @@ public sealed class AgentHostServiceSession : IDisposable
                     {
                         _standardErrorBytes = capture.Bytes;
                         _standardErrorTruncated = capture.Truncated;
+                        _standardErrorSettled = true;
+                        _standardErrorTask = null;
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+        else
+        {
+            lock (_sync)
+            {
+                if (!_standardErrorSettled)
+                {
+                    failures.Add(new InvalidOperationException(
+                        "AgentHost stderr capture was unavailable before it settled."));
+                }
+            }
+        }
+
+        bool ioAborted;
+        lock (_sync)
+        {
+            ioAborted = _ioAborted;
+        }
+
+        if (!ioAborted)
+        {
+            try
+            {
+                var ioFailure = _abortIo();
+                if (ioFailure != null)
+                {
+                    failures.Add(ioFailure);
+                }
+                else
+                {
+                    ioAborted = true;
+                    lock (_sync)
+                    {
+                        _ioAborted = true;
                     }
                 }
             }
@@ -605,17 +754,21 @@ public sealed class AgentHostServiceSession : IDisposable
             }
         }
 
-        if (child != null)
+        bool processDisposed;
+        lock (_sync)
         {
-            var ioFailure = child.AbortIo();
-            if (ioFailure != null)
-            {
-                failures.Add(ioFailure);
-            }
+            processDisposed = _processDisposed;
+        }
 
+        if (ioAborted && !processDisposed)
+        {
             try
             {
-                child.Dispose();
+                _disposeProcess();
+                lock (_sync)
+                {
+                    _processDisposed = true;
+                }
             }
             catch (Exception exception)
             {
@@ -623,17 +776,22 @@ public sealed class AgentHostServiceSession : IDisposable
             }
         }
 
-        if (!terminationProved || failures.Count != 0)
+        if (failures.Count != 0)
         {
-            var failure = new AgentBootstrapLaunchException(
-                AgentBootstrapLaunchFailure.ChildTerminationFailed,
-                "Stopping AgentHost service could not prove complete bounded cleanup.",
-                failures.Count == 1
-                    ? failures[0]
-                    : new AggregateException(failures));
-            AgentBootstrapLateFailureRegistry.Record(failure);
-            throw failure;
+            throw CreateStopFailure(failures);
         }
+    }
+
+    private static AgentBootstrapLaunchException CreateStopFailure(
+        IList<Exception> failures)
+    {
+        var failure = new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.ChildTerminationFailed,
+            "Stopping AgentHost service could not prove complete bounded cleanup.",
+            failures.Count == 1
+                ? failures[0]
+                : new AggregateException(failures));
+        return failure;
     }
 
     private static async Task AwaitWithCancellationAsync(

@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "recordedAtLocal": "2026-07-21T11:10:00+08:00",
+  "scope": "autocad2016-agent-stop-lifecycle-candidate",
+  "status": "build-and-automated-gates-passed-autocad-runtime-pending",
+  "sourceBaselineCommit": "7f10d60",
+  "candidate": {
+    "id": "autocad2016-mvp-agent-v032-884413f0-8c74b95e",
+    "hostAssemblyVersion": "0.3.2.0",
+    "hostTargetFramework": ".NET Framework 4.5",
+    "hostArchitecture": "x64",
+    "autoCadApi": "R20.1 / 20.1.0.0",
+    "hostBytes": 83456,
+    "hostSha256": "884413F0E7ACD64974F5F42B0251F8BEFCA361FA5C59057C5136C79E9AD33928",
+    "agentHostSha256": "8C74B95ECD6680F9A35824DB1C2C543D42B52AB1E4D3565F5B7EE8DBB1DC900E",
+    "frozenFilesReadOnly": true,
+    "reusedVerifiedAgentHostAndNet45Dependencies": true
+  },
+  "automatedVerification": {
+    "targetMachineOriginalR20_1ManagedAssembliesBuild": true,
+    "releaseWarnings": 0,
+    "releaseErrors": 0,
+    "phase2Specs": "192/192",
+    "hostStopCoordinatorSpecs": "4/4",
+    "agentServiceSpecs": "7/7",
+    "bridgeClientNet45Specs": "22/22",
+    "agentLauncherNet45Specs": "15/15",
+    "realCodexSameThreadTwoTurnSpecs": "2/2",
+    "hostForbiddenApiScan": true,
+    "secretScan": true,
+    "gitDiffCheck": true,
+    "testServerOrFakeAgentResidualProcesses": 0
+  },
+  "fixBoundary": {
+    "bridgeAndAgentHostCleanupBeginBeforeAwait": true,
+    "bridgeFailureCannotSkipAgentHostCleanup": true,
+    "allCleanupFailuresRemainObservable": true,
+    "paletteFinalSuccessOrFailureStatusWired": true,
+    "automaticCadWriteRetryEnabled": false,
+    "cadWriteEnabled": false,
+    "pluginInitiatedSaveEnabled": false
+  },
+  "runtime": {
+    "netLoadVerified": false,
+    "runtimeToArtifactBindingVerified": false,
+    "twoConsecutiveStartStopCyclesVerified": false,
+    "paletteFinalStopStatusVerified": false,
+    "dbmodUnchangedVerified": false,
+    "agentHostNoResidualProcessVerified": false,
+    "completeAutoCad2016Support": false
+  },
+  "existingExternalState": {
+    "oldV031CandidateAgentHostProcessCount": 1,
+    "newV032CandidateAgentHostProcessCount": 0,
+    "oldProcessWasNotTerminatedByCodex": true
+  },
+  "evidenceBoundary": "The 0.3.2 net45/x64 Host was built against the target machine's original AutoCAD 2016 R20.1 managed assemblies. Automated tests prove that Bridge and AgentHost cleanup both begin before awaiting, that a Bridge stop failure cannot skip AgentHost termination, that cleanup failures remain observable, and that the Palette is wired to receive final success or sanitized failure status. This candidate has not yet been manually NETLOADed. The existing 0.3.1 AgentHost process remains external state owned by the active AutoCAD process and was not terminated by Codex. No AutoCAD runtime, DBMOD, no-save or no-residual conclusion is claimed for 0.3.2 until the user completes the prescribed live test."
+}

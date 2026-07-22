@@ -4,12 +4,19 @@
     <TargetFramework>net8.0</TargetFramework>
     <AssemblyName>Codex.AutoCAD.Host.2016.Mvp.Specs</AssemblyName>
     <RootNamespace>Codex.AutoCAD.Host.2016.Mvp.Specs</RootNamespace>
+    <Nullable>annotations</Nullable>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Codex.AutoCAD.AgentLauncher\Codex.AutoCAD.AgentLauncher.csproj" />
+    <ProjectReference Include="..\..\src\Codex.AutoCAD.Bridge.Client\Codex.AutoCAD.Bridge.Client.csproj" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentProtocolIdentity.cs"
              Link="MvpAgentProtocolIdentity.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentCapabilityPolicy.cs"
              Link="MvpAgentCapabilityPolicy.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentStopCoordinator.cs"
+             Link="MvpAgentStopCoordinator.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentClient.cs"
+             Link="MvpAgentClient.cs" />
   </ItemGroup>
 </Project>

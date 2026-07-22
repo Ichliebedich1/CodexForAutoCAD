@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "scope": "autocad2016-agent-stop-live-observation",
+  "candidateId": "autocad2016-mvp-agent-stop-v032-pkg3-1cc9d294-8e6b26fd",
+  "hostVersion": "0.3.2.0",
+  "hostSha256": "1CC9D2943F1AB3C37395927B0E2EAF4189A0B3BE4B2E8FA4A61AE8470D3478DC",
+  "netLoadVerified": true,
+  "autoCadLiveEvidence": true,
+  "autoCadVersion": "R20.1 / managed 20.1.0.0 / net45 / x64",
+  "moduleVersionObserved": "0.3.2.0",
+  "startStopRequestsObserved": 3,
+  "finalPaletteAgentStatus": "AgentHost 已停止；CAD 写入仍禁用。",
+  "dbmodBefore": 20,
+  "dbmodAfter": 20,
+  "dbmodUnchanged": true,
+  "residualAgentHostProcessCount": 0,
+  "cadWriteDisabled": true,
+  "pluginInitiatedSaveDisabled": true,
+  "onlineStateExplicitlyRecorded": true,
+  "onlineStatusObserved": "Agent Bridge 状态: online",
+  "stoppedStatusObserved": "AgentHost 已停止；CAD 写入仍禁用。",
+  "userScreenshotCount": 2,
+  "commandSequenceContainsCancelledPrompt": true,
+  "limitations": [
+    "命令记录没有逐轮保留 AgentHost 在线状态文本，因此不能仅凭最终 STOP 状态宣称三轮启动均已完成。",
+    "该观察不包含图纸路径、选择哈希、canonical JSON 或敏感进程命令行。"
+  ]
+}

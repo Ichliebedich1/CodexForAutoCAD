@@ -15,8 +15,11 @@
   `6/6`、完整 Phase 2 `232/232`、R20.1 net45/x64 Host Release `0` warning / `0` error。
 - P1 已增加发送前旧上下文 fail-closed 重校验，但尚无 AutoCAD 实机竞态证据；仍不得把
   P1 当前 DLL 交给用户加载或标记为 live 通过。
-- P0 `0.3.2` 停止生命周期候选仍等待人工 AutoCAD 验证。P0 通过并单独提交前，不得将
-  P0 与 P1 合并或冻结新的产品候选。集成规则见 `P0_TO_P1_CONTROLLED_INTEGRATION.md`。
+- P0 停止生命周期已由用户完成人工 NETLOAD、三次启停请求、在线/停止状态确认、DBMOD
+  `20 -> 20` 和残留进程 `0` 验证，独立提交为 `8a4ee57`。
+- P0 完整候选为 `autocad2016-mvp-agent-stop-v032-pkg3-1cc9d294-8e6b26fd`；P1 仍需
+  在该提交基础上完成受控集成和新的 v2 候选冻结。集成规则见
+  `P0_TO_P1_CONTROLLED_INTEGRATION.md`。
 
 ## 先看结论
 

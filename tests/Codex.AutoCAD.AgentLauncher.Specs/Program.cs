@@ -25,7 +25,18 @@ try
         new SpecCase("TRAILING_DUPLICATE_REJECTED", "确认尾随字节与第二帧均被拒绝", () => TrailingAndDuplicateConfirmationFail(fixture)),
         new SpecCase("CHILD_CLEARS_INHERITANCE", "子端领取句柄后清除继承位", () => ChildClearsInheritance(fixture.CreateMode("inherit"))),
         new SpecCase("HANDLE_ALLOWLIST_CANARY", "启动句柄白名单排除父进程可继承canary", () => HandleAllowListExcludesCanary(fixture.CreateMode("canary"))),
-        new SpecCase("STDERR_BOUNDED", "stderr持续排空、严格受限且失败时不公开原文", () => StandardErrorIsBounded(fixture))
+        new SpecCase("STDERR_BOUNDED", "stderr持续排空、严格受限且失败时不公开原文", () => StandardErrorIsBounded(fixture)),
+        new SpecCase("SERVICE_STOP_RETRIES_TERMINATION", "service首次终止失败后第二次STOP重新尝试并成功", ServiceStopRetriesTermination),
+        new SpecCase("SERVICE_STOP_RETRIES_THROWN_TERMINATION", "service终止委托抛错后第二次STOP重新尝试并成功", ServiceStopRetriesThrownTermination),
+        new SpecCase("SERVICE_STOP_PROCESS_DISPOSE_CAN_RETRY", "service进程包装释放失败后只重试未完成清理", ServiceStopProcessDisposeCanRetry),
+        new SpecCase("SERVICE_STOP_ABORT_IO_CAN_RETRY", "service I/O中止失败后重试且不提前释放进程包装", ServiceStopAbortIoCanRetry),
+        new SpecCase("SERVICE_STOP_THROWN_ABORT_IO_CAN_RETRY", "service I/O中止委托抛错后结构化失败并可重试", ServiceStopThrownAbortIoCanRetry),
+        new SpecCase("SERVICE_STOP_STDERR_CAN_RETRY", "service stderr排空超时后保留任务并在下一次STOP收口", ServiceStopStandardErrorCanRetry),
+        new SpecCase("SERVICE_STOP_FAULTED_STDERR_IS_SETTLED", "service I/O中止后的faulted stderr按已终止收口", ServiceStopFaultedStandardErrorIsSettled),
+        new SpecCase("SERVICE_STOP_RETRY_DOES_NOT_POISON_START", "显式STOP失败重试成功后不会永久阻断下一次启动", ServiceStopRetryDoesNotPoisonStart),
+        new SpecCase("SERVICE_DISPOSE_FAILURE_CAN_RETRY", "service Dispose失败后再次Dispose继续剩余清理", ServiceDisposeFailureCanRetry),
+        new SpecCase("SERVICE_STOP_CONCURRENT_CALLERS", "并发service STOP共享同一个有界终止尝试", ServiceStopConcurrentCallers),
+        new SpecCase("SERVICE_STOP_CONCURRENT_FAILURE_SHARED", "并发service STOP共享同一失败尝试并在其后重试", ServiceStopConcurrentFailureShared)
     };
 
     var failed = 0;
@@ -74,6 +85,410 @@ static void RepeatedRealAgentHostSucceeds(string agentHostPath)
     {
         RealAgentHostSucceeds(agentHostPath);
     }
+}
+
+static void ServiceStopRetriesTermination()
+{
+    var terminateCount = 0;
+    var abortIoCount = 0;
+    var disposeCount = 0;
+    var session = new AgentHostServiceSession(
+        _ =>
+        {
+            terminateCount++;
+            return terminateCount > 1;
+        },
+        () =>
+        {
+            abortIoCount++;
+            return null;
+        },
+        () => disposeCount++,
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateServiceResult());
+
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.ChildTerminationFailed,
+        () => session.StopAsync(CancellationToken.None).GetAwaiter().GetResult());
+    Equal(1, terminateCount);
+    Equal(0, abortIoCount);
+    Equal(0, disposeCount);
+
+    session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+    Equal(2, terminateCount);
+    Equal(1, abortIoCount);
+    Equal(1, disposeCount);
+    session.Dispose();
+}
+
+static void ServiceStopRetriesThrownTermination()
+{
+    var terminateCount = 0;
+    var session = new AgentHostServiceSession(
+        _ =>
+        {
+            terminateCount++;
+            if (terminateCount == 1)
+            {
+                throw new InvalidOperationException("first-termination-throw");
+            }
+
+            return true;
+        },
+        () => null,
+        () => { },
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateServiceResult());
+
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.ChildTerminationFailed,
+        () => session.StopAsync(CancellationToken.None).GetAwaiter().GetResult());
+    Equal(1, terminateCount);
+
+    session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+    Equal(2, terminateCount);
+    session.Dispose();
+}
+
+static void ServiceStopConcurrentCallers()
+{
+    var terminateCount = 0;
+    var disposeCount = 0;
+    using (var entered = new ManualResetEventSlim(false))
+    using (var release = new ManualResetEventSlim(false))
+    {
+        var session = new AgentHostServiceSession(
+            _ =>
+            {
+                Interlocked.Increment(ref terminateCount);
+                entered.Set();
+                release.Wait(TimeSpan.FromSeconds(5));
+                return true;
+            },
+            () => null,
+            () => Interlocked.Increment(ref disposeCount),
+            Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+            CreateServiceResult());
+
+        var first = session.StopAsync(CancellationToken.None);
+        True(entered.Wait(TimeSpan.FromSeconds(2)), "Service stop did not start.");
+        var second = session.StopAsync(CancellationToken.None);
+        True(!second.IsCompleted, "Concurrent service STOP completed before termination.");
+        Equal(1, Volatile.Read(ref terminateCount));
+
+        release.Set();
+        Task.WhenAll(first, second).GetAwaiter().GetResult();
+        Equal(1, Volatile.Read(ref terminateCount));
+        Equal(1, Volatile.Read(ref disposeCount));
+        session.Dispose();
+    }
+}
+
+static void ServiceStopConcurrentFailureShared()
+{
+    var terminateCount = 0;
+    var abortIoCount = 0;
+    var disposeCount = 0;
+    using (var entered = new ManualResetEventSlim(false))
+    using (var release = new ManualResetEventSlim(false))
+    {
+        var session = new AgentHostServiceSession(
+            _ =>
+            {
+                var attempt = Interlocked.Increment(ref terminateCount);
+                entered.Set();
+                release.Wait(TimeSpan.FromSeconds(5));
+                return attempt > 1;
+            },
+            () =>
+            {
+                Interlocked.Increment(ref abortIoCount);
+                return null;
+            },
+            () => Interlocked.Increment(ref disposeCount),
+            Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+            CreateServiceResult());
+
+        var first = session.StopAsync(CancellationToken.None);
+        True(entered.Wait(TimeSpan.FromSeconds(2)), "Failing service stop did not start.");
+        var second = session.StopAsync(CancellationToken.None);
+        Equal(1, Volatile.Read(ref terminateCount));
+
+        release.Set();
+        ExpectFailure(
+            AgentBootstrapLaunchFailure.ChildTerminationFailed,
+            () => first.GetAwaiter().GetResult());
+        ExpectFailure(
+            AgentBootstrapLaunchFailure.ChildTerminationFailed,
+            () => second.GetAwaiter().GetResult());
+        Equal(1, Volatile.Read(ref terminateCount));
+        Equal(0, Volatile.Read(ref abortIoCount));
+        Equal(0, Volatile.Read(ref disposeCount));
+
+        session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+        Equal(2, Volatile.Read(ref terminateCount));
+        Equal(1, Volatile.Read(ref abortIoCount));
+        Equal(1, Volatile.Read(ref disposeCount));
+        session.Dispose();
+    }
+}
+
+static void ServiceStopProcessDisposeCanRetry()
+{
+    var terminateCount = 0;
+    var abortIoCount = 0;
+    var disposeCount = 0;
+    var session = new AgentHostServiceSession(
+        _ =>
+        {
+            terminateCount++;
+            return true;
+        },
+        () =>
+        {
+            abortIoCount++;
+            return null;
+        },
+        () =>
+        {
+            disposeCount++;
+            if (disposeCount == 1)
+            {
+                throw new InvalidOperationException("first-process-dispose-failure");
+            }
+        },
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateServiceResult());
+
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.ChildTerminationFailed,
+        () => session.StopAsync(CancellationToken.None).GetAwaiter().GetResult());
+    Equal(1, terminateCount);
+    Equal(1, abortIoCount);
+    Equal(1, disposeCount);
+
+    session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+    Equal(1, terminateCount);
+    Equal(1, abortIoCount);
+    Equal(2, disposeCount);
+    session.Dispose();
+}
+
+static void ServiceStopAbortIoCanRetry()
+{
+    var terminateCount = 0;
+    var abortIoCount = 0;
+    var disposeCount = 0;
+    var session = new AgentHostServiceSession(
+        _ =>
+        {
+            terminateCount++;
+            return true;
+        },
+        () =>
+        {
+            abortIoCount++;
+            return abortIoCount == 1
+                ? new InvalidOperationException("first-abort-io-failure")
+                : null;
+        },
+        () => disposeCount++,
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateServiceResult());
+
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.ChildTerminationFailed,
+        () => session.StopAsync(CancellationToken.None).GetAwaiter().GetResult());
+    Equal(1, terminateCount);
+    Equal(1, abortIoCount);
+    Equal(0, disposeCount);
+
+    session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+    Equal(1, terminateCount);
+    Equal(2, abortIoCount);
+    Equal(1, disposeCount);
+    session.Dispose();
+}
+
+static void ServiceStopThrownAbortIoCanRetry()
+{
+    var abortIoCount = 0;
+    var disposeCount = 0;
+    var session = new AgentHostServiceSession(
+        _ => true,
+        () =>
+        {
+            abortIoCount++;
+            if (abortIoCount == 1)
+            {
+                throw new InvalidOperationException("first-abort-io-throw");
+            }
+
+            return null;
+        },
+        () => disposeCount++,
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateServiceResult());
+
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.ChildTerminationFailed,
+        () => session.StopAsync(CancellationToken.None).GetAwaiter().GetResult());
+    Equal(1, abortIoCount);
+    Equal(0, disposeCount);
+
+    session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+    Equal(2, abortIoCount);
+    Equal(1, disposeCount);
+    session.Dispose();
+}
+
+static void ServiceStopStandardErrorCanRetry()
+{
+    var terminateCount = 0;
+    var abortIoCount = 0;
+    var disposeCount = 0;
+    var standardError = new TaskCompletionSource<AgentHostStandardErrorCapture>();
+    var session = new AgentHostServiceSession(
+        _ =>
+        {
+            terminateCount++;
+            return true;
+        },
+        () =>
+        {
+            abortIoCount++;
+            return null;
+        },
+        () => disposeCount++,
+        standardError.Task,
+        CreateServiceResult());
+
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.ChildTerminationFailed,
+        () => session.StopAsync(CancellationToken.None).GetAwaiter().GetResult());
+    Equal(1, terminateCount);
+    Equal(1, abortIoCount);
+    Equal(1, disposeCount);
+
+    standardError.TrySetResult(new AgentHostStandardErrorCapture(7, true));
+    session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+    Equal(1, terminateCount);
+    Equal(1, abortIoCount);
+    Equal(1, disposeCount);
+    Equal(7, session.StandardErrorBytes);
+    Equal(true, session.StandardErrorTruncated);
+    session.Dispose();
+}
+
+static void ServiceStopFaultedStandardErrorIsSettled()
+{
+    var terminateCount = 0;
+    var abortIoCount = 0;
+    var disposeCount = 0;
+    var standardError = new TaskCompletionSource<AgentHostStandardErrorCapture>();
+    var session = new AgentHostServiceSession(
+        _ =>
+        {
+            terminateCount++;
+            return true;
+        },
+        () =>
+        {
+            abortIoCount++;
+            standardError.TrySetException(
+                new IOException("simulated stderr abort completion"));
+            return null;
+        },
+        () => disposeCount++,
+        standardError.Task,
+        CreateServiceResult());
+
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.ChildTerminationFailed,
+        () => session.StopAsync(CancellationToken.None).GetAwaiter().GetResult());
+    Equal(1, terminateCount);
+    Equal(1, abortIoCount);
+    Equal(1, disposeCount);
+
+    session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+    Equal(1, terminateCount);
+    Equal(1, abortIoCount);
+    Equal(1, disposeCount);
+    Equal(0, session.StandardErrorBytes);
+    Equal(false, session.StandardErrorTruncated);
+    session.Dispose();
+}
+
+static void ServiceStopRetryDoesNotPoisonStart()
+{
+    var terminateCount = 0;
+    var session = new AgentHostServiceSession(
+        _ =>
+        {
+            terminateCount++;
+            return terminateCount > 1;
+        },
+        () => null,
+        () => { },
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateServiceResult());
+
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.ChildTerminationFailed,
+        () => session.StopAsync(CancellationToken.None).GetAwaiter().GetResult());
+    session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+
+    const string placeholderSha256 =
+        "0000000000000000000000000000000000000000000000000000000000000000";
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => AgentHostBootstrapService.StartAsync(
+                new AgentHostBootstrapOptions("relative.exe", placeholderSha256),
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult());
+    session.Dispose();
+}
+
+static void ServiceDisposeFailureCanRetry()
+{
+    var disposeCount = 0;
+    var session = new AgentHostServiceSession(
+        _ => true,
+        () => null,
+        () =>
+        {
+            disposeCount++;
+            if (disposeCount == 1)
+            {
+                throw new InvalidOperationException("first-service-dispose-failure");
+            }
+        },
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateServiceResult());
+
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.ChildTerminationFailed,
+        session.Dispose);
+    Equal(1, disposeCount);
+
+    session.Dispose();
+    Equal(2, disposeCount);
+    session.Dispose();
+    Equal(2, disposeCount);
+}
+
+static AgentBootstrapDoctorResult CreateServiceResult()
+{
+    return new AgentBootstrapDoctorResult(
+        1234,
+        5678,
+        "0123456789abcdef0123456789abcdef",
+        "fedcba9876543210fedcba9876543210",
+        "codex-autocad-test",
+        new string('A', 64),
+        0,
+        false);
 }
 
 static void InvalidExecutablePathsFailClosed(FakeAgentHostFixture fixture)

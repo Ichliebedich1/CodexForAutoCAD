@@ -9,6 +9,7 @@ namespace Codex.AutoCAD.Host2016
         private static readonly object sync = new object();
         private static MvpAgentClient client;
         private static CancellationTokenSource lifetime;
+        private static Task stopTask;
 
         internal static void Initialize()
         {
@@ -29,7 +30,7 @@ namespace Codex.AutoCAD.Host2016
             }
             catch (Exception exception)
             {
-                UnifiedPaletteRuntime.UpdateAgentStatus(
+                UpdateAgentStatusSafely(
                     "AgentHost 退出清理失败：" + exception.GetType().Name);
             }
         }
@@ -40,6 +41,12 @@ namespace Codex.AutoCAD.Host2016
             CancellationToken token;
             lock (sync)
             {
+                if (stopTask != null)
+                {
+                    throw new InvalidOperationException(
+                        "AgentHost 正在停止；完成或重试剩余清理后才能再次启动。");
+                }
+
                 if (lifetime == null)
                 {
                     lifetime = new CancellationTokenSource();
@@ -93,37 +100,137 @@ namespace Codex.AutoCAD.Host2016
                 .ConfigureAwait(false);
         }
 
-        internal static async Task StopAsync()
+        internal static Task StopAsync()
         {
             MvpAgentClient current;
             CancellationTokenSource currentLifetime;
             lock (sync)
             {
+                if (stopTask != null)
+                {
+                    return stopTask;
+                }
+
                 current = client;
                 currentLifetime = lifetime;
-                client = null;
-                lifetime = null;
+                var completion = new TaskCompletionSource<bool>();
+                var attempt = completion.Task;
+                stopTask = attempt;
+                _ = CompleteStopAttemptAsync(
+                    completion,
+                    attempt,
+                    current,
+                    currentLifetime);
+                return attempt;
+            }
+        }
+
+        private static async Task CompleteStopAttemptAsync(
+            TaskCompletionSource<bool> completion,
+            Task attempt,
+            MvpAgentClient current,
+            CancellationTokenSource currentLifetime)
+        {
+            Exception failure = null;
+            try
+            {
+                await Task.Run(
+                        () => StopCoreAsync(current, currentLifetime),
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
             }
 
+            lock (sync)
+            {
+                if (ReferenceEquals(stopTask, attempt))
+                {
+                    stopTask = null;
+                }
+            }
+
+            if (failure == null)
+            {
+                completion.TrySetResult(true);
+            }
+            else
+            {
+                completion.TrySetException(failure);
+            }
+        }
+
+        private static async Task StopCoreAsync(
+            MvpAgentClient current,
+            CancellationTokenSource currentLifetime)
+        {
             if (currentLifetime != null)
             {
-                currentLifetime.Cancel();
-                currentLifetime.Dispose();
+                try
+                {
+                    currentLifetime.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // A concurrent successful STOP already released this lifetime.
+                }
             }
 
-            if (current != null)
+            if (current == null)
+            {
+                lock (sync)
+                {
+                    if (client == null && ReferenceEquals(lifetime, currentLifetime))
+                    {
+                        lifetime = null;
+                    }
+                }
+
+                if (currentLifetime != null)
+                {
+                    currentLifetime.Dispose();
+                }
+
+                UpdateAgentStatusSafely(
+                    "AgentHost 已停止；CAD 写入仍禁用。");
+                return;
+            }
+
+            await current.StopAsync(CancellationToken.None).ConfigureAwait(false);
+
+            var releaseOwnership = false;
+            lock (sync)
+            {
+                if (ReferenceEquals(client, current))
+                {
+                    client = null;
+                    if (ReferenceEquals(lifetime, currentLifetime))
+                    {
+                        lifetime = null;
+                    }
+
+                    releaseOwnership = true;
+                }
+            }
+
+            if (releaseOwnership)
             {
                 current.StatusChanged -= OnStatusChanged;
                 current.TextChanged -= OnTextChanged;
                 current.ErrorChanged -= OnErrorChanged;
-                await current.StopAsync(CancellationToken.None).ConfigureAwait(false);
                 current.Dispose();
+                if (currentLifetime != null)
+                {
+                    currentLifetime.Dispose();
+                }
             }
         }
 
         private static void OnStatusChanged(string value)
         {
-            UnifiedPaletteRuntime.UpdateAgentStatus(value);
+            UpdateAgentStatusSafely(value);
         }
 
         private static void OnTextChanged(string value)
@@ -133,7 +240,19 @@ namespace Codex.AutoCAD.Host2016
 
         private static void OnErrorChanged(string value)
         {
-            UnifiedPaletteRuntime.UpdateAgentStatus(value);
+            UpdateAgentStatusSafely(value);
+        }
+
+        private static void UpdateAgentStatusSafely(string value)
+        {
+            try
+            {
+                UnifiedPaletteRuntime.UpdateAgentStatus(value);
+            }
+            catch
+            {
+                // Palette state is observational and must never retain AgentHost resources.
+            }
         }
     }
 }
