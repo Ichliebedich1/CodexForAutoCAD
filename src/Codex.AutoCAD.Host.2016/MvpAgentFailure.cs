@@ -11,6 +11,8 @@ namespace Codex.AutoCAD.Host2016
         internal const string SendingTurn = "sending_turn";
         internal const string RunningTurn = "running_turn";
         internal const string CancellingTurn = "cancelling_turn";
+        internal const string StartingConversation = "starting_conversation";
+        internal const string ClearingConversation = "clearing_conversation";
         internal const string StoppingAgentHost = "stopping_agenthost";
         internal const string TerminatingAgentHost = "terminating_agenthost";
     }
