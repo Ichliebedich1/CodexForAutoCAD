@@ -4,6 +4,7 @@ using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
+using Codex.AutoCAD.Contracts;
 using AutoCadApplication = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace Codex.AutoCAD.Host2016
@@ -32,6 +33,9 @@ namespace Codex.AutoCAD.Host2016
             editor.WriteMessage("\nPalette capability: enabled");
             editor.WriteMessage("\nRead-only selection capability: enabled");
             editor.WriteMessage("\nCadContextJson: codex.autocad.cad-context/2");
+            editor.WriteMessage("\nDrawingIndex: codex.autocad.drawing-index/1; Idle-chunked read-only scan");
+            editor.WriteMessage("\nCadQuery: codex.autocad.cad-query/1; cursor pagination");
+            editor.WriteMessage("\nCodex drawing-query tool: not connected in this host slice");
             editor.WriteMessage("\nAgent/IPC: authenticated MVP candidate; manual start");
             editor.WriteMessage("\nCAD write capability: disabled");
             editor.WriteMessage("\nPlugin-initiated save: disabled");
@@ -57,7 +61,7 @@ namespace Codex.AutoCAD.Host2016
             }
 
             document.Editor.WriteMessage(
-                "\nHost.2016 当前为统一只读 AI MVP 候选：诊断、Palette、CadContextJson v2、认证 Agent Bridge、图纸级对话隔离及显式新建/清除对话已整合；CAD 写入和插件保存保持禁用。\n");
+                "\nHost.2016 当前为 M2 只读整图索引开发候选：保留 CadContextJson v2 选择快照，新增 DrawingIndex v1、CadQuery v1、Idle 分片扫描和分页命令；Codex 动态查询工具尚未接入。CAD 写入和插件保存保持禁用。\n");
         }
 
         [CommandMethod("CODEX16PAL", CommandFlags.Modal)]
@@ -145,6 +149,168 @@ namespace Codex.AutoCAD.Host2016
             UnifiedReadOnlyContextRuntime.Clear("user-command");
             editor.WriteMessage(
                 "\nCodex AutoCAD 2016 统一只读上下文已从内存清除；当前 Codex 对话仍保留，图纸未修改、未保存。\n");
+        }
+
+        [CommandMethod("CODEX16INDEX", CommandFlags.Modal | CommandFlags.UsePickSet)]
+        public void StartDrawingIndex()
+        {
+            var editor = GetActiveEditor();
+            if (editor == null)
+            {
+                return;
+            }
+
+            var options = new PromptKeywordOptions(
+                "\n选择只读索引范围 [Selection/Current/Model/Layouts/Drawing] <Drawing>: ")
+            {
+                AllowNone = true,
+            };
+            options.Keywords.Add("Selection");
+            options.Keywords.Add("Current");
+            options.Keywords.Add("Model");
+            options.Keywords.Add("Layouts");
+            options.Keywords.Add("Drawing");
+            var prompt = editor.GetKeywords(options);
+            if (prompt.Status != PromptStatus.OK && prompt.Status != PromptStatus.None)
+            {
+                return;
+            }
+
+            var scope = MapIndexScope(
+                prompt.Status == PromptStatus.None ? "Drawing" : prompt.StringResult);
+            try
+            {
+                var started = DrawingIndexRuntime.Start(scope);
+                UnifiedPaletteRuntime.Show();
+                editor.WriteMessage(
+                    "\nDrawingIndex 已进入分片准备阶段：indexId={0}, scope={1}。扫描在 AutoCAD Idle 中按只读小片执行；使用 CODEX16INDEXINFO 查看进度，CODEX16INDEXCANCEL 取消。\n",
+                    started.IndexId,
+                    started.Scope);
+            }
+            catch (System.Exception exception)
+            {
+                editor.WriteMessage(
+                    "\nDrawingIndex 启动失败：{0}。图纸未修改、未保存。\n",
+                    exception.GetType().Name);
+            }
+        }
+
+        [CommandMethod("CODEX16INDEXINFO", CommandFlags.Modal)]
+        public void ShowDrawingIndexInfo()
+        {
+            var editor = GetActiveEditor();
+            if (editor == null)
+            {
+                return;
+            }
+
+            editor.WriteMessage("\n{0}\n", DrawingIndexRuntime.BuildInfo());
+        }
+
+        [CommandMethod("CODEX16INDEXCANCEL", CommandFlags.Modal)]
+        public void CancelDrawingIndex()
+        {
+            var editor = GetActiveEditor();
+            if (editor == null)
+            {
+                return;
+            }
+
+            DrawingIndexRuntime.Cancel();
+            editor.WriteMessage(
+                "\nDrawingIndex 取消请求已按幂等方式处理；图纸未修改、未保存。\n");
+        }
+
+        [CommandMethod("CODEX16QUERY", CommandFlags.Modal)]
+        public void QueryDrawingIndex()
+        {
+            var editor = GetActiveEditor();
+            if (editor == null)
+            {
+                return;
+            }
+
+            var options = new PromptKeywordOptions(
+                "\n查询过滤 [All/Type/Layer/Space/Block/Text/Object] <All>: ")
+            {
+                AllowNone = true,
+            };
+            options.Keywords.Add("All");
+            options.Keywords.Add("Type");
+            options.Keywords.Add("Layer");
+            options.Keywords.Add("Space");
+            options.Keywords.Add("Block");
+            options.Keywords.Add("Text");
+            options.Keywords.Add("Object");
+            var keyword = editor.GetKeywords(options);
+            if (keyword.Status != PromptStatus.OK && keyword.Status != PromptStatus.None)
+            {
+                return;
+            }
+
+            var kind = keyword.Status == PromptStatus.None ? "All" : keyword.StringResult;
+            var filter = new CadQueryFilter();
+            if (!string.Equals(kind, "All", StringComparison.OrdinalIgnoreCase))
+            {
+                var valueOptions = new PromptStringOptions("\n输入精确过滤值（Text 为包含匹配）:")
+                {
+                    AllowSpaces = true,
+                };
+                var value = editor.GetString(valueOptions);
+                if (value.Status != PromptStatus.OK || string.IsNullOrWhiteSpace(value.StringResult))
+                {
+                    return;
+                }
+                ApplyQueryFilter(filter, kind, value.StringResult.Trim());
+            }
+
+            try
+            {
+                var response = DrawingIndexRuntime.QueryFirst(filter, 20);
+                editor.WriteMessage("\n{0}\n", DrawingIndexRuntime.FormatQueryResponse(response));
+            }
+            catch (DrawingIndexQueryException exception)
+            {
+                editor.WriteMessage(
+                    "\nCadQuery 被拒绝：code={0}, message={1}\n",
+                    exception.Code,
+                    exception.Message);
+            }
+            catch (System.Exception exception)
+            {
+                editor.WriteMessage(
+                    "\nCadQuery 失败：{0}。未修改图纸。\n",
+                    exception.GetType().Name);
+            }
+        }
+
+        [CommandMethod("CODEX16QUERYNEXT", CommandFlags.Modal)]
+        public void QueryDrawingIndexNextPage()
+        {
+            var editor = GetActiveEditor();
+            if (editor == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var response = DrawingIndexRuntime.QueryNext();
+                editor.WriteMessage("\n{0}\n", DrawingIndexRuntime.FormatQueryResponse(response));
+            }
+            catch (DrawingIndexQueryException exception)
+            {
+                editor.WriteMessage(
+                    "\nCadQuery 下一页被拒绝：code={0}, message={1}\n",
+                    exception.Code,
+                    exception.Message);
+            }
+            catch (System.Exception exception)
+            {
+                editor.WriteMessage(
+                    "\nCadQuery 下一页失败：{0}。未修改图纸。\n",
+                    exception.GetType().Name);
+            }
         }
 
         [CommandMethod("CODEX16AGENTSTART", CommandFlags.Modal)]
@@ -309,6 +475,55 @@ namespace Codex.AutoCAD.Host2016
             return value.HasValue
                 ? value.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 : "unavailable";
+        }
+
+        private static string MapIndexScope(string keyword)
+        {
+            if (string.Equals(keyword, "Selection", StringComparison.OrdinalIgnoreCase))
+            {
+                return DrawingIndexScopes.Selection;
+            }
+            if (string.Equals(keyword, "Current", StringComparison.OrdinalIgnoreCase))
+            {
+                return DrawingIndexScopes.CurrentSpace;
+            }
+            if (string.Equals(keyword, "Model", StringComparison.OrdinalIgnoreCase))
+            {
+                return DrawingIndexScopes.ModelSpace;
+            }
+            if (string.Equals(keyword, "Layouts", StringComparison.OrdinalIgnoreCase))
+            {
+                return DrawingIndexScopes.Layouts;
+            }
+            return DrawingIndexScopes.Drawing;
+        }
+
+        private static void ApplyQueryFilter(CadQueryFilter filter, string kind, string value)
+        {
+            if (string.Equals(kind, "Type", StringComparison.OrdinalIgnoreCase))
+            {
+                filter.EntityTypes = new[] { value };
+            }
+            else if (string.Equals(kind, "Layer", StringComparison.OrdinalIgnoreCase))
+            {
+                filter.Layers = new[] { value };
+            }
+            else if (string.Equals(kind, "Space", StringComparison.OrdinalIgnoreCase))
+            {
+                filter.Spaces = new[] { value };
+            }
+            else if (string.Equals(kind, "Block", StringComparison.OrdinalIgnoreCase))
+            {
+                filter.BlockNames = new[] { value };
+            }
+            else if (string.Equals(kind, "Text", StringComparison.OrdinalIgnoreCase))
+            {
+                filter.TextContains = value;
+            }
+            else if (string.Equals(kind, "Object", StringComparison.OrdinalIgnoreCase))
+            {
+                filter.ObjectIds = new[] { value };
+            }
         }
 
         private static void WriteSystemVariable(Editor editor, string variableName)

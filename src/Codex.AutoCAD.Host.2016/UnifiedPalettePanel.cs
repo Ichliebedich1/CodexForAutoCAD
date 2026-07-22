@@ -45,7 +45,7 @@ namespace Codex.AutoCAD.Host2016
 
             var boundaries = new TextBlock
             {
-                Text = "统一只读 AI MVP 候选 · Agent 手动连接 · CAD 写入禁用 · 插件不会保存 DWG",
+                Text = "M2 只读整图索引开发候选 · Agent 手动连接 · CAD 写入禁用 · 插件不会保存 DWG",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = Brushes.DarkRed,
                 FontWeight = FontWeights.SemiBold,
