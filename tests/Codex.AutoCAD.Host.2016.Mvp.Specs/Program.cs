@@ -114,6 +114,14 @@ var specs = new[]
         "A turn without a terminal event times out, interrupts once, and rejects late work",
         TurnTimeoutFailsClosed),
     new SpecCase(
+        "HOST2016_NEW_CONVERSATION_CREATES_FRESH_THREAD",
+        "A new Host conversation gets a fresh system id and Provider thread before the next turn",
+        NewConversationCreatesFreshThread),
+    new SpecCase(
+        "HOST2016_NEW_CONVERSATION_REJECTS_ACTIVE_TURN",
+        "A new conversation cannot overwrite an active Host turn",
+        NewConversationRejectsActiveTurn),
+    new SpecCase(
         "HOST2016_TERMINATE_SUCCESS_STOPS_ONCE",
         "AutoCAD termination performs one cleanup when it succeeds",
         TerminateSuccessStopsOnce),
@@ -1083,6 +1091,99 @@ static async Task TurnTimeoutFailsClosed()
     Equal(textCountAtTimeout, textEvents.Count, "Late timeout text event count");
 }
 
+static async Task NewConversationCreatesFreshThread()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-before-new-conversation",
+        "system-session-before-new-conversation");
+
+    await client.NewConversationAsync(
+            "doc-new-conversation",
+            CancellationToken.None)
+        .ConfigureAwait(false);
+
+    Equal(1, bridge.StartThreadCount, "New conversation Provider thread count");
+    var startThread = bridge.LastStartThreadRequest
+        ?? throw new InvalidOperationException("New conversation request was not captured.");
+    True(
+        Guid.TryParseExact(startThread.ConversationId, "N", out _),
+        "New Host system session id was not a canonical 32-character identifier.");
+    True(
+        !string.Equals(
+            startThread.ConversationId,
+            bridge.LastStartedThreadId,
+            StringComparison.Ordinal),
+        "Host system session id was confused with the Provider thread id.");
+
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2
+        {
+            Document = new CadContextDocumentV2
+            {
+                DocumentId = "doc-new-conversation",
+            },
+        },
+        ContextSha256 = new string('3', 64),
+    };
+    await client.AskAsync(
+            "first request in fresh conversation",
+            context,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+
+    True(
+        bridge.LastStartTurnV2Request != null
+        && string.Equals(
+            bridge.LastStartTurnV2Request.ThreadId,
+            bridge.LastStartedThreadId,
+            StringComparison.Ordinal),
+        "The first turn after a new conversation did not use the fresh Provider thread.");
+}
+
+static async Task NewConversationRejectsActiveTurn()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-active-before-new-conversation",
+        "system-session-active-before-new-conversation");
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2
+        {
+            Document = new CadContextDocumentV2
+            {
+                DocumentId = "doc-active-before-new-conversation",
+            },
+        },
+        ContextSha256 = new string('4', 64),
+    };
+    await client.AskAsync(
+            "keep this request active",
+            context,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+
+    var failure = await ExpectTurnFailure(
+            client.NewConversationAsync(
+                "doc-active-before-new-conversation",
+                CancellationToken.None))
+        .ConfigureAwait(false);
+
+    True(
+        failure.InnerException is AgentBridgeClientException bridgeFailure
+        && string.Equals(bridgeFailure.Code, AgentBridgeErrorCodes.Busy, StringComparison.Ordinal),
+        "New conversation during an active turn did not return the stable busy error code.");
+    Equal(0, bridge.StartThreadCount, "Provider thread count after rejected new conversation");
+}
+
 static Task TerminateSuccessStopsOnce()
 {
     var stopCount = 0;
@@ -1280,6 +1381,12 @@ internal sealed class FakeAgentBridgeClient : IAgentBridgeClient
 
     internal int StartTurnV2Count { get; private set; }
 
+    internal int StartThreadCount { get; private set; }
+
+    internal AgentThreadStartRequest? LastStartThreadRequest { get; private set; }
+
+    internal string LastStartedThreadId { get; private set; } = string.Empty;
+
     internal AgentTurnStartV2Request? LastStartTurnV2Request { get; private set; }
 
     internal int InterruptTurnCount { get; private set; }
@@ -1317,7 +1424,14 @@ internal sealed class FakeAgentBridgeClient : IAgentBridgeClient
         AgentThreadStartRequest request,
         CancellationToken cancellationToken)
     {
-        throw new NotSupportedException();
+        cancellationToken.ThrowIfCancellationRequested();
+        StartThreadCount++;
+        LastStartThreadRequest = request;
+        LastStartedThreadId = "provider-thread-" + StartThreadCount;
+        return Task.FromResult(new AgentThreadStartResponse
+        {
+            ThreadId = LastStartedThreadId,
+        });
     }
 
     public Task<AgentTurnStartResponse> StartTurnAsync(

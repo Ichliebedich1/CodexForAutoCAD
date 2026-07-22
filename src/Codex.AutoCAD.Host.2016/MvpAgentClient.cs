@@ -23,12 +23,14 @@ namespace Codex.AutoCAD.Host2016
         private IAgentBridgeClient bridge;
         private string threadId = string.Empty;
         private string systemSessionId = string.Empty;
+        private string conversationDocumentId = string.Empty;
         private MvpAgentTurnState activeTurn;
         private string terminalBridgeErrorCode = string.Empty;
         private Task startTask;
         private Task stopTask;
         private MvpAgentStopCoordinator stopCoordinator;
         private bool online;
+        private bool conversationTransition;
         private bool stopRequested;
         private bool stopCompleted;
 
@@ -275,6 +277,83 @@ namespace Codex.AutoCAD.Host2016
                 }
 
                 throw turnException;
+            }
+        }
+
+        internal async Task NewConversationAsync(
+            string documentId,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IAgentBridgeClient currentBridge;
+            string newSystemSessionId;
+            lock (sync)
+            {
+                EnsureOnlineForAskLocked();
+                if (activeTurn != null && !activeTurn.IsTerminal)
+                {
+                    throw new MvpAgentTurnException(
+                        activeTurn.RequestId,
+                        activeTurn.State,
+                        new AgentBridgeClientException(
+                            AgentBridgeErrorCodes.Busy,
+                            "已有只读 Codex 回合正在运行。"));
+                }
+
+                if (conversationTransition)
+                {
+                    throw new AgentBridgeClientException(
+                        AgentBridgeErrorCodes.Busy,
+                        "Codex 对话正在切换。");
+                }
+
+                currentBridge = bridge;
+                newSystemSessionId = Guid.NewGuid().ToString("N");
+                conversationTransition = true;
+            }
+
+            try
+            {
+                var thread = await currentBridge.StartThreadAsync(
+                        new AgentThreadStartRequest
+                        {
+                            ConversationId = newSystemSessionId,
+                        },
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (thread == null || string.IsNullOrWhiteSpace(thread.ThreadId))
+                {
+                    throw new InvalidOperationException(
+                        "AgentHost 未返回有效 Codex thread。");
+                }
+
+                lock (sync)
+                {
+                    if (!ReferenceEquals(bridge, currentBridge) || !online)
+                    {
+                        throw CreateUnavailableExceptionLocked();
+                    }
+
+                    systemSessionId = newSystemSessionId;
+                    threadId = thread.ThreadId;
+                    conversationDocumentId = documentId ?? string.Empty;
+                    activeTurn = null;
+                    conversationTransition = false;
+                }
+
+                PublishSafely(TextChanged, string.Empty);
+                PublishSafely(
+                    StatusChanged,
+                    "新的只读 Codex 对话已建立；CAD 上下文保持不变。");
+            }
+            catch
+            {
+                lock (sync)
+                {
+                    conversationTransition = false;
+                }
+
+                throw;
             }
         }
 
