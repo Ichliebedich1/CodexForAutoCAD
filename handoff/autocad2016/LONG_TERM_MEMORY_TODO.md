@@ -168,18 +168,19 @@ DBMOD。
 M2-A 图纸索引和 M2-B Codex 动态查询已形成同一自动化候选：
 
 - Host 版本：`0.4.0.0`。
-- 候选：`autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd`。
+- 候选：`autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2`。
 - Host SHA-256：
-  `597A7A3DC047B7A8188C0E4C7768032A5D8DA428AE210AE615713B8497AB0637`。
+  `E85D97EC02505EF69C67F710EAD5D35D18481B7D2DBB4C3D87195FCDE4156B7E`。
 - AgentHost SHA-256：
-  `432E7CF97D9E968D96C83FDE4FDD3C40961326E90CCD16D90BC3E34F21C968F6`。
+  `FA16355C185F61CD7E85446E884C2FF9D7C745E5E2EB0CC40747C916C215371B`。
 - manifest SHA-256：
-  `7E6116AF0F2D6BDBEB64DB6D009705E21358CB55609E36697EC179D17B690C18`。
+  `95427BD85E70870C483512CD4401228B70F63608802512119F5ECB6486844356`。
 - 自动化：Contracts net8/net45 `84/84`、Bridge Client net8/net45 `29/29`、
-  Bridge/AgentHost `39/39`、AgentRuntime `33/33`、Host MVP `52/52`、完整 Phase 2
-  `307/307`、R20.1 Release、29 文件只读闭包和 Host A/B 位级一致通过。
+  Bridge/AgentHost `39/39`、AgentRuntime `33/33`、Host MVP `53/53`、完整 Phase 2
+  `308/308`、benchmark fixture/evidence `6/6`、R20.1 Release、30 文件只读闭包和 Host
+  A/B 位级一致通过。
 - 证据：
-  `m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd.json`。
+  `m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2.json`。
 - 说明：`M2_DRAWING_INDEX_VERTICAL_SLICE_20260722.md`。
 - 实机入口：`M2_DRAWING_INDEX_RUNTIME_TEST_20260722.md`。
 
@@ -204,8 +205,14 @@ M2-A/M2-B 代码与自动化已完成：
   tool call 和 query ID 分离并逐项绑定。
 - [x] 覆盖反向查询早于 turn-start 响应的竞态、取消/STOP 排空、断线、终态、身份不匹配和
   stale 索引拒绝；50k 发布避免第二次数组深拷贝。
-- [ ] 建立 1,000、10,000、50,000 对象的脱敏基准图。
-- [ ] 冻结 UI 卡顿、总扫描时间、内存和 IPC 大小预算。
+- [x] 建立确定性 1,000、10,000、50,000 对象 AC1009 脱敏基准图；三个 fixture 均为
+  精确模型空间实体数，双次生成哈希、独立 DXF 解析和拒绝覆盖门禁通过。
+- [x] `CODEX16INDEXINFO` 输出 Host 本地 Idle 分片、总扫描、内存和查询耗时，并显示查询页
+  `200` 与 IPC 单帧 `8,388,608` 字节硬上限；新增只接受数值/布尔值与候选 ID 的脱敏
+  evidence 记录器，包含 AutoCAD 扫描前/峰值工作集并拒绝 DBMOD 变化和覆盖已有证据。
+- [ ] 使用三档实机数据冻结 UI 最大连续卡顿、总扫描时间、工作集、查询和 IPC 验收预算；
+  当前 12 ms cooperative slice、120 s 扫描、64 MiB 估算内存只是代码 guardrail，不得冒充
+  已验证的产品性能预算。
 - [x] 自动化证明实体、统计桶、内存和时间预算映射为 `partial/limited`，不伪装完整。
 
 M2 仍未完成，以下内容不能由自动化候选替代：
@@ -215,7 +222,8 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 - [ ] 实机验证修改/撤销/切图后的 stale 拒绝，以及查询/回合取消和断线 fail-closed。
 - [ ] 实机验证跨 Idle 片段的 `BlockTableRecordEnumerator` 生命周期和退出清理。
 - [ ] 实机验证扫描中修改图纸、切换布局、取消、超时和旧游标拒绝。
-- [ ] 完成 1k/10k/50k 扫描响应性、总时间、工作集、本地查询和 Agent 查询性能 evidence。
+- [ ] 使用 `M2_DRAWING_INDEX_BENCHMARK_FIXTURES_20260722.md` 完成 1k/10k/50k 扫描响应性、
+  总时间、工作集、本地查询和 Agent 查询真实性能 evidence。
 
 ## 8. M3：CAD 读取语义和对象覆盖
 

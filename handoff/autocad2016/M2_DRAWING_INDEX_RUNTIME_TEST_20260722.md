@@ -11,19 +11,19 @@ Codex 不启动、关闭、重启或操作 AutoCAD。请使用脱敏测试图或
 候选目录：
 
 ```text
-C:\\tmp\\CodexForAutoCAD-m2-drawing-index\\artifacts\\autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd
+C:\\tmp\\CodexForAutoCAD-m2-benchmark\\artifacts\\autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2
 ```
 
 加载前核对：
 
 ```powershell
-Get-FileHash 'C:\\tmp\\CodexForAutoCAD-m2-drawing-index\\artifacts\\autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd\\Codex.AutoCAD.Host.2016.dll' -Algorithm SHA256
+Get-FileHash 'C:\\tmp\\CodexForAutoCAD-m2-benchmark\\artifacts\\autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2\\Codex.AutoCAD.Host.2016.dll' -Algorithm SHA256
 ```
 
 应为：
 
 ```text
-597A7A3DC047B7A8188C0E4C7768032A5D8DA428AE210AE615713B8497AB0637
+E85D97EC02505EF69C67F710EAD5D35D18481B7D2DBB4C3D87195FCDE4156B7E
 ```
 
 在 AutoCAD 中只需 `NETLOAD` 这一份：
@@ -237,26 +237,35 @@ Palette 回答。
 
 ## 8. 1k/10k/50k 脱敏基准记录
 
-每张图分别记录：对象总数、最终状态、已索引数、占位数、开始到完成耗时、最长主界面
-卡顿体感、AutoCAD 是否持续可操作、峰值工作集（可观察则记录）、Host 首页查询耗时、
-一次 `cad.query_drawing` ASK 体感和 DBMOD 前后值。
+先按 `M2_DRAWING_INDEX_BENCHMARK_FIXTURES_20260722.md` 生成并核对三个固定 DXF。它们的
+模型空间分别精确包含 1,000、10,000、50,000 个实体；通过 AutoCAD 正常“打开”界面逐张
+打开，不要把 DXF 另存或覆盖为生产图。每张图只测试 `Model` 范围，完成后执行
+`CODEX16INDEXINFO`，记录新增的脱敏遥测字段：
 
 ```text
 样本：1k / 10k / 50k
-范围：Drawing
+范围：Model
 status：
 entityCount / indexedEntityCount：
 unsupported / failed：
-扫描耗时：
-最长卡顿：
+Idle slices total/preparation/read：
+Maximum idle/preparation/read slice ms：
+Total scan elapsed ms：
+Estimated managed bytes：
+AutoCAD working set before / peak bytes：
 查询 All 首页/总页数：
-cad.query_drawing ASK：成功/失败；约耗时；返回页数
+Queries / Last query ms / Maximum query ms：
+cad.query_drawing ASK：成功/失败；返回页数
 AutoCAD 可操作：是/否
 DBMOD before -> after：
 ```
 
-没有真实样本或没有计时数据时标为“未验证”。自动化 50,000 个合成实体契约测试不能替
-代这里的 AutoCAD 运行时证据。
+测试时在扫描期间用正常界面做平移、缩放或切换 Palette，确认 AutoCAD 持续响应；不要向
+插件发送 CAD 写入命令或修改 fixture。完成后使用基准说明中的记录器生成脱敏 JSON
+evidence。工作集由外部 PowerShell 只读采样，不由插件采集；没有真实样本、计时或工作集
+数据时标为“未验证”。自动化 `6/6` 和 50,000 个合成
+契约测试不能替代这里的 AutoCAD 运行时证据。12 ms 是 cooperative slice 目标，不是
+“实测最大卡顿已通过”；实际最大值必须如实保留，待三档证据齐全后冻结验收预算。
 
 ## 9. 证据和隐私规则
 

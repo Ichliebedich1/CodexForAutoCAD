@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using Codex.AutoCAD.Contracts;
@@ -34,6 +35,7 @@ namespace Codex.AutoCAD.Host2016
         private readonly DrawingIndexDescriptor descriptor;
         private readonly CadQueryEntity[] entities;
         private readonly DrawingIndexSnapshotValidity validity;
+        private readonly DrawingIndexPerformanceMetrics performanceMetrics;
 
         internal DrawingIndexAgentSnapshot(
             int generation,
@@ -45,7 +47,8 @@ namespace Codex.AutoCAD.Host2016
                 sourceDescriptor,
                 sourceEntities,
                 sourceValidity,
-                false)
+                false,
+                null)
         {
         }
 
@@ -55,12 +58,28 @@ namespace Codex.AutoCAD.Host2016
             CadQueryEntity[] ownedFrozenEntities,
             DrawingIndexSnapshotValidity sourceValidity)
         {
+            return CreateFromOwnedFrozenEntities(
+                generation,
+                sourceDescriptor,
+                ownedFrozenEntities,
+                sourceValidity,
+                null);
+        }
+
+        internal static DrawingIndexAgentSnapshot CreateFromOwnedFrozenEntities(
+            int generation,
+            DrawingIndexDescriptor sourceDescriptor,
+            CadQueryEntity[] ownedFrozenEntities,
+            DrawingIndexSnapshotValidity sourceValidity,
+            DrawingIndexPerformanceMetrics performanceMetrics)
+        {
             return new DrawingIndexAgentSnapshot(
                 generation,
                 sourceDescriptor,
                 ownedFrozenEntities,
                 sourceValidity,
-                true);
+                true,
+                performanceMetrics);
         }
 
         private DrawingIndexAgentSnapshot(
@@ -68,7 +87,8 @@ namespace Codex.AutoCAD.Host2016
             DrawingIndexDescriptor sourceDescriptor,
             IReadOnlyList<CadQueryEntity> sourceEntities,
             DrawingIndexSnapshotValidity sourceValidity,
-            bool takeFrozenEntityOwnership)
+            bool takeFrozenEntityOwnership,
+            DrawingIndexPerformanceMetrics sourcePerformanceMetrics)
         {
             if (generation <= 0)
             {
@@ -134,6 +154,7 @@ namespace Codex.AutoCAD.Host2016
                 }
             }
             validity = sourceValidity;
+            performanceMetrics = sourcePerformanceMetrics;
         }
 
         internal int Generation { get; private set; }
@@ -157,45 +178,57 @@ namespace Codex.AutoCAD.Host2016
             AgentDrawingQueryRequest request,
             CancellationToken cancellationToken)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!validity.IsCurrent)
+            var timer = Stopwatch.StartNew();
+            try
             {
-                throw new DrawingIndexQueryException(
-                    "drawing_index_stale",
-                    "DrawingIndex已因图纸变化而失效。");
-            }
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!validity.IsCurrent)
+                {
+                    throw new DrawingIndexQueryException(
+                        "drawing_index_stale",
+                        "DrawingIndex已因图纸变化而失效。");
+                }
 
-            var failures = AgentBridgeContractValidator.Validate(request);
-            if (failures.Length != 0)
-            {
-                throw new DrawingIndexQueryException(
-                    failures[0].Code,
-                    "整图查询请求未通过冻结契约。");
-            }
+                var failures = AgentBridgeContractValidator.Validate(request);
+                if (failures.Length != 0)
+                {
+                    throw new DrawingIndexQueryException(
+                        failures[0].Code,
+                        "整图查询请求未通过冻结契约。");
+                }
 
-            var boundRequest = new CadQueryRequest
-            {
-                IndexId = descriptor.IndexId,
-                DocumentId = descriptor.DocumentId,
-                DocumentRevision = descriptor.DocumentRevision,
-                QueryId = request.QueryId,
-                Filter = CloneFilter(request.Filter),
-                PageSize = request.PageSize,
-                Cursor = request.Cursor ?? string.Empty,
-            };
-            var response = DrawingIndexQueryEngine.Execute(
-                descriptor,
-                entities,
-                boundRequest,
-                cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!validity.IsCurrent)
-            {
-                throw new DrawingIndexQueryException(
-                    "drawing_index_stale",
-                    "DrawingIndex在查询期间失效；结果已拒绝。");
+                var boundRequest = new CadQueryRequest
+                {
+                    IndexId = descriptor.IndexId,
+                    DocumentId = descriptor.DocumentId,
+                    DocumentRevision = descriptor.DocumentRevision,
+                    QueryId = request.QueryId,
+                    Filter = CloneFilter(request.Filter),
+                    PageSize = request.PageSize,
+                    Cursor = request.Cursor ?? string.Empty,
+                };
+                var response = DrawingIndexQueryEngine.Execute(
+                    descriptor,
+                    entities,
+                    boundRequest,
+                    cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!validity.IsCurrent)
+                {
+                    throw new DrawingIndexQueryException(
+                        "drawing_index_stale",
+                        "DrawingIndex在查询期间失效；结果已拒绝。");
+                }
+                return response;
             }
-            return response;
+            finally
+            {
+                timer.Stop();
+                if (performanceMetrics != null)
+                {
+                    performanceMetrics.RecordQuery(timer.Elapsed);
+                }
+            }
         }
 
         private static bool IsQueryableStatus(string status)

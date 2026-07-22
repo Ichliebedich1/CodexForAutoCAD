@@ -47,6 +47,10 @@ var specs = new[]
         "runtime publication reuses the already frozen private entity array",
         DrawingSnapshotTakesFrozenOwnership),
     new SpecCase(
+        "HOST2016_DRAWING_INDEX_PERFORMANCE_TELEMETRY",
+        "scan slices and both local and Agent queries produce monotonic host-local telemetry",
+        DrawingIndexPerformanceTelemetry),
+    new SpecCase(
         "HOST2016_DRAWING_SNAPSHOT_CANCEL_AND_STALE",
         "snapshot queries honor cancellation and reject invalidated generations",
         DrawingSnapshotCancelAndStale),
@@ -698,6 +702,52 @@ static DrawingIndexAgentSnapshot CreateDrawingSnapshot(
         CreateReadyDrawingDescriptor(documentId),
         new[] { CreateDrawingEntity("object-" + generation, "Layer-A") },
         validity);
+}
+
+static Task DrawingIndexPerformanceTelemetry()
+{
+    var metrics = new DrawingIndexPerformanceMetrics();
+    metrics.RecordIdleSlice(
+        true,
+        TimeSpan.FromMilliseconds(8.25),
+        TimeSpan.FromMilliseconds(8.25));
+    metrics.RecordIdleSlice(
+        false,
+        TimeSpan.FromMilliseconds(13.5),
+        TimeSpan.FromMilliseconds(25));
+    metrics.CompleteScan(TimeSpan.FromMilliseconds(24));
+
+    var validity = new DrawingIndexSnapshotValidity();
+    var drawingSnapshot = DrawingIndexAgentSnapshot.CreateFromOwnedFrozenEntities(
+        1,
+        CreateReadyDrawingDescriptor("doc-performance"),
+        new[] { CreateDrawingEntity("object-performance", "Layer-A") },
+        validity,
+        metrics);
+    drawingSnapshot.Query(
+        CreateDrawingQueryRequest(
+            "request-performance",
+            "thread-performance",
+            "turn-performance",
+            "query-performance"),
+        CancellationToken.None);
+
+    var snapshot = metrics.Snapshot();
+    Equal(2, snapshot.IdleSliceCount, "Idle slice count");
+    Equal(1, snapshot.PreparationSliceCount, "Preparation slice count");
+    Equal(1, snapshot.ReadSliceCount, "Read slice count");
+    Equal(1, snapshot.QueryCount, "Query count");
+    True(
+        snapshot.MaximumIdleSliceDuration == TimeSpan.FromMilliseconds(13.5),
+        "Maximum idle slice duration was not retained.");
+    True(
+        snapshot.TotalScanDuration == TimeSpan.FromMilliseconds(25),
+        "A shorter completion sample regressed total scan duration.");
+    True(
+        DrawingIndexPerformanceMetrics.FormatMilliseconds(
+            snapshot.MaximumIdleSliceDuration) == "13.500",
+        "Performance milliseconds are not invariant and stable.");
+    return Task.CompletedTask;
 }
 
 static DrawingIndexDescriptor CreateReadyDrawingDescriptor(string documentId)

@@ -108,18 +108,26 @@ NETLOAD 证据的能力一律视为未支持。
   并排空反向查询。50k 索引发布使用冻结实体数组所有权转移，避免第二次数组深拷贝。
 - 当前 Host 命令为 `CODEX16INDEX`、`CODEX16INDEXINFO`、`CODEX16INDEXCANCEL`、
   `CODEX16QUERY`、`CODEX16QUERYNEXT`；Doctor 和加载横幅明确声明动态查询已接入。
-- M2-A/M2-B 已冻结 `0.4.0.0` 自动化候选
-  `artifacts/autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd/`。Host SHA-256 为
-  `597A7A3DC047B7A8188C0E4C7768032A5D8DA428AE210AE615713B8497AB0637`，AgentHost EXE 为
-  `432E7CF97D9E968D96C83FDE4FDD3C40961326E90CCD16D90BC3E34F21C968F6`，manifest 为
-  `7E6116AF0F2D6BDBEB64DB6D009705E21358CB55609E36697EC179D17B690C18`。
-- 该候选通过 Contracts net8/net45 `84/84`、Bridge Client net8/net45 `29/29`、
-  Bridge/AgentHost `39/39`、AgentRuntime `33/33`、Host MVP `52/52`、完整 Phase 2
-  `307/307`、29 文件 Host.2016 只读 Compile 闭包、R20.1/net45/x64 双构建位级一致、
-  敏感信息门禁和候选 AgentHost doctor。证据为
-  `evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd.json`。
-  它没有启动或操作 AutoCAD，不能证明跨 Idle 枚举器生命周期、动态查询实机行为或
-  1k/10k/50k 性能。Provider-neutral 抽象、Direct API 和自研 Agent Loop 继续冻结。
+- M2 性能准备分支 `codex/m2-benchmark-fixtures` 已在 M2-A/M2-B 真实调用链上增加 Host 本地
+  性能遥测。`CODEX16INDEXINFO` 记录 Idle 总/准备/读取片数、最大分片耗时、总扫描耗时、
+  估算内存、本地查询与 Codex 反向查询耗时，并明确显示查询页 `200` 与 IPC 单帧
+  `8,388,608` 字节硬上限；这些字段不进入 wire 契约。
+- 已建立确定性 AC1009 脱敏 DXF：模型空间精确 1,000、10,000、50,000 个实体，覆盖
+  Line/Circle/Arc/Text/Insert 和 8 个图层。生成器拒绝覆盖已有目录，不启动 AutoCAD；
+  独立流式解析、双次哈希、脱敏 evidence 和 fail-closed 测试为 `6/6`。
+- 当前 M2 `0.4.0.0` 自动化候选为
+  `C:\tmp\CodexForAutoCAD-m2-benchmark\artifacts\autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2`。
+  Host SHA-256 为 `E85D97EC02505EF69C67F710EAD5D35D18481B7D2DBB4C3D87195FCDE4156B7E`，
+  AgentHost EXE 为 `FA16355C185F61CD7E85446E884C2FF9D7C745E5E2EB0CC40747C916C215371B`，
+  manifest 为 `95427BD85E70870C483512CD4401228B70F63608802512119F5ECB6486844356`。
+- 当前候选通过 Contracts net8/net45 `84/84`、Bridge Client net8/net45 `29/29`、
+  Bridge/AgentHost `39/39`、AgentRuntime `33/33`、Host MVP `53/53`、完整 Phase 2
+  `308/308`、benchmark `6/6`、30 文件 Host.2016 只读 Compile 闭包、R20.1/net45/x64
+  双构建位级一致、敏感信息门禁和候选 AgentHost doctor。证据为
+  `evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2.json`。
+  它没有启动或操作 AutoCAD，不能证明跨 Idle 枚举器生命周期、动态查询实机行为或真实性能。
+  旧 `597A7A3D...` 候选只保留为历史 M2-B 冻结点。Provider-neutral 抽象、Direct API 和
+  自研 Agent Loop 继续冻结。
 
 ## 已验证检查点
 
@@ -419,7 +427,8 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
 8. M2 五种范围、本地分页、大选择集/未知占位、取消、失效和正常退出。
 9. 无选择上下文、仅有效 DrawingIndex 时 ASK，并明确触发 `cad.query_drawing` 分页查询。
 10. 修改/撤销/切图后的 stale 拒绝，以及查询、回合取消和断线 fail-closed。
-11. M2 1k/10k/50k 扫描响应性、总时间、工作集、DBMOD 和 Agent 查询性能。
+11. 使用已冻结 fixture 和 Host 遥测完成 M2 1k/10k/50k 扫描响应性、总时间、工作集、
+    DBMOD 和 Agent 查询真实性能；自动化资产已完成，实机数值仍待采集。
 12. 19 类对象逐类字段核对放在 M3。
 
 ## 下一步顺序
@@ -428,8 +437,8 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
 2. P1 已完成自动化、冻结和 AutoCAD 2016 live 基线。
 3. M0 自动化、候选冻结和本地 `main` 收拢均已完成。
 4. M1 代码、自动化和 `0.3.3.0` 候选冻结已完成；精确候选实机矩阵仍待 evidence。
-5. M2-A 图纸索引与 M2-B `cad.query_drawing` 真实调用链、自动化和 `0.4.0.0` 候选已完成；
-   等待实机/性能 evidence。
+5. M2-A 图纸索引、M2-B `cad.query_drawing`、三档 fixture、性能遥测和脱敏记录器已完成并
+   冻结 `0.4.0.0` 候选；等待实机/性能 evidence 后冻结验收预算。
 6. M2 实机完成后进入 M3 对象语义，再关闭 M4 沙箱与审计；M4 完成前不启用 M5 CAD 写入。
 
 ## 更新纪律

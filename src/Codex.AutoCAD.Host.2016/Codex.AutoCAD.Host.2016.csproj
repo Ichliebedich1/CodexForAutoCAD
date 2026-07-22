@@ -109,6 +109,7 @@
     <Compile Include="DocumentContextRegistry.cs" />
     <Compile Include="DrawingIndexCore.cs" />
     <Compile Include="DrawingIndexAgentSnapshot.cs" />
+    <Compile Include="DrawingIndexPerformanceMetrics.cs" />
     <Compile Include="DrawingIndexEntityReader.cs" />
     <Compile Include="DrawingIndexRuntime.cs" />
     <Compile Include="UnifiedReadOnlyContextRuntime.cs" />
