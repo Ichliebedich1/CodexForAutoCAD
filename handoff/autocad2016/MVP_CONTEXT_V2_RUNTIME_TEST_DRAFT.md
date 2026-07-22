@@ -1,12 +1,21 @@
 # AutoCAD 2016 CadContextJson v2 实机测试草案
 
-状态：**仅供候选冻结前审查，不得对当前 P1 DLL 执行。**
+状态：**P1 候选已自动化冻结，允许用户人工执行；当前仍未取得 live 证据。**
 
-只有满足以下条件后，才可把本文件升级为正式测试手册：
+本手册对应候选：
 
-1. P0 `0.3.2` 停止生命周期候选已人工通过并形成独立提交。
-2. P0 提交已受控引入 P1，冲突按 `P0_TO_P1_CONTROLLED_INTEGRATION.md` 处理。
-3. 合并后完整门禁通过，并生成新的候选 ID、Host/AgentHost SHA-256 和只读包。
+```text
+C:\tmp\CodexForAutoCAD-context-v2\artifacts\autocad2016-mvp-context-v2-v032-4d3386d9-0645a745-cd07eb22\Codex.AutoCAD.Host.2016.dll
+Host SHA-256: 4D3386D9A825B2842290ACB51376FBA6BE6603F49295E606F8C9F3F92B538C08
+AgentHost/Codex.AutoCAD.AgentHost.exe SHA-256: 0645A745441717F73BB79F1AEED295ADA51D5A29D74660085BF003E1ACEE514F
+```
+
+执行前请确认 AutoCAD 2016 已由用户自行启动，且不要把 P0 候选与本 P1 候选混用。
+以下条件已满足，不需要再次审查：
+
+1. P0 `0.3.2` 停止生命周期候选已人工通过并形成独立提交 `8a4ee57`。
+2. P0 提交已受控引入 P1，当前 P1 提交为 `7edf27`。
+3. 合并后完整门禁为 `235/235`，已生成上述候选 ID、Host/AgentHost SHA-256 和只读包。
 
 ## 预期测试范围
 

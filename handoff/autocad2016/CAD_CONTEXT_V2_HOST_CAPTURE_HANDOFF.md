@@ -1,8 +1,8 @@
 # CadContextJson v2 Host.2016 捕获层交接
 
-日期：2026-07-21（北京时间）
+日期：2026-07-22（北京时间）
 
-状态：v2 捕获层、统一 Runtime、Palette 字段和 Agent v2 turn 已接入并通过本机编译/规格；尚未执行 AutoCAD 2016 `NETLOAD`。
+状态：v2 捕获层、统一 Runtime、Palette 字段和 Agent v2 turn 已接入；P0 停止修复已受控吸收，P1 候选已自动化冻结，但尚未执行 AutoCAD 2016 `NETLOAD`。
 
 ## 本阶段完成内容
 
@@ -59,13 +59,22 @@
 - v2 固定向量保持 `6678` bytes / `21cc9378...c3b4`。
 - Phase 2：Release `0` warning / `0` error，8 个规格项目动态汇总 `199/199`；Host
   禁止 API、AgentHost doctor、秘密扫描和 `git diff --check` 通过。
-- 本次继续开发后，Bridge 新增真实 v2 `StartTurnV2Async` 回合并达到 `38/38`；随后完整
-  Phase 2 本机门禁动态汇总为 `232/232`，同时通过 Host 禁用 API、AgentHost doctor、
-  `git diff --check` 和秘密扫描。历史 `199/199` evidence 尚未重生成，仍保留为历史记录。
+- 本次继续开发后，Bridge 新增真实 v2 `StartTurnV2Async` 回合并达到 `38/38`；P0 停止
+  修复受控引入后完整 Phase 2 本机门禁动态汇总为 `235/235`，同时通过 Host 禁用 API、
+  AgentHost doctor、`git diff --check` 和秘密扫描。
 - 当前 Contracts 已扩展为 `71/71`，Host v2 能力策略为 `6/6`；缺少 v2 方法、缺少 v2
   schema、null 或空 schema 列表均 fail-closed，不回退到 v1。
 - 文档切换或清除若发生在 Agent 异步启动期间，发送 v2 turn 前会重新校验当前状态引用；
   旧上下文会被拒绝。该竞态保护已通过 R20.1 编译，但尚无 AutoCAD live 证据。
+
+### P1 候选冻结
+
+- 候选目录：`artifacts/autocad2016-mvp-context-v2-v032-4d3386d9-0645a745-cd07eb22/`。
+- Host SHA-256：`4D3386D9A825B2842290ACB51376FBA6BE6603F49295E606F8C9F3F92B538C08`。
+- AgentHost EXE SHA-256：`0645A745441717F73BB79F1AEED295ADA51D5A29D74660085BF003E1ACEE514F`。
+- `manifest.json` SHA-256：`719160E9EF9B46D6B49144F9F201AE7723DD9FDD4F21C99BE642A074121D5232`。
+- 候选 evidence：`handoff/autocad2016/evidence/cad-context-v2-candidate-build-autocad2016-mvp-context-v2-v032-4d3386d9-0645a745-cd07eb22.json`。
+- 自动化证据明确 `NetLoadVerified=false`、`AutoCadLiveEvidence=false`；P0 live 证据不向 P1 继承。
 
 ## 证据边界
 
@@ -84,11 +93,9 @@ restore 的方式强行让它通过，而是用两份独立源码副本完成可
 
 ## 下一步
 
-1. 先让 P0 的 `0.3.2` AgentHost 停止生命周期修复通过人工实机验证并单独提交；当前
-   P1 分支基于 `7f10d60`，不得冻结一个重新带回旧停止残留风险的可加载候选。
-2. 受控引入已验证 P0 提交后，审核 Bridge v2 跨版本兼容夹具并重新运行完整门禁。
-3. 重新建立适用于合并后项目图的 v2 Host 验证器并冻结可运行 DLL。
-4. 由用户在现有 AutoCAD 2016 中人工 `NETLOAD`，验证多种支持对象加一个未知对象、
+1. P0 停止生命周期修复已由用户实机通过并单独提交 `8a4ee57`。
+2. 已受控引入 P0，重新运行完整门禁并冻结 P1 可运行 DLL。
+3. 由用户在现有 AutoCAD 2016 中人工 `NETLOAD`，验证多种支持对象加一个未知对象、
    `complete=false`、计数、DBMOD 不变和插件不保存。
-5. 具体人工步骤以合并并冻结候选后生成的正式手册为准；当前预备草案见
-   `MVP_CONTEXT_V2_RUNTIME_TEST_DRAFT.md`。
+4. 具体人工步骤见 `MVP_CONTEXT_V2_RUNTIME_TEST_DRAFT.md`；通过后再补高 DPI、退出和
+   离线/断线/超时测试。
