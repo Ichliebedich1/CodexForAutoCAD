@@ -27,6 +27,11 @@ const string wrongCaseSpecId = "bridge-client-wrong-case-fail-closed";
 const string trailingJsonSpecId = "bridge-client-trailing-json-fail-closed";
 const string invalidUtf8SpecId = "bridge-client-invalid-utf8-fail-closed";
 const string oversizedFrameSpecId = "bridge-client-oversized-frame-fail-closed";
+const string reverseDrawingQuerySpecId = "bridge-client-reverse-drawing-query-cross-runtime";
+const string reverseDrawingQueryBeforeStartResponseSpecId =
+    "bridge-client-reverse-drawing-query-before-start-response";
+const string reverseDrawingQueryCancelSpecId = "bridge-client-reverse-drawing-query-cancel";
+const string reverseDrawingQueryStopSpecId = "bridge-client-stop-drains-reverse-drawing-query";
 var currentSpecId = capabilitiesSpecId;
 var serverExe = Environment.GetEnvironmentVariable("CODEX_BRIDGE_TEST_SERVER_EXE");
 if (string.IsNullOrWhiteSpace(serverExe) || !File.Exists(serverExe))
@@ -48,6 +53,10 @@ Process? cancellationServer = null;
 Process? badMacServer = null;
 Process? sequenceGapServer = null;
 Process? nonceReplayServer = null;
+Process? reverseDrawingQueryServer = null;
+Process? reverseDrawingQueryBeforeStartResponseServer = null;
+Process? reverseDrawingQueryCancelServer = null;
+Process? reverseDrawingQueryStopServer = null;
 
 try
 {
@@ -211,6 +220,353 @@ try
         throw new InvalidOperationException(
             "Bridge test server failed with exit code " + server.ExitCode + ".");
     }
+
+    currentSpecId = reverseDrawingQuerySpecId;
+    var reversePipe = "codex-bridge-reverse-query-" + Guid.NewGuid().ToString("N");
+    var reverseSession = "reverse-query-session-" + Guid.NewGuid().ToString("N");
+    reverseDrawingQueryServer = StartTestServer(
+        serverExe,
+        reversePipe,
+        reverseSession,
+        secretHex,
+        "reverse-query");
+    AgentDrawingQueryRequest? handledDrawingQuery = null;
+    var drawingQueryCalls = 0;
+    using (var reverseClient = new AgentBridgeClient(new AgentBridgeClientOptions
+    {
+        PipeName = reversePipe,
+        SessionId = reverseSession,
+        SessionSecret = secret,
+        ConnectTimeout = TimeSpan.FromSeconds(5),
+        RequestTimeout = TimeSpan.FromSeconds(5),
+        DrawingQueryHandler = (request, cancellationToken) =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Interlocked.Increment(ref drawingQueryCalls);
+            handledDrawingQuery = request;
+            return Task.FromResult(new AgentDrawingQueryResponse
+            {
+                RequestId = request.RequestId,
+                ThreadId = request.ThreadId,
+                TurnId = request.TurnId,
+                ToolCallId = request.ToolCallId,
+                QueryId = request.QueryId,
+                Query = new CadQueryResponse
+                {
+                    IndexId = "index-host-1",
+                    DocumentId = "document-host-1",
+                    DocumentRevision = 7,
+                    QueryId = request.QueryId,
+                    Status = CadQueryStatuses.Ok,
+                    Complete = true,
+                    TotalMatches = 1,
+                    ReturnedCount = 1,
+                    Entities = new[]
+                    {
+                        new CadQueryEntity
+                        {
+                            ObjectId = "1A",
+                            EntityType = "line",
+                            ActualType = "AcDbLine",
+                            Layer = "AI",
+                            Space = "model",
+                            ReadStatus = CadQueryReadStatuses.Parsed,
+                        },
+                    },
+                },
+            });
+        },
+    }))
+    {
+        reverseClient.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+        _ = RequestCapabilities(reverseClient);
+        var reverseThread = reverseClient.StartThreadAsync(
+                new AgentThreadStartRequest { ConversationId = "conversation-reverse-query" },
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        var reverseContext = CreateCadContext();
+        var reverseContextHash = CadContextJsonV1Codec.ComputeCanonicalSha256(reverseContext);
+        var reverseTurn = reverseClient.StartTurnAsync(
+                new AgentTurnStartRequest
+                {
+                    ThreadId = reverseThread.ThreadId,
+                    ClientTurnId = "client-turn-reverse-query",
+                    Prompt = "查询当前图纸索引。",
+                    Context = reverseContext,
+                    ContextSha256 = reverseContextHash,
+                },
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+
+        _ = RequestCapabilities(reverseClient);
+        Require(drawingQueryCalls == 1, "reverse drawing query handler count");
+        Require(handledDrawingQuery is not null, "reverse drawing query request");
+        Require(handledDrawingQuery!.ThreadId == reverseThread.ThreadId,
+            "reverse drawing query thread identity");
+        Require(handledDrawingQuery.TurnId == reverseTurn.TurnId,
+            "reverse drawing query turn identity");
+        Require(handledDrawingQuery.Filter.Layers.SequenceEqual(new[] { "AI" }),
+            "reverse drawing query filter");
+        reverseClient.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    if (!reverseDrawingQueryServer.WaitForExit(5000)
+        || reverseDrawingQueryServer.ExitCode != 0)
+    {
+        throw new InvalidOperationException("Reverse drawing query test server failed.");
+    }
+    Console.WriteLine("[PASS] " + reverseDrawingQuerySpecId);
+
+    currentSpecId = reverseDrawingQueryBeforeStartResponseSpecId;
+    var earlyReversePipe = "codex-bridge-early-reverse-query-" + Guid.NewGuid().ToString("N");
+    var earlyReverseSession = "early-reverse-query-session-" + Guid.NewGuid().ToString("N");
+    reverseDrawingQueryBeforeStartResponseServer = StartTestServer(
+        serverExe,
+        earlyReversePipe,
+        earlyReverseSession,
+        secretHex,
+        "reverse-query-before-start-response");
+    AgentDrawingQueryRequest? earlyDrawingQuery = null;
+    var earlyDrawingQueryCalls = 0;
+    using (var earlyReverseClient = new AgentBridgeClient(new AgentBridgeClientOptions
+    {
+        PipeName = earlyReversePipe,
+        SessionId = earlyReverseSession,
+        SessionSecret = secret,
+        ConnectTimeout = TimeSpan.FromSeconds(5),
+        RequestTimeout = TimeSpan.FromSeconds(5),
+        DrawingQueryHandler = (request, cancellationToken) =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Interlocked.Increment(ref earlyDrawingQueryCalls);
+            earlyDrawingQuery = request;
+            return Task.FromResult(new AgentDrawingQueryResponse
+            {
+                RequestId = request.RequestId,
+                ThreadId = request.ThreadId,
+                TurnId = request.TurnId,
+                ToolCallId = request.ToolCallId,
+                QueryId = request.QueryId,
+                Query = new CadQueryResponse
+                {
+                    IndexId = "index-host-1",
+                    DocumentId = "document-host-1",
+                    DocumentRevision = 7,
+                    QueryId = request.QueryId,
+                    Status = CadQueryStatuses.Ok,
+                    Complete = true,
+                    TotalMatches = 1,
+                    ReturnedCount = 1,
+                    Entities = new[]
+                    {
+                        new CadQueryEntity
+                        {
+                            ObjectId = "1A",
+                            EntityType = "line",
+                            ActualType = "AcDbLine",
+                            Layer = "AI",
+                            Space = "model",
+                            ReadStatus = CadQueryReadStatuses.Parsed,
+                        },
+                    },
+                },
+            });
+        },
+    }))
+    {
+        earlyReverseClient.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+        _ = RequestCapabilities(earlyReverseClient);
+        var earlyThread = earlyReverseClient.StartThreadAsync(
+                new AgentThreadStartRequest { ConversationId = "conversation-early-reverse-query" },
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        var earlyContext = CreateCadContext();
+        var earlyContextHash = CadContextJsonV1Codec.ComputeCanonicalSha256(earlyContext);
+        const string earlyRequestId = "client-turn-early-reverse-query";
+        var earlyTurn = earlyReverseClient.StartTurnAsync(
+                new AgentTurnStartRequest
+                {
+                    ThreadId = earlyThread.ThreadId,
+                    ClientTurnId = earlyRequestId,
+                    Prompt = "在启动响应返回前查询当前图纸索引。",
+                    Context = earlyContext,
+                    ContextSha256 = earlyContextHash,
+                },
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+
+        Require(earlyDrawingQueryCalls == 1, "early reverse drawing query handler count");
+        Require(earlyDrawingQuery is not null, "early reverse drawing query request");
+        Require(earlyDrawingQuery!.RequestId == earlyRequestId,
+            "early reverse drawing query request identity");
+        Require(earlyDrawingQuery.ThreadId == earlyThread.ThreadId,
+            "early reverse drawing query thread identity");
+        Require(earlyDrawingQuery.TurnId == earlyTurn.TurnId,
+            "early reverse drawing query turn identity");
+        earlyReverseClient.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    if (!reverseDrawingQueryBeforeStartResponseServer.WaitForExit(5000)
+        || reverseDrawingQueryBeforeStartResponseServer.ExitCode != 0)
+    {
+        throw new InvalidOperationException(
+            "Early reverse drawing query test server failed.");
+    }
+    Console.WriteLine("[PASS] " + reverseDrawingQueryBeforeStartResponseSpecId);
+
+    currentSpecId = reverseDrawingQueryCancelSpecId;
+    var reverseCancelPipe = "codex-bridge-reverse-cancel-" + Guid.NewGuid().ToString("N");
+    var reverseCancelSession = "reverse-cancel-session-" + Guid.NewGuid().ToString("N");
+    reverseDrawingQueryCancelServer = StartTestServer(
+        serverExe,
+        reverseCancelPipe,
+        reverseCancelSession,
+        secretHex,
+        "reverse-query-cancel");
+    using (var reverseCancelObserved = new ManualResetEventSlim(false))
+    using (var reverseCancelClient = new AgentBridgeClient(new AgentBridgeClientOptions
+    {
+        PipeName = reverseCancelPipe,
+        SessionId = reverseCancelSession,
+        SessionSecret = secret,
+        ConnectTimeout = TimeSpan.FromSeconds(5),
+        RequestTimeout = TimeSpan.FromSeconds(5),
+        DrawingQueryHandler = async (_, cancellationToken) =>
+        {
+            try
+            {
+                await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    reverseCancelObserved.Set();
+                }
+            }
+
+            throw new InvalidOperationException("cancelled query unexpectedly resumed");
+        },
+    }))
+    {
+        reverseCancelClient.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+        var cancelThread = reverseCancelClient.StartThreadAsync(
+                new AgentThreadStartRequest { ConversationId = "conversation-reverse-cancel" },
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        var cancelContext = CreateCadContext();
+        _ = reverseCancelClient.StartTurnAsync(
+                new AgentTurnStartRequest
+                {
+                    ThreadId = cancelThread.ThreadId,
+                    ClientTurnId = "client-turn-reverse-cancel",
+                    Prompt = "测试取消只读图纸查询。",
+                    Context = cancelContext,
+                    ContextSha256 = CadContextJsonV1Codec.ComputeCanonicalSha256(cancelContext),
+                },
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        _ = RequestCapabilities(reverseCancelClient);
+        Require(reverseCancelObserved.Wait(TimeSpan.FromSeconds(5)),
+            "reverse drawing query cancellation propagation");
+        reverseCancelClient.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+    }
+    Require(reverseDrawingQueryCancelServer.WaitForExit(5000),
+        "reverse drawing query cancellation server exit");
+    Require(reverseDrawingQueryCancelServer.ExitCode == 0,
+        "reverse drawing query cancellation server result");
+    Console.WriteLine("[PASS] " + reverseDrawingQueryCancelSpecId);
+
+    currentSpecId = reverseDrawingQueryStopSpecId;
+    var reverseStopPipe = "codex-bridge-reverse-stop-" + Guid.NewGuid().ToString("N");
+    var reverseStopSession = "reverse-stop-session-" + Guid.NewGuid().ToString("N");
+    reverseDrawingQueryStopServer = StartTestServer(
+        serverExe,
+        reverseStopPipe,
+        reverseStopSession,
+        secretHex,
+        "reverse-query-stop");
+    using (var reverseStopStarted = new ManualResetEventSlim(false))
+    using (var reverseStopCancelled = new ManualResetEventSlim(false))
+    using (var reverseStopClient = new AgentBridgeClient(new AgentBridgeClientOptions
+    {
+        PipeName = reverseStopPipe,
+        SessionId = reverseStopSession,
+        SessionSecret = secret,
+        ConnectTimeout = TimeSpan.FromSeconds(5),
+        RequestTimeout = TimeSpan.FromSeconds(5),
+        ShutdownTimeout = TimeSpan.FromSeconds(5),
+        DrawingQueryHandler = async (_, cancellationToken) =>
+        {
+            reverseStopStarted.Set();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    reverseStopCancelled.Set();
+                }
+            }
+
+            throw new InvalidOperationException("stopped query unexpectedly resumed");
+        },
+    }))
+    {
+        reverseStopClient.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+        var stopThread = reverseStopClient.StartThreadAsync(
+                new AgentThreadStartRequest { ConversationId = "conversation-reverse-stop" },
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        var stopContext = CreateCadContext();
+        _ = reverseStopClient.StartTurnAsync(
+                new AgentTurnStartRequest
+                {
+                    ThreadId = stopThread.ThreadId,
+                    ClientTurnId = "client-turn-reverse-stop",
+                    Prompt = "测试停止期间只读图纸查询清理。",
+                    Context = stopContext,
+                    ContextSha256 = CadContextJsonV1Codec.ComputeCanonicalSha256(stopContext),
+                },
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        var triggerStopQuery = reverseStopClient.GetCapabilitiesAsync(
+            new AgentCapabilitiesRequest
+            {
+                ClientName = "Codex.AutoCAD.Host.2016",
+                ClientVersion = "1.0.0.0",
+                HostTarget = "autocad-r20.1-net45-x64",
+            },
+            CancellationToken.None);
+        Require(reverseStopStarted.Wait(TimeSpan.FromSeconds(5)),
+            "reverse drawing query handler start before stop");
+        reverseStopClient.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+        Require(reverseStopCancelled.Wait(TimeSpan.FromSeconds(5)),
+            "reverse drawing query handler cancellation during stop");
+        try
+        {
+            triggerStopQuery.GetAwaiter().GetResult();
+            throw new InvalidOperationException("stopped bridge request unexpectedly completed");
+        }
+        catch (AgentBridgeClientException)
+        {
+        }
+    }
+    Require(reverseDrawingQueryStopServer.WaitForExit(5000),
+        "reverse drawing query stop server exit");
+    Require(reverseDrawingQueryStopServer.ExitCode == 0,
+        "reverse drawing query stop server result");
+    Console.WriteLine("[PASS] " + reverseDrawingQueryStopSpecId);
 
     currentSpecId = stopRetrySpecId;
     var retryClient = new AgentBridgeClient(new AgentBridgeClientOptions
@@ -698,7 +1054,7 @@ try
         "oversized-frame",
         oversizedFrameSpecId);
 
-    Console.WriteLine("25/25 specs passed");
+    Console.WriteLine("29/29 specs passed");
     return 0;
 }
 catch (Exception exception)
@@ -718,6 +1074,10 @@ finally
     DisposeTestServer(badMacServer);
     DisposeTestServer(sequenceGapServer);
     DisposeTestServer(nonceReplayServer);
+    DisposeTestServer(reverseDrawingQueryServer);
+    DisposeTestServer(reverseDrawingQueryBeforeStartResponseServer);
+    DisposeTestServer(reverseDrawingQueryCancelServer);
+    DisposeTestServer(reverseDrawingQueryStopServer);
 }
 
 static Process StartTestServer(

@@ -108,6 +108,7 @@
     <Compile Include="ReadOnlySelectionCaptureV2.cs" />
     <Compile Include="DocumentContextRegistry.cs" />
     <Compile Include="DrawingIndexCore.cs" />
+    <Compile Include="DrawingIndexAgentSnapshot.cs" />
     <Compile Include="DrawingIndexEntityReader.cs" />
     <Compile Include="DrawingIndexRuntime.cs" />
     <Compile Include="UnifiedReadOnlyContextRuntime.cs" />

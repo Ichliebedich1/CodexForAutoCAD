@@ -67,6 +67,8 @@ public sealed record AgentRuntimeOptions
 
     public int MaximumConcurrentCadProposals { get; init; } = 1;
 
+    public int MaximumConcurrentCadDrawingQueries { get; init; } = 4;
+
     public int MaximumTrackedCadCalls { get; init; } = 256;
 
     public int MaximumTrackedThreads { get; init; } = 128;
@@ -74,6 +76,8 @@ public sealed record AgentRuntimeOptions
     public int MaximumActiveTurns { get; init; } = 128;
 
     public TimeSpan CadProposalTimeout { get; init; } = TimeSpan.FromSeconds(60);
+
+    public TimeSpan CadDrawingQueryTimeout { get; init; } = TimeSpan.FromSeconds(15);
 }
 
 public sealed record AgentThreadOptions
@@ -91,6 +95,11 @@ public sealed record AgentThreadOptions
     public bool? Ephemeral { get; init; }
 
     public bool EnableCadDynamicTools { get; init; } = true;
+
+    /// <summary>
+    /// Exposes the read-only drawing query tool without enabling any CAD write proposal tool.
+    /// </summary>
+    public bool EnableCadDrawingQueryTool { get; init; }
 }
 
 public sealed record AgentTurnOptions

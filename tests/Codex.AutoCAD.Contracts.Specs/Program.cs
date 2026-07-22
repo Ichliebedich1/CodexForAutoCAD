@@ -70,6 +70,7 @@ var specs = new[]
     new SpecCase("BRIDGE-V2-003 能力响应列出支持的CadContext schema版本", BridgeCapabilitiesListSupportedSchemas),
     new SpecCase("BRIDGE-V2-004 v1客户端在v2-capable AgentHost仍可协商", BridgeV1ClientNegotiatesWithV2CapableHost),
     new SpecCase("BRIDGE-V2-005 重复CadContext schema版本被拒绝", BridgeCapabilitiesRejectDuplicateSchemas),
+    new SpecCase("BRIDGE-QUERY-001 反向整图查询绑定请求和回合且模型不能提供图纸身份", BridgeDrawingQueryBindsTrustedIdentity),
     new SpecCase("HOST16-V1-001 六类只读快照映射为精确公共契约字段", UnifiedHostMapsSixEntityTypes),
     new SpecCase("HOST16-V1-002 binary-v1选择和实体状态哈希保持绑定", UnifiedHostPreservesSelectionIdentity),
     new SpecCase("HOST16-V1-003 映射后canonical JSON确定且不含图名路径", UnifiedHostCanonicalJsonIsPrivateAndDeterministic),
@@ -825,6 +826,89 @@ static void BridgeCapabilitiesRejectDuplicateSchemas()
     Contains(
         AgentBridgeContractValidator.Validate(response),
         "capabilities_schema_duplicate");
+}
+
+static void BridgeDrawingQueryBindsTrustedIdentity()
+{
+    var request = new AgentDrawingQueryRequest
+    {
+        RequestId = "request-query-1",
+        ThreadId = "thread-query-1",
+        TurnId = "turn-query-1",
+        ToolCallId = "call-query-1",
+        QueryId = "query-host-1",
+        Filter = new CadQueryFilter
+        {
+            Layers = new[] { "AI" },
+            IncludeUnsupported = false,
+        },
+        PageSize = 25,
+    };
+    Equal(0, AgentBridgeContractValidator.Validate(request).Length,
+        "合法反向整图查询应通过Bridge契约。");
+    Equal(null, typeof(AgentDrawingQueryRequest).GetProperty("IndexId"),
+        "模型侧Bridge请求不得暴露indexId。");
+    Equal(null, typeof(AgentDrawingQueryRequest).GetProperty("DocumentId"),
+        "模型侧Bridge请求不得暴露documentId。");
+    Equal(null, typeof(AgentDrawingQueryRequest).GetProperty("DocumentRevision"),
+        "模型侧Bridge请求不得暴露documentRevision。");
+
+    var response = new AgentDrawingQueryResponse
+    {
+        RequestId = request.RequestId,
+        ThreadId = request.ThreadId,
+        TurnId = request.TurnId,
+        ToolCallId = request.ToolCallId,
+        QueryId = request.QueryId,
+        Query = new CadQueryResponse
+        {
+            IndexId = "idx-host-1",
+            DocumentId = "doc-host-1",
+            DocumentRevision = 9,
+            QueryId = request.QueryId,
+            Status = CadQueryStatuses.Ok,
+            Complete = true,
+            TotalMatches = 0,
+            ReturnedCount = 0,
+        },
+    };
+    Equal(0, AgentBridgeContractValidator.ValidateDrawingQueryResponse(request, response).Length,
+        "合法反向查询响应应绑定全部请求身份。");
+
+    response.RequestId = "request-other";
+    Contains(
+        AgentBridgeContractValidator.ValidateDrawingQueryResponse(request, response),
+        "drawing_query_response_request_mismatch");
+
+    response.RequestId = request.RequestId;
+    response.ThreadId = "thread-other";
+    Contains(
+        AgentBridgeContractValidator.ValidateDrawingQueryResponse(request, response),
+        "drawing_query_response_thread_mismatch");
+
+    response.ThreadId = request.ThreadId;
+    response.TurnId = "turn-other";
+    Contains(
+        AgentBridgeContractValidator.ValidateDrawingQueryResponse(request, response),
+        "drawing_query_response_turn_mismatch");
+
+    response.TurnId = request.TurnId;
+    response.ToolCallId = "call-other";
+    Contains(
+        AgentBridgeContractValidator.ValidateDrawingQueryResponse(request, response),
+        "drawing_query_response_tool_call_mismatch");
+
+    response.ToolCallId = request.ToolCallId;
+    response.QueryId = "query-other";
+    Contains(
+        AgentBridgeContractValidator.ValidateDrawingQueryResponse(request, response),
+        "drawing_query_response_query_mismatch");
+
+    response.QueryId = request.QueryId;
+    response.Query.QueryId = "query-payload-other";
+    Contains(
+        AgentBridgeContractValidator.ValidateDrawingQueryResponse(request, response),
+        "drawing_query_response_payload_mismatch");
 }
 
 static void UnifiedHostMapsSixEntityTypes()

@@ -180,13 +180,76 @@ function Assert-M2ReadOnlySource([string[]] $SourceFiles) {
         'AutoCadApplication.Idle',
         'ObjectAppended',
         'ObjectModified',
-        'ObjectErased')) {
+        'ObjectErased',
+        'DrawingIndexAgentSnapshot.CreateFromOwnedFrozenEntities')) {
         if ($drawingText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
             throw "DrawingIndexRuntime 缺少受审只读/分片要素：$required"
         }
     }
 
+    $snapshotPath = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\DrawingIndexAgentSnapshot.cs'
+    if ($SourceFiles -notcontains $snapshotPath) {
+        throw 'Host.2016 Compile 闭包缺少 DrawingIndexAgentSnapshot.cs。'
+    }
+    $snapshotText = Get-Content -LiteralPath $snapshotPath -Raw -Encoding UTF8
+    if ($snapshotText -match '(?i)\bAutodesk\s*\.') {
+        throw 'DrawingIndexAgentSnapshot 禁止引用 Autodesk API。'
+    }
+    foreach ($required in @(
+        'DrawingIndexSnapshotValidity',
+        'Volatile.Read',
+        'DrawingIndexQueryEngine.Execute',
+        'CreateFromOwnedFrozenEntities',
+        'cancellationToken.ThrowIfCancellationRequested')) {
+        if ($snapshotText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "DrawingIndexAgentSnapshot 缺少纯托管快照要素：$required"
+        }
+    }
+
+    $agentClientText = Get-Content -LiteralPath (Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\MvpAgentClient.cs') -Raw -Encoding UTF8
+    foreach ($required in @(
+        'drawingQueryHandler: HandleDrawingQueryAsync',
+        'AgentDrawingQueryRequest',
+        'ResultIdentityMismatch',
+        'DrawingQueryUnavailable',
+        'requestTurn.TryBindProviderTurn(request.TurnId)',
+        'SnapshotGeneration')) {
+        if ($agentClientText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "MvpAgentClient 缺少整图反向查询绑定要素：$required"
+        }
+    }
+
+    $bridgeClientText = Get-Content -LiteralPath (Join-Path $repoRoot 'src\Codex.AutoCAD.Bridge.Client\AgentBridgeClient.cs') -Raw -Encoding UTF8
+    foreach ($required in @(
+        '_pendingTurnStarts',
+        'RegisterPendingTurnStart',
+        'pending.TryBindProviderTurn(request.TurnId)',
+        'identity.Matches(request.RequestId, request.ThreadId)')) {
+        if ($bridgeClientText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "Bridge Client 缺少启动响应前反向查询身份门禁：$required"
+        }
+    }
+
     $commandsText = Get-Content -LiteralPath (Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\CodexCad2016Commands.cs') -Raw -Encoding UTF8
+    $extensionText = Get-Content -LiteralPath (Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\CodexAutoCad2016Extension.cs') -Raw -Encoding UTF8
+    foreach ($staleDeclaration in @(
+        'Codex drawing-query tool: not connected in this host slice',
+        'Codex 动态查询工具尚未接入')) {
+        if ($commandsText.IndexOf($staleDeclaration, [StringComparison]::Ordinal) -ge 0 -or
+            $extensionText.IndexOf($staleDeclaration, [StringComparison]::Ordinal) -ge 0) {
+            throw "M2-B 已接入，但 Host 仍包含过期诊断声明：$staleDeclaration"
+        }
+    }
+    foreach ($required in @(
+        'Codex drawing-query tool: authenticated AgentHost Bridge; manual Agent start',
+        'DrawingIndex v1/CadQuery v1 通过认证 AgentHost Bridge')) {
+        if ($commandsText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "Host 诊断缺少 M2-B 已接入声明：$required"
+        }
+    }
+    if ($extensionText.IndexOf('手动启动的 Codex 通过认证 Bridge 按需分页查询', [StringComparison]::Ordinal) -lt 0) {
+        throw 'Host 加载横幅缺少 M2-B 已接入声明。'
+    }
     foreach ($command in @('CODEX16INDEX','CODEX16INDEXINFO','CODEX16INDEXCANCEL','CODEX16QUERY','CODEX16QUERYNEXT')) {
         $count = [regex]::Matches($commandsText, 'CommandMethod\("' + [regex]::Escape($command) + '"').Count
         if ($count -ne 1) {
@@ -436,7 +499,7 @@ try {
         boundaries = [ordered]@{
             cadWrite = $false
             pluginInitiatedSave = $false
-            codexDynamicDrawingQueryTool = $false
+            codexDynamicDrawingQueryTool = $true
             maximumIndexedEntities = 100000
             maximumReportedEntities = 2000000
             maximumEstimatedManagedBytes = 67108864
@@ -460,10 +523,12 @@ try {
         netLoadVerified = $false
         gates = [ordered]@{
             phase2Specs = $phase2Summary
-            contractsNet45Net8 = '83/83'
+            contractsNet45Net8 = '84/84'
             r20_1ReleaseX64Build = $true
             hostABBitForBitEqual = $true
             hostReadOnlySourceScan = $true
+            earlyReverseDrawingQueryRaceCovered = $true
+            frozenEntityArrayOwnershipTransfer = $true
             hostCompileSourceCount = $sourceFiles.Count
             documentLockCount = 2
             lockFileHashesPreserved = $true
@@ -482,7 +547,7 @@ try {
         limitations = @(
             '本证据未启动、重启或操作 AutoCAD；人工 NETLOAD 和图纸级运行时行为仍需实机验证。',
             'CadContextJson v2 的 64 实体选择上限保持不变；M2 通过独立 DrawingIndex/CadQuery 处理大图。',
-            'Codex 动态 drawing-query 工具尚未接入；本候选只提供 Host 命令、索引状态与本地分页查询。',
+            'Codex 动态 drawing-query 已接入认证反向 Bridge；仍需 AutoCAD 实机验证整图索引、无选择集提问和失效行为。',
             'CAD 写入、插件保存、Provider 抽象、Direct API 和自研 Agent Loop 均不在本候选范围。'
         )
     }

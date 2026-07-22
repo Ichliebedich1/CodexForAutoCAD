@@ -111,6 +111,177 @@ internal static class AgentHostBridgeSessionSpecs
         }
     }
 
+    public static async Task DrawingQueryFlowsThroughAuthenticatedReverseBridge()
+    {
+        var keyPair = CreateBootstrapDirectionKeyPair();
+        try
+        {
+            await using var appServer = new ScriptedAgentAppServer();
+            appServer.QueueResponse("thread/start", """
+                {"thread":{"id":"thread-query-e2e"}}
+                """);
+            appServer.QueueResponse("turn/start", """
+                {"turn":{"id":"turn-query-e2e","status":"inProgress","items":[]}}
+                """);
+
+            var queryBroker = new AgentHostCadQueryBroker();
+            await using var runtime = new CodexAgentRuntime(
+                appServer,
+                new AgentRuntimeOptions
+                {
+                    Sandbox = AgentSandboxMode.ReadOnly,
+                    ApprovalPolicy = AgentApprovalPolicy.OnRequest,
+                    ApprovalsReviewer = AgentApprovalsReviewer.User,
+                },
+                cadDrawingQueryBroker: queryBroker);
+            var service = new AgentHostBridgeSession(
+                runtime,
+                "agenthost-query-e2e",
+                queryBroker);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var serviceTask = service.RunAsync(keyPair.AgentKeys, timeout.Token);
+            AgentDrawingQueryRequest? hostRequest = null;
+            using var client = new AgentBridgeClient(
+                keyPair.HostKeys,
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromSeconds(5),
+                drawingQueryHandler: (request, cancellationToken) =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    hostRequest = request;
+                    return Task.FromResult(new AgentDrawingQueryResponse
+                    {
+                        RequestId = request.RequestId,
+                        ThreadId = request.ThreadId,
+                        TurnId = request.TurnId,
+                        ToolCallId = request.ToolCallId,
+                        QueryId = request.QueryId,
+                        Query = new CadQueryResponse
+                        {
+                            IndexId = "index-trusted-host",
+                            DocumentId = "document-trusted-host",
+                            DocumentRevision = 12,
+                            QueryId = request.QueryId,
+                            Status = CadQueryStatuses.Ok,
+                            Complete = true,
+                            TotalMatches = 1,
+                            ReturnedCount = 1,
+                            Entities =
+                            [
+                                new CadQueryEntity
+                                {
+                                    ObjectId = "2A",
+                                    EntityType = "line",
+                                    ActualType = "AcDbLine",
+                                    Layer = "AI",
+                                    Space = "model",
+                                    ReadStatus = CadQueryReadStatuses.Parsed,
+                                },
+                            ],
+                        },
+                    });
+                });
+            await client.StartAsync(timeout.Token);
+
+            var capabilities = await client.GetCapabilitiesAsync(
+                new AgentCapabilitiesRequest
+                {
+                    ClientName = "Codex.AutoCAD.Host.2016",
+                    ClientVersion = "0.3.2.0",
+                    HostTarget = "autocad-r20.1-net45-x64",
+                },
+                timeout.Token);
+            Contains(capabilities.Methods, AgentBridgeMethods.QueryDrawing);
+
+            var thread = await client.StartThreadAsync(
+                new AgentThreadStartRequest { ConversationId = "conversation-query-e2e" },
+                timeout.Token);
+            var context = CreateContext("doc-query-e2e", revision: 12, lineEndX: 5d);
+            var contextHash = CadContextJsonV1Codec.ComputeCanonicalSha256(context);
+            const string systemRequestId = "request-query-e2e";
+            var turn = await client.StartTurnAsync(
+                new AgentTurnStartRequest
+                {
+                    ThreadId = thread.ThreadId,
+                    ClientTurnId = systemRequestId,
+                    Prompt = "查询AI图层中的直线。",
+                    Context = context,
+                    ContextSha256 = contextHash,
+                },
+                timeout.Token);
+
+            var resolution = await appServer.RequestServerAsync(
+                "item/tool/call",
+                """
+                {
+                  "threadId":"thread-query-e2e",
+                  "turnId":"turn-query-e2e",
+                  "callId":"call-query-e2e",
+                  "namespace":"cad",
+                  "tool":"query_drawing",
+                  "arguments":{"layers":["AI"],"pageSize":25,"includeUnsupported":false}
+                }
+                """,
+                timeout.Token);
+            if (resolution?.Result is null || resolution.Error is not null)
+            {
+                throw new InvalidOperationException("Runtime drawing query did not return a result.");
+            }
+
+            var result = JsonSerializer.SerializeToElement(
+                resolution.Result,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            Equal(true, result.GetProperty("success").GetBoolean());
+            var content = result.GetProperty("contentItems")[0]
+                .GetProperty("text")
+                .GetString() ?? string.Empty;
+            using var contentDocument = JsonDocument.Parse(content);
+            var toolResult = contentDocument.RootElement;
+            Equal(CadQueryStatuses.Ok, toolResult.GetProperty("status").GetString());
+            Equal("2A", toolResult.GetProperty("entities")[0]
+                .GetProperty("objectId")
+                .GetString());
+            Equal(false, toolResult.TryGetProperty("indexId", out _));
+            Equal(false, toolResult.TryGetProperty("documentId", out _));
+            Equal(false, toolResult.TryGetProperty("documentRevision", out _));
+            Equal(false, toolResult.TryGetProperty("queryId", out _));
+
+            if (hostRequest is null)
+            {
+                throw new InvalidOperationException("AutoCAD Host did not receive the reverse query.");
+            }
+
+            Equal(systemRequestId, hostRequest.RequestId);
+            Equal(thread.ThreadId, hostRequest.ThreadId);
+            Equal(turn.TurnId, hostRequest.TurnId);
+            Equal("call-query-e2e", hostRequest.ToolCallId);
+            Equal(false, string.Equals(
+                hostRequest.QueryId,
+                hostRequest.ToolCallId,
+                StringComparison.Ordinal));
+            Equal("AI", hostRequest.Filter.Layers.Single());
+
+            var threadRequest = appServer.Requests[0];
+            var dynamicNamespaces = threadRequest.Params.GetProperty("dynamicTools");
+            Equal(1, dynamicNamespaces.GetArrayLength());
+            var tools = dynamicNamespaces[0].GetProperty("tools");
+            Equal(1, tools.GetArrayLength());
+            Equal("query_drawing", tools[0].GetProperty("name").GetString());
+            Equal(false, tools.EnumerateArray().Any(value => string.Equals(
+                value.GetProperty("name").GetString(),
+                "propose_operations",
+                StringComparison.Ordinal)));
+
+            await client.StopAsync(CancellationToken.None);
+            await serviceTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            keyPair.HostKeys.Dispose();
+            keyPair.AgentKeys.Dispose();
+        }
+    }
+
     public static async Task TwoContextTurnsReuseThreadAndMapAssistantEvents()
     {
         var keyPair = CreateBootstrapDirectionKeyPair();
@@ -518,6 +689,7 @@ internal sealed class ScriptedAgentAppServer : IAgentAppServer
     private readonly ConcurrentQueue<(string Method, string Json, Action? BeforeReturn)> _responses = new();
     private readonly List<SentAppServerRequest> _requests = new();
     private readonly object _sync = new();
+    private long _serverRequestId;
 
     public event EventHandler<AppServerNotification>? NotificationReceived;
     public event CommandApprovalRequestedHandler? CommandApprovalRequested
@@ -544,11 +716,7 @@ internal sealed class ScriptedAgentAppServer : IAgentAppServer
         remove { }
     }
 
-    public event ServerRequestReceivedHandler? ServerRequestReceived
-    {
-        add { }
-        remove { }
-    }
+    public event ServerRequestReceivedHandler? ServerRequestReceived;
 
     public IReadOnlyList<SentAppServerRequest> Requests
     {
@@ -598,6 +766,35 @@ internal sealed class ScriptedAgentAppServer : IAgentAppServer
         NotificationReceived?.Invoke(
             this,
             new AppServerNotification(method, document.RootElement.Clone()));
+    }
+
+    public async ValueTask<ServerRequestResolution?> RequestServerAsync(
+        string method,
+        string paramsJson,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var handlers = ServerRequestReceived;
+        if (handlers is null)
+        {
+            return null;
+        }
+
+        using var document = JsonDocument.Parse(paramsJson);
+        var request = new AppServerServerRequest(
+            new JsonRpcId(Interlocked.Increment(ref _serverRequestId)),
+            method,
+            document.RootElement.Clone());
+        foreach (ServerRequestReceivedHandler handler in handlers.GetInvocationList())
+        {
+            var response = await handler(request, cancellationToken).ConfigureAwait(false);
+            if (response is not null)
+            {
+                return response;
+            }
+        }
+
+        return null;
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

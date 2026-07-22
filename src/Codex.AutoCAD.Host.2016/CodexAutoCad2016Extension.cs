@@ -18,7 +18,7 @@ namespace Codex.AutoCAD.Host2016
             if (document != null)
             {
                 document.Editor.WriteMessage(
-                    "\nCodex AutoCAD 2016 M2 只读整图索引开发候选已加载。CODEX16INDEX 启动分片索引，CODEX16INDEXINFO 查看进度，CODEX16QUERY 分页查询；选择上下文和 Agent 命令继续保留。Codex 动态查询工具尚未接入，CAD 写入和插件保存均禁用。\n");
+                    "\nCodex AutoCAD 2016 M2 只读整图查询候选已加载。CODEX16INDEX 启动分片索引，CODEX16INDEXINFO 查看进度；有效索引可由本地命令或手动启动的 Codex 通过认证 Bridge 按需分页查询。CAD 写入和插件保存均禁用。\n");
             }
         }
 

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using Codex.AutoCAD.Contracts;
 
 namespace Codex.AutoCAD.Host2016
@@ -300,6 +301,15 @@ namespace Codex.AutoCAD.Host2016
             IReadOnlyList<CadQueryEntity> entities,
             CadQueryRequest request)
         {
+            return Execute(descriptor, entities, request, CancellationToken.None);
+        }
+
+        internal static CadQueryResponse Execute(
+            DrawingIndexDescriptor descriptor,
+            IReadOnlyList<CadQueryEntity> entities,
+            CadQueryRequest request,
+            CancellationToken cancellationToken)
+        {
             if (descriptor == null)
             {
                 throw new ArgumentNullException(nameof(descriptor));
@@ -309,6 +319,7 @@ namespace Codex.AutoCAD.Host2016
                 throw new ArgumentNullException(nameof(entities));
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             var requestFailures = DrawingIndexContractValidator.Validate(request);
             if (requestFailures.Length != 0)
             {
@@ -363,6 +374,10 @@ namespace Codex.AutoCAD.Host2016
             var matches = new List<CadQueryEntity>();
             for (var index = 0; index < entities.Count; index++)
             {
+                if ((index & 255) == 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
                 var entity = entities[index];
                 if (Matches(entity, request.Filter))
                 {
@@ -370,7 +385,9 @@ namespace Codex.AutoCAD.Host2016
                 }
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             matches.Sort(CompareEntities);
+            cancellationToken.ThrowIfCancellationRequested();
             if (offset < 0 || offset > matches.Count)
             {
                 throw new DrawingIndexQueryException(
@@ -382,6 +399,10 @@ namespace Codex.AutoCAD.Host2016
             var page = new CadQueryEntity[returned];
             for (var index = 0; index < returned; index++)
             {
+                if ((index & 255) == 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
                 page[index] = CloneEntity(matches[offset + index]);
             }
 

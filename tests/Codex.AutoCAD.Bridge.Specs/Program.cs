@@ -21,6 +21,8 @@ var specs = new (string Name, Func<Task> Run)[]
         AgentHostBridgeSessionSpecs.TwoContextTurnsReuseThreadAndMapAssistantEvents),
     ("AgentHost实际接收v2上下文并回显v2哈希",
         AgentHostBridgeSessionSpecs.V2ContextTurnUsesV2MethodAndEchoesHash),
+    ("AgentHost只读查询经认证反向Bridge往返且不暴露Host身份",
+        AgentHostBridgeSessionSpecs.DrawingQueryFlowsThroughAuthenticatedReverseBridge),
     ("当前用户命名管道可完成请求响应", RequestResponseWorks),
     ("bootstrap方向密钥可完成具体Client到服务端认证", BootstrapDirectionKeysAuthenticateConcreteClient),
     ("通知可单向投递", NotificationWorks),

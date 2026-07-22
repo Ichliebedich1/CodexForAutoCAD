@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Codex.AutoCAD.AppServer\Codex.AutoCAD.AppServer.csproj" />
+    <ProjectReference Include="..\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj" />
   </ItemGroup>
 </Project>

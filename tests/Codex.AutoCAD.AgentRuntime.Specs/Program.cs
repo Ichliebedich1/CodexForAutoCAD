@@ -3,6 +3,10 @@ using System.Text.Json.Serialization;
 using Codex.AutoCAD.AgentRuntime;
 using Codex.AutoCAD.AppServer;
 using Codex.AutoCAD.AppServer.Protocol;
+using CadQueryEntity = Codex.AutoCAD.Contracts.CadQueryEntity;
+using CadQueryReadStatuses = Codex.AutoCAD.Contracts.CadQueryReadStatuses;
+using CadQueryResponse = Codex.AutoCAD.Contracts.CadQueryResponse;
+using CadQueryStatuses = Codex.AutoCAD.Contracts.CadQueryStatuses;
 
 var specs = new (string Name, Func<Task> Run)[]
 {
@@ -10,6 +14,8 @@ var specs = new (string Name, Func<Task> Run)[]
     ("启动轮次生成0.144.5输入结构", TurnStartUsesExpectedWireShape),
     ("中断轮次生成精确请求", InterruptUsesExpectedWireShape),
     ("新线程注册cad声明式提案工具", ThreadRegistersCadProposalTool),
+    ("只读图纸查询工具可独立于CAD写入提案注册", ThreadRegistersOnlyReadOnlyDrawingQueryTool),
+    ("只读图纸查询通过Broker执行且隐藏Host绑定身份", CadDrawingQueryUsesBrokerAndHidesBindingIdentity),
     ("cad动态工具仅在Broker确认落盘后成功", CadDynamicToolRequiresAppliedTerminalResult),
     ("cad提案事件是与Broker隔离的深不可变快照", CadProposalEventIsDeeplyIsolatedFromBroker),
     ("cad动态工具未连接Broker时默认失败", CadDynamicToolWithoutBrokerFailsClosed),
@@ -148,6 +154,104 @@ static async Task ThreadRegistersCadProposalTool()
     Equal("create_line", operation.GetProperty("properties").GetProperty("type")
         .GetProperty("enum")[0].GetString());
     Equal(false, schema.GetProperty("properties").TryGetProperty("documentFingerprint", out _));
+}
+
+static async Task ThreadRegistersOnlyReadOnlyDrawingQueryTool()
+{
+    await using var server = new FakeAgentAppServer();
+    server.QueueResponse("thread/start", """
+        {"thread":{"id":"thread-query-only"}}
+        """);
+    await using var runtime = new CodexAgentRuntime(server);
+
+    _ = await runtime.CreateThreadAsync(
+        new AgentThreadOptions
+        {
+            EnableCadDynamicTools = false,
+            EnableCadDrawingQueryTool = true,
+        });
+
+    var request = Single(server.Requests);
+    var namespaces = request.Params.GetProperty("dynamicTools");
+    Equal(1, namespaces.GetArrayLength());
+    var tools = namespaces[0].GetProperty("tools");
+    Equal(1, tools.GetArrayLength());
+    Equal("query_drawing", String(tools[0], "name"));
+    var schema = tools[0].GetProperty("inputSchema");
+    Equal(false, schema.GetProperty("additionalProperties").GetBoolean());
+    Equal(false, schema.GetProperty("properties").TryGetProperty("indexId", out _));
+    Equal(false, schema.GetProperty("properties").TryGetProperty("documentId", out _));
+    Equal(false, schema.GetProperty("properties").TryGetProperty("documentRevision", out _));
+    Equal(false, schema.GetProperty("properties").TryGetProperty("queryId", out _));
+    Equal(false, tools.EnumerateArray().Any(tool =>
+        string.Equals(String(tool, "name"), "propose_operations", StringComparison.Ordinal)));
+}
+
+static async Task CadDrawingQueryUsesBrokerAndHidesBindingIdentity()
+{
+    await using var server = new FakeAgentAppServer();
+    var broker = new FunctionalCadDrawingQueryBroker(query =>
+        AgentCadDrawingQueryResult.ForQuery(
+            query,
+            new CadQueryResponse
+            {
+                IndexId = "idx-host-bound",
+                DocumentId = "doc-host-bound",
+                DocumentRevision = 7,
+                QueryId = query.QueryId,
+                Status = CadQueryStatuses.Ok,
+                Complete = false,
+                TotalMatches = 2,
+                ReturnedCount = 1,
+                Entities =
+                [
+                    new CadQueryEntity
+                    {
+                        ObjectId = "1A",
+                        EntityType = "line",
+                        ActualType = "AcDbLine",
+                        Layer = "AI",
+                        Space = "model",
+                        ReadStatus = CadQueryReadStatuses.Parsed,
+                    },
+                ],
+                NextCursor = "dq1-safe-cursor",
+            }));
+    await using var runtime = new CodexAgentRuntime(server, cadDrawingQueryBroker: broker);
+    await PrepareActiveTurnAsync(server, runtime);
+
+    var resolution = await server.RequestServerAsync("item/tool/call", """
+        {
+          "threadId":"thread-1","turnId":"turn-1","callId":"call-query-1",
+          "namespace":"cad","tool":"query_drawing",
+          "arguments":{"layers":["AI"],"pageSize":1,"includeUnsupported":false}
+        }
+        """);
+
+    NotNull(resolution);
+    var response = ResolutionResult(resolution!);
+    Equal(true, response.GetProperty("success").GetBoolean());
+    var content = String(response.GetProperty("contentItems")[0], "text");
+    using var contentJson = JsonDocument.Parse(content);
+    var result = contentJson.RootElement;
+    Equal(CadQueryStatuses.Ok, String(result, "status"));
+    Equal(2, result.GetProperty("totalMatches").GetInt32());
+    Equal("dq1-safe-cursor", String(result, "nextCursor"));
+    Equal("1A", String(result.GetProperty("entities")[0], "objectId"));
+    Equal(false, result.TryGetProperty("indexId", out _));
+    Equal(false, result.TryGetProperty("documentId", out _));
+    Equal(false, result.TryGetProperty("documentRevision", out _));
+    Equal(false, result.TryGetProperty("queryId", out _));
+
+    Equal(1, broker.CallCount);
+    NotNull(broker.LastQuery);
+    Equal("runtime-request-1", broker.LastQuery!.RequestId);
+    Equal("call-query-1", broker.LastQuery.CallId);
+    True(!string.Equals(broker.LastQuery.QueryId, broker.LastQuery.CallId, StringComparison.Ordinal),
+        "Host查询ID必须与模型callId分离。");
+    Equal("AI", Single(broker.LastQuery.Filter.Layers));
+    Equal(1, broker.LastQuery.PageSize);
+    Equal(false, broker.LastQuery.Filter.IncludeUnsupported);
 }
 
 static async Task CadDynamicToolRequiresAppliedTerminalResult()
@@ -882,7 +986,10 @@ static async Task PrepareActiveTurnAsync(FakeAgentAppServer server, CodexAgentRu
         {"turn":{"id":"turn-1","status":"inProgress","items":[]}}
         """);
     _ = await runtime.CreateThreadAsync();
-    _ = await runtime.StartTurnAsync("thread-1", "prepare");
+    _ = await runtime.StartTurnAsync(
+        "thread-1",
+        "prepare",
+        new AgentTurnOptions { ClientUserMessageId = "runtime-request-1" });
 }
 
 static string ValidCadToolRequest(string callId, string turnId = "turn-1")
@@ -1228,6 +1335,27 @@ internal sealed class FunctionalCadProposalBroker(
         cancellationToken.ThrowIfCancellationRequested();
         Interlocked.Increment(ref _callCount);
         return ValueTask.FromResult(resultFactory(proposal));
+    }
+}
+
+internal sealed class FunctionalCadDrawingQueryBroker(
+    Func<AgentCadDrawingQuery, AgentCadDrawingQueryResult> resultFactory)
+    : IAgentCadDrawingQueryBroker
+{
+    private int _callCount;
+
+    public int CallCount => Volatile.Read(ref _callCount);
+
+    public AgentCadDrawingQuery? LastQuery { get; private set; }
+
+    public ValueTask<AgentCadDrawingQueryResult> ExecuteAsync(
+        AgentCadDrawingQuery query,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Interlocked.Increment(ref _callCount);
+        LastQuery = query;
+        return ValueTask.FromResult(resultFactory(query));
     }
 }
 

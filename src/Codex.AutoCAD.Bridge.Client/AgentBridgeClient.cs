@@ -11,7 +11,9 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
     private const string RequestMessageType = "bridge.request";
     private const string ResponseMessageType = "bridge.response";
     private const string NotificationMessageType = "bridge.notification";
+    private const string CancelMessageType = "bridge.cancel";
     private static readonly TimeSpan MaximumTimeout = TimeSpan.FromMinutes(1);
+    private const int MaximumTrackedTurns = 256;
 
     private readonly object _sync = new object();
     private readonly SemaphoreSlim _sendGate = new SemaphoreSlim(1, 1);
@@ -21,13 +23,19 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
     private readonly TimeSpan _requestTimeout;
     private readonly TimeSpan _shutdownTimeout;
     private readonly int _maximumFrameBytes;
+    private readonly AgentDrawingQueryHandler? _drawingQueryHandler;
+    private readonly SemaphoreSlim _drawingQuerySlots;
     private readonly Dictionary<string, TaskCompletionSource<BridgeClientJsonCodec.ResponsePayloadValue>>
         _pendingRequests =
             new Dictionary<string, TaskCompletionSource<BridgeClientJsonCodec.ResponsePayloadValue>>(
                 StringComparer.Ordinal);
     private readonly Dictionary<string, TurnIdentity> _activeTurns =
         new Dictionary<string, TurnIdentity>(StringComparer.Ordinal);
+    private readonly Dictionary<string, PendingTurnIdentity> _pendingTurnStarts =
+        new Dictionary<string, PendingTurnIdentity>(StringComparer.Ordinal);
     private readonly HashSet<string> _seenEventIds = new HashSet<string>(StringComparer.Ordinal);
+    private readonly Dictionary<string, ActiveDrawingQuery> _activeDrawingQueries =
+        new Dictionary<string, ActiveDrawingQuery>(StringComparer.Ordinal);
     private NamedPipeClientStream? _pipe;
     private CancellationTokenSource? _lifetime;
     private IpcEnvelopeAuthenticator? _authenticator;
@@ -42,6 +50,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
     private bool _stopStarted;
     private bool _sendQuiesced;
     private bool _receiveSettled;
+    private bool _drawingQueriesSettled;
     private bool _securityReleased;
     private bool _stopCompleted;
 
@@ -77,6 +86,11 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
         {
             throw new ArgumentOutOfRangeException(nameof(options.MaximumFrameBytes));
         }
+        if (options.MaximumConcurrentDrawingQueries < 1
+            || options.MaximumConcurrentDrawingQueries > 16)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options.MaximumConcurrentDrawingQueries));
+        }
 
         _pipeName = options.PipeName;
         _sessionId = options.SessionId;
@@ -100,13 +114,19 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
         _shutdownTimeout = options.ShutdownTimeout;
 
         _maximumFrameBytes = options.MaximumFrameBytes;
+        _drawingQueryHandler = options.DrawingQueryHandler;
+        _drawingQuerySlots = new SemaphoreSlim(
+            options.MaximumConcurrentDrawingQueries,
+            options.MaximumConcurrentDrawingQueries);
     }
     public AgentBridgeClient(
         AgentBootstrapDirectionKeys directionKeys,
         TimeSpan connectTimeout,
         TimeSpan requestTimeout,
         int maximumFrameBytes = ProtocolConstants.MaximumMessageBytes,
-        TimeSpan? shutdownTimeout = null)
+        TimeSpan? shutdownTimeout = null,
+        AgentDrawingQueryHandler? drawingQueryHandler = null,
+        int maximumConcurrentDrawingQueries = 2)
     {
         if (directionKeys is null)
         {
@@ -131,6 +151,10 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
         {
             throw new ArgumentOutOfRangeException(nameof(maximumFrameBytes));
         }
+        if (maximumConcurrentDrawingQueries < 1 || maximumConcurrentDrawingQueries > 16)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumConcurrentDrawingQueries));
+        }
 
         _pipeName = directionKeys.PipeName;
         _sessionId = directionKeys.SessionId;
@@ -138,6 +162,10 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
         _requestTimeout = requestTimeout;
         _shutdownTimeout = validatedShutdownTimeout;
         _maximumFrameBytes = maximumFrameBytes;
+        _drawingQueryHandler = drawingQueryHandler;
+        _drawingQuerySlots = new SemaphoreSlim(
+            maximumConcurrentDrawingQueries,
+            maximumConcurrentDrawingQueries);
         IpcEnvelopeAuthenticator? authenticator = null;
         try
         {
@@ -237,6 +265,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
                     pending = _pendingRequests.Values.ToList();
                     _pendingRequests.Clear();
                     _activeTurns.Clear();
+                    _pendingTurnStarts.Clear();
                     _seenEventIds.Clear();
                     _lastEventSequence = 0;
                 }
@@ -396,11 +425,64 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
                 }
             }
 
+            bool drawingQueriesSettled;
+            lock (_sync)
+            {
+                drawingQueriesSettled = _drawingQueriesSettled;
+            }
+
+            if (!drawingQueriesSettled)
+            {
+                ActiveDrawingQuery[] activeQueries;
+                lock (_sync)
+                {
+                    activeQueries = _activeDrawingQueries.Values.ToArray();
+                }
+
+                foreach (var activeQuery in activeQueries)
+                {
+                    TryCancel(activeQuery.Cancellation);
+                }
+
+                var handlers = activeQueries.Select(value => value.Completion.Task).ToArray();
+                if (handlers.Length == 0)
+                {
+                    lock (_sync)
+                    {
+                        _drawingQueriesSettled = true;
+                    }
+                }
+                else
+                {
+                    var allHandlers = Task.WhenAll(handlers);
+                    var completed = await Task.WhenAny(
+                            allHandlers,
+                            Task.Delay(_shutdownTimeout))
+                        .ConfigureAwait(false);
+                    if (completed == allHandlers)
+                    {
+                        ObserveFault(allHandlers);
+                        lock (_sync)
+                        {
+                            _drawingQueriesSettled = true;
+                        }
+                    }
+                    else
+                    {
+                        ObserveFault(allHandlers);
+                        stopFailure = stopFailure ?? new AgentBridgeClientException(
+                            AgentBridgeErrorCodes.Timeout,
+                            "Agent Bridge反向图纸查询未在关闭期限内结束。");
+                    }
+                }
+            }
+
             bool releaseSecurity;
             lock (_sync)
             {
                 releaseSecurity = _sendQuiesced
                     && _receiveSettled
+                    && _drawingQueriesSettled
                     && !_securityReleased;
             }
 
@@ -422,7 +504,10 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
         {
             lock (_sync)
             {
-                if (!_sendQuiesced || !_receiveSettled || !_securityReleased)
+                if (!_sendQuiesced
+                    || !_receiveSettled
+                    || !_drawingQueriesSettled
+                    || !_securityReleased)
                 {
                     stopFailure = new InvalidOperationException(
                         "Agent Bridge cleanup did not complete every owned shutdown phase.");
@@ -464,28 +549,34 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
         CancellationToken cancellationToken)
     {
         var bodyJson = BridgeClientJsonCodec.SerializeTurnStartRequest(request);
-        var responseJson = await RequestAsync(
-                AgentBridgeMethods.StartTurn,
-                bodyJson,
-                cancellationToken)
-            .ConfigureAwait(false);
-        var response = BridgeClientJsonCodec.DeserializeTurnStartResponse(responseJson, request);
-        lock (_sync)
+        var pending = RegisterPendingTurnStart(
+            request.ClientTurnId,
+            request.ThreadId,
+            request.ContextSha256);
+        var completed = false;
+        try
         {
-            EnsureOnline();
-            if (_activeTurns.ContainsKey(response.TurnId))
-            {
-                throw new AgentBridgeClientException(
-                    AgentBridgeErrorCodes.ResultIdentityMismatch,
-                    "Agent返回了重复的TurnId。");
-            }
-
-            _activeTurns.Add(
+            var responseJson = await RequestAsync(
+                    AgentBridgeMethods.StartTurn,
+                    bodyJson,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var response = BridgeClientJsonCodec.DeserializeTurnStartResponse(responseJson, request);
+            CompletePendingTurnStart(
+                pending,
+                response.ThreadId,
                 response.TurnId,
-                new TurnIdentity(response.ThreadId, response.AcceptedContextSha256));
+                response.AcceptedContextSha256);
+            completed = true;
+            return response;
         }
-
-        return response;
+        finally
+        {
+            if (!completed)
+            {
+                AbandonPendingTurnStart(pending);
+            }
+        }
     }
 
     public async Task<AgentTurnStartV2Response> StartTurnV2Async(
@@ -493,28 +584,151 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
         CancellationToken cancellationToken)
     {
         var bodyJson = BridgeClientJsonCodec.SerializeTurnStartV2Request(request);
-        var responseJson = await RequestAsync(
-                AgentBridgeMethods.StartTurnV2,
-                bodyJson,
-                cancellationToken)
-            .ConfigureAwait(false);
-        var response = BridgeClientJsonCodec.DeserializeTurnStartV2Response(responseJson, request);
+        var pending = RegisterPendingTurnStart(
+            request.ClientTurnId,
+            request.ThreadId,
+            request.ContextV2Sha256);
+        var completed = false;
+        try
+        {
+            var responseJson = await RequestAsync(
+                    AgentBridgeMethods.StartTurnV2,
+                    bodyJson,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var response = BridgeClientJsonCodec.DeserializeTurnStartV2Response(responseJson, request);
+            CompletePendingTurnStart(
+                pending,
+                response.ThreadId,
+                response.TurnId,
+                response.AcceptedContextV2Sha256);
+            completed = true;
+            return response;
+        }
+        finally
+        {
+            if (!completed)
+            {
+                AbandonPendingTurnStart(pending);
+            }
+        }
+    }
+
+    private PendingTurnIdentity RegisterPendingTurnStart(
+        string requestId,
+        string threadId,
+        string contextSha256)
+    {
         lock (_sync)
         {
             EnsureOnline();
-            if (_activeTurns.ContainsKey(response.TurnId))
+            if (_pendingTurnStarts.ContainsKey(requestId))
             {
                 throw new AgentBridgeClientException(
                     AgentBridgeErrorCodes.ResultIdentityMismatch,
-                    "Agent返回了重复的TurnId。");
+                    "ClientTurnId已绑定到另一个待启动回合。");
+            }
+            foreach (var active in _activeTurns.Values)
+            {
+                if (string.Equals(active.RequestId, requestId, StringComparison.Ordinal))
+                {
+                    throw new AgentBridgeClientException(
+                        AgentBridgeErrorCodes.ResultIdentityMismatch,
+                        "ClientTurnId已被活动回合使用。");
+                }
+            }
+            if (_activeTurns.Count + _pendingTurnStarts.Count >= MaximumTrackedTurns)
+            {
+                throw new AgentBridgeClientException(
+                    AgentBridgeErrorCodes.Busy,
+                    "Agent Bridge活动回合数量已达到安全上限。");
             }
 
-            _activeTurns.Add(
-                response.TurnId,
-                new TurnIdentity(response.ThreadId, response.AcceptedContextV2Sha256));
+            var pending = new PendingTurnIdentity(requestId, threadId, contextSha256);
+            _pendingTurnStarts.Add(requestId, pending);
+            return pending;
         }
+    }
 
-        return response;
+    private void CompletePendingTurnStart(
+        PendingTurnIdentity pending,
+        string threadId,
+        string turnId,
+        string contextSha256)
+    {
+        lock (_sync)
+        {
+            EnsureOnline();
+            PendingTurnIdentity current;
+            if (!_pendingTurnStarts.TryGetValue(pending.RequestId, out current!)
+                || !ReferenceEquals(current, pending)
+                || !pending.Matches(threadId, contextSha256))
+            {
+                throw new AgentBridgeClientException(
+                    AgentBridgeErrorCodes.ResultIdentityMismatch,
+                    "Agent启动响应未绑定到当前待启动回合。");
+            }
+
+            var provisionallyBound = !string.IsNullOrEmpty(pending.ProviderTurnId);
+            if (!pending.TryBindProviderTurn(turnId))
+            {
+                throw new AgentBridgeClientException(
+                    AgentBridgeErrorCodes.ResultIdentityMismatch,
+                    "Agent启动响应与早到反向查询的TurnId不一致。");
+            }
+
+            TurnIdentity active;
+            if (_activeTurns.TryGetValue(turnId, out active!))
+            {
+                if (!provisionallyBound || !active.Matches(pending))
+                {
+                    throw new AgentBridgeClientException(
+                        AgentBridgeErrorCodes.ResultIdentityMismatch,
+                        "Agent返回了重复的TurnId。");
+                }
+            }
+            else
+            {
+                if (provisionallyBound)
+                {
+                    throw new AgentBridgeClientException(
+                        AgentBridgeErrorCodes.ResultIdentityMismatch,
+                        "早到反向查询绑定的活动回合已终止。");
+                }
+                _activeTurns.Add(
+                    turnId,
+                    new TurnIdentity(
+                        pending.RequestId,
+                        pending.ThreadId,
+                        pending.ContextSha256));
+            }
+
+            _pendingTurnStarts.Remove(pending.RequestId);
+        }
+    }
+
+    private void AbandonPendingTurnStart(PendingTurnIdentity pending)
+    {
+        lock (_sync)
+        {
+            PendingTurnIdentity current;
+            if (!_pendingTurnStarts.TryGetValue(pending.RequestId, out current!)
+                || !ReferenceEquals(current, pending))
+            {
+                return;
+            }
+
+            _pendingTurnStarts.Remove(pending.RequestId);
+            if (!string.IsNullOrEmpty(pending.ProviderTurnId))
+            {
+                TurnIdentity active;
+                if (_activeTurns.TryGetValue(pending.ProviderTurnId, out active!)
+                    && active.Matches(pending))
+                {
+                    _activeTurns.Remove(pending.ProviderTurnId);
+                }
+            }
+        }
     }
 
     public async Task InterruptTurnAsync(
@@ -586,6 +800,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
 
             DisposeSecurityMaterials();
             _sendGate.Dispose();
+            _drawingQuerySlots.Dispose();
         }
         catch
         {
@@ -731,6 +946,74 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
         }
     }
 
+    private async Task SendResponseEnvelopeAsync(
+        string correlationId,
+        string bodyJson,
+        string errorCode,
+        string errorMessage,
+        CancellationToken cancellationToken)
+    {
+        await _sendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            NamedPipeClientStream pipe;
+            IpcEnvelopeAuthenticator authenticator;
+            long sequence;
+            lock (_sync)
+            {
+                EnsureOnline();
+                pipe = _pipe!;
+                authenticator = _authenticator!;
+                sequence = checked(_outgoingSequence + 1);
+            }
+
+            var envelope = new IpcEnvelope
+            {
+                MessageId = Guid.NewGuid().ToString("N"),
+                CorrelationId = correlationId,
+                SessionId = _sessionId,
+                Sequence = sequence,
+                MessageType = ResponseMessageType,
+                PayloadJson = BridgeClientJsonCodec.SerializeResponsePayload(
+                    bodyJson,
+                    errorCode,
+                    errorMessage),
+                Nonce = CreateNonce(),
+            };
+            envelope.Mac = authenticator.Sign(envelope);
+
+            try
+            {
+                await BridgeClientFrameCodec.WriteAsync(
+                        pipe,
+                        envelope,
+                        _maximumFrameBytes,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                var terminal = NormalizeTerminalError(exception, AgentBridgeErrorCodes.ConnectionLost);
+                FailConnection(terminal);
+                throw terminal;
+            }
+
+            lock (_sync)
+            {
+                if (_state != ClientState.Online)
+                {
+                    throw CreateStateException("Agent Bridge连接已终止。");
+                }
+
+                _outgoingSequence = sequence;
+            }
+        }
+        finally
+        {
+            _sendGate.Release();
+        }
+    }
+
     private async Task ReceiveLoopAsync(
         NamedPipeClientStream pipe,
         CancellationToken cancellationToken)
@@ -765,6 +1048,41 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
                 if (validation != IpcValidationCode.Accepted)
                 {
                     throw new AgentBridgeAuthenticationException(validation);
+                }
+
+                if (string.Equals(envelope.MessageType, RequestMessageType, StringComparison.Ordinal))
+                {
+                    if (!string.IsNullOrEmpty(envelope.CorrelationId))
+                    {
+                        throw new AgentBridgeClientException(
+                            AgentBridgeErrorCodes.RequestInvalid,
+                            "Agent Bridge反向请求不得携带CorrelationId。");
+                    }
+
+                    var reverseRequest = BridgeClientJsonCodec.DeserializeRequestPayload(
+                        envelope.PayloadJson);
+                    if (!string.Equals(
+                        reverseRequest.Method,
+                        AgentBridgeMethods.QueryDrawing,
+                        StringComparison.Ordinal))
+                    {
+                        throw new AgentBridgeClientException(
+                            AgentBridgeErrorCodes.RequestInvalid,
+                            "Agent Bridge收到未列入白名单的反向请求方法。");
+                    }
+
+                    await StartDrawingQueryHandlerAsync(
+                            envelope.MessageId,
+                            reverseRequest.BodyJson,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    continue;
+                }
+
+                if (string.Equals(envelope.MessageType, CancelMessageType, StringComparison.Ordinal))
+                {
+                    HandleDrawingQueryCancellation(envelope);
+                    continue;
                 }
 
                 if (string.Equals(
@@ -833,6 +1151,190 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
         catch (Exception exception)
         {
             FailConnection(NormalizeTerminalError(exception, "connection_lost"));
+        }
+    }
+
+    private async Task StartDrawingQueryHandlerAsync(
+        string bridgeRequestId,
+        string bodyJson,
+        CancellationToken connectionCancellation)
+    {
+        if (string.IsNullOrWhiteSpace(bridgeRequestId))
+        {
+            throw new AgentBridgeClientException(
+                AgentBridgeErrorCodes.RequestInvalid,
+                "Agent Bridge反向请求缺少MessageId。");
+        }
+
+        if (!_drawingQuerySlots.Wait(0))
+        {
+            await SendResponseEnvelopeAsync(
+                    bridgeRequestId,
+                    "null",
+                    AgentBridgeErrorCodes.Busy,
+                    "AutoCAD只读图纸查询当前繁忙。",
+                    connectionCancellation)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(connectionCancellation);
+        var activeQuery = new ActiveDrawingQuery(cancellation);
+        lock (_sync)
+        {
+            EnsureOnline();
+            if (_activeDrawingQueries.ContainsKey(bridgeRequestId))
+            {
+                cancellation.Dispose();
+                _drawingQuerySlots.Release();
+                throw new AgentBridgeClientException(
+                    AgentBridgeErrorCodes.ResultIdentityMismatch,
+                    "Agent Bridge反向请求MessageId重复。");
+            }
+
+            _activeDrawingQueries.Add(bridgeRequestId, activeQuery);
+        }
+
+        _ = RunDrawingQueryHandlerAsync(
+            bridgeRequestId,
+            bodyJson,
+            activeQuery,
+            connectionCancellation);
+    }
+
+    private async Task RunDrawingQueryHandlerAsync(
+        string bridgeRequestId,
+        string bodyJson,
+        ActiveDrawingQuery activeQuery,
+        CancellationToken connectionCancellation)
+    {
+        await Task.Yield();
+        var responseBody = "null";
+        var errorCode = string.Empty;
+        var errorMessage = string.Empty;
+        try
+        {
+            var request = BridgeClientJsonCodec.DeserializeDrawingQueryRequest(bodyJson);
+            EnsureDrawingQueryTurnActive(request);
+            if (_drawingQueryHandler is null)
+            {
+                throw new AgentBridgeClientException(
+                    AgentBridgeErrorCodes.DrawingQueryUnavailable,
+                    "AutoCAD Host未注册只读图纸查询处理器。");
+            }
+
+            var response = await _drawingQueryHandler(request, activeQuery.Cancellation.Token)
+                .ConfigureAwait(false);
+            activeQuery.Cancellation.Token.ThrowIfCancellationRequested();
+            EnsureDrawingQueryTurnActive(request);
+            responseBody = BridgeClientJsonCodec.SerializeDrawingQueryResponse(request, response);
+        }
+        catch (OperationCanceledException) when (activeQuery.Cancellation.IsCancellationRequested)
+        {
+            errorCode = AgentBridgeErrorCodes.RequestCancelled;
+            errorMessage = "AutoCAD只读图纸查询已取消。";
+        }
+        catch (AgentBridgeClientException exception)
+        {
+            errorCode = exception.Code;
+            errorMessage = exception.Message;
+        }
+        catch
+        {
+            errorCode = AgentBridgeErrorCodes.InternalError;
+            errorMessage = "AutoCAD只读图纸查询处理失败。";
+        }
+
+        try
+        {
+            if (!connectionCancellation.IsCancellationRequested)
+            {
+                await SendResponseEnvelopeAsync(
+                        bridgeRequestId,
+                        responseBody,
+                        errorCode,
+                        errorMessage,
+                        connectionCancellation)
+                    .ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (connectionCancellation.IsCancellationRequested)
+        {
+        }
+        catch
+        {
+            // SendResponseEnvelopeAsync already transitions the connection to fail-closed.
+        }
+        finally
+        {
+            lock (_sync)
+            {
+                _activeDrawingQueries.Remove(bridgeRequestId);
+            }
+
+            activeQuery.Cancellation.Dispose();
+            _drawingQuerySlots.Release();
+            activeQuery.Completion.TrySetResult(true);
+        }
+    }
+
+    private void EnsureDrawingQueryTurnActive(AgentDrawingQueryRequest request)
+    {
+        lock (_sync)
+        {
+            EnsureOnline();
+            TurnIdentity identity;
+            if (_activeTurns.TryGetValue(request.TurnId, out identity!))
+            {
+                if (identity.Matches(request.RequestId, request.ThreadId))
+                {
+                    return;
+                }
+
+                throw new AgentBridgeClientException(
+                    AgentBridgeErrorCodes.ResultIdentityMismatch,
+                    "反向整图查询未绑定到当前活动turn。");
+            }
+
+            PendingTurnIdentity pending;
+            if (!_pendingTurnStarts.TryGetValue(request.RequestId, out pending!)
+                || !string.Equals(pending.ThreadId, request.ThreadId, StringComparison.Ordinal)
+                || !string.IsNullOrEmpty(pending.ProviderTurnId)
+                || !pending.TryBindProviderTurn(request.TurnId))
+            {
+                throw new AgentBridgeClientException(
+                    AgentBridgeErrorCodes.ResultIdentityMismatch,
+                    "反向整图查询未绑定到当前活动turn。");
+            }
+
+            _activeTurns.Add(
+                request.TurnId,
+                new TurnIdentity(
+                    pending.RequestId,
+                    pending.ThreadId,
+                    pending.ContextSha256));
+        }
+    }
+
+    private void HandleDrawingQueryCancellation(IpcEnvelope envelope)
+    {
+        if (string.IsNullOrWhiteSpace(envelope.CorrelationId))
+        {
+            throw new AgentBridgeClientException(
+                AgentBridgeErrorCodes.RequestInvalid,
+                "Agent Bridge取消消息缺少CorrelationId。");
+        }
+
+        _ = BridgeClientJsonCodec.DeserializeCancelReason(envelope.PayloadJson);
+        ActiveDrawingQuery? activeQuery;
+        lock (_sync)
+        {
+            _activeDrawingQueries.TryGetValue(envelope.CorrelationId, out activeQuery);
+        }
+
+        if (activeQuery is not null)
+        {
+            TryCancel(activeQuery.Cancellation);
         }
     }
 
@@ -937,6 +1439,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
             pending = _pendingRequests.Values.ToList();
             _pendingRequests.Clear();
             _activeTurns.Clear();
+            _pendingTurnStarts.Clear();
             _seenEventIds.Clear();
             _lastEventSequence = 0;
         }
@@ -1198,15 +1701,85 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
 
     private sealed class TurnIdentity
     {
-        public TurnIdentity(string threadId, string contextSha256)
+        public TurnIdentity(string requestId, string threadId, string contextSha256)
         {
+            RequestId = requestId;
             ThreadId = threadId;
             ContextSha256 = contextSha256;
         }
 
+        public string RequestId { get; }
+
         public string ThreadId { get; }
 
         public string ContextSha256 { get; }
+
+        public bool Matches(string requestId, string threadId)
+        {
+            return string.Equals(RequestId, requestId, StringComparison.Ordinal)
+                && string.Equals(ThreadId, threadId, StringComparison.Ordinal);
+        }
+
+        public bool Matches(PendingTurnIdentity pending)
+        {
+            return pending != null
+                && Matches(pending.RequestId, pending.ThreadId)
+                && string.Equals(
+                    ContextSha256,
+                    pending.ContextSha256,
+                    StringComparison.Ordinal);
+        }
+    }
+
+    private sealed class PendingTurnIdentity
+    {
+        public PendingTurnIdentity(string requestId, string threadId, string contextSha256)
+        {
+            RequestId = requestId;
+            ThreadId = threadId;
+            ContextSha256 = contextSha256;
+        }
+
+        public string RequestId { get; }
+
+        public string ThreadId { get; }
+
+        public string ContextSha256 { get; }
+
+        public string ProviderTurnId { get; private set; } = string.Empty;
+
+        public bool TryBindProviderTurn(string turnId)
+        {
+            if (string.IsNullOrWhiteSpace(turnId))
+            {
+                return false;
+            }
+            if (string.IsNullOrEmpty(ProviderTurnId))
+            {
+                ProviderTurnId = turnId;
+                return true;
+            }
+            return string.Equals(ProviderTurnId, turnId, StringComparison.Ordinal);
+        }
+
+        public bool Matches(string threadId, string contextSha256)
+        {
+            return string.Equals(ThreadId, threadId, StringComparison.Ordinal)
+                && string.Equals(ContextSha256, contextSha256, StringComparison.Ordinal);
+        }
+    }
+
+    private sealed class ActiveDrawingQuery
+    {
+        public ActiveDrawingQuery(CancellationTokenSource cancellation)
+        {
+            Cancellation = cancellation;
+            Completion = new TaskCompletionSource<bool>();
+        }
+
+        public CancellationTokenSource Cancellation { get; }
+
+        public TaskCompletionSource<bool> Completion { get; }
     }
 
     private enum ClientState

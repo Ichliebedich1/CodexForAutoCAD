@@ -165,24 +165,25 @@ DBMOD。
 
 不得把 `MaximumEntities` 简单改成几万。
 
-M2-A 图纸索引垂直切片已形成自动化候选：
+M2-A 图纸索引和 M2-B Codex 动态查询已形成同一自动化候选：
 
 - Host 版本：`0.4.0.0`。
-- 候选：`autocad2016-m2-drawing-index-v040-2cfbadd8-4028850a-8af00fa8`。
+- 候选：`autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd`。
 - Host SHA-256：
-  `2CFBADD8FF57F6DAAA4727F1B6DE871D509B92E47A680ECCA669A024CBA786A5`。
+  `597A7A3DC047B7A8188C0E4C7768032A5D8DA428AE210AE615713B8497AB0637`。
 - AgentHost SHA-256：
-  `4028850AD9B9EECB8812B07CF3C401AE5287744D839AE66C57AD193C1DB3CE0C`。
+  `432E7CF97D9E968D96C83FDE4FDD3C40961326E90CCD16D90BC3E34F21C968F6`。
 - manifest SHA-256：
-  `3CF194EB69B8C33E8D6B3C7B7D33838D6CB847036819CAC074D9DB7E1AFEF20A`。
-- 自动化：Contracts net8/net45 `83/83`、完整 Phase 2 `287/287`、R20.1 Release、
-  28 文件只读闭包和 Host A/B 位级一致通过。
+  `7E6116AF0F2D6BDBEB64DB6D009705E21358CB55609E36697EC179D17B690C18`。
+- 自动化：Contracts net8/net45 `84/84`、Bridge Client net8/net45 `29/29`、
+  Bridge/AgentHost `39/39`、AgentRuntime `33/33`、Host MVP `52/52`、完整 Phase 2
+  `307/307`、R20.1 Release、29 文件只读闭包和 Host A/B 位级一致通过。
 - 证据：
-  `m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-2cfbadd8-4028850a-8af00fa8.json`。
+  `m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd.json`。
 - 说明：`M2_DRAWING_INDEX_VERTICAL_SLICE_20260722.md`。
 - 实机入口：`M2_DRAWING_INDEX_RUNTIME_TEST_20260722.md`。
 
-M2-A 代码与自动化已完成：
+M2-A/M2-B 代码与自动化已完成：
 
 - [x] 保留 CadContextJson v2 作为兼容选择快照，64 实体/256 KiB 上限未放大。
 - [x] 新增版本化 DrawingIndex v1 和 CadQuery v1 契约及 fail-closed 验证器。
@@ -192,22 +193,29 @@ M2-A 代码与自动化已完成：
 - [x] 支持进度、幂等取消、2 分钟超时、100,000 实体索引和 64 MiB 估算预算。
 - [x] 建立类型、图层、空间、块、包围盒、文字、对象令牌和数量摘要。
 - [x] 支持绑定索引/过滤器/页大小的游标分页，不一次发送整图 JSON。
-- [ ] 为 Codex 提供按类型、图层、块、范围、文字和对象 ID 的只读查询工具。
+- [x] 为 Codex 提供 `cad.query_drawing`，支持按类型、图层、空间、块、范围、文字和对象
+  ID 的只读分页查询。
 - [x] Host 命令可发布大选择集总数、摘要、分页引用和完整性，不复用 v2 数量上限。
 - [x] 文档、revision、DBMOD、当前空间和对象事件使旧索引失效，旧查询拒绝。
 - [x] 未知、代理、读取失败和数据受限对象形成受限占位，不中断整图扫描。
+- [x] AgentHost 通过认证反向 Bridge 查询 Host 拥有的纯托管冻结快照；Bridge 线程不进入
+  Autodesk API，模型不能提供索引/文档/revision 身份。
+- [x] 无选择上下文但有有效 DrawingIndex 时允许 ASK；系统 request、Provider thread/turn、
+  tool call 和 query ID 分离并逐项绑定。
+- [x] 覆盖反向查询早于 turn-start 响应的竞态、取消/STOP 排空、断线、终态、身份不匹配和
+  stale 索引拒绝；50k 发布避免第二次数组深拷贝。
 - [ ] 建立 1,000、10,000、50,000 对象的脱敏基准图。
 - [ ] 冻结 UI 卡顿、总扫描时间、内存和 IPC 大小预算。
 - [x] 自动化证明实体、统计桶、内存和时间预算映射为 `partial/limited`，不伪装完整。
 
 M2 仍未完成，以下内容不能由自动化候选替代：
 
-- [ ] 在 AutoCAD 2016 按精确 `0.4.0.0` 哈希人工 NETLOAD 五种范围、查询、分页和 DBMOD。
+- [ ] 在 AutoCAD 2016 按精确 `0.4.0.0` 哈希人工 NETLOAD 五种范围、本地查询、分页和 DBMOD。
+- [ ] 仅建立 DrawingIndex、不发布选择上下文，验证 ASK 与 `cad.query_drawing` 多页查询。
+- [ ] 实机验证修改/撤销/切图后的 stale 拒绝，以及查询/回合取消和断线 fail-closed。
 - [ ] 实机验证跨 Idle 片段的 `BlockTableRecordEnumerator` 生命周期和退出清理。
 - [ ] 实机验证扫描中修改图纸、切换布局、取消、超时和旧游标拒绝。
-- [ ] 完成 1k/10k/50k 扫描响应性、总时间、工作集和查询性能 evidence。
-- [ ] M2-B 通过现有认证 Bridge/AgentHost 把同一 CadQuery 暴露给 Codex；不增加 Provider
-  抽象、第二套扫描器或第二套 Agent 系统。
+- [ ] 完成 1k/10k/50k 扫描响应性、总时间、工作集、本地查询和 Agent 查询性能 evidence。
 
 ## 8. M3：CAD 读取语义和对象覆盖
 

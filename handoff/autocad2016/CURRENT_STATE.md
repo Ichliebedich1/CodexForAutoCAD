@@ -94,21 +94,32 @@ NETLOAD 证据的能力一律视为未支持。
   分片、进度、取消、2 分钟超时、64 MiB 估算预算、100,000 实体索引、2,000,000 实体
   报告上限、类型/图层/空间/块/文字/范围/对象令牌过滤和稳定游标分页。
 - M2-A 未放大 v2 选择快照；`64` 实体和 `256 KiB` canonical JSON 仍是既有对话快照硬
-  上限，整图能力走独立内存索引和分页查询。
-- M2-A 对未知、代理、读取失败和数据受限对象发布受限占位；文档、revision、DBMOD、
-  当前空间或对象事件变化会使旧索引 `stale`。当前 Host 命令为 `CODEX16INDEX`、
-  `CODEX16INDEXINFO`、`CODEX16INDEXCANCEL`、`CODEX16QUERY`、`CODEX16QUERYNEXT`。
-- M2-A 已冻结 `0.4.0.0` 自动化候选
-  `artifacts/autocad2016-m2-drawing-index-v040-2cfbadd8-4028850a-8af00fa8/`。Host SHA-256 为
-  `2CFBADD8FF57F6DAAA4727F1B6DE871D509B92E47A680ECCA669A024CBA786A5`，AgentHost EXE 为
-  `4028850AD9B9EECB8812B07CF3C401AE5287744D839AE66C57AD193C1DB3CE0C`，manifest 为
-  `3CF194EB69B8C33E8D6B3C7B7D33838D6CB847036819CAC074D9DB7E1AFEF20A`。
-- 该候选通过 Contracts net8/net45 `83/83`、完整 Phase 2 `287/287`、28 文件 Host.2016
-  只读 Compile 闭包、R20.1/net45/x64 双构建位级一致和敏感信息门禁。证据为
-  `evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-2cfbadd8-4028850a-8af00fa8.json`。
-  它没有启动或操作 AutoCAD，不能证明跨 Idle 枚举器生命周期或 1k/10k/50k 性能。
-- Codex 动态 drawing-query 工具尚未接入；这是 M2-B，不属于 M2-A 候选。Provider-neutral
-  抽象、Direct API 和自研 Agent Loop 继续冻结。
+  上限，整图能力走独立内存索引和分页查询。未知、代理、读取失败和数据受限对象发布
+  受限占位；文档、revision、DBMOD、当前空间或对象事件变化会使旧索引 `stale`。
+- M2-B 已把只读 `cad.query_drawing` 动态工具接入现有 CodexAgentRuntime、AgentHost、
+  认证反向 Bridge 和 Host。无有效选择上下文但有有效 DrawingIndex 时允许 ASK；两者都
+  没有时 fail-closed。模型只能提交过滤器、页大小和游标，不能提交 index/document/revision
+  身份。
+- Host 在 AutoCAD 文档线程冻结纯托管 DrawingIndex 快照；Bridge worker 查询该快照时
+  不进入 Autodesk API。系统 request_id、Provider thread/turn、tool call 和 query ID 分离，
+  每一层逐项绑定。早于 `agent.turn.start.v2` 响应到达的合法反向查询也按精确
+  request/thread 身份绑定；启动失败、STOP、断线、取消和终态会清理临时绑定。
+- 文档修改、撤销、切图、索引替换、回合取消或终态使旧快照/结果拒绝；Bridge 停止会取消
+  并排空反向查询。50k 索引发布使用冻结实体数组所有权转移，避免第二次数组深拷贝。
+- 当前 Host 命令为 `CODEX16INDEX`、`CODEX16INDEXINFO`、`CODEX16INDEXCANCEL`、
+  `CODEX16QUERY`、`CODEX16QUERYNEXT`；Doctor 和加载横幅明确声明动态查询已接入。
+- M2-A/M2-B 已冻结 `0.4.0.0` 自动化候选
+  `artifacts/autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd/`。Host SHA-256 为
+  `597A7A3DC047B7A8188C0E4C7768032A5D8DA428AE210AE615713B8497AB0637`，AgentHost EXE 为
+  `432E7CF97D9E968D96C83FDE4FDD3C40961326E90CCD16D90BC3E34F21C968F6`，manifest 为
+  `7E6116AF0F2D6BDBEB64DB6D009705E21358CB55609E36697EC179D17B690C18`。
+- 该候选通过 Contracts net8/net45 `84/84`、Bridge Client net8/net45 `29/29`、
+  Bridge/AgentHost `39/39`、AgentRuntime `33/33`、Host MVP `52/52`、完整 Phase 2
+  `307/307`、29 文件 Host.2016 只读 Compile 闭包、R20.1/net45/x64 双构建位级一致、
+  敏感信息门禁和候选 AgentHost doctor。证据为
+  `evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-597a7a3d-432e7cf9-f1f2addd.json`。
+  它没有启动或操作 AutoCAD，不能证明跨 Idle 枚举器生命周期、动态查询实机行为或
+  1k/10k/50k 性能。Provider-neutral 抽象、Direct API 和自研 Agent Loop 继续冻结。
 
 ## 已验证检查点
 
@@ -395,7 +406,7 @@ NETLOAD 证据的能力一律视为未支持。
 ## 待实机验证队列
 
 P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `0.3.3.0` 精确候选和
-`M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md`；M2-A 使用 `0.4.0.0` 精确候选和
+`M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md`；M2 使用 `0.4.0.0` 精确候选和
 `M2_DRAWING_INDEX_RUNTIME_TEST_20260722.md`：
 
 1. 新建对话、只清 CAD 上下文、清除全部和活动回合 `busy`。
@@ -405,9 +416,11 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
 5. 不先 STOP，正常退出 AutoCAD 后 AgentHost/Codex 残留为 0。
 6. 125%/150% DPI。
 7. 启动失败、Bridge 断线、超时和迟到事件。
-8. M2-A 五种范围、查询分页、大选择集/未知占位、取消、失效和正常退出。
-9. M2-A 1k/10k/50k 扫描响应性、总时间、工作集、DBMOD 和查询性能。
-10. 19 类对象逐类字段核对放在 M3。
+8. M2 五种范围、本地分页、大选择集/未知占位、取消、失效和正常退出。
+9. 无选择上下文、仅有效 DrawingIndex 时 ASK，并明确触发 `cad.query_drawing` 分页查询。
+10. 修改/撤销/切图后的 stale 拒绝，以及查询、回合取消和断线 fail-closed。
+11. M2 1k/10k/50k 扫描响应性、总时间、工作集、DBMOD 和 Agent 查询性能。
+12. 19 类对象逐类字段核对放在 M3。
 
 ## 下一步顺序
 
@@ -415,9 +428,9 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
 2. P1 已完成自动化、冻结和 AutoCAD 2016 live 基线。
 3. M0 自动化、候选冻结和本地 `main` 收拢均已完成。
 4. M1 代码、自动化和 `0.3.3.0` 候选冻结已完成；精确候选实机矩阵仍待 evidence。
-5. M2-A 图纸索引、分页命令、自动化和 `0.4.0.0` 候选已完成；等待实机/性能 evidence。
-6. M2-B 接入现有 Bridge/AgentHost 的结构化 Codex drawing-query，不复制第二套扫描器。
-7. M2 完成后进入 M3 对象语义，再关闭 M4 沙箱与审计；M4 完成前不启用 M5 CAD 写入。
+5. M2-A 图纸索引与 M2-B `cad.query_drawing` 真实调用链、自动化和 `0.4.0.0` 候选已完成；
+   等待实机/性能 evidence。
+6. M2 实机完成后进入 M3 对象语义，再关闭 M4 沙箱与审计；M4 完成前不启用 M5 CAD 写入。
 
 ## 更新纪律
 

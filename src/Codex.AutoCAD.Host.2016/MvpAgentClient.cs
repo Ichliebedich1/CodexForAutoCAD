@@ -25,6 +25,7 @@ namespace Codex.AutoCAD.Host2016
         private string systemSessionId = string.Empty;
         private string conversationDocumentId = string.Empty;
         private MvpAgentTurnState activeTurn;
+        private DrawingQueryTurnBinding activeDrawingQueryBinding;
         private string terminalBridgeErrorCode = string.Empty;
         private Task startTask;
         private Task stopTask;
@@ -122,10 +123,25 @@ namespace Codex.AutoCAD.Host2016
             }
         }
 
+        internal Task AskAsync(
+            string prompt,
+            UnifiedContextState context,
+            Func<bool> isCurrentContext,
+            CancellationToken cancellationToken)
+        {
+            return AskAsync(
+                prompt,
+                context,
+                isCurrentContext,
+                null,
+                cancellationToken);
+        }
+
         internal async Task AskAsync(
             string prompt,
             UnifiedContextState context,
             Func<bool> isCurrentContext,
+            DrawingIndexAgentSnapshot drawingIndexSnapshot,
             CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(prompt))
@@ -133,38 +149,71 @@ namespace Codex.AutoCAD.Host2016
                 throw new ArgumentException("提示词不能为空。", nameof(prompt));
             }
 
-            if (isCurrentContext == null || !isCurrentContext())
+            var hasSelectionContext = context != null && context.Published;
+            if (hasSelectionContext && (isCurrentContext == null || !isCurrentContext()))
             {
                 throw new InvalidOperationException("当前 CAD 上下文已失效，请重新执行 CODEX16CTX。");
+            }
+            if (drawingIndexSnapshot != null && !drawingIndexSnapshot.IsCurrent)
+            {
+                drawingIndexSnapshot = null;
+            }
+            if (!hasSelectionContext && drawingIndexSnapshot == null)
+            {
+                throw new InvalidOperationException(
+                    "请先执行 CODEX16INDEX 建立整图索引，或预选图元并执行 CODEX16CTX。");
             }
 
             await StartAsync(cancellationToken).ConfigureAwait(false);
-            if (!isCurrentContext())
+            if (hasSelectionContext && !isCurrentContext())
             {
                 throw new InvalidOperationException("当前 CAD 上下文已失效，请重新执行 CODEX16CTX。");
             }
-
-            if (context == null || !context.Published)
+            if (drawingIndexSnapshot != null && !drawingIndexSnapshot.IsCurrent)
             {
-                throw new InvalidOperationException("请先预选图元并执行 CODEX16CTX。");
+                drawingIndexSnapshot = null;
+            }
+            if (!hasSelectionContext && drawingIndexSnapshot == null)
+            {
+                throw new InvalidOperationException(
+                    "DrawingIndex 已失效，请重新执行 CODEX16INDEX。");
             }
 
-            if (!isCurrentContext())
-            {
-                throw new InvalidOperationException("当前 CAD 上下文已失效，请重新执行 CODEX16CTX。");
-            }
-
-            var documentId = context.Context == null || context.Context.Document == null
+            var selectionDocumentId = !hasSelectionContext
+                                      || context.Context == null
+                                      || context.Context.Document == null
                 ? string.Empty
                 : context.Context.Document.DocumentId;
+            var indexDocumentId = drawingIndexSnapshot == null
+                ? string.Empty
+                : drawingIndexSnapshot.DocumentId;
+            if (!string.IsNullOrWhiteSpace(selectionDocumentId)
+                && !string.IsNullOrWhiteSpace(indexDocumentId)
+                && !string.Equals(
+                    selectionDocumentId,
+                    indexDocumentId,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "选择上下文与 DrawingIndex 不属于同一图纸；已拒绝混用。");
+            }
+            var documentId = !string.IsNullOrWhiteSpace(selectionDocumentId)
+                ? selectionDocumentId
+                : indexDocumentId;
             if (!string.IsNullOrWhiteSpace(documentId))
             {
                 await EnsureConversationForDocumentAsync(documentId, cancellationToken)
                     .ConfigureAwait(false);
-                if (!isCurrentContext())
+                if (hasSelectionContext && !isCurrentContext())
                 {
                     throw new InvalidOperationException(
                         "当前 CAD 上下文已失效，请重新执行 CODEX16CTX。");
+                }
+                if (!hasSelectionContext
+                    && (drawingIndexSnapshot == null || !drawingIndexSnapshot.IsCurrent))
+                {
+                    throw new InvalidOperationException(
+                        "DrawingIndex 已失效，请重新执行 CODEX16INDEX。");
                 }
             }
 
@@ -191,6 +240,12 @@ namespace Codex.AutoCAD.Host2016
                     DateTimeOffset.UtcNow,
                     turnTimeout);
                 activeTurn = requestTurn;
+                activeDrawingQueryBinding = drawingIndexSnapshot == null
+                    ? null
+                    : new DrawingQueryTurnBinding(
+                        requestTurn.RequestId,
+                        currentThread,
+                        drawingIndexSnapshot);
             }
 
             PublishSafely(TextChanged, string.Empty);
@@ -205,15 +260,21 @@ namespace Codex.AutoCAD.Host2016
                 ThreadId = currentThread,
                 ClientTurnId = requestTurn.ClientTurnId,
                 Prompt = prompt,
-                ContextV2 = context.Context,
-                ContextV2Sha256 = context.ContextSha256,
+                ContextV2 = hasSelectionContext ? context.Context : null,
+                ContextV2Sha256 = hasSelectionContext ? context.ContextSha256 : string.Empty,
             };
             try
             {
-                if (!isCurrentContext())
+                if (hasSelectionContext && !isCurrentContext())
                 {
                     throw new InvalidOperationException(
                         "当前 CAD 上下文已失效，请重新执行 CODEX16CTX。");
+                }
+                if (!hasSelectionContext
+                    && (drawingIndexSnapshot == null || !drawingIndexSnapshot.IsCurrent))
+                {
+                    throw new InvalidOperationException(
+                        "DrawingIndex 已失效，请重新执行 CODEX16INDEX。");
                 }
 
                 var turn = await currentBridge.StartTurnV2Async(request, cancellationToken)
@@ -241,6 +302,12 @@ namespace Codex.AutoCAD.Host2016
                     {
                         throw new InvalidOperationException("AgentHost 返回的回合标识无效或不一致。");
                     }
+                    if (activeDrawingQueryBinding != null
+                        && !activeDrawingQueryBinding.TryBindProviderTurn(turn.TurnId))
+                    {
+                        throw new InvalidOperationException(
+                            "AgentHost 返回的整图查询回合身份不一致。");
+                    }
 
                     dispatchCancellation = requestTurn.TryBeginCancellationDispatch();
                     currentState = requestTurn.State;
@@ -254,7 +321,7 @@ namespace Codex.AutoCAD.Host2016
                                 MvpAgentTurnStates.Cancelling,
                                 StringComparison.Ordinal)
                             ? "取消请求已登记，正在通知 Codex"
-                            : "Codex 正在分析当前图纸上下文",
+                            : "Codex 正在分析当前图纸数据",
                         requestTurn.RequestId,
                         currentState));
                 BeginTurnTimeoutMonitor(requestTurn);
@@ -278,6 +345,14 @@ namespace Codex.AutoCAD.Host2016
                 {
                     cancellationCompletion = requestTurn.MarkTerminal(terminalState);
                     currentState = requestTurn.State;
+                    if (activeDrawingQueryBinding != null
+                        && string.Equals(
+                            activeDrawingQueryBinding.RequestId,
+                            requestTurn.RequestId,
+                            StringComparison.Ordinal))
+                    {
+                        activeDrawingQueryBinding = null;
+                    }
                 }
 
                 requestTurn.CancelTimeout();
@@ -365,6 +440,7 @@ namespace Codex.AutoCAD.Host2016
                     conversationResetRequired = false;
                     conversationEpoch++;
                     activeTurn = null;
+                    activeDrawingQueryBinding = null;
                     conversationTransition = false;
                 }
 
@@ -446,6 +522,7 @@ namespace Codex.AutoCAD.Host2016
                 cancellationCompletion = requestTurn == null
                     ? null
                     : requestTurn.MarkTerminal(MvpAgentTurnStates.Failed);
+                activeDrawingQueryBinding = null;
             }
 
             PublishSafely(TextChanged, string.Empty);
@@ -512,6 +589,7 @@ namespace Codex.AutoCAD.Host2016
                 conversationDocumentId = string.Empty;
                 conversationResetRequired = true;
                 activeTurn = null;
+                activeDrawingQueryBinding = null;
             }
 
             PublishSafely(TextChanged, string.Empty);
@@ -709,6 +787,7 @@ namespace Codex.AutoCAD.Host2016
                 dispatchInterrupt = requestTurn.TryBeginForcedInterrupt();
                 cancellationCompletion = requestTurn.MarkTerminal(
                     MvpAgentTurnStates.Failed);
+                activeDrawingQueryBinding = null;
                 terminalBridgeErrorCode = AgentBridgeErrorCodes.Timeout;
                 online = false;
             }
@@ -887,6 +966,7 @@ namespace Codex.AutoCAD.Host2016
                 turnCancellationCompletion = stoppedTurn == null
                     ? null
                     : stoppedTurn.MarkTerminal(MvpAgentTurnStates.Cancelled);
+                activeDrawingQueryBinding = null;
                 terminalBridgeErrorCode = string.Empty;
                 stopCompleted = true;
             }
@@ -950,6 +1030,118 @@ namespace Codex.AutoCAD.Host2016
             }
         }
 
+        /// <summary>
+        /// Dedicated reverse Bridge handler. This method is intentionally limited to the pure-managed
+        /// snapshot bound to the active turn and never enters an Autodesk API.
+        /// </summary>
+        internal Task<AgentDrawingQueryResponse> HandleDrawingQueryAsync(
+            AgentDrawingQueryRequest request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var failures = AgentBridgeContractValidator.Validate(request);
+            if (failures.Length != 0)
+            {
+                throw new AgentBridgeClientException(
+                    AgentBridgeErrorCodes.RequestInvalid,
+                    "整图查询请求未通过冻结契约。");
+            }
+
+            MvpAgentTurnState requestTurn;
+            DrawingQueryTurnBinding binding;
+            DrawingIndexAgentSnapshot snapshot;
+            lock (sync)
+            {
+                EnsureOnlineForAskLocked();
+                requestTurn = activeTurn;
+                if (requestTurn == null
+                    || requestTurn.IsTerminal
+                    || !string.Equals(
+                        requestTurn.RequestId,
+                        request.RequestId,
+                        StringComparison.Ordinal)
+                    || !string.Equals(threadId, request.ThreadId, StringComparison.Ordinal))
+                {
+                    throw new AgentBridgeClientException(
+                        AgentBridgeErrorCodes.ResultIdentityMismatch,
+                        "整图查询未绑定到当前活动回合。");
+                }
+
+                binding = activeDrawingQueryBinding;
+                if (binding == null)
+                {
+                    throw new AgentBridgeClientException(
+                        AgentBridgeErrorCodes.DrawingQueryUnavailable,
+                        "当前回合没有可查询的 DrawingIndex 快照。");
+                }
+                if (!requestTurn.TryBindProviderTurn(request.TurnId)
+                    || !binding.TryBindProviderTurn(request.TurnId)
+                    || !binding.Matches(request))
+                {
+                    throw new AgentBridgeClientException(
+                        AgentBridgeErrorCodes.ResultIdentityMismatch,
+                        "整图查询身份与当前快照绑定不一致。");
+                }
+
+                snapshot = binding.Snapshot;
+                if (!snapshot.IsCurrent)
+                {
+                    throw new AgentBridgeClientException(
+                        AgentBridgeErrorCodes.DrawingQueryUnavailable,
+                        "DrawingIndex 已失效，请重新建立索引。");
+                }
+            }
+
+            CadQueryResponse queryResponse;
+            try
+            {
+                queryResponse = snapshot.Query(request, cancellationToken);
+            }
+            catch (DrawingIndexQueryException exception)
+            {
+                var code = string.Equals(
+                               exception.Code,
+                               "drawing_index_stale",
+                               StringComparison.Ordinal)
+                           || string.Equals(
+                               exception.Code,
+                               "drawing_index_unavailable",
+                               StringComparison.Ordinal)
+                    ? AgentBridgeErrorCodes.DrawingQueryUnavailable
+                    : AgentBridgeErrorCodes.RequestInvalid;
+                throw new AgentBridgeClientException(
+                    code,
+                    code == AgentBridgeErrorCodes.DrawingQueryUnavailable
+                        ? "DrawingIndex 已失效或不可查询。"
+                        : "整图查询参数或游标无效。");
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (sync)
+            {
+                if (!ReferenceEquals(activeTurn, requestTurn)
+                    || requestTurn.IsTerminal
+                    || !ReferenceEquals(activeDrawingQueryBinding, binding)
+                    || !binding.Matches(request)
+                    || !snapshot.IsCurrent)
+                {
+                    throw new AgentBridgeClientException(
+                        AgentBridgeErrorCodes.ResultIdentityMismatch,
+                        "整图查询完成前回合或图纸身份已变化；结果已拒绝。");
+                }
+            }
+
+            return Task.FromResult(new AgentDrawingQueryResponse
+            {
+                RequestId = request.RequestId,
+                ThreadId = request.ThreadId,
+                TurnId = request.TurnId,
+                ToolCallId = request.ToolCallId,
+                QueryId = request.QueryId,
+                Query = queryResponse,
+            });
+        }
+
         private async Task StartCoreAsync(CancellationToken cancellationToken)
         {
             AgentHostServiceSession newServiceSession = null;
@@ -971,7 +1163,8 @@ namespace Codex.AutoCAD.Host2016
                     newBridge = new AgentBridgeClient(
                         directionKeys,
                         TimeSpan.FromSeconds(5),
-                        TimeSpan.FromSeconds(30));
+                        TimeSpan.FromSeconds(30),
+                        drawingQueryHandler: HandleDrawingQueryAsync);
                 }
 
                 newBridge.EventReceived += OnBridgeEvent;
@@ -990,6 +1183,11 @@ namespace Codex.AutoCAD.Host2016
                 {
                     throw new InvalidOperationException(
                         "AgentHost 不支持 CadContextJson v2 或 agent.turn.start.v2；已拒绝回退到 v1。");
+                }
+                if (!MvpAgentCapabilityPolicy.SupportsDrawingQuery(capabilities))
+                {
+                    throw new InvalidOperationException(
+                        "AgentHost 不支持 cad.drawing.query；已拒绝启动整图查询链路。");
                 }
 
                 var newSessionId = Guid.NewGuid().ToString("N");
@@ -1010,6 +1208,7 @@ namespace Codex.AutoCAD.Host2016
                     systemSessionId = newSessionId;
                     threadId = thread.ThreadId;
                     activeTurn = null;
+                    activeDrawingQueryBinding = null;
                     terminalBridgeErrorCode = string.Empty;
                     stopWasRequested = stopRequested;
                     online = !stopWasRequested;
@@ -1236,6 +1435,11 @@ namespace Codex.AutoCAD.Host2016
                     becameTerminal = true;
                 }
 
+                if (becameTerminal)
+                {
+                    activeDrawingQueryBinding = null;
+                }
+
                 requestId = requestTurn.RequestId;
                 currentState = requestTurn.State;
             }
@@ -1361,6 +1565,7 @@ namespace Codex.AutoCAD.Host2016
                     : requestTurn.MarkTerminal(MvpAgentTurnStates.Failed);
                 requestId = requestTurn == null ? string.Empty : requestTurn.RequestId;
                 currentState = requestTurn == null ? string.Empty : requestTurn.State;
+                activeDrawingQueryBinding = null;
                 terminalBridgeErrorCode = errorCode;
                 online = false;
             }
@@ -1427,6 +1632,66 @@ namespace Codex.AutoCAD.Host2016
                 + ", state="
                 + (turnState ?? string.Empty)
                 + "）。";
+        }
+
+        private sealed class DrawingQueryTurnBinding
+        {
+            private string providerTurnId = string.Empty;
+
+            internal DrawingQueryTurnBinding(
+                string requestId,
+                string threadId,
+                DrawingIndexAgentSnapshot snapshot)
+            {
+                if (string.IsNullOrWhiteSpace(requestId))
+                {
+                    throw new ArgumentException("RequestId 不能为空。", nameof(requestId));
+                }
+                if (string.IsNullOrWhiteSpace(threadId))
+                {
+                    throw new ArgumentException("ThreadId 不能为空。", nameof(threadId));
+                }
+                if (snapshot == null)
+                {
+                    throw new ArgumentNullException(nameof(snapshot));
+                }
+
+                RequestId = requestId;
+                ThreadId = threadId;
+                Snapshot = snapshot;
+                SnapshotGeneration = snapshot.Generation;
+            }
+
+            internal string RequestId { get; private set; }
+
+            internal string ThreadId { get; private set; }
+
+            internal int SnapshotGeneration { get; private set; }
+
+            internal DrawingIndexAgentSnapshot Snapshot { get; private set; }
+
+            internal bool TryBindProviderTurn(string value)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    return false;
+                }
+                if (string.IsNullOrEmpty(providerTurnId))
+                {
+                    providerTurnId = value;
+                    return true;
+                }
+                return string.Equals(providerTurnId, value, StringComparison.Ordinal);
+            }
+
+            internal bool Matches(AgentDrawingQueryRequest request)
+            {
+                return request != null
+                       && SnapshotGeneration == Snapshot.Generation
+                       && string.Equals(RequestId, request.RequestId, StringComparison.Ordinal)
+                       && string.Equals(ThreadId, request.ThreadId, StringComparison.Ordinal)
+                       && string.Equals(providerTurnId, request.TurnId, StringComparison.Ordinal);
+            }
         }
 
         private static void PublishSafely(Action<string> subscribers, string value)
