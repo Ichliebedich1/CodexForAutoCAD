@@ -168,20 +168,49 @@ DBMOD。
 
 不得把 `MaximumEntities` 简单改成几万。
 
-- [ ] 保留 CadContextJson v2 作为兼容选择快照。
-- [ ] 新增版本化 DrawingIndex 和 CadQuery 契约。
-- [ ] 支持选择集、当前空间、模型空间、布局和整张图纸扫描范围。
-- [ ] AutoCAD API 读取在合法文档线程中分片；深拷贝后的统计、哈希和序列化可后台执行。
-- [ ] 支持进度、取消、超时和资源预算。
-- [ ] 建立类型、图层、空间、块、包围盒和对象数量索引。
-- [ ] 支持安全游标分页和按需查询，不一次发送整图 JSON。
+M2-A 图纸索引垂直切片已形成自动化候选：
+
+- Host 版本：`0.4.0.0`。
+- 候选：`autocad2016-m2-drawing-index-v040-2cfbadd8-4028850a-8af00fa8`。
+- Host SHA-256：
+  `2CFBADD8FF57F6DAAA4727F1B6DE871D509B92E47A680ECCA669A024CBA786A5`。
+- AgentHost SHA-256：
+  `4028850AD9B9EECB8812B07CF3C401AE5287744D839AE66C57AD193C1DB3CE0C`。
+- manifest SHA-256：
+  `3CF194EB69B8C33E8D6B3C7B7D33838D6CB847036819CAC074D9DB7E1AFEF20A`。
+- 自动化：Contracts net8/net45 `83/83`、完整 Phase 2 `287/287`、R20.1 Release、
+  28 文件只读闭包和 Host A/B 位级一致通过。
+- 证据：
+  `m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-2cfbadd8-4028850a-8af00fa8.json`。
+- 说明：`M2_DRAWING_INDEX_VERTICAL_SLICE_20260722.md`。
+- 实机入口：`M2_DRAWING_INDEX_RUNTIME_TEST_20260722.md`。
+
+M2-A 代码与自动化已完成：
+
+- [x] 保留 CadContextJson v2 作为兼容选择快照，64 实体/256 KiB 上限未放大。
+- [x] 新增版本化 DrawingIndex v1 和 CadQuery v1 契约及 fail-closed 验证器。
+- [x] 支持选择集、当前空间、模型空间、布局和整张图纸扫描范围。
+- [x] AutoCAD API 在文档线程的 Idle 小片、DocumentLock 和 ForRead transaction 中读取；
+  索引只保留深拷贝强类型摘要。
+- [x] 支持进度、幂等取消、2 分钟超时、100,000 实体索引和 64 MiB 估算预算。
+- [x] 建立类型、图层、空间、块、包围盒、文字、对象令牌和数量摘要。
+- [x] 支持绑定索引/过滤器/页大小的游标分页，不一次发送整图 JSON。
 - [ ] 为 Codex 提供按类型、图层、块、范围、文字和对象 ID 的只读查询工具。
-- [ ] 大选择集发布总数、摘要、分页引用和完整性，不因数量直接失败。
-- [ ] 文档修改、撤销、切换或关闭后使旧索引失效。
-- [ ] 未知和代理对象形成受限占位，不中断整图扫描。
+- [x] Host 命令可发布大选择集总数、摘要、分页引用和完整性，不复用 v2 数量上限。
+- [x] 文档、revision、DBMOD、当前空间和对象事件使旧索引失效，旧查询拒绝。
+- [x] 未知、代理、读取失败和数据受限对象形成受限占位，不中断整图扫描。
 - [ ] 建立 1,000、10,000、50,000 对象的脱敏基准图。
 - [ ] 冻结 UI 卡顿、总扫描时间、内存和 IPC 大小预算。
-- [ ] 超出预算返回 partial/limited，不崩溃、不假装完整。
+- [x] 自动化证明实体、统计桶、内存和时间预算映射为 `partial/limited`，不伪装完整。
+
+M2 仍未完成，以下内容不能由自动化候选替代：
+
+- [ ] 在 AutoCAD 2016 按精确 `0.4.0.0` 哈希人工 NETLOAD 五种范围、查询、分页和 DBMOD。
+- [ ] 实机验证跨 Idle 片段的 `BlockTableRecordEnumerator` 生命周期和退出清理。
+- [ ] 实机验证扫描中修改图纸、切换布局、取消、超时和旧游标拒绝。
+- [ ] 完成 1k/10k/50k 扫描响应性、总时间、工作集和查询性能 evidence。
+- [ ] M2-B 通过现有认证 Bridge/AgentHost 把同一 CadQuery 暴露给 Codex；不增加 Provider
+  抽象、第二套扫描器或第二套 Agent 系统。
 
 ## 8. M3：CAD 读取语义和对象覆盖
 

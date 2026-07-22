@@ -25,6 +25,7 @@ namespace Codex.AutoCAD.Host2016
         private UnifiedPalettePanel panel;
         private PaletteContextView context;
         private string agentStatus = "Agent 离线；只读模式。";
+        private string drawingIndexStatus = "整图索引：not_built";
         private bool disposed;
         private int generationCount;
         private int resetCount;
@@ -116,6 +117,12 @@ namespace Codex.AutoCAD.Host2016
             }
         }
 
+        internal void UpdateDrawingIndexStatus(string value)
+        {
+            drawingIndexStatus = value ?? string.Empty;
+            UpdatePanel();
+        }
+
         internal string BuildInfo()
         {
             EnsureNotDisposed();
@@ -159,6 +166,7 @@ namespace Codex.AutoCAD.Host2016
             builder.Append("Unsupported placeholder count: ").AppendLine(context.UnsupportedEntityCount.ToString(CultureInfo.InvariantCulture));
             builder.Append("Context complete: ").AppendLine(context.Complete ? "true" : "false");
             builder.Append("CadContext JSON bytes: ").AppendLine(context.CanonicalBytes.ToString(CultureInfo.InvariantCulture));
+            builder.Append("DrawingIndex: ").AppendLine(drawingIndexStatus);
             builder.AppendLine("Readable summary: enabled");
             builder.AppendLine("Canonical JSON display: enabled");
             string currentAgentStatus;
@@ -360,6 +368,8 @@ namespace Codex.AutoCAD.Host2016
             metrics.Append("匿名文档事件 Activated/ToBeDestroyed：");
             metrics.Append(documentActivatedCount.ToString(CultureInfo.InvariantCulture));
             metrics.Append(" / ").Append(documentToBeDestroyedCount.ToString(CultureInfo.InvariantCulture));
+            metrics.AppendLine();
+            metrics.Append(drawingIndexStatus);
             currentPanel.UpdateMetrics(metrics.ToString());
             currentPanel.UpdateContext(context);
             string currentAgentStatus;

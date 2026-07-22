@@ -159,6 +159,12 @@ namespace Codex.AutoCAD.Host2016
                 && candidate.Published;
         }
 
+        internal static CadContextDocumentMetadata CaptureDocumentMetadata(Document document)
+        {
+            Initialize();
+            return Documents.Capture(document);
+        }
+
         internal static void Clear(string reason)
         {
             Initialize();

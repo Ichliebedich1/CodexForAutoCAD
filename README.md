@@ -15,13 +15,18 @@
 ## 当前状态（2026-07-24）
 
 当前已在原版 AutoCAD 2016 R20.1 中建立 `0.3.2.0` 的 CadContextJson v2 只读 AI
-实机基线，并已冻结等待实机验证的 `0.3.3.0` M1 只读稳定化候选：
+实机基线，并已完成 M2-A `0.4.0.0` 图纸级只读索引的自动化候选冻结；`0.3.3.0` M1
+稳定化候选仍等待精确哈希实机绑定：
 
 - Host/Doctor、Palette 和 v2 schema 已人工 `NETLOAD` 运行。
 - 100% DPI 下的打开、停靠、浮动、隐藏重开、重建、中文输入和布局由用户确认通过。
 - 一个 50 对象混合选区成功发布：44 个强类型实体、6 个受限 placeholder，
   `jsonBytes=23142`，`DBMOD 21 -> 21`；未知对象没有使整组选区失败。
 - 本机 Codex 使用当前 v2 CAD 上下文完成两轮连续对话。
+- M2-A 新增 `codex.autocad.drawing-index/1` 和 `codex.autocad.cad-query/1`，支持
+  Selection/Current/Model/Layouts/Drawing 分片索引、受限占位、状态失效和游标分页。
+- M2-A 保留 CadContext v2 的 64 实体/256 KiB 选择快照边界；整图索引不把整图 JSON 一次
+  发送到 Codex。
 - 显式 CAD 上下文清除和文档激活清除旧缓存通过；CAD 写入和插件保存仍禁用。
 - P0 停止生命周期已有独立实机证据：重复 STOP、DBMOD 不变和 AgentHost 残留为零。
 - M1 已实现 Bridge 断线 fail-closed、结构化脱敏错误、request_id/唯一终态、幂等取消、
@@ -33,23 +38,37 @@
 - 该候选通过 Host MVP `41/41`、完整 Phase 2 `276/276`、Host.2016 只读 Compile 闭包、
   R20.1/net45/x64 双构建位级一致、敏感信息扫描和候选包自身 AgentHost doctor。
 
+M2-A `0.4.0.0` 自动化候选为：
+
+```text
+C:\tmp\CodexForAutoCAD-m2-drawing-index\artifacts\autocad2016-m2-drawing-index-v040-2cfbadd8-4028850a-8af00fa8
+Host SHA-256: 2CFBADD8FF57F6DAAA4727F1B6DE871D509B92E47A680ECCA669A024CBA786A5
+AgentHost SHA-256: 4028850AD9B9EECB8812B07CF3C401AE5287744D839AE66C57AD193C1DB3CE0C
+Manifest SHA-256: 3CF194EB69B8C33E8D6B3C7B7D33838D6CB847036819CAC074D9DB7E1AFEF20A
+```
+
+它通过 Contracts `83/83`、完整 Phase 2 `287/287`、R20.1/net45/x64 Host 构建、A/B
+位级一致和只读扫描；尚未在 AutoCAD 2016 中按精确哈希 `NETLOAD`。
+
 `0.3.2.0` 脱敏实机范围证据见
 `handoff/autocad2016/evidence/cad-context-v2-live-observation-20260722.json`；`0.3.3.0`
 自动化冻结证据见
 `handoff/autocad2016/evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3.json`。
 后者尚未在 AutoCAD 中按精确哈希 `NETLOAD`，不能继承前者的实机结论。
 
-当前选择快照仍有明确的 `64` 实体和 `256 KiB` canonical JSON 上限。下一阶段不会
-简单放大常量，而是保留 v2 兼容快照并新增整图扫描、索引、分页和按需查询能力。
+当前选择快照仍有明确的 `64` 实体和 `256 KiB` canonical JSON 上限。M2-A 没有简单放大
+常量，而是保留 v2 兼容快照并新增独立整图扫描、索引和分页查询。
 
 当前活动路线为：
 
 1. M0 已完成 P0/P1 受控集成、自动化复验和统一候选冻结；精确结果见
    `handoff/autocad2016/M0_BASELINE_RELEASE_20260722.md`。
-2. M1 代码、自动化和 `0.3.3.0` 候选冻结已完成，当前只等待用户执行 M1 实机矩阵。
-3. M1 实机通过后进入 M2，建设 1k/10k/50k 对象级整图上下文和结构化查询。
-4. 完成进程沙箱与审计基础后，才启用 AutoCAD 2016 强类型安全写入。
-5. 随后完成长期记忆、安装签名、企业部署和 AutoCAD 2025 适配。
+2. M1 代码、自动化和 `0.3.3.0` 候选冻结已完成，精确候选实机矩阵仍待用户绑定。
+3. M2-A 图纸级索引垂直切片已完成自动化候选；实机入口为
+   `handoff/autocad2016/M2_DRAWING_INDEX_RUNTIME_TEST_20260722.md`。
+4. M2-B 将把同一索引通过现有认证 Bridge 接入 Codex 结构化只读查询；不复制扫描器。
+5. M2 完成后再做 M3 对象语义、M4 沙箱审计，随后才启用 AutoCAD 2016 强类型安全写入。
+6. 随后完成长期记忆、安装签名、企业部署和 AutoCAD 2025 适配。
 
 完整阶段与完成定义见 `handoff/autocad2016/LONG_TERM_MEMORY_TODO.md`。
 
@@ -78,7 +97,10 @@ AutoCAD 2016 Host 位于独立解决方案 `Codex.AutoCAD.2016.sln`，并由专�
 
 Host.2016 必须保持 `net45`/x64，Autodesk 引用保持 `Private=false`。net45 参考程序集由仓库内经过哈希、签名和锁文件验证的离线 NuGet 包恢复，不读取用户或网络 NuGet 源；Autodesk DLL 不提交到仓库，也不复制到插件输出。
 
-构建或 Specs 通过只证明对应的静态/自动化门禁，不替代 AutoCAD 2016 人工 `NETLOAD`。Codex 不启动、唤醒、关闭、重启或操作 AutoCAD；实机步骤由用户在现有 CAD 环境中执行。
+构建或 Specs 通过只证明对应的静态/自动化门禁，不替代 AutoCAD 2016 人工 `NETLOAD`。M2-A
+候选的完整 DLL、依赖和人工步骤见 `M2_DRAWING_INDEX_VERTICAL_SLICE_20260722.md` 与
+`M2_DRAWING_INDEX_RUNTIME_TEST_20260722.md`。Codex 不启动、唤醒、关闭、重启或操作
+AutoCAD；实机步骤由用户在现有 CAD 环境中执行。
 
 ## 安全不变量
 

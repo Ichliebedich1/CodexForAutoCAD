@@ -75,6 +75,18 @@ var specs = new[]
     new SpecCase("HOST16-V1-003 映射后canonical JSON确定且不含图名路径", UnifiedHostCanonicalJsonIsPrivateAndDeterministic),
     new SpecCase("HOST16-V1-004 可读摘要展示坐标图层文字半径顶点块名", UnifiedHostSummaryShowsRequiredFields),
     new SpecCase("HOST16-V1-005 不透明文档元数据不合规则fail-closed", UnifiedHostRejectsUnsafeDocumentMetadata),
+    new SpecCase("INDEX-V1-001 五万对象DrawingIndex描述通过冻结契约", DrawingIndexContractsSpecs.FiftyThousandEntityDescriptorPasses),
+    new SpecCase("INDEX-V1-002 DrawingIndex计数与终态不一致被拒绝", DrawingIndexContractsSpecs.DescriptorInvariantsFailClosed),
+    new SpecCase("QUERY-V1-001 类型图层块文字范围和对象ID过滤正确", DrawingIndexContractsSpecs.FiltersAreCombined),
+    new SpecCase("QUERY-V1-002 游标分页稳定且不重复不遗漏", DrawingIndexContractsSpecs.CursorPaginationIsStable),
+    new SpecCase("QUERY-V1-003 游标绑定索引查询和页大小", DrawingIndexContractsSpecs.CursorIsBoundToQueryIdentity),
+    new SpecCase("QUERY-V1-004 图纸revision变化返回stale而非旧结果", DrawingIndexContractsSpecs.RevisionMismatchReturnsStale),
+    new SpecCase("QUERY-V1-005 partial与limited完整性不被伪装", DrawingIndexContractsSpecs.PartialAndLimitedStayExplicit),
+    new SpecCase("QUERY-V1-006 内存预算在加入实体前fail-closed", DrawingIndexContractsSpecs.AccumulatorHonorsMemoryBudget),
+    new SpecCase("QUERY-V1-007 五万对象索引可过滤并分页", DrawingIndexContractsSpecs.FiftyThousandEntitiesCanBeQueried),
+    new SpecCase("INDEX-V1-003 完成状态不会把占位或预算超限伪装为完整", DrawingIndexContractsSpecs.CompletionPolicyIsFailClosed),
+    new SpecCase("INDEX-V1-004 图纸身份或revision变化使索引失效", DrawingIndexContractsSpecs.IdentityPolicyRejectsStaleIndex),
+    new SpecCase("INDEX-V1-005 重复实体令牌在累积与响应层均fail-closed", DrawingIndexContractsSpecs.DuplicateObjectTokensFailClosed),
 };
 
 var failed = 0;

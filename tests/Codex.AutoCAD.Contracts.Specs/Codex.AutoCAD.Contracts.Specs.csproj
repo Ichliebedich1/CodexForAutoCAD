@@ -20,5 +20,6 @@
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016.ReadOnlyContext\ReadOnlyContextSnapshot.cs" Link="UnifiedHost2016\ReadOnlyContextSnapshot.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016.ReadOnlyContext\CanonicalSelectionHash.cs" Link="UnifiedHost2016\CanonicalSelectionHash.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\CadContextJsonMapper.cs" Link="UnifiedHost2016\CadContextJsonMapper.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\DrawingIndexCore.cs" Link="UnifiedHost2016\DrawingIndexCore.cs" />
   </ItemGroup>
 </Project>
