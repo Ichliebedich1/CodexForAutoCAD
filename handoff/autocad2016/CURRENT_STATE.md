@@ -35,7 +35,7 @@ NETLOAD 证据的能力一律视为未支持。
   AgentHost EXE SHA-256 `751B97C7B17B970D01D625DDD197E1868150AAB5C235812C662AB70B919B0C67`，
   manifest SHA-256 `7DBA2BEAD1FB2146B8A60A913545CA8EB6BD4BFADE1F037D1161BD2B70F448B1`。
 - 候选包内 AgentHost 已单独运行 `doctor` 并完成本机 Codex app-server 初始化；脱敏证据见
-  `evidence/cad-context-v2-candidate-package-doctor-20260722.json`。该证据仍不替代
+  `evidence/cad-context-v2-candidate-package-doctor-20260722-refresh.json`。该证据仍不替代
   AutoCAD `NETLOAD` 或真实 v2 对话。
 - 采集器集成后当前线完整 Phase 2 门禁再次通过 `235/235`、Release `0/0`、Host 禁用 API、
   doctor、秘密扫描和 diff；脱敏汇总见 `evidence/phase2-final-gate-20260722.json`。
