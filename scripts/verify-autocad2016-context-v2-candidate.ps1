@@ -61,9 +61,21 @@ $dependencyProjects = @(
 )
 
 foreach ($project in @($dependencyProjects + $hostProject)) {
+    $lockPath = Join-Path (Split-Path -Parent $project) 'packages.lock.json'
+    $lockBytes = $null
+    if (Test-Path -LiteralPath $lockPath -PathType Leaf) {
+        $lockBytes = [IO.File]::ReadAllBytes($lockPath)
+    }
     $restoreArgs = @('restore', $project, '--configfile', $nugetConfig, '-p:EnableAutoCad2016=true', '--force', '--no-cache')
     if ($project -eq $hostProject) { $restoreArgs += '-p:RestoreLockedMode=false' }
-    Invoke-Captured $dotnet $restoreArgs ("恢复 " + (Split-Path -Leaf $project))
+    try {
+        Invoke-Captured $dotnet $restoreArgs ("恢复 " + (Split-Path -Leaf $project))
+    }
+    finally {
+        if ($null -ne $lockBytes) {
+            [IO.File]::WriteAllBytes($lockPath, $lockBytes)
+        }
+    }
 }
 
 foreach ($dependency in $dependencyProjects) {
@@ -101,7 +113,8 @@ Assert-Same (Get-FilesSnapshot $hostBuilds[0].Root) (Get-FilesSnapshot $hostBuil
 Invoke-Captured $dotnet @(
     'publish', (Join-Path $repoRoot 'src\Codex.AutoCAD.AgentHost\Codex.AutoCAD.AgentHost.csproj'),
     '--configuration', $Configuration, '--runtime', 'win-x64', '--self-contained', 'false', '--no-restore',
-    '--output', $publishRoot, '--nologo'
+    '--output', $publishRoot, '--nologo', '-m:1', '-p:BuildInParallel=false',
+    '-p:UseSharedCompilation=false'
 ) 'AgentHost framework-dependent 发布'
 
 $hostDll = $hostBuilds[0].Dll
