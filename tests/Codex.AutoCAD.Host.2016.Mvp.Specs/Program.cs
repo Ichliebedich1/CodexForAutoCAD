@@ -1,5 +1,6 @@
 using Codex.AutoCAD.Contracts;
 using Codex.AutoCAD.Bridge.Client;
+using Codex.AutoCAD.AgentLauncher;
 using Codex.AutoCAD.Host2016;
 
 var specs = new[]
@@ -80,6 +81,14 @@ var specs = new[]
         "HOST2016_BRIDGE_FAULT_TRANSITIONS_OFFLINE",
         "A Bridge fault terminates the active turn and rejects later ASK calls before transport reuse",
         BridgeFaultTransitionsOffline),
+    new SpecCase(
+        "HOST2016_FAILURE_FORMATTER_SANITIZES_BOOTSTRAP",
+        "AgentHost startup failures expose stable structured fields without local exception details",
+        FailureFormatterSanitizesBootstrap),
+    new SpecCase(
+        "HOST2016_TURN_FAILURE_IS_STRUCTURED_AND_SANITIZED",
+        "A failed Codex turn publishes stable fields without raw Provider error text",
+        TurnFailureIsStructuredAndSanitized),
     new SpecCase(
         "HOST2016_TERMINATE_SUCCESS_STOPS_ONCE",
         "AutoCAD termination performs one cleanup when it succeeds",
@@ -571,7 +580,7 @@ static async Task BridgeFaultTransitionsOffline()
     Equal(1, bridge.StartTurnV2Count, "Initial turn start count");
 
     bridge.RaiseFault(new AgentBridgeClientException(
-        AgentBridgeErrorCodes.ConnectionLost,
+        "untrusted_transport_error",
         "sensitive transport detail"));
 
     True(!client.IsStarted, "Bridge fault did not transition the Host client offline.");
@@ -598,6 +607,87 @@ static async Task BridgeFaultTransitionsOffline()
         statuses.TrueForAll(value =>
             !value.Contains("sensitive transport detail", StringComparison.Ordinal)),
         "Bridge fault status leaked transport exception details.");
+}
+
+static Task FailureFormatterSanitizesBootstrap()
+{
+    const string sensitiveDetail = @"C:\Users\Private\AgentHost\missing.exe secret-token";
+    var failure = MvpAgentFailureFormatter.FromException(
+        new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.InvalidConfiguration,
+            sensitiveDetail),
+        MvpAgentFailureStages.StartingAgentHost);
+
+    True(
+        string.Equals(
+            "agenthost_invalid_configuration",
+            failure.ErrorCode,
+            StringComparison.Ordinal),
+        "Bootstrap failure error_code was not stable.");
+    True(
+        string.Equals(
+            MvpAgentFailureStages.StartingAgentHost,
+            failure.ErrorStage,
+            StringComparison.Ordinal),
+        "Bootstrap failure error_stage was not stable.");
+    True(!failure.Retryable, "Invalid AgentHost configuration was marked retryable.");
+
+    var display = failure.FormatForUser("启动 AgentHost");
+    True(
+        display.Contains("error_code=agenthost_invalid_configuration", StringComparison.Ordinal)
+        && display.Contains("error_stage=starting_agenthost", StringComparison.Ordinal)
+        && display.Contains("retryable=false", StringComparison.Ordinal),
+        "Structured bootstrap failure fields were not present in the user message.");
+    True(
+        !display.Contains(sensitiveDetail, StringComparison.Ordinal)
+        && !display.Contains("C:\\Users", StringComparison.OrdinalIgnoreCase)
+        && !display.Contains("secret-token", StringComparison.Ordinal),
+        "Bootstrap failure user message leaked local exception details.");
+    return Task.CompletedTask;
+}
+
+static async Task TurnFailureIsStructuredAndSanitized()
+{
+    const string sensitiveProviderError = @"C:\Private\drawing.dwg provider-secret";
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-turn-failure",
+        "system-session-turn-failure");
+    var statuses = new List<string>();
+    client.ErrorChanged += statuses.Add;
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2(),
+        ContextSha256 = new string('b', 64),
+    };
+
+    await client.AskAsync(
+            "turn that fails",
+            context,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.TurnFailed,
+        TurnId = "fake-turn-1",
+        ErrorCode = AgentBridgeErrorCodes.InternalError,
+        Error = sensitiveProviderError,
+    });
+
+    True(
+        statuses.Exists(value =>
+            value.Contains("error_code=internal_error", StringComparison.Ordinal)
+            && value.Contains("error_stage=running_turn", StringComparison.Ordinal)
+            && value.Contains("retryable=false", StringComparison.Ordinal)),
+        "Turn failure did not publish stable structured fields.");
+    True(
+        statuses.TrueForAll(value =>
+            !value.Contains(sensitiveProviderError, StringComparison.Ordinal)
+            && !value.Contains("provider-secret", StringComparison.Ordinal)),
+        "Turn failure status leaked raw Provider error text.");
 }
 
 static Task TerminateSuccessStopsOnce()
@@ -691,8 +781,10 @@ static Task TerminateFinalFailureIsSanitized()
     Equal(2, stopCount, "Final termination failure attempt count");
     Equal(1, statuses.Count, "Final termination failure status count");
     True(
-        statuses[0].Contains("InvalidOperationException", StringComparison.Ordinal),
-        "Final termination status omitted the structured exception type.");
+        statuses[0].Contains("error_code=invalid_state", StringComparison.Ordinal)
+        && statuses[0].Contains("error_stage=terminating_agenthost", StringComparison.Ordinal)
+        && statuses[0].Contains("retryable=false", StringComparison.Ordinal),
+        "Final termination status omitted stable structured failure fields.");
     True(
         !statuses[0].Contains("sensitive-local-detail", StringComparison.Ordinal),
         "Final termination status leaked exception details.");
@@ -779,11 +871,7 @@ internal sealed class FakeAgentBridgeClient : IAgentBridgeClient
 {
     internal int StartTurnV2Count { get; private set; }
 
-    public event EventHandler<AgentBridgeEventReceivedEventArgs>? EventReceived
-    {
-        add { }
-        remove { }
-    }
+    public event EventHandler<AgentBridgeEventReceivedEventArgs>? EventReceived;
 
     public event EventHandler<AgentBridgeConnectionFaultedEventArgs>? ConnectionFaulted;
 
@@ -853,6 +941,13 @@ internal sealed class FakeAgentBridgeClient : IAgentBridgeClient
         ConnectionFaulted?.Invoke(
             this,
             new AgentBridgeConnectionFaultedEventArgs(exception));
+    }
+
+    public void RaiseEvent(AgentBridgeEvent bridgeEvent)
+    {
+        EventReceived?.Invoke(
+            this,
+            new AgentBridgeEventReceivedEventArgs(bridgeEvent));
     }
 
     public void Dispose()

@@ -136,7 +136,12 @@ namespace Codex.AutoCAD.Host2016
                 }
                 catch (Exception exception)
                 {
-                    UpdateAgentStatus("发送失败：" + exception.GetType().Name + "。" + exception.Message);
+                    UpdateAgentStatus(
+                        MvpAgentFailureFormatter
+                            .FromException(
+                                exception,
+                                MvpAgentFailureStages.SendingTurn)
+                            .FormatForUser("发送只读问题"));
                 }
                 finally
                 {

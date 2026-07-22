@@ -277,9 +277,11 @@ namespace Codex.AutoCAD.Host2016
             {
                 PublishSafely(
                     ErrorChanged,
-                    "停止 AgentHost 失败："
-                    + exception.GetType().Name
-                    + "。可再次执行 CODEX16AGENTSTOP 重试剩余清理。");
+                    MvpAgentFailureFormatter
+                        .FromException(
+                            exception,
+                            MvpAgentFailureStages.StoppingAgentHost)
+                        .FormatForUser("停止 AgentHost"));
                 throw;
             }
 
@@ -338,7 +340,13 @@ namespace Codex.AutoCAD.Host2016
             }
             catch (Exception exception)
             {
-                PublishSafely(ErrorChanged, "停止 AgentHost 失败：" + exception.GetType().Name);
+                PublishSafely(
+                    ErrorChanged,
+                    MvpAgentFailureFormatter
+                        .FromException(
+                            exception,
+                            MvpAgentFailureStages.StoppingAgentHost)
+                        .FormatForUser("停止 AgentHost"));
             }
         }
 
@@ -456,9 +464,11 @@ namespace Codex.AutoCAD.Host2016
 
                     PublishSafely(
                         ErrorChanged,
-                        "AgentHost 启动失败且清理未完成："
-                        + cleanupFailure.GetType().Name
-                        + "。请执行 CODEX16AGENTSTOP 重试清理。");
+                        MvpAgentFailureFormatter
+                            .FromException(
+                                cleanupFailure,
+                                MvpAgentFailureStages.StoppingAgentHost)
+                            .FormatForUser("回收 AgentHost"));
                     throw new AggregateException(exception, cleanupFailure);
                 }
 
@@ -473,7 +483,11 @@ namespace Codex.AutoCAD.Host2016
 
                 PublishSafely(
                     ErrorChanged,
-                    "AgentHost 启动失败：" + exception.GetType().Name + "。" + exception.Message);
+                    MvpAgentFailureFormatter
+                        .FromException(
+                            exception,
+                            MvpAgentFailureStages.StartingAgentHost)
+                        .FormatForUser("启动 AgentHost"));
                 throw;
             }
         }
@@ -542,7 +556,11 @@ namespace Codex.AutoCAD.Host2016
             {
                 PublishSafely(
                     ErrorChanged,
-                    "Codex 回合失败：" + bridgeEvent.ErrorCode + "。" + bridgeEvent.Error);
+                    MvpAgentFailureFormatter
+                        .FromErrorCode(
+                            bridgeEvent.ErrorCode,
+                            MvpAgentFailureStages.RunningTurn)
+                        .FormatForUser("Codex 回合"));
             }
             else if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.TurnCancelled, StringComparison.Ordinal))
             {
@@ -582,7 +600,7 @@ namespace Codex.AutoCAD.Host2016
             IAgentBridgeClient faultedBridge,
             AgentBridgeClientException exception)
         {
-            var errorCode = NormalizeBridgeErrorCode(exception);
+            var errorCode = MvpAgentFailureFormatter.NormalizeBridgeErrorCode(exception);
             bool hadActiveTurn;
             lock (sync)
             {
@@ -641,35 +659,6 @@ namespace Codex.AutoCAD.Host2016
                 "Agent Bridge 当前离线（error_code="
                 + errorCode
                 + "）；请先停止并重新启动 AgentHost。");
-        }
-
-        private static string NormalizeBridgeErrorCode(AgentBridgeClientException exception)
-        {
-            var code = exception == null ? null : exception.Code;
-            return IsKnownBridgeErrorCode(code)
-                ? code
-                : AgentBridgeErrorCodes.ConnectionLost;
-        }
-
-        private static bool IsKnownBridgeErrorCode(string code)
-        {
-            return string.Equals(code, AgentBridgeErrorCodes.Offline, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ContractMismatch, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.AuthenticationFailed, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ReplayRejected, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.RequestInvalid, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ContextInvalid, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ContextHashMismatch, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.AgentUnavailable, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ConnectionLost, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.Timeout, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.Busy, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.TurnNotFound, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ApprovalInvalid, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ApprovalExpired, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ApprovalAlreadyConsumed, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ResultIdentityMismatch, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.InternalError, StringComparison.Ordinal);
         }
 
         private static void PublishSafely(Action<string> subscribers, string value)

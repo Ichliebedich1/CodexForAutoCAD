@@ -46,7 +46,11 @@ namespace Codex.AutoCAD.Host2016
             try
             {
                 reportFailure(
-                    "AgentHost 退出清理失败：" + lastFailure.GetType().Name);
+                    MvpAgentFailureFormatter
+                        .FromException(
+                            lastFailure,
+                            MvpAgentFailureStages.TerminatingAgentHost)
+                        .FormatForUser("AutoCAD 退出清理 AgentHost"));
             }
             catch
             {
