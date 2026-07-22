@@ -192,6 +192,23 @@ namespace Codex.AutoCAD.Host2016
             editor.WriteMessage("\n只读问题已提交；回答将在侧边栏流式显示。\n");
         }
 
+        [CommandMethod("CODEX16CANCEL", CommandFlags.Modal)]
+        public void CancelAgentTurn()
+        {
+            var editor = GetActiveEditor();
+            if (editor == null)
+            {
+                return;
+            }
+
+            UnifiedPaletteRuntime.Show();
+            Observe(
+                MvpAgentRuntime.CancelAsync(),
+                "取消 Codex 回合",
+                MvpAgentFailureStages.CancellingTurn);
+            editor.WriteMessage("\nCodex 回合取消请求已提交；状态将在侧边栏更新。\n");
+        }
+
         [CommandMethod("CODEX16AGENTSTOP", CommandFlags.Modal)]
         public void StopAgent()
         {

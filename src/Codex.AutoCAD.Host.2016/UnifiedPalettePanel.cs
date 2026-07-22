@@ -148,9 +148,43 @@ namespace Codex.AutoCAD.Host2016
                     send.IsEnabled = true;
                 }
             };
+            var cancel = new Button
+            {
+                Content = "取消回合",
+                Margin = new Thickness(8.0, 8.0, 0.0, 0.0),
+                Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
+                ToolTip = "幂等取消当前 Codex 回合；不会修改 CAD。",
+            };
+            cancel.Click += async (sender, args) =>
+            {
+                cancel.IsEnabled = false;
+                try
+                {
+                    await MvpAgentRuntime.CancelAsync();
+                }
+                catch (Exception exception)
+                {
+                    UpdateAgentStatus(
+                        MvpAgentFailureFormatter
+                            .FromException(
+                                exception,
+                                MvpAgentFailureStages.CancellingTurn)
+                            .FormatForUser("取消 Codex 回合"));
+                }
+                finally
+                {
+                    cancel.IsEnabled = true;
+                }
+            };
+            var actions = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+            };
+            actions.Children.Add(cancel);
+            actions.Children.Add(send);
             var input = new DockPanel();
-            DockPanel.SetDock(send, Dock.Right);
-            input.Children.Add(send);
+            DockPanel.SetDock(actions, Dock.Right);
+            input.Children.Add(actions);
             input.Children.Add(prompt);
             Grid.SetRow(input, 7);
             root.Children.Add(input);

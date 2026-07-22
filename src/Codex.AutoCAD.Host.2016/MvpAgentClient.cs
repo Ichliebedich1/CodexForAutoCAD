@@ -21,7 +21,7 @@ namespace Codex.AutoCAD.Host2016
         private IAgentBridgeClient bridge;
         private string threadId = string.Empty;
         private string systemSessionId = string.Empty;
-        private string activeTurnId = string.Empty;
+        private MvpAgentTurnState activeTurn;
         private string terminalBridgeErrorCode = string.Empty;
         private Task startTask;
         private Task stopTask;
@@ -129,14 +129,6 @@ namespace Codex.AutoCAD.Host2016
             {
                 throw new InvalidOperationException("当前 CAD 上下文已失效，请重新执行 CODEX16CTX。");
             }
-            IAgentBridgeClient currentBridge;
-            string currentThread;
-            lock (sync)
-            {
-                EnsureOnlineForAskLocked();
-                currentBridge = bridge;
-                currentThread = threadId;
-            }
 
             if (context == null || !context.Published)
             {
@@ -148,26 +140,250 @@ namespace Codex.AutoCAD.Host2016
                 throw new InvalidOperationException("当前 CAD 上下文已失效，请重新执行 CODEX16CTX。");
             }
 
+            IAgentBridgeClient currentBridge;
+            string currentThread;
+            MvpAgentTurnState requestTurn;
+            lock (sync)
+            {
+                EnsureOnlineForAskLocked();
+                if (activeTurn != null && !activeTurn.IsTerminal)
+                {
+                    throw new MvpAgentTurnException(
+                        activeTurn.RequestId,
+                        activeTurn.State,
+                        new AgentBridgeClientException(
+                            AgentBridgeErrorCodes.Busy,
+                            "已有只读 Codex 回合正在运行。"));
+                }
+
+                currentBridge = bridge;
+                currentThread = threadId;
+                requestTurn = new MvpAgentTurnState(
+                    Guid.NewGuid().ToString("N"),
+                    DateTimeOffset.UtcNow);
+                activeTurn = requestTurn;
+            }
+
             PublishSafely(TextChanged, string.Empty);
-            PublishSafely(StatusChanged, "正在向本机 Codex 发送只读问题……");
+            PublishSafely(
+                StatusChanged,
+                FormatTurnStatus(
+                    "正在向本机 Codex 发送只读问题",
+                    requestTurn.RequestId,
+                    requestTurn.State));
             var request = new AgentTurnStartV2Request
             {
                 ThreadId = currentThread,
-                ClientTurnId = Guid.NewGuid().ToString("N"),
+                ClientTurnId = requestTurn.ClientTurnId,
                 Prompt = prompt,
                 ContextV2 = context.Context,
                 ContextV2Sha256 = context.ContextSha256,
             };
-            var turn = await currentBridge.StartTurnV2Async(request, cancellationToken)
-                .ConfigureAwait(false);
-            lock (sync)
+            try
             {
-                if (!ReferenceEquals(bridge, currentBridge) || !online)
+                if (!isCurrentContext())
                 {
-                    throw CreateUnavailableExceptionLocked();
+                    throw new InvalidOperationException(
+                        "当前 CAD 上下文已失效，请重新执行 CODEX16CTX。");
                 }
 
-                activeTurnId = turn.TurnId;
+                var turn = await currentBridge.StartTurnV2Async(request, cancellationToken)
+                    .ConfigureAwait(false);
+                bool dispatchCancellation;
+                string currentState;
+                lock (sync)
+                {
+                    if (!ReferenceEquals(bridge, currentBridge) || !online)
+                    {
+                        throw CreateUnavailableExceptionLocked();
+                    }
+
+                    if (!ReferenceEquals(activeTurn, requestTurn))
+                    {
+                        throw new InvalidOperationException("当前 Agent 回合所有权已变化。");
+                    }
+
+                    if (requestTurn.IsTerminal)
+                    {
+                        return;
+                    }
+
+                    if (turn == null || !requestTurn.TryBindProviderTurn(turn.TurnId))
+                    {
+                        throw new InvalidOperationException("AgentHost 返回的回合标识无效或不一致。");
+                    }
+
+                    dispatchCancellation = requestTurn.TryBeginCancellationDispatch();
+                    currentState = requestTurn.State;
+                }
+
+                PublishSafely(
+                    StatusChanged,
+                    FormatTurnStatus(
+                        string.Equals(
+                                currentState,
+                                MvpAgentTurnStates.Cancelling,
+                                StringComparison.Ordinal)
+                            ? "取消请求已登记，正在通知 Codex"
+                            : "Codex 正在分析当前图纸上下文",
+                        requestTurn.RequestId,
+                        currentState));
+                if (dispatchCancellation)
+                {
+                    BeginCancellationDispatch(
+                        requestTurn,
+                        currentBridge,
+                        currentThread,
+                        requestTurn.ProviderTurnId);
+                }
+            }
+            catch (Exception exception)
+            {
+                var terminalState = exception is OperationCanceledException
+                    ? MvpAgentTurnStates.Cancelled
+                    : MvpAgentTurnStates.Failed;
+                TaskCompletionSource<bool> cancellationCompletion;
+                string currentState;
+                lock (sync)
+                {
+                    cancellationCompletion = requestTurn.MarkTerminal(terminalState);
+                    currentState = requestTurn.State;
+                }
+
+                var turnException = exception as MvpAgentTurnException
+                    ?? new MvpAgentTurnException(
+                        requestTurn.RequestId,
+                        currentState,
+                        exception);
+                if (cancellationCompletion != null)
+                {
+                    cancellationCompletion.TrySetException(turnException);
+                }
+
+                throw turnException;
+            }
+        }
+
+        internal Task CancelActiveTurnAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            MvpAgentTurnState requestTurn;
+            IAgentBridgeClient currentBridge;
+            string currentThread;
+            string providerTurnId;
+            Task cancellationTask;
+            bool dispatchCancellation;
+            bool noActiveTurn;
+            lock (sync)
+            {
+                requestTurn = activeTurn;
+                if (requestTurn == null || requestTurn.IsTerminal)
+                {
+                    noActiveTurn = true;
+                    currentBridge = null;
+                    currentThread = string.Empty;
+                    providerTurnId = string.Empty;
+                    cancellationTask = Task.FromResult(0);
+                    dispatchCancellation = false;
+                }
+                else
+                {
+                    noActiveTurn = false;
+                    currentBridge = bridge;
+                    currentThread = threadId;
+                    providerTurnId = requestTurn.ProviderTurnId;
+                    cancellationTask = requestTurn.RequestCancellation();
+                    dispatchCancellation = requestTurn.TryBeginCancellationDispatch();
+                }
+            }
+
+            if (noActiveTurn)
+            {
+                PublishSafely(StatusChanged, "当前没有运行中的 Codex 回合可取消。");
+                return cancellationTask;
+            }
+
+            PublishSafely(
+                StatusChanged,
+                FormatTurnStatus(
+                    string.IsNullOrEmpty(providerTurnId)
+                        ? "取消请求已登记，等待 AgentHost 接受回合"
+                        : "正在取消 Codex 回合",
+                    requestTurn.RequestId,
+                    requestTurn.State));
+            if (dispatchCancellation)
+            {
+                BeginCancellationDispatch(
+                    requestTurn,
+                    currentBridge,
+                    currentThread,
+                    providerTurnId);
+            }
+
+            return cancellationTask;
+        }
+
+        private void BeginCancellationDispatch(
+            MvpAgentTurnState requestTurn,
+            IAgentBridgeClient currentBridge,
+            string currentThread,
+            string providerTurnId)
+        {
+            _ = CompleteCancellationDispatchAsync(
+                requestTurn,
+                currentBridge,
+                currentThread,
+                providerTurnId);
+        }
+
+        private async Task CompleteCancellationDispatchAsync(
+            MvpAgentTurnState requestTurn,
+            IAgentBridgeClient currentBridge,
+            string currentThread,
+            string providerTurnId)
+        {
+            try
+            {
+                await currentBridge.InterruptTurnAsync(
+                        new AgentTurnInterruptRequest
+                        {
+                            ThreadId = currentThread,
+                            TurnId = providerTurnId,
+                        },
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                TaskCompletionSource<bool> cancellationCompletion;
+                lock (sync)
+                {
+                    cancellationCompletion = requestTurn.CancellationCompletion;
+                }
+
+                if (cancellationCompletion != null)
+                {
+                    cancellationCompletion.TrySetResult(true);
+                }
+            }
+            catch (Exception exception)
+            {
+                TaskCompletionSource<bool> cancellationCompletion;
+                string currentState;
+                lock (sync)
+                {
+                    cancellationCompletion = ReferenceEquals(activeTurn, requestTurn)
+                        ? requestTurn.ResetCancellationAfterDispatchFailure()
+                        : null;
+                    currentState = requestTurn.State;
+                }
+
+                var turnException = new MvpAgentTurnException(
+                    requestTurn.RequestId,
+                    currentState,
+                    exception);
+                if (cancellationCompletion != null)
+                {
+                    cancellationCompletion.TrySetException(turnException);
+                }
             }
         }
 
@@ -285,6 +501,7 @@ namespace Codex.AutoCAD.Host2016
                 throw;
             }
 
+            TaskCompletionSource<bool> turnCancellationCompletion;
             lock (sync)
             {
                 if (currentCoordinator != null && !currentCoordinator.IsComplete)
@@ -296,9 +513,16 @@ namespace Codex.AutoCAD.Host2016
                 serviceSession = null;
                 stopCoordinator = null;
                 online = false;
-                activeTurnId = string.Empty;
+                turnCancellationCompletion = activeTurn == null
+                    ? null
+                    : activeTurn.MarkTerminal(MvpAgentTurnStates.Cancelled);
                 terminalBridgeErrorCode = string.Empty;
                 stopCompleted = true;
+            }
+
+            if (turnCancellationCompletion != null)
+            {
+                turnCancellationCompletion.TrySetResult(true);
             }
 
             PublishSafely(StatusChanged, "AgentHost 已停止；CAD 写入仍禁用。");
@@ -409,7 +633,7 @@ namespace Codex.AutoCAD.Host2016
                     bridge = newBridge;
                     systemSessionId = newSessionId;
                     threadId = thread.ThreadId;
-                    activeTurnId = string.Empty;
+                    activeTurn = null;
                     terminalBridgeErrorCode = string.Empty;
                     stopWasRequested = stopRequested;
                     online = !stopWasRequested;
@@ -527,46 +751,16 @@ namespace Codex.AutoCAD.Host2016
 
         private void OnBridgeEvent(object sender, AgentBridgeEventReceivedEventArgs args)
         {
-            var bridgeEvent = args.BridgeEvent;
+            var bridgeEvent = args == null ? null : args.BridgeEvent;
             if (bridgeEvent == null)
             {
                 return;
             }
 
-            if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.TurnCompleted, StringComparison.Ordinal)
-                || string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.TurnFailed, StringComparison.Ordinal)
-                || string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.TurnCancelled, StringComparison.Ordinal))
-            {
-                ClearActiveTurn(bridgeEvent.TurnId);
-            }
-
-            if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.AssistantMessageDelta, StringComparison.Ordinal))
-            {
-                PublishSafely(TextChanged, bridgeEvent.Delta ?? string.Empty);
-            }
-            else if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.AssistantMessageCompleted, StringComparison.Ordinal))
-            {
-                PublishSafely(StatusChanged, "Codex 回答完成。");
-            }
-            else if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.TurnStarted, StringComparison.Ordinal))
-            {
-                PublishSafely(StatusChanged, "Codex 正在分析当前图纸上下文……");
-            }
-            else if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.TurnFailed, StringComparison.Ordinal))
-            {
-                PublishSafely(
-                    ErrorChanged,
-                    MvpAgentFailureFormatter
-                        .FromErrorCode(
-                            bridgeEvent.ErrorCode,
-                            MvpAgentFailureStages.RunningTurn)
-                        .FormatForUser("Codex 回合"));
-            }
-            else if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.TurnCancelled, StringComparison.Ordinal))
-            {
-                PublishSafely(StatusChanged, "Codex 回合已取消。");
-            }
-            else if (string.Equals(bridgeEvent.Kind, AgentBridgeEventKinds.ConnectionStateChanged, StringComparison.Ordinal))
+            if (string.Equals(
+                    bridgeEvent.Kind,
+                    AgentBridgeEventKinds.ConnectionStateChanged,
+                    StringComparison.Ordinal))
             {
                 if (string.Equals(
                         bridgeEvent.ConnectionState,
@@ -585,7 +779,160 @@ namespace Codex.AutoCAD.Host2016
                     return;
                 }
 
+                lock (sync)
+                {
+                    if (!ReferenceEquals(bridge, sender as IAgentBridgeClient) || !online)
+                    {
+                        return;
+                    }
+                }
+
                 PublishSafely(StatusChanged, "Agent Bridge 状态：" + bridgeEvent.ConnectionState);
+                return;
+            }
+
+            MvpAgentTurnState requestTurn;
+            TaskCompletionSource<bool> cancellationCompletion = null;
+            string requestId;
+            string currentState;
+            lock (sync)
+            {
+                if (!ReferenceEquals(bridge, sender as IAgentBridgeClient)
+                    || activeTurn == null
+                    || activeTurn.IsTerminal)
+                {
+                    return;
+                }
+
+                requestTurn = activeTurn;
+                if (string.Equals(
+                        bridgeEvent.Kind,
+                        AgentBridgeEventKinds.TurnStarted,
+                        StringComparison.Ordinal)
+                    && string.IsNullOrEmpty(requestTurn.ProviderTurnId))
+                {
+                    requestTurn.TryBindProviderTurn(bridgeEvent.TurnId);
+                }
+
+                if (!requestTurn.MatchesProviderTurn(bridgeEvent.TurnId))
+                {
+                    return;
+                }
+
+                if (string.Equals(
+                        bridgeEvent.Kind,
+                        AgentBridgeEventKinds.TurnStarted,
+                        StringComparison.Ordinal))
+                {
+                    requestTurn.MarkRunning();
+                }
+                else if (string.Equals(
+                        bridgeEvent.Kind,
+                        AgentBridgeEventKinds.TurnCompleted,
+                        StringComparison.Ordinal))
+                {
+                    cancellationCompletion = requestTurn.MarkTerminal(
+                        MvpAgentTurnStates.Completed);
+                }
+                else if (string.Equals(
+                        bridgeEvent.Kind,
+                        AgentBridgeEventKinds.TurnFailed,
+                        StringComparison.Ordinal))
+                {
+                    cancellationCompletion = requestTurn.MarkTerminal(
+                        MvpAgentTurnStates.Failed);
+                }
+                else if (string.Equals(
+                        bridgeEvent.Kind,
+                        AgentBridgeEventKinds.TurnCancelled,
+                        StringComparison.Ordinal))
+                {
+                    cancellationCompletion = requestTurn.MarkTerminal(
+                        MvpAgentTurnStates.Cancelled);
+                }
+
+                requestId = requestTurn.RequestId;
+                currentState = requestTurn.State;
+            }
+
+            if (cancellationCompletion != null)
+            {
+                cancellationCompletion.TrySetResult(true);
+            }
+
+            if (string.Equals(
+                    bridgeEvent.Kind,
+                    AgentBridgeEventKinds.AssistantMessageDelta,
+                    StringComparison.Ordinal))
+            {
+                PublishSafely(TextChanged, bridgeEvent.Delta ?? string.Empty);
+            }
+            else if (string.Equals(
+                    bridgeEvent.Kind,
+                    AgentBridgeEventKinds.AssistantMessageCompleted,
+                    StringComparison.Ordinal))
+            {
+                PublishSafely(
+                    StatusChanged,
+                    FormatTurnStatus(
+                        "Codex 回答文本已接收，等待回合终态",
+                        requestId,
+                        currentState));
+            }
+            else if (string.Equals(
+                    bridgeEvent.Kind,
+                    AgentBridgeEventKinds.TurnStarted,
+                    StringComparison.Ordinal))
+            {
+                PublishSafely(
+                    StatusChanged,
+                    FormatTurnStatus(
+                        string.Equals(
+                                currentState,
+                                MvpAgentTurnStates.Cancelling,
+                                StringComparison.Ordinal)
+                            ? "Codex 回合已开始，取消请求仍在处理"
+                            : "Codex 正在分析当前图纸上下文",
+                        requestId,
+                        currentState));
+            }
+            else if (string.Equals(
+                    bridgeEvent.Kind,
+                    AgentBridgeEventKinds.TurnCompleted,
+                    StringComparison.Ordinal))
+            {
+                PublishSafely(
+                    StatusChanged,
+                    FormatTurnStatus(
+                        "Codex 回答完成",
+                        requestId,
+                        currentState));
+            }
+            else if (string.Equals(
+                    bridgeEvent.Kind,
+                    AgentBridgeEventKinds.TurnFailed,
+                    StringComparison.Ordinal))
+            {
+                PublishSafely(
+                    ErrorChanged,
+                    MvpAgentFailureFormatter
+                        .FromErrorCode(
+                            bridgeEvent.ErrorCode,
+                            MvpAgentFailureStages.RunningTurn)
+                        .WithRequest(requestId, currentState)
+                        .FormatForUser("Codex 回合"));
+            }
+            else if (string.Equals(
+                    bridgeEvent.Kind,
+                    AgentBridgeEventKinds.TurnCancelled,
+                    StringComparison.Ordinal))
+            {
+                PublishSafely(
+                    StatusChanged,
+                    FormatTurnStatus(
+                        "Codex 回合已取消",
+                        requestId,
+                        currentState));
             }
         }
 
@@ -601,7 +948,10 @@ namespace Codex.AutoCAD.Host2016
             AgentBridgeClientException exception)
         {
             var errorCode = MvpAgentFailureFormatter.NormalizeBridgeErrorCode(exception);
-            bool hadActiveTurn;
+            MvpAgentTurnState requestTurn;
+            TaskCompletionSource<bool> cancellationCompletion;
+            string requestId;
+            string currentState;
             lock (sync)
             {
                 if (faultedBridge == null
@@ -613,10 +963,27 @@ namespace Codex.AutoCAD.Host2016
                     return;
                 }
 
-                hadActiveTurn = !string.IsNullOrEmpty(activeTurnId);
-                activeTurnId = string.Empty;
+                requestTurn = activeTurn != null && !activeTurn.IsTerminal
+                    ? activeTurn
+                    : null;
+                cancellationCompletion = requestTurn == null
+                    ? null
+                    : requestTurn.MarkTerminal(MvpAgentTurnStates.Failed);
+                requestId = requestTurn == null ? string.Empty : requestTurn.RequestId;
+                currentState = requestTurn == null ? string.Empty : requestTurn.State;
                 terminalBridgeErrorCode = errorCode;
                 online = false;
+            }
+
+            if (cancellationCompletion != null)
+            {
+                cancellationCompletion.TrySetException(
+                    new MvpAgentTurnException(
+                        requestId,
+                        currentState,
+                        exception ?? new AgentBridgeClientException(
+                            errorCode,
+                            "Agent Bridge 已断开。")));
             }
 
             PublishSafely(
@@ -624,21 +991,14 @@ namespace Codex.AutoCAD.Host2016
                 "Agent Bridge 已断开（error_code="
                 + errorCode
                 + "）；"
-                + (hadActiveTurn ? "当前回合已终止；" : string.Empty)
+                + (requestTurn == null
+                    ? string.Empty
+                    : "当前回合已终止（request_id="
+                        + requestId
+                        + ", state="
+                        + currentState
+                        + "）；")
                 + "后续问题已拒绝。请先停止并重新启动 AgentHost。");
-        }
-
-        private void ClearActiveTurn(string completedTurnId)
-        {
-            lock (sync)
-            {
-                if (string.IsNullOrEmpty(activeTurnId)
-                    || string.IsNullOrEmpty(completedTurnId)
-                    || string.Equals(activeTurnId, completedTurnId, StringComparison.Ordinal))
-                {
-                    activeTurnId = string.Empty;
-                }
-            }
         }
 
         private void EnsureOnlineForAskLocked()
@@ -659,6 +1019,19 @@ namespace Codex.AutoCAD.Host2016
                 "Agent Bridge 当前离线（error_code="
                 + errorCode
                 + "）；请先停止并重新启动 AgentHost。");
+        }
+
+        private static string FormatTurnStatus(
+            string message,
+            string requestId,
+            string turnState)
+        {
+            return (message ?? "Codex 回合状态已更新")
+                + "（request_id="
+                + (requestId ?? string.Empty)
+                + ", state="
+                + (turnState ?? string.Empty)
+                + "）。";
         }
 
         private static void PublishSafely(Action<string> subscribers, string value)

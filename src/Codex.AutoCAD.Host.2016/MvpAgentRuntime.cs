@@ -94,6 +94,23 @@ namespace Codex.AutoCAD.Host2016
                 .ConfigureAwait(false);
         }
 
+        internal static Task CancelAsync()
+        {
+            MvpAgentClient current;
+            lock (sync)
+            {
+                current = client;
+            }
+
+            if (current == null)
+            {
+                UpdateAgentStatusSafely("当前没有运行中的 Codex 回合可取消。");
+                return Task.FromResult(0);
+            }
+
+            return current.CancelActiveTurnAsync(CancellationToken.None);
+        }
+
         internal static Task StopAsync()
         {
             MvpAgentClient current;

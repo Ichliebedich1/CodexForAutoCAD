@@ -90,6 +90,26 @@ var specs = new[]
         "A failed Codex turn publishes stable fields without raw Provider error text",
         TurnFailureIsStructuredAndSanitized),
     new SpecCase(
+        "HOST2016_REQUEST_ID_IS_HOST_OWNED_AND_TERMINAL",
+        "Host request ids remain separate from Provider turn ids and terminal turns reject late events",
+        RequestIdIsHostOwnedAndTerminal),
+    new SpecCase(
+        "HOST2016_ACTIVE_TURN_REJECTS_DUPLICATE_ASK",
+        "A second ASK cannot overwrite the active Host request",
+        ActiveTurnRejectsDuplicateAsk),
+    new SpecCase(
+        "HOST2016_CANCEL_IS_IDEMPOTENT",
+        "Duplicate cancellation calls share one Provider interrupt and terminal state cannot regress",
+        CancelIsIdempotent),
+    new SpecCase(
+        "HOST2016_CANCEL_BEFORE_PROVIDER_TURN_IS_BOUND",
+        "Cancellation requested during turn startup is dispatched once after Provider identity arrives",
+        CancelBeforeProviderTurnIsBound),
+    new SpecCase(
+        "HOST2016_CANCEL_FAILURE_CAN_RETRY",
+        "A failed Provider interrupt restores running state and allows one explicit retry",
+        CancelFailureCanRetry),
+    new SpecCase(
         "HOST2016_TERMINATE_SUCCESS_STOPS_ONCE",
         "AutoCAD termination performs one cleanup when it succeeds",
         TerminateSuccessStopsOnce),
@@ -690,6 +710,304 @@ static async Task TurnFailureIsStructuredAndSanitized()
         "Turn failure status leaked raw Provider error text.");
 }
 
+static async Task RequestIdIsHostOwnedAndTerminal()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-request-identity",
+        "system-session-request-identity");
+    var statuses = new List<string>();
+    var textEvents = new List<string>();
+    client.StatusChanged += statuses.Add;
+    client.TextChanged += textEvents.Add;
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2(),
+        ContextSha256 = new string('c', 64),
+    };
+
+    await client.AskAsync(
+            "first request",
+            context,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var firstRequest = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("First Host request was not captured.");
+    True(
+        Guid.TryParseExact(firstRequest.ClientTurnId, "N", out _),
+        "Host request_id was not a canonical 32-character identifier.");
+    True(
+        !string.Equals(firstRequest.ClientTurnId, "fake-turn-1", StringComparison.Ordinal),
+        "Host request_id was confused with the Provider turn id.");
+
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.TurnStarted,
+        TurnId = "fake-turn-1",
+    });
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.AssistantMessageDelta,
+        TurnId = "fake-turn-1",
+        Delta = "accepted-text",
+    });
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.AssistantMessageCompleted,
+        TurnId = "fake-turn-1",
+    });
+    True(
+        statuses.TrueForAll(value =>
+            !value.Contains("state=completed", StringComparison.Ordinal)),
+        "Assistant message completion incorrectly finalized the Host request.");
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.TurnCompleted,
+        TurnId = "fake-turn-1",
+    });
+
+    True(
+        statuses.Exists(value =>
+            value.Contains("request_id=" + firstRequest.ClientTurnId, StringComparison.Ordinal)
+            && value.Contains("state=completed", StringComparison.Ordinal)),
+        "Completed state did not preserve the Host request_id.");
+    var statusCountAtTerminal = statuses.Count;
+    var textCountAtTerminal = textEvents.Count;
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.TurnStarted,
+        TurnId = "fake-turn-1",
+    });
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.AssistantMessageDelta,
+        TurnId = "fake-turn-1",
+        Delta = "late-text-must-be-ignored",
+    });
+    Equal(statusCountAtTerminal, statuses.Count, "Late terminal status event count");
+    Equal(textCountAtTerminal, textEvents.Count, "Late terminal text event count");
+
+    await client.AskAsync(
+            "second request",
+            context,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var secondRequest = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("Second Host request was not captured.");
+    True(
+        !string.Equals(
+            firstRequest.ClientTurnId,
+            secondRequest.ClientTurnId,
+            StringComparison.Ordinal),
+        "Two Host requests reused the same request_id.");
+    Equal(2, bridge.StartTurnV2Count, "Host request start count");
+}
+
+static async Task ActiveTurnRejectsDuplicateAsk()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-duplicate-ask",
+        "system-session-duplicate-ask");
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2(),
+        ContextSha256 = new string('d', 64),
+    };
+
+    await client.AskAsync(
+            "first active request",
+            context,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var firstRequest = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("Active Host request was not captured.");
+    var failure = await ExpectTurnFailure(
+            client.AskAsync(
+                "must not overwrite",
+                context,
+                () => true,
+                CancellationToken.None))
+        .ConfigureAwait(false);
+
+    True(
+        string.Equals(failure.RequestId, firstRequest.ClientTurnId, StringComparison.Ordinal),
+        "Busy failure did not identify the active Host request.");
+    True(
+        string.Equals(failure.TurnState, MvpAgentTurnStates.Running, StringComparison.Ordinal),
+        "Busy failure did not preserve the active running state.");
+    True(
+        failure.InnerException is AgentBridgeClientException bridgeFailure
+        && string.Equals(bridgeFailure.Code, AgentBridgeErrorCodes.Busy, StringComparison.Ordinal),
+        "Duplicate ASK did not return the stable busy error code.");
+    var display = MvpAgentFailureFormatter
+        .FromException(failure, MvpAgentFailureStages.SendingTurn)
+        .FormatForUser("发送只读问题");
+    True(
+        display.Contains("error_code=busy", StringComparison.Ordinal)
+        && display.Contains("request_id=" + firstRequest.ClientTurnId, StringComparison.Ordinal)
+        && display.Contains("state=running", StringComparison.Ordinal),
+        "Structured busy failure lost the Host request identity or state.");
+    True(
+        !display.Contains("已有只读 Codex 回合", StringComparison.Ordinal),
+        "Structured busy failure leaked the internal exception message.");
+    Equal(1, bridge.StartTurnV2Count, "Duplicate ASK Provider start count");
+}
+
+static async Task CancelIsIdempotent()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-cancel-idempotent",
+        "system-session-cancel-idempotent");
+    var statuses = new List<string>();
+    var textEvents = new List<string>();
+    client.StatusChanged += statuses.Add;
+    client.TextChanged += textEvents.Add;
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2(),
+        ContextSha256 = new string('e', 64),
+    };
+
+    await client.AskAsync(
+            "request to cancel",
+            context,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var request = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("Cancelable Host request was not captured.");
+    var firstCancel = client.CancelActiveTurnAsync(CancellationToken.None);
+    var secondCancel = client.CancelActiveTurnAsync(CancellationToken.None);
+    True(ReferenceEquals(firstCancel, secondCancel), "Duplicate cancellation did not share one task.");
+    await Task.WhenAll(firstCancel, secondCancel).ConfigureAwait(false);
+
+    Equal(1, bridge.InterruptTurnCount, "Duplicate cancellation Provider interrupt count");
+    True(
+        bridge.LastInterruptRequest != null
+        && string.Equals(
+            bridge.LastInterruptRequest.TurnId,
+            "fake-turn-1",
+            StringComparison.Ordinal),
+        "Cancellation did not target the accepted Provider turn.");
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.TurnCancelled,
+        TurnId = "fake-turn-1",
+    });
+    True(
+        statuses.Exists(value =>
+            value.Contains("request_id=" + request.ClientTurnId, StringComparison.Ordinal)
+            && value.Contains("state=cancelled", StringComparison.Ordinal)),
+        "Cancelled terminal state did not preserve the Host request_id.");
+
+    await client.CancelActiveTurnAsync(CancellationToken.None).ConfigureAwait(false);
+    Equal(1, bridge.InterruptTurnCount, "Cancellation count after terminal state");
+    var statusCountAtTerminal = statuses.Count;
+    var textCountAtTerminal = textEvents.Count;
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.TurnStarted,
+        TurnId = "fake-turn-1",
+    });
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.AssistantMessageDelta,
+        TurnId = "fake-turn-1",
+        Delta = "late-after-cancel",
+    });
+    Equal(statusCountAtTerminal, statuses.Count, "Late cancelled status event count");
+    Equal(textCountAtTerminal, textEvents.Count, "Late cancelled text event count");
+}
+
+static async Task CancelBeforeProviderTurnIsBound()
+{
+    var bridge = new FakeAgentBridgeClient
+    {
+        DelayStartTurnResponse = true,
+    };
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-cancel-before-bind",
+        "system-session-cancel-before-bind");
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2(),
+        ContextSha256 = new string('f', 64),
+    };
+
+    var askTask = client.AskAsync(
+        "cancel before Provider response",
+        context,
+        () => true,
+        CancellationToken.None);
+    Equal(1, bridge.StartTurnV2Count, "Pending Provider start count");
+    var firstCancel = client.CancelActiveTurnAsync(CancellationToken.None);
+    var secondCancel = client.CancelActiveTurnAsync(CancellationToken.None);
+    True(ReferenceEquals(firstCancel, secondCancel), "Pending-turn cancellation did not stay idempotent.");
+    Equal(0, bridge.InterruptTurnCount, "Interrupt count before Provider turn binding");
+
+    bridge.CompletePendingStartTurn();
+    await askTask.ConfigureAwait(false);
+    await Task.WhenAll(firstCancel, secondCancel).ConfigureAwait(false);
+    Equal(1, bridge.InterruptTurnCount, "Interrupt count after Provider turn binding");
+    True(
+        bridge.LastInterruptRequest != null
+        && string.Equals(
+            bridge.LastInterruptRequest.TurnId,
+            "fake-turn-1",
+            StringComparison.Ordinal),
+        "Pending cancellation targeted the wrong Provider turn.");
+}
+
+static async Task CancelFailureCanRetry()
+{
+    var bridge = new FakeAgentBridgeClient
+    {
+        InterruptFailuresRemaining = 1,
+    };
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-cancel-retry",
+        "system-session-cancel-retry");
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2(),
+        ContextSha256 = new string('1', 64),
+    };
+
+    await client.AskAsync(
+            "cancel with one retry",
+            context,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var request = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("Retryable cancellation request was not captured.");
+    var firstFailure = await ExpectTurnFailure(
+            client.CancelActiveTurnAsync(CancellationToken.None))
+        .ConfigureAwait(false);
+    True(
+        string.Equals(firstFailure.RequestId, request.ClientTurnId, StringComparison.Ordinal)
+        && string.Equals(firstFailure.TurnState, MvpAgentTurnStates.Running, StringComparison.Ordinal),
+        "Failed cancellation did not restore the active request to running.");
+
+    await client.CancelActiveTurnAsync(CancellationToken.None).ConfigureAwait(false);
+    Equal(2, bridge.InterruptTurnCount, "Cancellation retry Provider interrupt count");
+}
+
 static Task TerminateSuccessStopsOnce()
 {
     var stopCount = 0;
@@ -834,6 +1152,20 @@ static async Task<AgentBridgeClientException> ExpectBridgeClientFailure(Task tas
     throw new InvalidOperationException("Expected Agent Bridge failure was not observed.");
 }
 
+static async Task<MvpAgentTurnException> ExpectTurnFailure(Task task)
+{
+    try
+    {
+        await task.ConfigureAwait(false);
+    }
+    catch (MvpAgentTurnException exception)
+    {
+        return exception;
+    }
+
+    throw new InvalidOperationException("Expected Host turn failure was not observed.");
+}
+
 static void True(bool condition, string message)
 {
     if (!condition)
@@ -869,7 +1201,19 @@ internal sealed class SpecCase
 
 internal sealed class FakeAgentBridgeClient : IAgentBridgeClient
 {
+    private TaskCompletionSource<AgentTurnStartV2Response>? pendingStartTurn;
+
     internal int StartTurnV2Count { get; private set; }
+
+    internal AgentTurnStartV2Request? LastStartTurnV2Request { get; private set; }
+
+    internal int InterruptTurnCount { get; private set; }
+
+    internal AgentTurnInterruptRequest? LastInterruptRequest { get; private set; }
+
+    internal bool DelayStartTurnResponse { get; set; }
+
+    internal int InterruptFailuresRemaining { get; set; }
 
     public event EventHandler<AgentBridgeEventReceivedEventArgs>? EventReceived;
 
@@ -914,19 +1258,41 @@ internal sealed class FakeAgentBridgeClient : IAgentBridgeClient
     {
         cancellationToken.ThrowIfCancellationRequested();
         StartTurnV2Count++;
-        return Task.FromResult(new AgentTurnStartV2Response
+        LastStartTurnV2Request = request;
+        var response = new AgentTurnStartV2Response
         {
             ThreadId = request.ThreadId,
             TurnId = "fake-turn-" + StartTurnV2Count,
             AcceptedContextV2Sha256 = request.ContextV2Sha256,
-        });
+        };
+        if (!DelayStartTurnResponse)
+        {
+            return Task.FromResult(response);
+        }
+
+        pendingStartTurn = new TaskCompletionSource<AgentTurnStartV2Response>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        PendingStartTurnResponse = response;
+        return pendingStartTurn.Task;
     }
 
     public Task InterruptTurnAsync(
         AgentTurnInterruptRequest request,
         CancellationToken cancellationToken)
     {
-        throw new NotSupportedException();
+        cancellationToken.ThrowIfCancellationRequested();
+        InterruptTurnCount++;
+        LastInterruptRequest = request;
+        if (InterruptFailuresRemaining > 0)
+        {
+            InterruptFailuresRemaining--;
+            return Task.FromException(
+                new AgentBridgeClientException(
+                    AgentBridgeErrorCodes.InternalError,
+                    "simulated interrupt failure"));
+        }
+
+        return Task.CompletedTask;
     }
 
     public Task ResolveApprovalAsync(
@@ -941,6 +1307,19 @@ internal sealed class FakeAgentBridgeClient : IAgentBridgeClient
         ConnectionFaulted?.Invoke(
             this,
             new AgentBridgeConnectionFaultedEventArgs(exception));
+    }
+
+    internal AgentTurnStartV2Response? PendingStartTurnResponse { get; private set; }
+
+    public void CompletePendingStartTurn()
+    {
+        var completion = pendingStartTurn
+            ?? throw new InvalidOperationException("No pending Provider turn response exists.");
+        var response = PendingStartTurnResponse
+            ?? throw new InvalidOperationException("Pending Provider turn response is unavailable.");
+        pendingStartTurn = null;
+        PendingStartTurnResponse = null;
+        completion.TrySetResult(response);
     }
 
     public void RaiseEvent(AgentBridgeEvent bridgeEvent)

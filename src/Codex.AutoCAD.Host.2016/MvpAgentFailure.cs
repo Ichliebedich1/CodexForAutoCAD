@@ -10,8 +10,26 @@ namespace Codex.AutoCAD.Host2016
         internal const string StartingAgentHost = "starting_agenthost";
         internal const string SendingTurn = "sending_turn";
         internal const string RunningTurn = "running_turn";
+        internal const string CancellingTurn = "cancelling_turn";
         internal const string StoppingAgentHost = "stopping_agenthost";
         internal const string TerminatingAgentHost = "terminating_agenthost";
+    }
+
+    internal sealed class MvpAgentTurnException : Exception
+    {
+        internal MvpAgentTurnException(
+            string requestId,
+            string turnState,
+            Exception innerException)
+            : base("只读 Agent 回合失败；原始详情已隐藏。", innerException)
+        {
+            RequestId = requestId ?? string.Empty;
+            TurnState = turnState ?? string.Empty;
+        }
+
+        internal string RequestId { get; private set; }
+
+        internal string TurnState { get; private set; }
     }
 
     internal static class MvpAgentErrorCodes
@@ -39,12 +57,16 @@ namespace Codex.AutoCAD.Host2016
             string errorCode,
             string errorStage,
             bool retryable,
-            string userMessage)
+            string userMessage,
+            string requestId = null,
+            string turnState = null)
         {
             ErrorCode = errorCode;
             ErrorStage = errorStage;
             Retryable = retryable;
             UserMessage = userMessage;
+            RequestId = requestId ?? string.Empty;
+            TurnState = turnState ?? string.Empty;
         }
 
         internal string ErrorCode { get; private set; }
@@ -54,6 +76,21 @@ namespace Codex.AutoCAD.Host2016
         internal bool Retryable { get; private set; }
 
         internal string UserMessage { get; private set; }
+
+        internal string RequestId { get; private set; }
+
+        internal string TurnState { get; private set; }
+
+        internal MvpAgentFailure WithRequest(string requestId, string turnState)
+        {
+            return new MvpAgentFailure(
+                ErrorCode,
+                ErrorStage,
+                Retryable,
+                UserMessage,
+                requestId,
+                turnState);
+        }
 
         internal string FormatForUser(string operationName)
         {
@@ -67,6 +104,12 @@ namespace Codex.AutoCAD.Host2016
                 + ErrorStage
                 + ", retryable="
                 + (Retryable ? "true" : "false")
+                + (string.IsNullOrEmpty(RequestId)
+                    ? string.Empty
+                    : ", request_id=" + RequestId)
+                + (string.IsNullOrEmpty(TurnState)
+                    ? string.Empty
+                    : ", state=" + TurnState)
                 + "）："
                 + UserMessage;
         }
@@ -76,6 +119,12 @@ namespace Codex.AutoCAD.Host2016
     {
         internal static MvpAgentFailure FromException(Exception exception, string errorStage)
         {
+            if (exception is MvpAgentTurnException turn)
+            {
+                return FromException(turn.InnerException, errorStage)
+                    .WithRequest(turn.RequestId, turn.TurnState);
+            }
+
             if (exception is AgentBootstrapLaunchException bootstrap)
             {
                 return FromBootstrapFailure(bootstrap.Failure, errorStage);

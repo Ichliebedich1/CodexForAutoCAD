@@ -16,6 +16,8 @@
              Link="MvpAgentCapabilityPolicy.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentFailure.cs"
              Link="MvpAgentFailure.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentTurnState.cs"
+             Link="MvpAgentTurnState.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentStopCoordinator.cs"
              Link="MvpAgentStopCoordinator.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentTerminationCoordinator.cs"
