@@ -37,6 +37,8 @@ NETLOAD 证据的能力一律视为未支持。
 - 候选包内 AgentHost 已单独运行 `doctor` 并完成本机 Codex app-server 初始化；脱敏证据见
   `evidence/cad-context-v2-candidate-package-doctor-20260722.json`。该证据仍不替代
   AutoCAD `NETLOAD` 或真实 v2 对话。
+- 采集器集成后当前线完整 Phase 2 门禁再次通过 `235/235`、Release `0/0`、Host 禁用 API、
+  doctor、秘密扫描和 diff；脱敏汇总见 `evidence/phase2-final-gate-20260722.json`。
 - 本轮已修正 P1 Host 的 Doctor 和 `CODEXCAD` 命令文案，使其显示 v2，不改变 v1 契约或
   历史验证记录。
 - Host 的 v2 能力判定已抽成独立 fail-closed 策略，并增加 `6/6` 回归：只有同时声明

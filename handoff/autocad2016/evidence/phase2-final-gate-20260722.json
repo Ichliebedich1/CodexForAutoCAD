@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "scope": "p1-current-line-phase2-final-gate",
+  "branch": "codex/cad-context-v2",
+  "head": "e8b6ec7",
+  "releaseBuild": {
+    "warnings": 0,
+    "errors": 0,
+    "sdk": "8.0.319"
+  },
+  "specs": {
+    "Contracts": "71/71",
+    "Ipc": "35/35",
+    "Security": "19/19",
+    "AppServer": "7/7",
+    "Bridge": "38/38",
+    "BridgeClient": "25/25",
+    "AgentRuntime": "31/31",
+    "Chat": "9/9",
+    "total": "235/235"
+  },
+  "gates": {
+    "hostForbiddenApiScan": true,
+    "agentHostDoctor": true,
+    "secretScan": true,
+    "gitDiffCheck": true,
+    "autoCadStartedOrRestarted": false,
+    "cadCommandsSent": false
+  },
+  "limitations": [
+    "该门禁不验证 AutoCAD 2016 NETLOAD、真实混合选区、Palette v2 显示或实机对话。",
+    "AgentHost doctor 证明 app-server 活体握手，不证明每会话 CODEX_HOME/MCP/凭据隔离。"
+  ]
+}

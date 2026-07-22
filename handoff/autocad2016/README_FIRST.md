@@ -168,6 +168,7 @@ AutoCAD 2016 / .NET Framework 4.5 / x64
 - `handoff/autocad2016/evidence/cad-context-v2-candidate-build-autocad2016-mvp-context-v2-v032-4d3386d9-0645a745-cd07eb22.json`：P1 候选自动化构建、双重 R20.1 Host 输出、AgentHost 发布、manifest、235/235 门禁和 v2 API Probe 边界；明确 `NetLoadVerified=false`、`AutoCadLiveEvidence=false`。
 - `handoff/autocad2016/evidence/environment-collector-location-verification-20260722.json`：当前机器 PS7/PS5.1 环境采集器自测 `24/24`、只读真实采集结果和脱敏边界。
 - `handoff/autocad2016/evidence/cad-context-v2-candidate-package-doctor-20260722.json`：P1 候选包内 AgentHost doctor 成功加载并完成本机 Codex app-server 初始化；不等同于 AutoCAD live 证据。
+- `handoff/autocad2016/evidence/phase2-final-gate-20260722.json`：采集器集成后当前线重新执行的 Release、235/235 Specs、Host 禁用 API、doctor、秘密扫描和 diff 门禁汇总。
 - `handoff/autocad2016/TEST_REPORT_TEMPLATE.md`：当前实机记录与剩余测试矩阵。
 
 证据中不得写入 `TRUSTEDPATHS` 内容、用户名、真实图纸路径或网络路径。现场需要保存受信路径时，只保留在企业内部受控记录，不提交到 Git。
