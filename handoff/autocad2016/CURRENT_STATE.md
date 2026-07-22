@@ -34,6 +34,9 @@ NETLOAD 证据的能力一律视为未支持。
   Host SHA-256 `4D3386D9A825B2842290ACB51376FBA6BE6603F49295E606F8C9F3F92B538C08`，
   AgentHost EXE SHA-256 `0645A745441717F73BB79F1AEED295ADA51D5A29D74660085BF003E1ACEE514F`，
   manifest SHA-256 `719160E9EF9B46D6B49144F9F201AE7723DD9FDD4F21C99BE642A074121D5232`。
+- 候选包内 AgentHost 已单独运行 `doctor` 并完成本机 Codex app-server 初始化；脱敏证据见
+  `evidence/cad-context-v2-candidate-package-doctor-20260722.json`。该证据仍不替代
+  AutoCAD `NETLOAD` 或真实 v2 对话。
 - 本轮已修正 P1 Host 的 Doctor 和 `CODEXCAD` 命令文案，使其显示 v2，不改变 v1 契约或
   历史验证记录。
 - Host 的 v2 能力判定已抽成独立 fail-closed 策略，并增加 `6/6` 回归：只有同时声明
