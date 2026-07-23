@@ -1,0 +1,76 @@
+{
+  "schema": "codex.autocad.m4-runtime-audit-evidence/1",
+  "capturedAt": "2026-07-23T13:54:55.560+08:00",
+  "sourceBranch": "codex/m4-job-limits",
+  "baseCommit": "a599f8400fb92a3491363901d9d04751eac70f37",
+  "scope": "AgentHost read-only runtime audit vertical slice",
+  "runtimeAudit": {
+    "schema": "codex.autocad.agenthost.audit/1",
+    "productionPathTemplate": "%LOCALAPPDATA%\\OpenAI\\CodexForAutoCAD\\audit\\agenthost\\<bootstrap-session-id>.jsonl",
+    "fileCreation": "CreateNew per bootstrap session",
+    "maximumRecords": 10000,
+    "maximumBytes": 4194304,
+    "writeFailureBehavior": "fail-closed bridge session termination",
+    "events": [
+      "session_started",
+      "session_stopped",
+      "session_failed",
+      "bridge_connected",
+      "bridge_disconnected",
+      "request_received",
+      "request_completed",
+      "request_failed",
+      "thread_started",
+      "turn_started",
+      "cancel_requested",
+      "cancel_dispatched",
+      "approval_requested",
+      "turn_completed",
+      "turn_cancelled",
+      "turn_failed"
+    ],
+    "excludedContent": [
+      "prompts",
+      "canonical CAD JSON",
+      "drawing names and paths",
+      "CAD entity content",
+      "command text",
+      "working directories",
+      "environment variables",
+      "exception messages",
+      "API keys and tokens",
+      "raw Provider payloads"
+    ]
+  },
+  "verification": {
+    "releaseBuildWarnings": 0,
+    "releaseBuildErrors": 0,
+    "bridgeSpecs": "44/44",
+    "phase2Specs": "324/324",
+    "hostProhibitedApiScan": true,
+    "sensitiveInformationScan": true,
+    "agentHostDoctor": true,
+    "gitDiffCheck": true,
+    "remainingRelevantTestProcesses": 0
+  },
+  "testedBehaviors": [
+    "valid bounded JSONL with monotonic sequence and a fixed field allowlist",
+    "system conversation/request ids remain separate from bridge and Provider ids",
+    "prompt, CAD context, response, command and working-directory sentinels are absent",
+    "request failures use stable error codes without exception messages",
+    "cancel request, dispatch and terminal state are correlated",
+    "approval request records only the approval kind and opaque ids",
+    "audit capacity exhaustion terminates the authenticated Bridge session"
+  ],
+  "boundaries": {
+    "autoCadStartedOrControlled": false,
+    "netLoadVerified": false,
+    "cadWriteEnabled": false,
+    "approvalResolutionAudited": false,
+    "cadWriteTerminalAudited": false,
+    "minimumAclVerified": false,
+    "retentionAndCleanupVerified": false,
+    "realCodexQuotaExhaustionVerified": false,
+    "autoCadCrashExitVerified": false
+  }
+}

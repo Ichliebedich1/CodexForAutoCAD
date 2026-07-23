@@ -25,10 +25,11 @@ $testServerProject = Join-Path $repoRoot "tests\Codex.AutoCAD.Bridge.Client.Test
 $bridgeSpecsProject = Join-Path $repoRoot "tests\Codex.AutoCAD.Bridge.Specs\Codex.AutoCAD.Bridge.Specs.csproj"
 $phase2Verifier = Join-Path $repoRoot "scripts\verify-phase2.ps1"
 $nugetConfig = Join-Path $repoRoot "src\Codex.AutoCAD.Host.2016\NuGet.Config"
+$conditionalLockPath = Join-Path $repoRoot "src\Codex.AutoCAD.Bridge.Client\packages.lock.json"
 $expectedSdk = "8.0.319"
 $expectedClientSpecs = 29
-$expectedBridgeSpecs = 39
-$expectedPhase2Specs = 310
+$expectedBridgeSpecs = 44
+$expectedPhase2Specs = 324
 
 function Get-Sha256 {
     param([Parameter(Mandatory = $true)][string] $Path)
@@ -254,6 +255,10 @@ function Invoke-Worker {
     $previousDotnetHome = $env:DOTNET_CLI_HOME
     $previousNugetPackages = $env:NUGET_PACKAGES
     $previousTestServer = $env:CODEX_BRIDGE_TEST_SERVER_EXE
+    if (-not (Test-Path -LiteralPath $conditionalLockPath -PathType Leaf)) {
+        throw "缺少 Bridge.Client 条件化锁文件：$conditionalLockPath"
+    }
+    $conditionalLockBytes = [IO.File]::ReadAllBytes($conditionalLockPath)
     $cadBefore = @(Get-ProcessIds -Name "acad")
     $testServerBefore = @(Get-ProcessIds -Name "Codex.AutoCAD.Bridge.Client.TestServer")
     $sourceBefore = Get-SourceManifest
@@ -373,6 +378,7 @@ function Invoke-Worker {
         Write-Host "BRIDGE_CLIENT_WORKER_EVIDENCE=$resolvedEvidencePath"
     }
     finally {
+        [IO.File]::WriteAllBytes($conditionalLockPath, $conditionalLockBytes)
         $env:DOTNET_CLI_HOME = $previousDotnetHome
         $env:NUGET_PACKAGES = $previousNugetPackages
         $env:CODEX_BRIDGE_TEST_SERVER_EXE = $previousTestServer
@@ -509,7 +515,7 @@ $finalEvidence = [ordered]@{
     cadCommandsSent = $false
     netLoadVerified = $false
     autoCadLiveEvidence = $false
-    evidenceBoundary = "PowerShell 7 and Windows PowerShell 5.1 independently passed two isolated deterministic builds, net45/net8 Bridge Client 29/29, Bridge 39/39, and Phase2 310/310. Valid turn terminal events consume the active turn identity, and later events for that turn are rejected fail-closed. This is non-CAD evidence and does not prove unified Host.2016 NETLOAD, a live AgentHost connection from AutoCAD, or a real Codex CAD conversation."
+    evidenceBoundary = "PowerShell 7 and Windows PowerShell 5.1 independently passed two isolated deterministic builds, net45/net8 Bridge Client 29/29, Bridge 44/44, and Phase2 324/324. Valid turn terminal events consume the active turn identity, and later events for that turn are rejected fail-closed. This is non-CAD evidence and does not prove unified Host.2016 NETLOAD, a live AgentHost connection from AutoCAD, or a real Codex CAD conversation."
 }
 
 $resolvedFinalEvidencePath = if ([string]::IsNullOrWhiteSpace($EvidencePath)) {

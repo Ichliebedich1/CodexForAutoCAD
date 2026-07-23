@@ -251,11 +251,18 @@ NETLOAD 证据的能力一律视为未支持。
   双构建 `0/0`、相关进程 `0 -> 0`。脱敏证据为
   `evidence/m4-agenthost-job-resource-limits-20260723.json`。这不替代真实 Codex 配额耗尽、
   AutoCAD 异常退出、CPU/运行时/磁盘配额或完整 M4 沙箱验收。
+- M4 第五运行审计边界已接入真实 `bootstrap-serve` 会话：每会话在当前用户本地固定盘的独立
+  `CreateNew` JSONL 文件中记录 session、Bridge 连接、请求、thread/turn、取消、审批请求和
+  回合终态。记录采用固定字段白名单、单调 sequence、`10,000` 条/`4 MiB` 默认硬上限；提示词、
+  CAD JSON、图纸/工作目录路径、命令、环境变量、异常正文、token 和原始 Provider payload 均无
+  写入字段。审计写入或容量失败会 fail-closed 释放 Bridge 会话。当前没有 CAD 写入终态、审批
+  解决记录、审计 ACL 或保留策略，不能把它视为完整 M4 审计。脱敏证据为
+  `evidence/m4-agenthost-runtime-audit-20260723.json`。
 - 当前资源限制证据的构建哈希：AgentHost EXE `B31015B2...233B8`，AgentHost DLL
   `801C6BF0...60EA`，net45 Launcher `B88DDC8F...975B`，net8 Launcher
   `6619D54F...9F69`；完整值保存在阶段 evidence，其文件 SHA-256 为
   `A6E22226423B2339EFE46034500D491E46829B651BDA9885B6F55194498AD8DD`。
-- Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 动态汇总 `319/319`、
+- Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 动态汇总 `324/324`、
   AgentHost doctor、Host 禁止 API、秘密扫描和 diff 通过；认证固定向量与现有 Bridge/IPC
   回归保持通过。
 - 本检查点未启动、重启或操作 AutoCAD。它不证明长运行 `IAgentBridgeClient`、Host.2016

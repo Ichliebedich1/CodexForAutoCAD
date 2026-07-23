@@ -16,11 +16,21 @@ using Codex.AutoCAD.Ipc;
 
 var specs = new (string Name, Func<Task> Run)[]
 {
+    ("AgentHost审计日志为有界内容脱敏JSONL",
+        AgentHostBridgeSessionSpecs.AuditLogIsBoundedContentFreeJsonl),
+    ("AgentHost审计不可继续时会终止Bridge会话",
+        AgentHostBridgeSessionSpecs.AuditFailureTerminatesBridgeSession),
+    ("AgentHost失败请求只记录稳定错误码",
+        AgentHostBridgeSessionSpecs.FailedRequestAuditUsesStableErrorCode),
+    ("AgentHost审批请求审计不记录命令或路径",
+        AgentHostBridgeSessionSpecs.ApprovalRequestAuditOmitsCommandAndPath),
     ("AgentHost长运行服务返回冻结v1能力", AgentHostCapabilitiesRoundTrip),
     ("AgentHost同一thread完成两轮上下文对话并映射assistant事件",
         AgentHostBridgeSessionSpecs.TwoContextTurnsReuseThreadAndMapAssistantEvents),
     ("AgentHost实际接收v2上下文并回显v2哈希",
         AgentHostBridgeSessionSpecs.V2ContextTurnUsesV2MethodAndEchoesHash),
+    ("AgentHost取消审计关联系统请求与Provider回合",
+        AgentHostBridgeSessionSpecs.CancellationAuditCorrelatesSystemAndProviderIds),
     ("AgentHost只读查询经认证反向Bridge往返且不暴露Host身份",
         AgentHostBridgeSessionSpecs.DrawingQueryFlowsThroughAuthenticatedReverseBridge),
     ("当前用户命名管道可完成请求响应", RequestResponseWorks),
@@ -190,7 +200,13 @@ static async Task AgentHostCapabilitiesRoundTrip()
                 ApprovalPolicy = AgentApprovalPolicy.OnRequest,
                 ApprovalsReviewer = AgentApprovalsReviewer.User,
             });
-        var service = new AgentHostBridgeSession(runtime, "agenthost-capabilities-spec");
+        using var audit = new AgentHostAuditLog(
+            new MemoryStream(),
+            keyPair.AgentKeys.SessionId);
+        var service = new AgentHostBridgeSession(
+            runtime,
+            "agenthost-capabilities-spec",
+            audit);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var serviceTask = service.RunAsync(keyPair.AgentKeys, timeout.Token);
         using var client = new AgentBridgeClient(

@@ -166,6 +166,8 @@ internal static class AgentHostProgram
                 shutdown.Cancel();
             };
             Console.CancelKeyPress += cancelHandler;
+            await using var audit = AgentHostAuditLog.CreateForCurrentUser(
+                directionKeys!.SessionId);
             try
             {
                 var workspaceRoot = Path.Combine(
@@ -193,9 +195,22 @@ internal static class AgentHostProgram
                 var session = new AgentHostBridgeSession(
                     runtime,
                     "agenthost-" + directionKeys.SessionId,
+                    audit,
                     cadQueryBroker);
                 await session.RunAsync(directionKeys, shutdown.Token).ConfigureAwait(false);
                 return 0;
+            }
+            catch (Exception exception)
+            {
+                try
+                {
+                    audit.Fail(AgentHostAuditErrorCodes.FromException(exception));
+                }
+                catch
+                {
+                }
+
+                throw;
             }
             finally
             {

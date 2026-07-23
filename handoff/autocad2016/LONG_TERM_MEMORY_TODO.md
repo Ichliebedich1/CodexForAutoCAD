@@ -316,7 +316,14 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 - [ ] 工作目录使用最小 ACL 并按策略清理。
 - [ ] 将 AgentRuntime、Bridge、Host、配置和日志导出纳入同一脱敏策略；当前仅完成 Codex
   子进程 stderr 与 AgentHost 控制台诊断边界。
-- [ ] 建立启动、停止、请求、取消、断线、审批和写入终态的结构化审计。
+- [x] AgentHost 只读运行审计基线：`bootstrap-serve` 每会话在当前用户本地固定盘的独占 JSONL
+  文件中记录启动/停止/失败、Bridge 连接、请求、thread/turn、取消、审批请求和 turn 终态；
+  每条为固定字段白名单、单调 sequence，默认限制 `10,000` 条/`4 MiB`，审计故障会关闭 Bridge。
+  提示词、CAD JSON、路径、命令、环境变量、异常正文、token 和 Provider 原始 payload 不进入
+  记录。自动化验证为 Bridge `44/44`、完整 Phase 2 `324/324`，说明见
+  `M4_RUNTIME_AUDIT_BASELINE_20260723.md`。
+- [ ] 将审批解决、M5 CAD 提案/执行终态和安全日志导出接入审计；补审计目录最小 ACL、保留/清理、
+  哈希链或等价防篡改边界。当前 CAD 写入保持禁用，不能把只读审计基线写成 CAD 操作审计。
 - [ ] 增加安全故障注入和僵尸进程测试。
 
 ## 10. M5：AutoCAD 2016 安全写入最小闭环

@@ -4,10 +4,11 @@
 
 ## 状态
 
-本文件记录 M4 已完成的四个小切口：Codex 子进程 stderr/AgentHost 诊断脱敏、本机 Codex
-启动配置、AgentHost 进程树的 Job Object 边界，以及该 Job 的进程数/总提交内存硬限制；
-不是完整沙箱候选，不代表已完成每会话 `CODEX_HOME`、环境隔离、CPU/运行时/磁盘配额或
-凭据隔离。
+本文件记录 M4 已完成的五个小切口：Codex 子进程 stderr/AgentHost 诊断脱敏、本机 Codex
+启动配置、AgentHost 进程树的 Job Object 边界、该 Job 的进程数/总提交内存硬限制，以及
+AgentHost 只读会话的内容脱敏 JSONL 运行审计；不是完整沙箱候选，不代表已完成每会话
+`CODEX_HOME`、环境隔离、CPU/运行时/磁盘配额、凭据隔离、审计 ACL/保留策略或 CAD 写入
+终态审计。
 本轮没有启动、关闭或控制 AutoCAD，也没有加载 DLL、保存或修改图纸。
 
 当前代码调用链仍为：
@@ -53,6 +54,17 @@ AutoCAD Host.2016
   已知挂起的后代；`StopAsync` 返回后，以及拥有 Job 的启动器不调用停止逻辑而直接退出后，
   父/后代 PID 都必须消失。规格还验证默认/自定义限额、Windows 读回值和非法配置。专用
   引导门禁确认相关进程基线/终态均为 `0`，没有启动或操作 AutoCAD。
+- `AgentHostAuditLog` 已成为 `bootstrap-serve` 真实会话的必需依赖。它在当前用户的本地固定
+  磁盘目录 `%LOCALAPPDATA%\OpenAI\CodexForAutoCAD\audit\agenthost` 创建每会话独占
+  `CreateNew` JSONL 文件；目录拒绝 UNC、设备路径、非固定盘和任一已发现的重解析点。
+- 每条记录按 UTF-8 单行 JSON 立即落盘，并有单调 sequence；默认上限为 `10,000` 条记录和
+  `4 MiB`。字段只允许 schema、UTC 时间、AgentHost session ID、系统 conversation/request ID、
+  Bridge request ID、Provider thread/turn ID、方法、审批种类、稳定 outcome/error code。提示词、
+  canonical CAD JSON、图名/路径、实体内容、命令文本、工作目录、环境变量、异常正文、token 和
+  Provider 原始 payload 没有可写字段。
+- 已接入 `session_started/stopped/failed`、`bridge_connected/disconnected`、请求收发/失败、
+  thread/turn 创建、取消请求/已分派、审批请求和 turn 完成/取消/失败。审计容量或写入失败会
+  取消并释放认证 Bridge 会话，不会静默丢弃记录后继续运行。
 
 ## 已验证
 
@@ -68,7 +80,7 @@ Result: isolated net45/net8 builds 0 warnings / 0 errors; net45 30/30; net8 30/3
 bit-for-bit runnable output match; relevant processes 0 -> 0.
 
 scripts\verify-phase2.ps1 -Configuration Release
-Result: Release 0 warnings / 0 errors; dynamic specs 319/319; Host disabled-API and basic
+Result: Release 0 warnings / 0 errors; dynamic specs 324/324; Host disabled-API and basic
 sensitive-information scans passed; local AgentHost doctor handshake passed.
 ```
 
@@ -87,7 +99,9 @@ sensitive-information scans passed; local AgentHost doctor handshake passed.
   仍未实现，内存/进程数的真实 Codex 耗尽行为也未验证。
 - 受限令牌或 AppContainer。
 - 已处于企业 Job/受限桌面环境时的嵌套 Job 兼容性与用户可理解的诊断。
-- 工作目录 ACL、清理策略、结构化运行审计和故障注入/僵尸进程实测。
+- 工作目录 ACL、审计目录的最小 ACL/保留清理策略，以及故障注入/僵尸进程实测。
+- 审批解决、CAD 写入提案/执行终态和未来日志导出尚未进入当前审计。当前 CAD 写入仍禁用，
+  不得把只读 `approval_requested` 记录解释为 CAD 审批审计闭环。
 - 对 AgentRuntime、Bridge、Host 与导出日志的统一错误/配置脱敏。
 
 ## 下一顺序
@@ -97,4 +111,5 @@ sensitive-information scans passed; local AgentHost doctor handshake passed.
    不复制用户 profile 中的配置文件作为临时方案。
 3. 已完成 Job Object 进程数/总提交内存限制；继续补 CPU、运行时和工作目录磁盘配额，并以
    真实 Codex、异常退出和僵尸进程矩阵验证。
-4. 完成结构化审计、ACL、凭据/环境边界和实机矩阵后，才允许开始 M5 CAD 写入。
+4. 将当前只读审计扩展到审批解决和 M5 强类型 CAD 写入终态，并完成审计 ACL、保留、凭据/环境
+   边界和实机矩阵后，才允许开始 M5 CAD 写入。
