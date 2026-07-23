@@ -334,7 +334,10 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   `evidence/m4-agenthost-cpu-runtime-limits-20260723.json`。
 - [ ] 评估并实现受限令牌或 AppContainer。
 - [ ] 设置可靠的工作目录磁盘硬配额；为进程数/内存/CPU 限制增加真实 Codex 耗尽或节流验证与
-  用户可理解的失败诊断。不要用轮询目录大小冒充硬配额。
+  用户可理解的失败诊断。当前 Windows 10 Pro 的只读审计未发现 FSRM/`SrmSvc`、启用的卷 quota
+  或 VHD 预配能力；现有 Job Object 不是磁盘配额。不要用轮询目录大小冒充硬配额，必须先部署
+  FSRM 目录配额或专用固定大小卷，并实际验证写满/拒绝与 fail-closed 预检。详见
+  `M4_WORKSPACE_HARD_QUOTA_FEASIBILITY_20260723.md`。
 - [x] AgentHost workspace 与 audit 根、子目录和受管理文件关闭 ACL 继承，仅允许当前用户、
   SYSTEM 和内置 Administrators；每 session 使用独占 lease，正常退出删除，残留默认按
   `24` 小时/最多 `64` 个清理，审计默认按 `30` 天/最多 `512` 个清理。清理拒绝重解析根、

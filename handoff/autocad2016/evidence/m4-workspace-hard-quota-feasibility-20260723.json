@@ -1,0 +1,40 @@
+{
+  "schema": "codex.autocad.m4-workspace-hard-quota-feasibility-evidence/1",
+  "recordedAt": "2026-07-23T13:05:42.0607047Z",
+  "sourceBranch": "codex/m4-diagnostic-sanitization",
+  "scope": "local-windows-workspace-hard-disk-quota-capability-audit",
+  "localCapabilities": {
+    "platformFamily": "windows-10-pro-x64",
+    "workspaceVolumeIsNtfsFixedLocal": true,
+    "fsrmQuotaExecutableAvailable": false,
+    "fsrmServicePresent": false,
+    "ntfsVolumeQuotaEnabled": false,
+    "newVhdCmdletAvailable": false,
+    "volumeMaintenancePrivilegeEnabled": false,
+    "existingJobObjectEnforcesDiskQuota": false
+  },
+  "implementationDecision": {
+    "directoryPollingUsedAsHardQuota": false,
+    "diskHardQuotaImplemented": false,
+    "m4DiskQuotaStatus": "deployment-prerequisite-not-met",
+    "acceptedFutureProvisioning": [
+      "preprovisioned-windows-server-fsrm-directory-quota",
+      "preprovisioned-dedicated-fixed-size-vhdx-or-volume"
+    ],
+    "runtimeMayCreateOrModifyQuotaInfrastructure": false,
+    "startupMustFailClosedWhenRequiredQuotaIsUnavailable": true
+  },
+  "notProven": [
+    "actual-fsrm-directory-hard-quota",
+    "actual-dedicated-fixed-volume-workspace",
+    "write-full-and-reject-behavior",
+    "quota-telemetry-and-structured-startup-failure",
+    "autocad-runtime-behavior",
+    "cad-write-authorization"
+  ],
+  "notes": [
+    "No path, user identity, drive capacity, available space, token, environment value or full privilege listing is recorded.",
+    "Job Object process, memory, CPU and time limits remain separate from filesystem quota enforcement.",
+    "This is a feasibility and deployment-boundary record, not an implementation completion claim."
+  ]
+}

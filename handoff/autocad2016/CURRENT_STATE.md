@@ -333,6 +333,11 @@ NETLOAD 证据的能力一律视为未支持。
   AgentHost Release、直接 CLI sentinel 检查和完整 Phase 2 均通过。详见
   `M4_CONFIGURATION_ERROR_SANITIZATION_20260723.md` 与
   `evidence/m4-configuration-error-sanitization-20260723.json`。
+- M4 第十四工作目录磁盘硬配额已完成本机只读可行性审计，但**未实现也未标记完成**：当前 Windows
+  10 Pro 没有 FSRM/`SrmSvc`、卷配额未启用、`New-VHD` 不可用，而现有 Job Object 仅限制进程资源。
+  项目明确拒绝用目录轮询冒充硬配额；需要先由部署提供 FSRM 目录配额或专用固定大小卷，再把验证和
+  fail-closed 预检接入调用链。详见 `M4_WORKSPACE_HARD_QUOTA_FEASIBILITY_20260723.md` 与
+  `evidence/m4-workspace-hard-quota-feasibility-20260723.json`。
 - 当前 Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 动态汇总 `351/351`、
   AgentHost doctor、Host 禁止 API、秘密扫描和 diff 通过；认证固定向量与现有 Bridge/IPC
   回归保持通过。

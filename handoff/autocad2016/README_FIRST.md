@@ -107,6 +107,10 @@ M4 进程隔离已完成一个不依赖 AutoCAD 实机的小阶段：
   `--codex` 的路径形态不再回显。AppServer `30/30`、完整 Phase 2 `351/351`、Release `0` warning /
   `0` error 和受控 doctor 握手通过；未启动 AutoCAD。详见
   `M4_CONFIGURATION_ERROR_SANITIZATION_20260723.md`。
+- 工作目录磁盘硬配额尚未实现：本机 Windows 10 Pro 未部署 FSRM/`SrmSvc`，卷 quota 未启用，
+  也没有 VHD 预配模块；现有 Job Object 只限制进程资源。项目拒绝用目录轮询冒充硬配额，须先由
+  部署提供 FSRM 目录配额或专用固定大小卷并完成实际拒绝验证。详见
+  `M4_WORKSPACE_HARD_QUOTA_FEASIBILITY_20260723.md`。
 - 每次生产 app-server 调用都固定附加 `-c mcp_servers={}`，以 Codex 结构化配置覆盖默认用户
   profile 的 MCP server 表。此变更的 AppServer `29/29`、AgentHost Release `0` warning / `0` error
   和真实两轮 live `2/2` 已通过；它不隔离默认用户 `CODEX_HOME`、凭据、技能或插件配置。
@@ -390,6 +394,9 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
 - `M4_CONFIGURATION_ERROR_SANITIZATION_20260723.md`：本地 Codex 配置与 AgentHost CLI 的固定错误码、
   安全说明和非 AutoCAD 验证边界。
 - `evidence/m4-configuration-error-sanitization-20260723.json`：上述配置/CLI 诊断切口的脱敏门禁摘要。
+- `M4_WORKSPACE_HARD_QUOTA_FEASIBILITY_20260723.md`：工作目录硬配额的本机能力审计、禁止的伪方案与
+  部署前置条件。
+- `evidence/m4-workspace-hard-quota-feasibility-20260723.json`：上述审计的脱敏能力记录，明确硬配额未完成。
 
 ## 11. 支持声明
 
