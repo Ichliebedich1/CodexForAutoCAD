@@ -219,6 +219,17 @@ try
                     catch (OperationCanceledException) when (queryCancellation.IsCancellationRequested)
                     {
                     }
+                    catch (BridgeRemoteException exception)
+                        when (queryCancellation.IsCancellationRequested
+                            && string.Equals(
+                                exception.Code,
+                                AgentBridgeErrorCodes.RequestCancelled,
+                                StringComparison.Ordinal))
+                    {
+                        // The client may send its structured cancellation response before this
+                        // side observes its local cancellation token. Both outcomes prove that
+                        // the reverse query did not complete successfully.
+                    }
                 }
                 else
                 {

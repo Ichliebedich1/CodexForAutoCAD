@@ -121,6 +121,7 @@ public static class AgentHostBootstrapService
                         executableIdentity,
                         AgentHostBootstrapCommand.Serve,
                         processTreeLimits,
+                        AgentHostProcessIdentityProfile.CurrentUser,
                         controller.Checkpoint);
                     controller.PublishSuspended(child);
                 }
@@ -215,6 +216,10 @@ public static class AgentHostBootstrapService
                         child.ExecutableSha256,
                         0,
                         false);
+                    result = result.WithProcessIdentity(
+                        child.ProcessIdentityProfile,
+                        child.ProcessTokenIsRestricted,
+                        child.UsesPrivateDesktop);
 
                     int exitCode;
                     if (child.WaitForExit(0, out exitCode))

@@ -177,6 +177,7 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
 {
     private readonly SafeKernelHandle processHandle;
     private readonly WindowsProcessTreeJob processTreeJob;
+    private SafeDesktopHandle? privateDesktop;
     private SafeKernelHandle? primaryThreadHandle;
     private FileStream? executableLock;
     private bool disposed;
@@ -186,6 +187,7 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
     private WindowsInheritedBootstrapProcess(
         SafeKernelHandle processHandle,
         WindowsProcessTreeJob processTreeJob,
+        SafeDesktopHandle? privateDesktop,
         SafeKernelHandle primaryThreadHandle,
         FileStream executableLock,
         int processId,
@@ -193,10 +195,13 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
         string executableSha256,
         FileStream bootstrapOutput,
         FileStream confirmationInput,
-        FileStream standardErrorInput)
+        FileStream standardErrorInput,
+        AgentHostProcessIdentityProfile processIdentityProfile,
+        bool processTokenIsRestricted)
     {
         this.processHandle = processHandle;
         this.processTreeJob = processTreeJob;
+        this.privateDesktop = privateDesktop;
         this.primaryThreadHandle = primaryThreadHandle;
         this.executableLock = executableLock;
         ProcessId = processId;
@@ -205,6 +210,8 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
         BootstrapOutput = bootstrapOutput;
         ConfirmationInput = confirmationInput;
         StandardErrorInput = standardErrorInput;
+        ProcessIdentityProfile = processIdentityProfile;
+        ProcessTokenIsRestricted = processTokenIsRestricted;
     }
 
     internal int ProcessId { get; }
@@ -219,6 +226,12 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
 
     internal FileStream StandardErrorInput { get; }
 
+    internal AgentHostProcessIdentityProfile ProcessIdentityProfile { get; }
+
+    internal bool ProcessTokenIsRestricted { get; }
+
+    internal bool UsesPrivateDesktop => privateDesktop is not null;
+
     internal static WindowsInheritedBootstrapProcess Start(
         AgentHostExecutableIdentity executableIdentity,
         AgentHostProcessTreeLimits processTreeLimits,
@@ -228,6 +241,7 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
             executableIdentity,
             AgentHostBootstrapCommand.Doctor,
             processTreeLimits,
+            AgentHostProcessIdentityProfile.CurrentUser,
             throwIfLaunchAborted);
     }
 
@@ -237,6 +251,35 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
         AgentHostProcessTreeLimits processTreeLimits,
         Action throwIfLaunchAborted)
     {
+        return Start(
+            executableIdentity,
+            command,
+            processTreeLimits,
+            AgentHostProcessIdentityProfile.CurrentUser,
+            throwIfLaunchAborted);
+    }
+
+    internal static WindowsInheritedBootstrapProcess Start(
+        AgentHostExecutableIdentity executableIdentity,
+        AgentHostProcessTreeLimits processTreeLimits,
+        AgentHostProcessIdentityProfile processIdentityProfile,
+        Action throwIfLaunchAborted)
+    {
+        return Start(
+            executableIdentity,
+            AgentHostBootstrapCommand.Doctor,
+            processTreeLimits,
+            processIdentityProfile,
+            throwIfLaunchAborted);
+    }
+
+    internal static WindowsInheritedBootstrapProcess Start(
+        AgentHostExecutableIdentity executableIdentity,
+        AgentHostBootstrapCommand command,
+        AgentHostProcessTreeLimits processTreeLimits,
+        AgentHostProcessIdentityProfile processIdentityProfile,
+        Action throwIfLaunchAborted)
+    {
         if (processTreeLimits == null)
         {
             throw new ArgumentNullException(nameof(processTreeLimits));
@@ -244,6 +287,13 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
         if (throwIfLaunchAborted == null)
         {
             throw new ArgumentNullException(nameof(throwIfLaunchAborted));
+        }
+        if (processIdentityProfile != AgentHostProcessIdentityProfile.CurrentUser
+            && processIdentityProfile != AgentHostProcessIdentityProfile.RestrictedToken)
+        {
+            throw new AgentBootstrapLaunchException(
+                AgentBootstrapLaunchFailure.InvalidConfiguration,
+                "AgentHost process identity profile is invalid.");
         }
 
         throwIfLaunchAborted();
@@ -256,14 +306,18 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
         SafeFileHandle? childStandardErrorWrite = null;
         SafeKernelHandle? processHandle = null;
         SafeKernelHandle? primaryThreadHandle = null;
+        SafeKernelHandle? restrictedToken = null;
         WindowsProcessTreeJob? processTreeJob = null;
+        SafeDesktopHandle? privateDesktop = null;
         FileStream? executableLock = null;
         FileStream? bootstrapOutput = null;
         FileStream? confirmationInput = null;
         FileStream? standardErrorInput = null;
         IntPtr attributeList = IntPtr.Zero;
         IntPtr handleList = IntPtr.Zero;
+        IntPtr desktopName = IntPtr.Zero;
         WindowsNative.ProcessInformation processInformation = default;
+        var processTokenIsRestricted = false;
         try
         {
             executableLock = new FileStream(
@@ -321,22 +375,50 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
 
             throwIfLaunchAborted();
 
-            var created = WindowsNative.CreateProcess(
-                executablePath,
-                commandLine,
-                IntPtr.Zero,
-                IntPtr.Zero,
-                true,
-                WindowsNative.ExtendedStartupInfoPresent
-                    | WindowsNative.CreateNoWindow
-                    | WindowsNative.CreateSuspended,
-                IntPtr.Zero,
-                Path.GetDirectoryName(executablePath),
-                ref startup,
-                out processInformation);
+            var creationFlags = WindowsNative.ExtendedStartupInfoPresent
+                | WindowsNative.CreateNoWindow
+                | WindowsNative.CreateSuspended;
+            bool created;
+            if (processIdentityProfile == AgentHostProcessIdentityProfile.RestrictedToken)
+            {
+                restrictedToken = WindowsRestrictedToken.CreateForCurrentProcess();
+                privateDesktop = WindowsPrivateDesktop.Create(out desktopName);
+                startup.StartupInfo.lpDesktop = desktopName;
+                created = WindowsNative.CreateProcessAsUser(
+                    restrictedToken,
+                    executablePath,
+                    commandLine,
+                    IntPtr.Zero,
+                    IntPtr.Zero,
+                    true,
+                    creationFlags,
+                    IntPtr.Zero,
+                    Path.GetDirectoryName(executablePath),
+                    ref startup,
+                    out processInformation);
+            }
+            else
+            {
+                created = WindowsNative.CreateProcess(
+                    executablePath,
+                    commandLine,
+                    IntPtr.Zero,
+                    IntPtr.Zero,
+                    true,
+                    creationFlags,
+                    IntPtr.Zero,
+                    Path.GetDirectoryName(executablePath),
+                    ref startup,
+                    out processInformation);
+            }
             if (!created)
             {
-                throw new Win32Exception(Marshal.GetLastWin32Error(), "CreateProcessW failed.");
+                throw new AgentBootstrapLaunchException(
+                    processIdentityProfile == AgentHostProcessIdentityProfile.RestrictedToken
+                        ? AgentBootstrapLaunchFailure.ProcessIsolationFailed
+                        : AgentBootstrapLaunchFailure.ProcessStartFailed,
+                    "Creating the AgentHost process failed.",
+                    new Win32Exception(Marshal.GetLastWin32Error()));
             }
 
             processHandle = new SafeKernelHandle(processInformation.hProcess, true);
@@ -360,6 +442,17 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
                 throw new AgentBootstrapLaunchException(
                     AgentBootstrapLaunchFailure.IdentityMismatch,
                     "Created AgentHost image path does not match the validated executable path.");
+            }
+
+            if (processIdentityProfile == AgentHostProcessIdentityProfile.RestrictedToken)
+            {
+                processTokenIsRestricted = WindowsRestrictedToken.IsRestricted(processHandle);
+                if (!processTokenIsRestricted)
+                {
+                    throw new AgentBootstrapLaunchException(
+                        AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+                        "The AgentHost child token was not restricted.");
+                }
             }
 
             using (var processImage = new FileStream(
@@ -404,6 +497,7 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
             var result = new WindowsInheritedBootstrapProcess(
                 processHandle,
                 processTreeJob,
+                privateDesktop,
                 primaryThreadHandle,
                 executableLock,
                 processId,
@@ -411,10 +505,13 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
                 executableSha256,
                 bootstrapOutput,
                 confirmationInput,
-                standardErrorInput);
+                standardErrorInput,
+                processIdentityProfile,
+                processTokenIsRestricted);
             processHandle = null;
             primaryThreadHandle = null;
             processTreeJob = null;
+            privateDesktop = null;
             executableLock = null;
             bootstrapOutput = null;
             confirmationInput = null;
@@ -459,6 +556,11 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
                 Marshal.FreeHGlobal(handleList);
             }
 
+            if (desktopName != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(desktopName);
+            }
+
             if (processInformation.hThread != IntPtr.Zero)
             {
                 WindowsNative.CloseHandle(processInformation.hThread);
@@ -479,6 +581,8 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
             confirmationInput?.Dispose();
             standardErrorInput?.Dispose();
             processTreeJob?.Dispose();
+            privateDesktop?.Dispose();
+            restrictedToken?.Dispose();
             primaryThreadHandle?.Dispose();
             executableLock?.Dispose();
             processHandle?.Dispose();
@@ -668,6 +772,15 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
         catch
         {
         }
+
+        try
+        {
+            privateDesktop?.Dispose();
+            privateDesktop = null;
+        }
+        catch
+        {
+        }
     }
 
     private static void CreatePipePair(out SafeFileHandle readHandle, out SafeFileHandle writeHandle)
@@ -806,6 +919,181 @@ internal sealed class SafeKernelHandle : SafeHandleZeroOrMinusOneIsInvalid
     protected override bool ReleaseHandle()
     {
         return WindowsNative.CloseHandle(handle);
+    }
+}
+
+internal sealed class SafeDesktopHandle : SafeHandleZeroOrMinusOneIsInvalid
+{
+    internal SafeDesktopHandle(IntPtr handle, bool ownsHandle)
+        : base(ownsHandle)
+    {
+        SetHandle(handle);
+    }
+
+    protected override bool ReleaseHandle()
+    {
+        return WindowsNative.CloseDesktop(handle);
+    }
+}
+
+internal static class WindowsRestrictedToken
+{
+    // SECURITY\RESTRICTED_CODE (S-1-5-12). CreateRestrictedToken only produces a token that
+    // Windows identifies as restricted when it contains at least one restricted SID. Disabling
+    // privileges alone is not sufficient for IsTokenRestricted.
+    private const string RestrictedCodeSid = "S-1-5-12";
+
+    internal static SafeKernelHandle CreateForCurrentProcess()
+    {
+        IntPtr currentToken = IntPtr.Zero;
+        IntPtr restrictedCodeSid = IntPtr.Zero;
+        IntPtr restrictedSidAttributes = IntPtr.Zero;
+        IntPtr restrictedToken = IntPtr.Zero;
+        try
+        {
+            if (!WindowsNative.OpenProcessToken(
+                    WindowsNative.GetCurrentProcess(),
+                    WindowsNative.TokenDuplicate | WindowsNative.TokenQuery | WindowsNative.TokenAssignPrimary,
+                    out currentToken))
+            {
+                throw IsolationFailure("Opening the current process token failed.");
+            }
+
+            if (!WindowsNative.ConvertStringSidToSid(RestrictedCodeSid, out restrictedCodeSid))
+            {
+                throw IsolationFailure("Resolving the restricted AgentHost SID failed.");
+            }
+
+            var sidAndAttributes = new WindowsNative.SidAndAttributes
+            {
+                Sid = restrictedCodeSid,
+                Attributes = 0,
+            };
+            restrictedSidAttributes = Marshal.AllocHGlobal(
+                Marshal.SizeOf(typeof(WindowsNative.SidAndAttributes)));
+            Marshal.StructureToPtr(
+                sidAndAttributes,
+                restrictedSidAttributes,
+                false);
+
+            if (!WindowsNative.CreateRestrictedToken(
+                    currentToken,
+                    WindowsNative.DisableMaxPrivilege,
+                    0,
+                    IntPtr.Zero,
+                    0,
+                    IntPtr.Zero,
+                    1,
+                    restrictedSidAttributes,
+                    out restrictedToken))
+            {
+                throw IsolationFailure("Creating a restricted AgentHost token failed.");
+            }
+
+            var result = new SafeKernelHandle(restrictedToken, true);
+            restrictedToken = IntPtr.Zero;
+            if (result.IsInvalid || !WindowsNative.IsTokenRestricted(result))
+            {
+                result.Dispose();
+                throw new AgentBootstrapLaunchException(
+                    AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+                    "The restricted AgentHost token validation failed.");
+            }
+
+            return result;
+        }
+        finally
+        {
+            if (restrictedToken != IntPtr.Zero)
+            {
+                WindowsNative.CloseHandle(restrictedToken);
+            }
+
+            if (currentToken != IntPtr.Zero)
+            {
+                WindowsNative.CloseHandle(currentToken);
+            }
+
+            if (restrictedSidAttributes != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(restrictedSidAttributes);
+            }
+
+            if (restrictedCodeSid != IntPtr.Zero)
+            {
+                WindowsNative.LocalFree(restrictedCodeSid);
+            }
+        }
+    }
+
+    internal static bool IsRestricted(SafeKernelHandle processHandle)
+    {
+        if (processHandle == null)
+        {
+            throw new ArgumentNullException(nameof(processHandle));
+        }
+
+        IntPtr token = IntPtr.Zero;
+        try
+        {
+            if (!WindowsNative.OpenProcessToken(
+                    processHandle,
+                    WindowsNative.TokenQuery,
+                    out token))
+            {
+                throw IsolationFailure("Opening the AgentHost child token failed.");
+            }
+
+            using var safeToken = new SafeKernelHandle(token, true);
+            token = IntPtr.Zero;
+            return WindowsNative.IsTokenRestricted(safeToken);
+        }
+        finally
+        {
+            if (token != IntPtr.Zero)
+            {
+                WindowsNative.CloseHandle(token);
+            }
+        }
+    }
+
+    private static AgentBootstrapLaunchException IsolationFailure(string unsafeDiagnostic)
+    {
+        return new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+            unsafeDiagnostic,
+            new Win32Exception(Marshal.GetLastWin32Error()));
+    }
+}
+
+internal static class WindowsPrivateDesktop
+{
+    private const string DesktopNamePrefix = "CodexAutoCADRestricted-";
+
+    internal static SafeDesktopHandle Create(out IntPtr desktopPath)
+    {
+        var name = DesktopNamePrefix + Guid.NewGuid().ToString("N");
+        desktopPath = Marshal.StringToHGlobalUni("WinSta0\\" + name);
+        var rawHandle = WindowsNative.CreateDesktop(
+            name,
+            IntPtr.Zero,
+            IntPtr.Zero,
+            0,
+            WindowsNative.DesktopAllAccess,
+            IntPtr.Zero);
+        var result = new SafeDesktopHandle(rawHandle, true);
+        if (!result.IsInvalid)
+        {
+            return result;
+        }
+
+        result.Dispose();
+        Marshal.FreeHGlobal(desktopPath);
+        desktopPath = IntPtr.Zero;
+        throw new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+            "Creating the AgentHost private desktop failed.",
+            new Win32Exception(Marshal.GetLastWin32Error()));
     }
 }
 
@@ -1029,6 +1317,11 @@ internal static class WindowsNative
     internal const uint JobObjectLimitJobTime = 0x00000004;
     internal const uint JobObjectCpuRateControlEnable = 0x00000001;
     internal const uint JobObjectCpuRateControlHardCap = 0x00000004;
+    internal const uint TokenAssignPrimary = 0x0001;
+    internal const uint TokenDuplicate = 0x0002;
+    internal const uint TokenQuery = 0x0008;
+    internal const uint DisableMaxPrivilege = 0x00000001;
+    internal const uint DesktopAllAccess = 0x000F01FF;
     internal const int ProcThreadAttributeHandleList = 0x00020002;
     internal const int JobObjectExtendedLimitInformationClass = 9;
     internal const int JobObjectCpuRateControlInformationClass = 15;
@@ -1046,6 +1339,13 @@ internal static class WindowsNative
         internal int nLength;
         internal IntPtr lpSecurityDescriptor;
         [MarshalAs(UnmanagedType.Bool)] internal bool bInheritHandle;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct SidAndAttributes
+    {
+        internal IntPtr Sid;
+        internal uint Attributes;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -1288,6 +1588,74 @@ internal static class WindowsNative
         string? currentDirectory,
         ref StartupInfoEx startupInfo,
         out ProcessInformation processInformation);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool CreateProcessAsUser(
+        SafeKernelHandle token,
+        string applicationName,
+        StringBuilder commandLine,
+        IntPtr processAttributes,
+        IntPtr threadAttributes,
+        [MarshalAs(UnmanagedType.Bool)] bool inheritHandles,
+        uint creationFlags,
+        IntPtr environment,
+        string? currentDirectory,
+        ref StartupInfoEx startupInfo,
+        out ProcessInformation processInformation);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool OpenProcessToken(
+        IntPtr processHandle,
+        uint desiredAccess,
+        out IntPtr tokenHandle);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool OpenProcessToken(
+        SafeKernelHandle processHandle,
+        uint desiredAccess,
+        out IntPtr tokenHandle);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool CreateRestrictedToken(
+        IntPtr existingTokenHandle,
+        uint flags,
+        uint disableSidCount,
+        IntPtr sidsToDisable,
+        uint deletePrivilegeCount,
+        IntPtr privilegesToDelete,
+        uint restrictedSidCount,
+        IntPtr sidsToRestrict,
+        out IntPtr newTokenHandle);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ConvertStringSidToSid(
+        string stringSid,
+        out IntPtr sid);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsTokenRestricted(SafeKernelHandle tokenHandle);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern IntPtr CreateDesktop(
+        string desktopName,
+        IntPtr device,
+        IntPtr deviceMode,
+        uint flags,
+        uint desiredAccess,
+        IntPtr securityAttributes);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool CloseDesktop(IntPtr desktopHandle);
+
+    [DllImport("kernel32.dll")]
+    internal static extern IntPtr LocalFree(IntPtr memory);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern uint GetProcessId(SafeKernelHandle process);

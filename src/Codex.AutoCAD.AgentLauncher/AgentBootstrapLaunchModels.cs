@@ -13,7 +13,8 @@ public enum AgentBootstrapLaunchFailure
     Timeout = 7,
     Cancellation = 8,
     ChildTerminationFailed = 9,
-    InternalError = 10
+    InternalError = 10,
+    ProcessIsolationFailed = 11
 }
 
 /// <summary>
@@ -37,6 +38,7 @@ public static class AgentBootstrapLaunchFailurePolicy
             case AgentBootstrapLaunchFailure.Cancellation:
             case AgentBootstrapLaunchFailure.ChildTerminationFailed:
             case AgentBootstrapLaunchFailure.InternalError:
+            case AgentBootstrapLaunchFailure.ProcessIsolationFailed:
                 return failure;
             default:
                 return AgentBootstrapLaunchFailure.InternalError;
@@ -67,6 +69,8 @@ public static class AgentBootstrapLaunchFailurePolicy
                 return "agenthost_termination_failed";
             case AgentBootstrapLaunchFailure.InternalError:
                 return "agenthost_internal_error";
+            case AgentBootstrapLaunchFailure.ProcessIsolationFailed:
+                return "agenthost_process_isolation_failed";
             default:
                 return "agenthost_internal_error";
         }
@@ -96,6 +100,8 @@ public static class AgentBootstrapLaunchFailurePolicy
                 return "The AgentHost cleanup could not be confirmed.";
             case AgentBootstrapLaunchFailure.InternalError:
                 return "The AgentHost bootstrap failed.";
+            case AgentBootstrapLaunchFailure.ProcessIsolationFailed:
+                return "The AgentHost process isolation setup failed.";
             default:
                 return "The AgentHost bootstrap failed.";
         }
@@ -126,6 +132,16 @@ public sealed class AgentBootstrapLaunchException : Exception
     {
         return nameof(AgentBootstrapLaunchException) + ": " + ErrorCode;
     }
+}
+
+/// <summary>
+/// Selects the Windows identity used by launcher-internal compatibility probes. Product callers
+/// cannot opt into an experimental identity before its compatibility matrix is complete.
+/// </summary>
+internal enum AgentHostProcessIdentityProfile
+{
+    CurrentUser = 0,
+    RestrictedToken = 1,
 }
 
 public sealed class AgentHostBootstrapOptions
@@ -415,7 +431,10 @@ public sealed class AgentBootstrapDoctorResult
         string pipeName,
         string executableSha256,
         int standardErrorBytes,
-        bool standardErrorTruncated)
+        bool standardErrorTruncated,
+        AgentHostProcessIdentityProfile processIdentityProfile = AgentHostProcessIdentityProfile.CurrentUser,
+        bool processTokenIsRestricted = false,
+        bool usesPrivateDesktop = false)
     {
         ProcessId = processId;
         ProcessCreationFileTime = processCreationFileTime;
@@ -425,6 +444,9 @@ public sealed class AgentBootstrapDoctorResult
         ExecutableSha256 = executableSha256;
         StandardErrorBytes = standardErrorBytes;
         StandardErrorTruncated = standardErrorTruncated;
+        ProcessIdentityProfile = processIdentityProfile;
+        ProcessTokenIsRestricted = processTokenIsRestricted;
+        UsesPrivateDesktop = usesPrivateDesktop;
     }
 
     public int ProcessId { get; }
@@ -442,6 +464,31 @@ public sealed class AgentBootstrapDoctorResult
     public int StandardErrorBytes { get; }
 
     public bool StandardErrorTruncated { get; }
+
+    internal AgentHostProcessIdentityProfile ProcessIdentityProfile { get; }
+
+    internal bool ProcessTokenIsRestricted { get; }
+
+    internal bool UsesPrivateDesktop { get; }
+
+    internal AgentBootstrapDoctorResult WithProcessIdentity(
+        AgentHostProcessIdentityProfile processIdentityProfile,
+        bool processTokenIsRestricted,
+        bool usesPrivateDesktop)
+    {
+        return new AgentBootstrapDoctorResult(
+            ProcessId,
+            ProcessCreationFileTime,
+            BootstrapId,
+            SessionId,
+            PipeName,
+            ExecutableSha256,
+            StandardErrorBytes,
+            StandardErrorTruncated,
+            processIdentityProfile,
+            processTokenIsRestricted,
+            usesPrivateDesktop);
+    }
 }
 
 public sealed class AgentBootstrapProcessIdentity

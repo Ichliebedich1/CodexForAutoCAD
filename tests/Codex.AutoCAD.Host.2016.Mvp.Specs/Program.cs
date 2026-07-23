@@ -1258,6 +1258,21 @@ static Task FailureFormatterSanitizesBootstrap()
             StringComparison.Ordinal)
         && !unknownFailure.UserMessage.Contains(sensitiveDetail, StringComparison.Ordinal),
         "Unknown bootstrap failure did not become a sanitized internal error.");
+
+    var isolationFailure = MvpAgentFailureFormatter.FromException(
+        new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+            sensitiveDetail,
+            new InvalidOperationException(sensitiveDetail)),
+        MvpAgentFailureStages.StartingAgentHost);
+    True(
+        string.Equals(
+            MvpAgentErrorCodes.AgentHostProcessIsolationFailed,
+            isolationFailure.ErrorCode,
+            StringComparison.Ordinal)
+        && !isolationFailure.Retryable
+        && !isolationFailure.UserMessage.Contains(sensitiveDetail, StringComparison.Ordinal),
+        "Process isolation failure did not remain structured and sanitized.");
     return Task.CompletedTask;
 }
 

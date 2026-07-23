@@ -20,8 +20,11 @@ try
     {
         new SpecCase("REAL_AGENTHOST_SUCCESS", "真实AgentHost完成认证bootstrap doctor且无残留", () => RealAgentHostSucceeds(arguments.AgentHostPath)),
         new SpecCase("REAL_AGENTHOST_REPEAT_5", "连续五次真实引导均成功且无残留", () => RepeatedRealAgentHostSucceeds(arguments.AgentHostPath)),
+        new SpecCase("RESTRICTED_TOKEN_PRIMITIVES_FAIL_CLOSED", "受限token与私有desktop原语成功或结构化失败关闭", RestrictedTokenPrimitivesFailClosed),
+        new SpecCase("RESTRICTED_TOKEN_BOOTSTRAP_PROBE_PORTABLE", "受限身份探针接受结构化能力结果、禁止回退且无残留", () => RestrictedTokenBootstrapProbeIsPortable(fixture)),
         new SpecCase("JOB_RESOURCE_LIMITS_APPLIED", "Job Object应用进程数、内存、CPU与累计用户时间硬限制", ProcessTreeResourceLimitsAreApplied),
         new SpecCase("JOB_RESOURCE_LIMITS_INVALID", "无效进程树与会话运行限制在启动前失败关闭", ProcessTreeResourceLimitsFailClosed),
+        new SpecCase("EXPERIMENTAL_IDENTITY_NOT_PUBLIC", "产品公共配置与结果不暴露实验身份选择或遥测", ExperimentalProcessIdentityIsNotPublic),
         new SpecCase("JOB_USER_TIME_TERMINATES_TREE", "累计Job用户时间耗尽会终止忙碌进程树", () => JobUserTimeTerminatesBusyTree(fixture)),
         new SpecCase("SESSION_RUNTIME_TERMINATES_TREE", "会话墙钟截止会终止AgentHost进程树", () => SessionRuntimeTerminatesTree(fixture)),
         new SpecCase("SESSION_RUNTIME_RETRIES_CLEANUP", "会话墙钟截止首次清理失败后自动重试", SessionRuntimeRetriesCleanup),
@@ -97,6 +100,11 @@ static void RealAgentHostSucceeds(string agentHostPath)
     Equal(32, result.SessionId.Length);
     True(result.PipeName.StartsWith("codex-autocad-", StringComparison.Ordinal), "Pipe name is invalid.");
     Equal(options.ExpectedExecutableSha256, result.ExecutableSha256);
+    Equal(
+        AgentHostProcessIdentityProfile.CurrentUser,
+        result.ProcessIdentityProfile);
+    True(!result.ProcessTokenIsRestricted, "The default AgentHost unexpectedly used a restricted token.");
+    True(!result.UsesPrivateDesktop, "The default AgentHost unexpectedly used a private desktop.");
     ProcessMustBeGone(result.ProcessId);
 }
 
@@ -106,6 +114,104 @@ static void RepeatedRealAgentHostSucceeds(string agentHostPath)
     {
         RealAgentHostSucceeds(agentHostPath);
     }
+}
+
+static void RestrictedTokenPrimitivesFailClosed()
+{
+    var outcome = "available";
+    try
+    {
+        using (var token = WindowsRestrictedToken.CreateForCurrentProcess())
+        {
+            True(!token.IsInvalid, "The restricted token handle is invalid.");
+            True(
+                WindowsNative.IsTokenRestricted(token),
+                "Windows did not identify the synthetic token as restricted.");
+        }
+
+        IntPtr desktopPath = IntPtr.Zero;
+        try
+        {
+            using (var desktop = WindowsPrivateDesktop.Create(out desktopPath))
+            {
+                True(!desktop.IsInvalid, "The private desktop handle is invalid.");
+            }
+        }
+        finally
+        {
+            if (desktopPath != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(desktopPath);
+            }
+        }
+    }
+    catch (AgentBootstrapLaunchException exception)
+    {
+        Equal(AgentBootstrapLaunchFailure.ProcessIsolationFailed, exception.Failure);
+        Equal("agenthost_process_isolation_failed", exception.ErrorCode);
+        Equal(
+            "AgentBootstrapLaunchException: agenthost_process_isolation_failed",
+            exception.ToString());
+        outcome = "process_isolation_failed";
+    }
+
+    Console.WriteLine("RESTRICTED_TOKEN_PRIMITIVES_OUTCOME=" + outcome);
+}
+
+static void RestrictedTokenBootstrapProbeIsPortable(FakeAgentHostFixture fixture)
+{
+    var executablePath = fixture.CreateMode("success");
+    var currentUserResult = Run(CreateOptions(executablePath));
+    Equal(AgentHostProcessIdentityProfile.CurrentUser, currentUserResult.ProcessIdentityProfile);
+    True(!currentUserResult.ProcessTokenIsRestricted, "The product path used a restricted token.");
+    True(!currentUserResult.UsesPrivateDesktop, "The product path used a private desktop.");
+    ProcessMustBeGone(currentUserResult.ProcessId);
+
+    var outcome = string.Empty;
+    try
+    {
+        var restrictedResult = AgentHostBootstrapDoctor.RunProcessIdentityProbeAsync(
+                CreateOptions(executablePath),
+                AgentHostProcessIdentityProfile.RestrictedToken,
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        Equal(
+            AgentHostProcessIdentityProfile.RestrictedToken,
+            restrictedResult.ProcessIdentityProfile);
+        True(
+            restrictedResult.ProcessTokenIsRestricted,
+            "The experimental probe silently fell back to the current-user token.");
+        True(
+            restrictedResult.UsesPrivateDesktop,
+            "The experimental probe silently omitted its private desktop primitive.");
+        ProcessMustBeGone(restrictedResult.ProcessId);
+        outcome = "authenticated_success";
+    }
+    catch (AgentBootstrapLaunchException failure)
+    {
+        True(
+            failure.Failure == AgentBootstrapLaunchFailure.ProcessIsolationFailed
+                || failure.Failure == AgentBootstrapLaunchFailure.ChildExitedWithError,
+            "The experimental probe returned an unexpected capability outcome: "
+                + failure.ErrorCode
+                + ".");
+        True(
+            failure.ToString().IndexOf("CodexAutoCADRestricted-", StringComparison.Ordinal) < 0,
+            "Private desktop metadata escaped through the public failure.");
+        True(
+            failure.ToString().IndexOf(executablePath, StringComparison.OrdinalIgnoreCase) < 0,
+            "The executable path escaped through the public failure.");
+        outcome = failure.Failure == AgentBootstrapLaunchFailure.ProcessIsolationFailed
+            ? "process_isolation_failed"
+            : "child_exited";
+    }
+    finally
+    {
+        ProcessNameMustBeGone(executablePath);
+    }
+
+    Console.WriteLine("RESTRICTED_TOKEN_BOOTSTRAP_OUTCOME=" + outcome);
 }
 
 static void ProcessTreeResourceLimitsAreApplied()
@@ -132,7 +238,6 @@ static void ProcessTreeResourceLimitsAreApplied()
         AgentHostBootstrapOptions.DefaultMaximumSessionRuntime,
         new AgentHostBootstrapOptions("relative.exe", new string('0', 64))
             .GetValidatedSessionRuntime());
-
     using (var job = WindowsProcessTreeJob.CreateKillOnClose(
                new AgentHostProcessTreeLimits(
                    processLimit,
@@ -233,6 +338,49 @@ static void ProcessTreeResourceLimitsFailClosed()
     ExpectFailure(
         AgentBootstrapLaunchFailure.InvalidConfiguration,
         () => options.GetValidatedSessionRuntime());
+}
+
+static void ExperimentalProcessIdentityIsNotPublic()
+{
+    var optionsType = typeof(AgentHostBootstrapOptions);
+    True(
+        optionsType.GetProperty(
+            "ProcessIdentityProfile",
+            BindingFlags.Instance | BindingFlags.Public) == null,
+        "Product callers can select an experimental process identity.");
+    True(
+        optionsType.Assembly.GetExportedTypes().All(
+            type => !string.Equals(
+                type.Name,
+                nameof(AgentHostProcessIdentityProfile),
+                StringComparison.Ordinal)),
+        "The experimental process identity enum is publicly exported.");
+
+    var resultType = typeof(AgentBootstrapDoctorResult);
+    foreach (var propertyName in new[]
+             {
+                 "ProcessIdentityProfile",
+                 "ProcessTokenIsRestricted",
+                 "UsesPrivateDesktop",
+             })
+    {
+        True(
+            resultType.GetProperty(
+                propertyName,
+                BindingFlags.Instance | BindingFlags.Public) == null,
+            "Product bootstrap results expose experimental identity telemetry: "
+                + propertyName
+                + ".");
+    }
+
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => AgentHostBootstrapDoctor.RunProcessIdentityProbeAsync(
+                new AgentHostBootstrapOptions("relative.exe", new string('0', 64)),
+                AgentHostProcessIdentityProfile.CurrentUser,
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult());
 }
 
 static void JobUserTimeTerminatesBusyTree(FakeAgentHostFixture fixture)
