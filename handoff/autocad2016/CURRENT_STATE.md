@@ -236,7 +236,8 @@ NETLOAD 证据的能力一律视为未支持。
   绝对 PATH 候选会被归一化为固定本地磁盘的绝对 `codex.exe`；显式无效配置 fail-closed，且
   doctor 仅显示来源标签、不显示路径。启动/关闭超时和工作目录同样进入该配置。版本兼容硬门槛、
   每会话 `CODEX_HOME`、环境白名单、Job Object 与审计仍未完成，详见
-  `M4_LOCAL_CODEX_CONFIGURATION_20260723.md`。
+  `M4_LOCAL_CODEX_CONFIGURATION_20260723.md` 与
+  `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
 - 冻结构建哈希：AgentHost EXE `002BBA9D...49706`，AgentHost DLL
   `852BD92C...86033`，net45 Launcher `597D99E8...F849`，net8 Launcher
   `84E0E2A7...1FE9`；完整值保存在阶段 evidence。
