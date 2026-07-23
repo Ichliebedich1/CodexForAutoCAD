@@ -22,6 +22,9 @@ home。参考：
 - <https://learn.chatgpt.com/docs/config-file/environment-variables>
 - <https://learn.chatgpt.com/docs/auth>
 
+生产本机配置还固定传入 `-c mcp_servers={}`，覆盖 default Codex profile 的 MCP server 表；它只
+限制 MCP server 配置，不会使整个 profile、插件或凭据独立。
+
 ## 生产调用链
 
 ```text
@@ -32,7 +35,7 @@ AgentWorkspace.Create
   -> AppServerClientOptions(InheritParentEnvironment=false)
   -> ProcessStartInfo.Environment.Clear()
   -> fixed allowlist
-  -> codex app-server --stdio
+  -> codex app-server --stdio -c mcp_servers={}
 ```
 
 工作目录和临时目录都必须是已存在、固定本地磁盘、非 UNC/设备路径且不经过已发现重解析点的
@@ -84,7 +87,8 @@ Relevant AgentHost / codex app-server processes after cleanup: 0 / 0
 ## 未完成边界
 
 - 每会话独立 `CODEX_HOME`、OS keyring/受信 token 认证恢复和独立凭据边界。
-- 默认空 MCP、空插件和不读取全局 Codex 配置的启动配置。
+- 插件配置隔离和不读取全局 Codex 配置的启动配置；默认空 MCP 已由
+  `M4_EMPTY_MCP_BOUNDARY_20260723.md` 中的结构化覆盖完成。
 - 代理、企业证书或额外工具目录的强类型配置入口与兼容矩阵。
 - 工作目录/临时目录最小 ACL、有界清理和磁盘配额。
 - 受限令牌或 AppContainer、CPU/运行时配额和真实故障注入。

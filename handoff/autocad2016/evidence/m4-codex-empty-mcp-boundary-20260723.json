@@ -1,0 +1,49 @@
+{
+  "schema": "codex.autocad.m4-empty-mcp-boundary-evidence/1",
+  "capturedAt": "2026-07-23T09:40:54Z",
+  "sourceBranch": "codex/m4-workspace-acl",
+  "sourceBaselineCommit": "c7ce35a",
+  "scope": "production local Codex app-server default MCP configuration override",
+  "productionBoundary": {
+    "additionalArguments": [
+      "-c",
+      "mcp_servers={}"
+    ],
+    "effectiveInvocationShape": "codex app-server --stdio -c mcp_servers={}",
+    "parentEnvironmentInheritance": false,
+    "defaultUserCodexHomeStillReachable": true,
+    "mcpServerTableOverride": "empty"
+  },
+  "verification": {
+    "appServerSpecs": "27/27",
+    "productionOptionsExactArgumentsVerified": true,
+    "agentHostReleaseWarnings": 0,
+    "agentHostReleaseErrors": 0,
+    "phase2ReleaseDynamicSpecs": "341/341",
+    "phase2HostDisabledApiScan": "passed",
+    "phase2SensitiveInformationScan": "passed",
+    "phase2AgentHostDoctorHandshake": "passed",
+    "realAgentHostV2Live": "2/2",
+    "realLiveCapabilityHandshakePassed": true,
+    "realLiveTwoContextTurnsPassed": true,
+    "autoCadStartedOrControlled": false,
+    "netLoadAttempted": false,
+    "cadWriteEnabled": false,
+    "pluginSaveEnabled": false
+  },
+  "notProven": [
+    "per-session-codex-home",
+    "credential-isolation",
+    "plugin-configuration-isolation",
+    "full-default-profile-isolation",
+    "workspace-disk-hard-quota",
+    "restricted-token-or-appcontainer",
+    "tamper-evident-audit-chain",
+    "autocad-or-agenthost-crash-and-zombie-matrix"
+  ],
+  "notes": [
+    "The evidence contains no executable path, user profile path, token, raw configuration, prompt, CAD context, stderr or full environment value.",
+    "The override disables the MCP server table for this production app-server invocation only; it does not claim plugin, credential or complete profile isolation.",
+    "No AutoCAD process was started, controlled, loaded or modified by this validation."
+  ]
+}

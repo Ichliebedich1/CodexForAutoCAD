@@ -8,7 +8,7 @@ Codex 子进程现已进入显式环境白名单：生产 AgentHost 清空完整
 运行时、用户 home、`AgentWorkspace.Temp`、最小系统 `PATH` 和非交互 Git 设置。synthetic child、
 真实 app-server doctor 与两轮认证 Codex 对话均已通过。
 
-这仍不是每会话凭据、MCP/插件或用户配置隔离。为兼容现有文件登录，白名单保留
+这仍不是每会话凭据、插件或用户配置隔离。为兼容现有文件登录，白名单保留
 `USERPROFILE`/`HOME`，Codex 继续使用默认用户 `~/.codex`；本项目没有复制、移动、链接、解析或
 记录任何用户 Codex profile、令牌或配置文件。精确白名单与证据见
 `M4_CODEX_CHILD_ENVIRONMENT_ALLOWLIST_20260723.md`。
@@ -23,7 +23,7 @@ AutoCAD Host.2016
   -> CodexProcessTransport
   -> ProcessStartInfo.Environment.Clear()
   -> fixed allowlist
-  -> codex app-server --stdio
+  -> codex app-server --stdio -c mcp_servers={}
 ```
 
 - AgentHost 为每个认证 session 创建独立 `AgentWorkspace`；它用于 Agent 工作目录，不等于
@@ -36,8 +36,10 @@ AutoCAD Host.2016
   自定义/调试变量；`TEMP`/`TMP` 绑定每会话 workspace temp。
 - app-server `initialize` 会返回 Codex home，但 AgentHost 正常 doctor 只公开“已配置”布尔值，
   不公开路径。
-- 当前没有代码为 Codex 指定空 MCP、空插件目录或独立凭据引用；默认用户 Codex home 仍可被
-  app-server 访问。
+- 生产本机 Codex 配置固定传入 `-c mcp_servers={}`，覆盖默认用户 profile 的 MCP server 表；
+  项目代码不复制、直接读取或记录 profile 内容；该覆盖也不形成空插件目录、独立 `CODEX_HOME`
+  或独立凭据。
+  默认用户 Codex home 仍可被 app-server 访问。
 
 ## 风险
 
@@ -62,8 +64,8 @@ AutoCAD Host.2016
 
 ## 后续顺序
 
-1. 当前采用“全局文件登录兼容 + 子进程父环境白名单”的只读过渡模式；下一步验证 OS keyring
-   或受信 access token，确定每会话认证策略。
+1. 当前采用“全局文件登录兼容 + 子进程父环境白名单 + 默认空 MCP”的只读过渡模式；下一步验证
+   OS keyring 或受信 access token，确定每会话认证策略与插件配置边界。
 2. child-environment builder、synthetic child 和真实 Codex 默认路径已完成；后续补企业代理、
    证书和无全局登录矩阵，不得回退为父环境继承。
 3. 仅在安全认证路径被证实后，将每会话 `CODEX_HOME` 接到 AgentWorkspace 的受限子目录；

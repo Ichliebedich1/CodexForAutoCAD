@@ -37,7 +37,9 @@
 - 主解决方案的托管核心 Release `-m:1` 构建通过：0 警告、0 错误。门禁会核对 AgentHost、Bridge、AgentRuntime 和 7 个 Specs 均属于所选配置的默认构建，同时核对 AutoCAD 2016/2025 进程内 Host 不属于主解决方案默认构建，避免缺少目标版本安装时产生假失败。
 - 当前 7 个规格项目动态汇总为 121/121：Contracts 15/15、IPC 11/11、Security 19/19、AppServer 7/7、Bridge 29/29、AgentRuntime 31/31、Chat 9/9。`verify-phase2.ps1` 从各规格进程的唯一真实摘要动态解析并求和，不把 121 或任一子项目计数硬编码为放行条件。本文旧版记录的 107/107 已被本次当前工作树证据取代，不再代表现状。
 - Bridge 当前用户命名管道、HMAC、seq/nonce、防重放、帧/深度限制、容量和断线行为在沙箱外受控测试中通过；29 项完整规格连续运行 20 轮，累计 580/580。生命周期专项同时覆盖关闭超时边界、同步阻塞 handler、忽略取消 handler 与并发 Dispose、迟到 fault 的 `TerminalError`/Unobserved 处理，以及非协作 stream/sendGate 静止前不清密钥、静止后延迟清零。
-- AgentHost 使用本机原生 `codex.exe` 的 app-server doctor 握手通过并自然退出；当前 doctor 明确使用全局 `%USERPROFILE%\.codex`，不能替代后续每会话独立 `CODEX_HOME`、空 MCP/插件和凭据隔离实现。
+- AgentHost 使用本机原生 `codex.exe` 的 app-server doctor 握手通过并自然退出；生产路径现使用
+  `-c mcp_servers={}` 覆盖默认 MCP server 表，但当前 doctor 仍使用全局 `%USERPROFILE%\.codex`，
+  不能替代后续每会话独立 `CODEX_HOME`、插件配置和凭据隔离实现。
 - Host.2025 词法禁用 API 规则自检与源码扫描通过，明确覆盖 `Database.Save/DwgOut/DxfOut`、`Application.Quit/Invoke`、命令字符串执行、`Process.Start`、`FileStream`/文件写入、动态加载、直接 IPC/网络和注册表；未暂存及已暂存 `git diff --check` 与基础秘密扫描也通过。
 - 门禁及 Bridge 压力运行结束后未发现残留 `dotnet.exe` 或 `Codex.AutoCAD.AgentHost.exe` 进程；测试进程均自然退出，未通过强制终止获得绿色结果。
 - 上述证据全部是本机托管核心验证，**不是 AutoCAD live 证据**：没有在本次门禁中执行 Host.2016 NETLOAD、Palette、选择读取、认证 Bridge 或 CAD 写入 E2E，也不能据此扩大为 AutoCAD 2016 完整支持声明。
@@ -50,7 +52,8 @@ Host 禁用 API 扫描是保守的源码词法拒绝列表，会连同注释和�
 - `IAgentCadProposalBroker` 尚未连接到 AutoCAD 主线程的预览、审批和事务执行器，因此自然语言到 DWG 的完整 E2E 尚未成立。
 - 当前工作树中的 AutoCAD 2025 UI/选择/直线写入纵向原型不属于本阶段托管核心提交，也未完成目标版本真机验收；不得用该原型证明 Side Database 预演、Palette、`DocumentLock`、锁内重验、单事务或不自动保存已经交付。即使后续使用 Side Database，它也只是 CAD 一致性预演，不是进程隔离。
 - 独立受限令牌或 AppContainer、Windows Job Object、进程树终止、CPU/内存/时间配额尚未实现。
-- 每会话独立 `CODEX_HOME`、空 MCP/插件配置、受控环境变量和凭据隔离尚未实现。
+- 每会话独立 `CODEX_HOME`、插件配置隔离和凭据隔离尚未实现；当前 M4 已实现受控子环境白名单与
+  默认空 MCP，详见 `handoff/autocad2016/M4_EMPTY_MCP_BOUNDARY_20260723.md`。
 - R4 审批门已经强制检查点证明，但真实恢复 DWG 的创建、摘要和恢复演练尚未接入。
 - SQLite 上下文记忆、审计哈希链、保留/清除策略尚未实现。
 - AutoCAD 2016 已完成 net45/x64 诊断薄宿主的目标机原版程序集编译与手工 NETLOAD；Palette、选择上下文、认证 Bridge、审批和 CAD 写入仍未接入，不能宣称完整支持。

@@ -57,7 +57,8 @@ Result: stable codex_configuration / InvalidConfiguredExecutable; no path escape
 
 - 当前冻结范围只覆盖已验证的 `0.144.x`；升级新的 Codex 次版本前必须重新审查 App Server 协议、
   更新范围、补齐 real doctor/live 和双 Shell 门禁，不能靠环境变量绕过。
-- 每会话独立 `CODEX_HOME`、空 MCP/插件配置和独立凭据仍未完成；现有父环境白名单不等于这些
+- 每会话独立 `CODEX_HOME`、插件配置隔离和独立凭据仍未完成；默认空 MCP 已由生产
+  `-c mcp_servers={}` 覆盖完成，现有父环境白名单不等于其余边界。
   边界。
 - 工作目录磁盘硬配额、受限令牌/AppContainer、审计防篡改和真实 Codex/AutoCAD 异常退出、僵尸
   进程矩阵也仍不属于本切口。现有 Job、ACL、保留和只读审计的已完成范围见

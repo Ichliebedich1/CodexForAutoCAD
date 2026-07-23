@@ -18,7 +18,7 @@ var specs = new (string Name, Func<Task> Run)[]
     ("环境null覆写删除继承变量", NullEnvironmentOverrideRemovesInheritedVariable),
     ("非法环境键值启动前被拒绝", InvalidEnvironmentEntriesAreRejected),
     ("本地Codex配置只接受固定盘绝对exe", LocalCodexConfigurationAcceptsConfiguredExecutable),
-    ("本地Codex配置强制使用环境白名单", LocalCodexConfigurationUsesEnvironmentAllowlist),
+    ("本地Codex配置强制使用环境白名单与空MCP", LocalCodexConfigurationUsesEnvironmentAllowlist),
     ("本地Codex配置错误不泄露路径", LocalCodexConfigurationFailsClosedWithoutPath),
     ("无效环境Codex路径不会回退", LocalCodexConfigurationDoesNotFallbackFromInvalidEnvironment),
     ("缺失本地Codex配置返回稳定错误", LocalCodexConfigurationReportsMissingExecutable),
@@ -339,6 +339,9 @@ static Task LocalCodexConfigurationUsesEnvironmentAllowlist()
     Equal(fixture.TempDirectory, options.Environment["TEMP"]);
     Equal(fixture.TempDirectory, options.Environment["TMP"]);
     True(!options.Environment.ContainsKey("CODEX_HOME"), "Policy unexpectedly sets CODEX_HOME.");
+    Equal(
+        "-c|mcp_servers={}",
+        string.Join("|", options.AdditionalArguments));
     True(!options.Environment.ContainsKey("CODEX_ACCESS_TOKEN"), "Policy inherited a Codex access token.");
     True(!options.Environment.ContainsKey("OPENAI_API_KEY"), "Policy inherited an API key.");
     True(!options.Environment.ContainsKey("HTTPS_PROXY"), "Policy inherited a proxy setting.");

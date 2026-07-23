@@ -75,7 +75,8 @@ evidence SHA-256：
 - 没有故意耗尽真实 Codex 的进程槽或总提交内存。
 - synthetic user-time 终止不等价于真实 Codex 长时间压力测试。
 - 没有可靠的工作目录磁盘硬配额；不得用轮询目录大小冒充硬配额。
-- 每会话 `CODEX_HOME`、独立凭据、空 MCP/插件配置、受限令牌/AppContainer 仍未完成。
+- 每会话 `CODEX_HOME`、独立凭据、插件配置隔离、受限令牌/AppContainer 仍未完成；默认空 MCP
+  已由 `M4_EMPTY_MCP_BOUNDARY_20260723.md` 的结构化配置覆盖完成。
 - 工作区/审计目录最小 ACL 与有界保留已由后续
   `M4_PRIVATE_STORAGE_RETENTION_20260723.md` 完成；AutoCAD 异常退出和僵尸进程矩阵仍未完成。
 

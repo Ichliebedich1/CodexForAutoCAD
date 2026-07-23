@@ -298,10 +298,15 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   受控 child allowlist 中运行严格、最多 `4 KiB` 的 `codex --version`；当前产品范围为
   `>=0.144.4 <0.145.0`，本机 `0.144.4`、其后的 `initialize`、真实两轮 live 和双 Shell
   `341/341` 均通过。未审查次版本、非 UTF-8、超限和超时输出 fail-closed；详情见
-  `M4_CODEX_VERSION_PREFLIGHT_20260723.md`。这不覆盖每会话凭据、MCP/插件或未来版本协议。
+  `M4_CODEX_VERSION_PREFLIGHT_20260723.md`。这不覆盖每会话凭据、插件配置隔离或未来版本协议。
 - [ ] 每会话独立 CODEX_HOME；不得复制、链接或记录全局 Codex profile，需先采用经用户确认且
   经审计的认证恢复方式。见 `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
-- [ ] 默认空 MCP、空插件配置和独立凭据边界；当前未知 Codex 配置布局不能作为假定的复制来源。
+- [x] 默认空 MCP：生产 `codex app-server --stdio` 固定追加 `-c mcp_servers={}`，覆盖默认用户
+  profile 的 MCP server 表；AppServer `27/27`、Release 和真实两轮 live `2/2` 已通过。项目代码
+  不直接读取或复制 profile 内容，但也不隔离 `CODEX_HOME`、凭据、技能或插件配置。见
+  `M4_EMPTY_MCP_BOUNDARY_20260723.md`。
+- [ ] 空插件配置和独立凭据边界；默认用户 profile 仍可供 Codex 读取，未知配置布局不能作为
+  假定的复制来源。
 - [x] Codex 子进程生产路径先清空父环境，再注入固定 `16` 个变量名；`TEMP`/`TMP` 绑定
   `AgentWorkspace.Temp`，`PATH` 不复制父值。token/API key、代理、`CODEX_HOME`、`PSModulePath`
   和自定义变量均不自动继承。synthetic child、真实 doctor、两轮 live 与清理均通过；这不等于

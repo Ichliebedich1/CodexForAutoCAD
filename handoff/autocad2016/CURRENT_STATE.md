@@ -265,7 +265,7 @@ NETLOAD 证据的能力一律视为未支持。
   代理、父 `PATH`、`PSModulePath` 和自定义/调试变量不会自动传入。AppServer `20/20` 包含
   synthetic child 泄漏/显式允许/null 删除/非法键值规格，真实 doctor 和两轮 v2 live `2/2`
   继续通过，清理后 AgentHost/app-server 为 `0/0`。当前仍通过 `USERPROFILE`/`HOME` 使用默认
-  用户 Codex home 兼容文件登录，所以每会话凭据、空 MCP/插件配置仍未完成。见
+  用户 Codex home 兼容文件登录，所以每会话凭据与插件配置隔离仍未完成。见
   `M4_CODEX_CHILD_ENVIRONMENT_ALLOWLIST_20260723.md`。
 - M4 第七 CPU/运行时间边界扩展同一 Job 与 service session：CPU hard cap 默认 `75%`
   （允许 `1..100%`），累计 Job user-time 默认 `8` 小时（允许 `100 ms..7 d`），认证后的
@@ -292,8 +292,14 @@ NETLOAD 证据的能力一律视为未支持。
   `>=0.144.4 <0.145.0`。本机 `0.144.4`、其后的 `initialize` 与真实两轮 v2 live 已通过；
   未审查次版本、非 UTF-8、超限、启动失败、退出错误和超时均以路径无关稳定代码 fail-closed，
   Bridge 在 runtime start 前不会可用。见 `M4_CODEX_VERSION_PREFLIGHT_20260723.md` 和
-  `evidence/m4-codex-version-preflight-20260723.json`。这不代表每会话凭据、空 MCP/插件或未来
+  `evidence/m4-codex-version-preflight-20260723.json`。这不代表每会话凭据、插件配置隔离或未来
   Codex 版本兼容。
+- M4 第十默认空 MCP 边界已进入生产 app-server 配置：
+  `CodexLocalAppServerConfiguration` 固定传入 `-c mcp_servers={}`，使默认用户 profile 中的 MCP
+  server 表不会进入 AgentHost 子进程调用。AppServer `27/27`、AgentHost Release `0` warning /
+  `0` error 和真实两轮 v2 live `2/2` 均通过。它没有隔离 `CODEX_HOME`、文件登录、技能或插件
+  配置，不能描述为完整用户配置隔离；见 `M4_EMPTY_MCP_BOUNDARY_20260723.md` 和
+  `evidence/m4-codex-empty-mcp-boundary-20260723.json`。
 - 当前 Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 双 Shell 动态汇总 `341/341`、
   AgentHost doctor、Host 禁止 API、秘密扫描和 diff 通过；认证固定向量与现有 Bridge/IPC
   回归保持通过。
@@ -541,7 +547,7 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
 6. M2 实机/性能 evidence 仍是 M2 完成前提；M3 的只读对象语义候选已冻结但仍待实机字段
    evidence，不替代 M2 验收，也不启用 CAD 写入。实机测试暂缓期间继续收口不依赖 AutoCAD
    的 M4 沙箱与审计；父环境白名单、版本/App Server 健康预检、CPU/运行时间限制和工作区/
-   审计 ACL/有界保留已完成，下一步是磁盘硬配额、每会话 `CODEX_HOME`/凭据、空 MCP/插件、
+   审计 ACL/有界保留和默认空 MCP 已完成，下一步是磁盘硬配额、每会话 `CODEX_HOME`/凭据、插件配置隔离、
    受限令牌/AppContainer 与审计防篡改。M4 完成前不启用 M5 CAD 写入。
 
 ## 更新纪律

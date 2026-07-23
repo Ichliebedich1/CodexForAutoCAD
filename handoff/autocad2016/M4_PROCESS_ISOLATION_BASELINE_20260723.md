@@ -4,10 +4,10 @@
 
 ## 状态
 
-本文件记录 M4 已完成的九个小切口：Codex 子进程 stderr/AgentHost 诊断脱敏、本机 Codex
+本文件记录 M4 已完成的十个小切口：Codex 子进程 stderr/AgentHost 诊断脱敏、本机 Codex
 启动配置、AgentHost 进程树的 Job Object 边界、该 Job 的进程数/总提交内存硬限制，以及
 AgentHost 只读会话的内容脱敏 JSONL 运行审计、Codex 子进程父环境白名单和 CPU/累计用户时间/
-会话墙钟限制、workspace/audit 私有 ACL 与有界保留、Codex 版本/App Server 健康预检；不是完整
+会话墙钟限制、workspace/audit 私有 ACL 与有界保留、Codex 版本/App Server 健康预检、默认空 MCP；不是完整
 沙箱候选，不代表已完成每会话 `CODEX_HOME`、磁盘硬配额、凭据隔离、审计防篡改或 CAD 写入终态审计。
 本轮没有启动、关闭或控制 AutoCAD，也没有加载 DLL、保存或修改图纸。
 
@@ -21,7 +21,7 @@ AutoCAD Host.2016
   -> CodexVersionPreflight (codex --version; product-owned compatibility range)
   -> CodexChildEnvironmentPolicy
   -> CodexProcessTransport (clear parent environment + fixed allowlist)
-  -> codex app-server --stdio (inherits AgentHost Job membership)
+  -> codex app-server --stdio -c mcp_servers={} (inherits AgentHost Job membership)
 ```
 
 现有受限 bootstrap、批准的 AgentHost EXE 哈希、受限继承句柄和有界直接子进程终止继续保留。
@@ -78,9 +78,11 @@ session 保存。因此正常停止
 - 生产 Codex client 强制关闭父环境继承，先清空 `ProcessStartInfo.Environment`，再注入固定 `16`
   个变量名；`TEMP`/`TMP` 指向 `AgentWorkspace.Temp`，`PATH` 只含批准的 Windows 系统目录。
   `CODEX_HOME`、token/API key、代理、父 `PATH`、`PSModulePath` 和自定义调试变量均不自动传入。
+- 生产本机配置还固定附加 `-c mcp_servers={}`，用 Codex TOML 配置覆盖默认用户 profile 的 MCP
+  server 表；项目代码不直接读取或复制 profile 内容，但不构成插件、`CODEX_HOME` 或凭据隔离。
 - synthetic child 已证明父哨兵不可见、显式允许变量可见、`null` 删除继承值；真实 doctor 与
   两轮认证 Codex v2 对话继续通过，清理后 AgentHost/app-server 均为 `0`。当前仍使用默认用户
-  Codex home 兼容文件登录，不应写成凭据、MCP 或插件隔离。
+  Codex home 兼容文件登录，不应写成凭据或插件配置隔离。
 - workspace session 根、四个子目录、lease、audit 根和 JSONL 现在关闭 ACL 继承，仅允许当前
   用户、SYSTEM 与内置 Administrators；设置后读回 owner 和完整规则集，偏差即 fail-closed。
 - 每个 session 使用独占 lease。正常退出删除当前 workspace；残留按 `24` 小时和最多 `64` 个
@@ -137,7 +139,7 @@ CPU user-time 与墙钟终止，不证明真实 Codex CPU 节流性能、内存/
   `M4_LOCAL_CODEX_CONFIGURATION_20260723.md` 与 `M4_CODEX_VERSION_PREFLIGHT_20260723.md` 完成；
   将来版本升级仍需显式协议复核和新证据。
 - 每会话独立 `CODEX_HOME`，以及不复制/泄露用户凭据的登录和恢复方案。
-- 空 MCP/插件配置和独立凭据；父环境白名单已完成，但默认用户 Codex home 仍可被访问。
+- 插件配置隔离和独立凭据；默认空 MCP 已完成，但默认用户 Codex home 仍可被访问。
 - Windows Job Object 的进程数、Job 总提交内存、CPU hard cap 和累计 user-time 已应用，service
   session 墙钟截止也已实现；工作目录磁盘硬配额仍未实现，CPU 节流性能及内存/进程数的真实
   Codex 耗尽行为也未验证。
@@ -154,7 +156,7 @@ CPU user-time 与墙钟终止，不证明真实 Codex CPU 节流性能、内存/
 1. 配置、版本/App Server 健康预检和 Codex 子进程显式环境白名单已完成，当前保留默认用户文件
    登录行为。
 2. 独立 `CODEX_HOME` 需先迁移到 OS keyring 或受信 token；不复制用户 profile 中的配置或
-   `auth.json` 作为临时方案，并补空 MCP/插件配置。
+   `auth.json` 作为临时方案，并补插件配置隔离。
 3. 已完成 Job Object 进程数/总提交内存/CPU/user-time、session 墙钟限制和 workspace/audit
    私有 ACL/有界保留；继续补可靠磁盘硬配额，并以真实 Codex、异常退出和僵尸进程矩阵验证。
 4. 将当前只读审计扩展到审批解决和 M5 强类型 CAD 写入终态，并完成防篡改、凭据/环境边界和

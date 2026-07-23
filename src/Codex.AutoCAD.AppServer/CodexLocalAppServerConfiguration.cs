@@ -76,6 +76,13 @@ public sealed class CodexLocalAppServerConfiguration
     public static readonly TimeSpan DefaultShutdownTimeout = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan MaximumTimeout = TimeSpan.FromMinutes(1);
 
+    private static readonly IReadOnlyList<string> DefaultMcpIsolationArguments =
+        Array.AsReadOnly(new[]
+        {
+            "-c",
+            "mcp_servers={}",
+        });
+
     internal CodexLocalAppServerConfiguration(
         string codexExecutablePath,
         CodexExecutableSource executableSource,
@@ -115,6 +122,7 @@ public sealed class CodexLocalAppServerConfiguration
         {
             CodexExecutablePath = CodexExecutablePath,
             WorkingDirectory = WorkingDirectory,
+            AdditionalArguments = DefaultMcpIsolationArguments,
             Environment = ChildEnvironment,
             InheritParentEnvironment = false,
             MaximumFrameBytes = 8 * 1024 * 1024,

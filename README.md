@@ -71,7 +71,12 @@
   `TEMP`/`TMP` 绑定每会话 workspace，父 `PATH`、token/API key、代理、`CODEX_HOME`、
   `PSModulePath` 和自定义变量均不自动传入。AppServer `27/27`、完整 Phase 2 `341/341`、真实
   doctor 和两轮 v2 live `2/2` 均通过，清理后 AgentHost/app-server 为 `0/0`。当前仍用默认用户
-  Codex home 兼容文件登录，不代表每会话凭据、空 MCP 或插件隔离。
+  Codex home 兼容文件登录，不代表每会话凭据或插件配置隔离。
+- M4 生产 app-server 现固定附加 `-c mcp_servers={}`，用 Codex 的结构化配置覆盖使默认用户
+  profile 中配置的 MCP server 表不会进入 AgentHost 调用链。当前 AppServer `27/27`、AgentHost
+  Release `0` warning / `0` error、真实两轮 v2 live `2/2` 均通过；该边界不隔离默认用户
+  `CODEX_HOME`、凭据、技能或插件配置，详见
+  `handoff/autocad2016/M4_EMPTY_MCP_BOUNDARY_20260723.md`。
 - M4 已将本机 Codex 版本作为正式启动门槛：`doctor`、`run` 和认证 `bootstrap-serve` 都先在同一
   受控子进程环境中运行 `codex --version`，当前只接受 `>=0.144.4 <0.145.0`，随后仍须完成
   app-server `initialize`。本机 `0.144.4` 已通过；未审查的次版本、非 UTF-8、超限或超时输出均
@@ -144,7 +149,7 @@ fixture `6/6` 和 R20.1 API 双 Shell Probe `29 passed / 8 expected failed`；�
 6. 实机测试暂缓期间继续收口不依赖 AutoCAD 的 M4 沙箱审计；进程树清理、进程数/内存/CPU/
    运行时限制、AgentHost 只读 JSONL 审计、工作区/审计 ACL 与有界保留、Codex 子进程父环境
    白名单和版本/App Server 健康预检已完成。工作目录磁盘硬配额、每会话 `CODEX_HOME`/凭据、
-   空 MCP/插件、受限令牌/AppContainer、审计防篡改及 CAD 写入终态仍待完成。M4 完成前不启用
+   插件配置隔离、受限令牌/AppContainer、审计防篡改及 CAD 写入终态仍待完成。M4 完成前不启用
    AutoCAD 2016 强类型安全写入。
 7. 随后完成长期记忆、安装签名、企业部署和 AutoCAD 2025 适配。
 
