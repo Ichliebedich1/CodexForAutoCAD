@@ -65,6 +65,7 @@ namespace Codex.AutoCAD.Host2016
     {
         private static UnifiedPaletteController controller;
         private static string latestDrawingIndexStatus = "整图索引：not_built";
+        private static PaletteDrawingIndexView latestDrawingIndexView = PaletteDrawingIndexView.Empty;
         private static PaletteContextView latestContext = new PaletteContextView(
             "not-captured",
             false,
@@ -126,10 +127,21 @@ namespace Codex.AutoCAD.Host2016
         internal static void UpdateDrawingIndexStatus(string value)
         {
             latestDrawingIndexStatus = value ?? latestDrawingIndexStatus;
+            try
+            {
+                latestDrawingIndexView = PaletteDrawingIndexView.FromDescriptor(
+                    DrawingIndexRuntime.GetDescriptor());
+            }
+            catch
+            {
+                // The palette view is observational; keep the last real descriptor view and never
+                // let a snapshot failure escape the DrawingIndex notification chain.
+            }
+
             var current = controller;
             if (current != null)
             {
-                current.UpdateDrawingIndexStatus(latestDrawingIndexStatus);
+                current.UpdateDrawingIndexStatus(latestDrawingIndexStatus, latestDrawingIndexView);
             }
         }
 
@@ -148,7 +160,7 @@ namespace Codex.AutoCAD.Host2016
             if (controller == null)
             {
                 controller = new UnifiedPaletteController(latestContext);
-                controller.UpdateDrawingIndexStatus(latestDrawingIndexStatus);
+                controller.UpdateDrawingIndexStatus(latestDrawingIndexStatus, latestDrawingIndexView);
             }
 
             return controller;

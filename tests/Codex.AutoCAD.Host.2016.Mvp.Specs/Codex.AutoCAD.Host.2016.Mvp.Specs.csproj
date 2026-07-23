@@ -32,5 +32,7 @@
              Link="MvpAgentTerminationCoordinator.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentClient.cs"
              Link="MvpAgentClient.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\PalettePresentationModels.cs"
+             Link="PalettePresentationModels.cs" />
   </ItemGroup>
 </Project>

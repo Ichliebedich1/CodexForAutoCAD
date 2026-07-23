@@ -218,6 +218,18 @@ var specs = new[]
         "HOST2016_TERMINATE_STATUS_FAILURE_IS_ISOLATED",
         "A failing exit status observer cannot escape termination cleanup",
         TerminateStatusFailureIsIsolated),
+    new SpecCase(
+        "HOST2016_PALETTE_INDEX_VIEW_MAPS_REAL_STATES",
+        "the palette drawing-index view maps every protocol status without inventing state",
+        PaletteIndexViewMapsRealStates),
+    new SpecCase(
+        "HOST2016_PALETTE_INDEX_VIEW_KEEPS_REAL_PROGRESS",
+        "the palette drawing-index view carries descriptor counts and progress verbatim",
+        PaletteIndexViewKeepsRealProgress),
+    new SpecCase(
+        "HOST2016_PALETTE_AGENT_STATUS_CLASSIFIES_KNOWN_MESSAGES",
+        "the palette agent status view only colors known Host messages and stays neutral otherwise",
+        PaletteAgentStatusClassifiesKnownMessages),
 };
 
 var failed = 0;
@@ -2179,6 +2191,120 @@ static Task TerminateStatusFailureIsIsolated()
         _ => throw new InvalidOperationException("Palette observer failed"));
 
     Equal(2, stopCount, "Termination attempts before status callback failure");
+    return Task.CompletedTask;
+}
+
+static Task PaletteIndexViewMapsRealStates()
+{
+    var expectations = new[]
+    {
+        new { Status = DrawingIndexStatuses.NotBuilt, Label = "未建立", Tone = PaletteStatusTone.Neutral, CanStart = true, CanCancel = false },
+        new { Status = DrawingIndexStatuses.Preparing, Label = "准备中", Tone = PaletteStatusTone.Busy, CanStart = false, CanCancel = true },
+        new { Status = DrawingIndexStatuses.Scanning, Label = "扫描中", Tone = PaletteStatusTone.Busy, CanStart = false, CanCancel = true },
+        new { Status = DrawingIndexStatuses.Ready, Label = "已完成", Tone = PaletteStatusTone.Success, CanStart = true, CanCancel = false },
+        new { Status = DrawingIndexStatuses.Partial, Label = "部分完成", Tone = PaletteStatusTone.Warning, CanStart = true, CanCancel = false },
+        new { Status = DrawingIndexStatuses.Limited, Label = "受限完成", Tone = PaletteStatusTone.Warning, CanStart = true, CanCancel = false },
+        new { Status = DrawingIndexStatuses.Cancelled, Label = "已取消", Tone = PaletteStatusTone.Neutral, CanStart = true, CanCancel = false },
+        new { Status = DrawingIndexStatuses.Stale, Label = "已失效", Tone = PaletteStatusTone.Warning, CanStart = true, CanCancel = false },
+        new { Status = DrawingIndexStatuses.Failed, Label = "失败", Tone = PaletteStatusTone.Failure, CanStart = true, CanCancel = false },
+    };
+
+    foreach (var expectation in expectations)
+    {
+        var view = PaletteDrawingIndexView.FromDescriptor(new DrawingIndexDescriptor
+        {
+            IndexId = "index-1",
+            Status = expectation.Status,
+        });
+        True(
+            string.Equals(view.StatusLabel, expectation.Label, StringComparison.Ordinal),
+            "status " + expectation.Status + " label mismatch: " + view.StatusLabel);
+        True(
+            view.Tone == expectation.Tone,
+            "status " + expectation.Status + " tone mismatch: " + view.Tone);
+        True(
+            view.CanStart == expectation.CanStart,
+            "status " + expectation.Status + " CanStart mismatch.");
+        True(
+            view.CanCancel == expectation.CanCancel,
+            "status " + expectation.Status + " CanCancel mismatch.");
+    }
+
+    True(
+        PaletteDrawingIndexView.FromDescriptor(null).StatusLabel == "未建立",
+        "null descriptor must fall back to the not-built view.");
+    return Task.CompletedTask;
+}
+
+static Task PaletteIndexViewKeepsRealProgress()
+{
+    var view = PaletteDrawingIndexView.FromDescriptor(new DrawingIndexDescriptor
+    {
+        IndexId = "index-2",
+        Status = DrawingIndexStatuses.Scanning,
+        Scope = DrawingIndexScopes.ModelSpace,
+        EntityCount = 900,
+        IndexedEntityCount = 378,
+        UnsupportedEntityCount = 12,
+        FailedEntityCount = 3,
+        ProgressPercent = 42,
+        Complete = false,
+        Limited = false,
+    });
+
+    Equal(900, view.EntityCount, "descriptor entity count");
+    Equal(378, view.IndexedEntityCount, "descriptor indexed count");
+    Equal(12, view.UnsupportedEntityCount, "descriptor unsupported count");
+    Equal(3, view.FailedEntityCount, "descriptor failed count");
+    Equal(42, view.ProgressPercent, "descriptor real progress percent");
+    True(
+        string.Equals(view.ScopeLabel, "模型空间", StringComparison.Ordinal),
+        "scope label mismatch: " + view.ScopeLabel);
+    var stats = view.BuildStatsText();
+    True(
+        stats.IndexOf("42%", StringComparison.Ordinal) >= 0
+            && stats.IndexOf("900", StringComparison.Ordinal) >= 0,
+        "stats text must carry the real counts and progress: " + stats);
+    return Task.CompletedTask;
+}
+
+static Task PaletteAgentStatusClassifiesKnownMessages()
+{
+    var expectations = new[]
+    {
+        new { Text = "AgentHost 在线；只读 Codex 会话已建立。", Tone = PaletteStatusTone.Success },
+        new { Text = "Codex 回答完成（request_id=\"r1\", state=\"completed\"）", Tone = PaletteStatusTone.Success },
+        new { Text = "正在启动并验证 AgentHost……", Tone = PaletteStatusTone.Busy },
+        new { Text = "Codex 正在分析当前图纸数据（request_id=\"r2\", state=\"running\"）", Tone = PaletteStatusTone.Busy },
+        new { Text = "Agent Bridge 状态：connecting", Tone = PaletteStatusTone.Busy },
+        new { Text = "Agent Bridge 状态：online", Tone = PaletteStatusTone.Success },
+        new { Text = "Agent Bridge 状态：degraded", Tone = PaletteStatusTone.Warning },
+        new { Text = "Agent Bridge 状态：offline", Tone = PaletteStatusTone.Neutral },
+        new { Text = "正在取消 Codex 回合（request_id=\"r3\", state=\"cancelling\"）", Tone = PaletteStatusTone.Warning },
+        new { Text = "Codex 回合已取消（request_id=\"r3\", state=\"cancelled\"）", Tone = PaletteStatusTone.Warning },
+        new { Text = "Codex 回合失败（error_code=timeout, error_stage=running_turn, retryable=true）：操作超时；连接或子进程已按 fail-closed 处理。", Tone = PaletteStatusTone.Failure },
+        new { Text = "AgentHost 已停止；CAD 写入仍禁用。", Tone = PaletteStatusTone.Neutral },
+        new { Text = "Agent 离线；只读模式。", Tone = PaletteStatusTone.Neutral },
+        new { Text = "某种未分类的 Host 状态文本。", Tone = PaletteStatusTone.Neutral },
+    };
+
+    foreach (var expectation in expectations)
+    {
+        var view = PaletteAgentStatusView.FromHostStatus(expectation.Text);
+        True(
+            view.Tone == expectation.Tone,
+            "tone mismatch for [" + expectation.Text + "]: " + view.Tone);
+        True(
+            string.Equals(view.DisplayText, expectation.Text, StringComparison.Ordinal),
+            "display text must stay verbatim.");
+    }
+
+    True(
+        PaletteAgentStatusView.FromHostStatus(null).Tone == PaletteStatusTone.Neutral,
+        "null status must stay neutral.");
+    True(
+        PaletteAgentStatusView.FromHostStatus("   ").Tone == PaletteStatusTone.Neutral,
+        "blank status must stay neutral.");
     return Task.CompletedTask;
 }
 

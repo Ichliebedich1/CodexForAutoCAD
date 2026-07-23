@@ -26,6 +26,7 @@ namespace Codex.AutoCAD.Host2016
         private PaletteContextView context;
         private string agentStatus = "Agent 离线；只读模式。";
         private string drawingIndexStatus = "整图索引：not_built";
+        private PaletteDrawingIndexView drawingIndexView = PaletteDrawingIndexView.Empty;
         private bool disposed;
         private int generationCount;
         private int resetCount;
@@ -117,9 +118,10 @@ namespace Codex.AutoCAD.Host2016
             }
         }
 
-        internal void UpdateDrawingIndexStatus(string value)
+        internal void UpdateDrawingIndexStatus(string value, PaletteDrawingIndexView view)
         {
             drawingIndexStatus = value ?? string.Empty;
+            drawingIndexView = view ?? PaletteDrawingIndexView.Empty;
             UpdatePanel();
         }
 
@@ -372,6 +374,7 @@ namespace Codex.AutoCAD.Host2016
             metrics.Append(drawingIndexStatus);
             currentPanel.UpdateMetrics(metrics.ToString());
             currentPanel.UpdateContext(context);
+            currentPanel.UpdateDrawingIndex(drawingIndexStatus, drawingIndexView);
             string currentAgentStatus;
             string currentAgentText;
             lock (agentSync)

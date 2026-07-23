@@ -117,6 +117,7 @@
     <Compile Include="UnifiedPaletteRuntime.cs" />
     <Compile Include="UnifiedPaletteController.cs" />
     <Compile Include="UnifiedPalettePanel.cs" />
+    <Compile Include="PalettePresentationModels.cs" />
     <Compile Include="MvpAgentProtocolIdentity.cs" />
     <Compile Include="MvpAgentCapabilityPolicy.cs" />
     <Compile Include="MvpAgentFailure.cs" />
