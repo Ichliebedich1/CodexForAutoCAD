@@ -193,6 +193,7 @@ namespace Codex.AutoCAD.Host2016
                 activeTurn = requestTurn;
             }
 
+            BeginTurnTimeoutMonitor(requestTurn);
             PublishSafely(TextChanged, string.Empty);
             PublishSafely(
                 StatusChanged,
@@ -257,7 +258,6 @@ namespace Codex.AutoCAD.Host2016
                             : "Codex 正在分析当前图纸上下文",
                         requestTurn.RequestId,
                         currentState));
-                BeginTurnTimeoutMonitor(requestTurn);
                 if (dispatchCancellation)
                 {
                     BeginCancellationDispatch(

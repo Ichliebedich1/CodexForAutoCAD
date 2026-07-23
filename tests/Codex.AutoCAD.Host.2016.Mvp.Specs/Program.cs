@@ -114,6 +114,10 @@ var specs = new[]
         "A turn without a terminal event times out, interrupts once, and rejects late work",
         TurnTimeoutFailsClosed),
     new SpecCase(
+        "HOST2016_TURN_START_TIMEOUT_FAILS_CLOSED",
+        "A Provider turn start that exceeds the Host deadline times out before an id is bound",
+        TurnStartTimeoutFailsClosed),
+    new SpecCase(
         "HOST2016_NEW_CONVERSATION_CREATES_FRESH_THREAD",
         "A new Host conversation gets a fresh system id and Provider thread before the next turn",
         NewConversationCreatesFreshThread),
@@ -1109,6 +1113,68 @@ static async Task TurnTimeoutFailsClosed()
     });
     Equal(statusCountAtTimeout, statuses.Count, "Late timeout status event count");
     Equal(textCountAtTimeout, textEvents.Count, "Late timeout text event count");
+}
+
+static async Task TurnStartTimeoutFailsClosed()
+{
+    var bridge = new FakeAgentBridgeClient
+    {
+        DelayStartTurnResponse = true,
+    };
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-turn-start-timeout",
+        "system-session-turn-start-timeout",
+        TimeSpan.FromMilliseconds(40));
+    var timeoutStatus = new TaskCompletionSource<string>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    client.ErrorChanged += value =>
+    {
+        if (value.Contains("error_code=timeout", StringComparison.Ordinal))
+        {
+            timeoutStatus.TrySetResult(value);
+        }
+    };
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2(),
+        ContextSha256 = new string('3', 64),
+    };
+
+    var askTask = client.AskAsync(
+        "Provider start must share the Host turn deadline",
+        context,
+        () => true,
+        CancellationToken.None);
+    var completed = await Task.WhenAny(
+            timeoutStatus.Task,
+            Task.Delay(TimeSpan.FromSeconds(2)))
+        .ConfigureAwait(false);
+    True(
+        ReferenceEquals(completed, timeoutStatus.Task),
+        "Host turn deadline did not cover the Provider start phase.");
+    Equal(0, bridge.InterruptTurnCount, "Interrupt count before Provider turn identity");
+
+    bridge.CompletePendingStartTurn();
+    var timeoutFailure = await ExpectTurnFailure(askTask).ConfigureAwait(false);
+    True(
+        string.Equals(timeoutFailure.RequestId, bridge.LastStartTurnV2Request?.ClientTurnId, StringComparison.Ordinal)
+        && string.Equals(timeoutFailure.TurnState, MvpAgentTurnStates.Failed, StringComparison.Ordinal)
+        && timeoutFailure.InnerException is AgentBridgeClientException bridgeFailure
+        && string.Equals(bridgeFailure.Code, AgentBridgeErrorCodes.Timeout, StringComparison.Ordinal),
+        "Late Provider acceptance did not preserve the Host timeout terminal state.");
+
+    var rejected = await ExpectBridgeClientFailure(
+            client.AskAsync(
+                "must fail closed after Provider start timeout",
+                context,
+                () => true,
+                CancellationToken.None))
+        .ConfigureAwait(false);
+    True(
+        string.Equals(rejected.Code, AgentBridgeErrorCodes.Timeout, StringComparison.Ordinal),
+        "ASK after Provider start timeout did not preserve the stable timeout code.");
 }
 
 static async Task NewConversationCreatesFreshThread()
