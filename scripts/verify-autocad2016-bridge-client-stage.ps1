@@ -29,7 +29,7 @@ $conditionalLockPath = Join-Path $repoRoot "src\Codex.AutoCAD.Bridge.Client\pack
 $expectedSdk = "8.0.319"
 $expectedClientSpecs = 29
 $expectedBridgeSpecs = 56
-$expectedPhase2Specs = 350
+$expectedPhase2Specs = 351
 
 function Get-Sha256 {
     param([Parameter(Mandatory = $true)][string] $Path)
@@ -515,7 +515,7 @@ $finalEvidence = [ordered]@{
     cadCommandsSent = $false
     netLoadVerified = $false
     autoCadLiveEvidence = $false
-    evidenceBoundary = "PowerShell 7 and Windows PowerShell 5.1 independently passed two isolated deterministic builds, net45/net8 Bridge Client 29/29, Bridge 56/56, and Phase2 350/350. Valid turn terminal events consume the active turn identity, and later events for that turn are rejected fail-closed. This is non-CAD evidence and does not prove unified Host.2016 NETLOAD, a live AgentHost connection from AutoCAD, or a real Codex CAD conversation."
+    evidenceBoundary = "PowerShell 7 and Windows PowerShell 5.1 independently passed two isolated deterministic builds, net45/net8 Bridge Client 29/29, Bridge 56/56, and Phase2 351/351. Valid turn terminal events consume the active turn identity, and later events for that turn are rejected fail-closed. This is non-CAD evidence and does not prove unified Host.2016 NETLOAD, a live AgentHost connection from AutoCAD, or a real Codex CAD conversation."
 }
 
 $resolvedFinalEvidencePath = if ([string]::IsNullOrWhiteSpace($EvidencePath)) {
