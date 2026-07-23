@@ -376,6 +376,24 @@ foreach ($entry in $expectedLockHashes.GetEnumerator()) {
     }
 }
 
+$sourceCommit = (
+    & $git rev-parse --verify HEAD 2>&1 |
+        Select-Object -Last 1
+).ToString().Trim().ToLowerInvariant()
+if ($LASTEXITCODE -ne 0 -or $sourceCommit -notmatch '\A[0-9a-f]{40,64}\z') {
+    throw '无法解析候选源码提交。'
+}
+$sourceStatus = @(
+    & $git -c core.quotepath=false status --porcelain=v1 --untracked-files=all 2>&1 |
+        Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_) }
+)
+if ($LASTEXITCODE -ne 0) {
+    throw '无法检查候选源码工作树状态。'
+}
+if ($sourceStatus.Count -ne 0) {
+    throw '候选必须从干净工作树构建；请先提交或清理全部非忽略变更。'
+}
+
 $assemblyInfo = Get-Content -LiteralPath $assemblyInfoPath -Raw -Encoding UTF8
 $versionMatch = [regex]::Match($assemblyInfo, 'AssemblyVersion\("(?<Version>\d+\.\d+\.\d+\.\d+)"\)')
 $fileVersionMatch = [regex]::Match($assemblyInfo, 'AssemblyFileVersion\("(?<Version>\d+\.\d+\.\d+\.\d+)"\)')
@@ -616,6 +634,7 @@ try {
     $manifest = [ordered]@{
         schemaVersion = 1
         candidateId = $candidateId
+        sourceCommit = $sourceCommit
         hostVersion = $hostVersion
         cadContextSchema = 'codex.autocad.cad-context/2'
         drawingIndexSchema = 'codex.autocad.drawing-index/1'
@@ -655,6 +674,7 @@ try {
         scope = 'autocad2016-m2-drawing-index-candidate-build'
         candidateFrozenAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
         candidateId = $candidateId
+        sourceCommit = $sourceCommit
         hostVersion = $hostVersion
         autoCadLiveEvidence = $false
         netLoadVerified = $false
@@ -675,6 +695,7 @@ try {
             hostLocalPerformanceTelemetry = $true
             hostCompileSourceCount = $sourceFiles.Count
             documentLockCount = $documentLockCount
+            sourceTreeCleanAtStart = $true
             lockFileHashesPreserved = $true
             autoCadStartedOrRestarted = $false
             commandsSent = $false
@@ -706,6 +727,7 @@ try {
     Write-Host 'AutoCAD 2016 M2 DrawingIndex 候选自动化冻结通过。' -ForegroundColor Green
     Write-Host "CANDIDATE_ROOT=$candidateRoot"
     Write-Host "CANDIDATE_ID=$candidateId"
+    Write-Host "SOURCE_COMMIT=$sourceCommit"
     Write-Host "HOST_VERSION=$hostVersion"
     Write-Host "PHASE2_SPECS=$phase2Summary"
     Write-Host "BENCHMARK_FIXTURES=$benchmarkSummary"
@@ -731,4 +753,11 @@ foreach ($entry in $expectedLockHashes.GetEnumerator()) {
     if ((Get-GitBlobHash $path) -cne $entry.Value) {
         throw "验证结束后锁文件哈希漂移：$($entry.Key)"
     }
+}
+$finalCommit = (
+    & $git rev-parse --verify HEAD 2>&1 |
+        Select-Object -Last 1
+).ToString().Trim().ToLowerInvariant()
+if ($LASTEXITCODE -ne 0 -or $finalCommit -cne $sourceCommit) {
+    throw '候选构建期间源码提交发生变化。'
 }
