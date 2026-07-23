@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Runtime.Serialization.Json;
+using System.Text;
 using Codex.AutoCAD.Bridge.Client;
 using Codex.AutoCAD.Contracts;
 
@@ -32,6 +34,8 @@ const string reverseDrawingQueryBeforeStartResponseSpecId =
     "bridge-client-reverse-drawing-query-before-start-response";
 const string reverseDrawingQueryCancelSpecId = "bridge-client-reverse-drawing-query-cancel";
 const string reverseDrawingQueryStopSpecId = "bridge-client-stop-drains-reverse-drawing-query";
+const string legacyDrawingQueryEntitySpecId =
+    "bridge-client-legacy-query-entity-without-block-details";
 var currentSpecId = capabilitiesSpecId;
 var serverExe = Environment.GetEnvironmentVariable("CODEX_BRIDGE_TEST_SERVER_EXE");
 if (string.IsNullOrWhiteSpace(serverExe) || !File.Exists(serverExe))
@@ -60,6 +64,11 @@ Process? reverseDrawingQueryStopServer = null;
 
 try
 {
+    currentSpecId = legacyDrawingQueryEntitySpecId;
+    LegacyDrawingQueryEntityWithoutBlockDetailsDeserializes();
+    Console.WriteLine("[PASS] " + legacyDrawingQueryEntitySpecId);
+    currentSpecId = capabilitiesSpecId;
+
     server = StartTestServer(serverExe, pipeName, sessionId, secretHex, "happy");
 
     using (var client = new AgentBridgeClient(new AgentBridgeClientOptions
@@ -1010,7 +1019,7 @@ try
         "oversized-frame",
         oversizedFrameSpecId);
 
-    Console.WriteLine("29/29 specs passed");
+    Console.WriteLine("30/30 specs passed");
     return 0;
 }
 catch (Exception exception)
@@ -1084,6 +1093,28 @@ static void DisposeTestServer(Process? process)
     }
 
     process.Dispose();
+}
+
+static void LegacyDrawingQueryEntityWithoutBlockDetailsDeserializes()
+{
+    var wireType = typeof(AgentBridgeClient).Assembly.GetType(
+        "Codex.AutoCAD.Bridge.Client.BridgeClientJsonCodec+CadQueryEntityWire",
+        throwOnError: true)
+        ?? throw new InvalidOperationException("CadQueryEntityWire type was not found.");
+    const string legacyJson =
+        "{\"objectId\":\"obj-00000001\",\"entityType\":\"line\","
+        + "\"actualType\":\"AcDbLine\",\"layer\":\"0\",\"space\":\"model\","
+        + "\"blockName\":\"\",\"textExcerpt\":\"\",\"bounds\":null,"
+        + "\"unsupported\":false,\"readStatus\":\"parsed\"}";
+    var serializer = new DataContractJsonSerializer(wireType);
+    using var stream = new MemoryStream(Encoding.UTF8.GetBytes(legacyJson));
+    var value = serializer.ReadObject(stream);
+    Require(value is not null, "legacy query entity deserialization");
+    var blockDetails = wireType.GetProperty("BlockDetails")
+        ?? throw new InvalidOperationException("BlockDetails property was not found.");
+    Require(
+        blockDetails.GetValue(value) is null,
+        "legacy query entity missing blockDetails remains null");
 }
 
 static void Require(bool condition, string label)

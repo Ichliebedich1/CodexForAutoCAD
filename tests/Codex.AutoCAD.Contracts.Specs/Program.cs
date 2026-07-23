@@ -94,6 +94,11 @@ var specs = new[]
     new SpecCase("INDEX-V1-006 原始Handle形状不能作为查询实体令牌", DrawingIndexContractsSpecs.RawHandleShapedObjectTokensFailClosed),
     new SpecCase("INDEX-M3-001 占位原因和实际类型统计有界且不混入实体数据", DrawingIndexContractsSpecs.ReadIssueStatisticsStayStructuredAndBounded),
     new SpecCase("INDEX-M3-002 块详情有界深拷贝且不定义Xref路径字段", DrawingIndexContractsSpecs.BlockDetailsAreBoundedDeepCopiedAndPathFree),
+    new SpecCase("INDEX-M3-003 重复块定义按实例路径计数且循环受限", DrawingIndexContractsSpecs.RepeatedBlockDefinitionsPreserveInstancePaths),
+    new SpecCase("INDEX-M3-004 块定义摘要缓存仅保存托管快照并隔离实例结果", DrawingIndexContractsSpecs.BlockDefinitionSummaryCacheIsCloneSafe),
+    new SpecCase("INDEX-M3-005 动态属性保留前八项但统计真实总数", DrawingIndexContractsSpecs.DynamicPropertyCountContinuesPastRetainedLimit),
+    new SpecCase("INDEX-M3-006 单实体读取遵守Idle切片预算", DrawingIndexContractsSpecs.BlockReadBudgetExpiresAtSliceBoundary),
+    new SpecCase("INDEX-M3-007 预算过期的块定义摘要不会污染会话缓存", DrawingIndexContractsSpecs.BudgetExpiredBlockDefinitionSummaryIsNotCached),
 };
 
 var failed = 0;

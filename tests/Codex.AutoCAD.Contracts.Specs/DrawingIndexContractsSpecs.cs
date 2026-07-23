@@ -603,6 +603,138 @@ internal static class DrawingIndexContractsSpecs
             "cad_query_block_dynamic_property_value");
     }
 
+    internal static void RepeatedBlockDefinitionsPreserveInstancePaths()
+    {
+        var definitions = new Dictionary<string, DrawingIndexBlockDefinitionSummary<string>>
+        {
+            ["A"] = Definition("A", 2, "B", "B"),
+            ["B"] = Definition("B", 1, "C"),
+            ["C"] = Definition("C", 1, "A"),
+        };
+        var cache = new DrawingIndexBlockDefinitionSummaryCache<string>(
+            StringComparer.Ordinal);
+        var definitionLoads = 0;
+
+        var result = DrawingIndexBlockTraversal.Traverse(
+            "A",
+            key =>
+            {
+                if (cache.TryGet(key, out var cached))
+                {
+                    return cached;
+                }
+
+                definitionLoads++;
+                var loaded = definitions[key];
+                cache.StoreIfReusable(key, loaded);
+                return loaded;
+            },
+            () => false,
+            DrawingIndexContractConstants.MaximumNestedBlockReferences,
+            DrawingIndexContractConstants.MaximumNestedBlockDepth,
+            DrawingIndexContractConstants.MaximumNestedBlockDefinitionEntities,
+            StringComparer.Ordinal);
+
+        Equal(6, result.NestedBlockReferenceCount);
+        Equal(3, result.MaximumNestedBlockDepth);
+        True(result.Limited);
+        Equal(6, result.InspectedDefinitionEntityCount);
+        Equal(3, definitionLoads);
+        Equal(3, cache.Count);
+    }
+
+    internal static void BlockDefinitionSummaryCacheIsCloneSafe()
+    {
+        var cache = new DrawingIndexBlockDefinitionSummaryCache<string>(StringComparer.Ordinal);
+        var summary = Definition("Door", 3, "Panel");
+        summary.LayoutName = "Layout-A";
+        summary.LayoutKind = CadQueryLayoutKinds.Paper;
+        True(cache.StoreIfReusable("definition-1", summary));
+
+        True(cache.TryGet("definition-1", out var cached));
+        True(ReferenceEquals(summary, cached));
+        Equal(1, cache.Count);
+
+        var first = cached.CreateDetails(isDynamic: true);
+        var second = cached.CreateDetails(isDynamic: false);
+        first.LayoutName = "changed";
+        first.NestedBlockReferenceCount = 99;
+
+        Equal("Layout-A", second.LayoutName);
+        Equal(0, second.NestedBlockReferenceCount);
+        True(first.IsDynamic);
+        True(!second.IsDynamic);
+        Equal("Door", cached.BlockName);
+    }
+
+    internal static void DynamicPropertyCountContinuesPastRetainedLimit()
+    {
+        var total = 0;
+        var retained = 0;
+        var limited = false;
+        for (var index = 0; index < 20; index++)
+        {
+            if (DrawingIndexBlockReadPolicy.RegisterSummaryItem(
+                    ref total,
+                    retained,
+                    DrawingIndexContractConstants.MaximumDynamicBlockProperties,
+                    DrawingIndexContractConstants.MaximumReportedEntities,
+                    ref limited))
+            {
+                retained++;
+            }
+        }
+
+        Equal(20, total);
+        Equal(DrawingIndexContractConstants.MaximumDynamicBlockProperties, retained);
+        True(limited);
+    }
+
+    internal static void BlockReadBudgetExpiresAtSliceBoundary()
+    {
+        long elapsed = 11;
+        var budget = new DrawingIndexReadBudget(() => elapsed, 12);
+        True(!budget.IsExpired);
+        elapsed = 12;
+        True(budget.IsExpired);
+        elapsed = 13;
+        True(budget.IsExpired);
+    }
+
+    internal static void BudgetExpiredBlockDefinitionSummaryIsNotCached()
+    {
+        var cache = new DrawingIndexBlockDefinitionSummaryCache<string>(
+            StringComparer.Ordinal);
+        var expired = Definition("Door", 0);
+        expired.Limited = true;
+        expired.BudgetExpired = true;
+
+        True(!cache.StoreIfReusable("definition-1", expired));
+
+        True(!cache.TryGet("definition-1", out _));
+        Equal(0, cache.Count);
+
+        var complete = Definition("Door", 3, "Panel");
+        True(cache.StoreIfReusable("definition-1", complete));
+
+        True(cache.TryGet("definition-1", out var cached));
+        True(ReferenceEquals(complete, cached));
+        Equal(1, cache.Count);
+    }
+
+    private static DrawingIndexBlockDefinitionSummary<string> Definition(
+        string name,
+        int inspectedEntityCount,
+        params string[] nestedDefinitionIds)
+    {
+        return new DrawingIndexBlockDefinitionSummary<string>
+        {
+            BlockName = name,
+            InspectedEntityCount = inspectedEntityCount,
+            NestedDefinitionIds = nestedDefinitionIds,
+        };
+    }
+
     private static DrawingIndexDescriptor CreateDescriptor(
         int count,
         string status,

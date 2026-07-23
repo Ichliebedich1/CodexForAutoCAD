@@ -16,7 +16,9 @@ namespace Codex.AutoCAD.Host2016
             Transaction transaction,
             Entity entity,
             string space,
-            string objectToken)
+            string objectToken,
+            DrawingIndexBlockDefinitionSummaryCache<ObjectId> blockDefinitionCache,
+            DrawingIndexReadBudget readBudget)
         {
             if (transaction == null)
             {
@@ -25,6 +27,14 @@ namespace Codex.AutoCAD.Host2016
             if (entity == null)
             {
                 throw new ArgumentNullException(nameof(entity));
+            }
+            if (blockDefinitionCache == null)
+            {
+                throw new ArgumentNullException(nameof(blockDefinitionCache));
+            }
+            if (readBudget == null)
+            {
+                throw new ArgumentNullException(nameof(readBudget));
             }
 
             var limited = false;
@@ -43,9 +53,28 @@ namespace Codex.AutoCAD.Host2016
             var blockDetails = ReadBlockDetails(
                 transaction,
                 entity,
+                blockDefinitionCache,
+                readBudget,
                 out var blockName,
                 ref limited);
-            var text = ReadText(entity, ref limited);
+            var text = string.Empty;
+            if (!readBudget.IsExpired)
+            {
+                text = ReadText(entity, ref limited);
+            }
+            else
+            {
+                limited = true;
+            }
+            CadExtents3 bounds = null;
+            if (!readBudget.IsExpired)
+            {
+                bounds = TryReadBounds(entity);
+            }
+            else
+            {
+                limited = true;
+            }
             var unsupported = entityType == CadContextEntityTypesV2.Unsupported;
             var readStatus = unsupported
                 ? CadQueryReadStatuses.Unsupported
@@ -63,7 +92,7 @@ namespace Codex.AutoCAD.Host2016
                 BlockName = blockName,
                 BlockDetails = blockDetails,
                 TextExcerpt = text,
-                Bounds = TryReadBounds(entity),
+                Bounds = bounds,
                 Unsupported = unsupported || limited,
                 ReadStatus = readStatus,
             };
@@ -84,6 +113,63 @@ namespace Codex.AutoCAD.Host2016
                     Unknown,
                     ref limited),
                 BlockName = string.Empty,
+                TextExcerpt = string.Empty,
+                Bounds = null,
+                Unsupported = true,
+                ReadStatus = CadQueryReadStatuses.ReadFailed,
+            };
+        }
+
+        internal static CadQueryEntity ReadFailed(
+            Entity entity,
+            string objectToken,
+            string space)
+        {
+            if (entity == null)
+            {
+                return ReadFailed(objectToken, space);
+            }
+
+            var limited = false;
+            var entityType = Classify(entity);
+            var actualType = Sanitize(
+                entity.GetType().Name,
+                DrawingIndexContractConstants.MaximumTypeCharacters,
+                Unknown,
+                ref limited);
+            var blockReference = entity as BlockReference;
+            CadQueryBlockDetails blockDetails = null;
+            var blockName = string.Empty;
+            if (blockReference != null)
+            {
+                var isDynamic = false;
+                try
+                {
+                    isDynamic = blockReference.IsDynamicBlock;
+                }
+                catch (Exception exception)
+                    when (IsRecoverableBlockReadFailure(exception)
+                          || exception is NullReferenceException)
+                {
+                }
+
+                blockName = Unknown;
+                blockDetails = LimitedBlockDetails(isDynamic);
+            }
+
+            return new CadQueryEntity
+            {
+                ObjectId = RequireObjectToken(objectToken),
+                EntityType = entityType,
+                ActualType = actualType,
+                Layer = Unknown,
+                Space = Sanitize(
+                    space,
+                    DrawingIndexContractConstants.MaximumNameCharacters,
+                    Unknown,
+                    ref limited),
+                BlockName = blockName,
+                BlockDetails = blockDetails,
                 TextExcerpt = string.Empty,
                 Bounds = null,
                 Unsupported = true,
@@ -135,6 +221,8 @@ namespace Codex.AutoCAD.Host2016
         private static CadQueryBlockDetails ReadBlockDetails(
             Transaction transaction,
             Entity entity,
+            DrawingIndexBlockDefinitionSummaryCache<ObjectId> blockDefinitionCache,
+            DrawingIndexReadBudget readBudget,
             out string blockName,
             ref bool limited)
         {
@@ -145,64 +233,102 @@ namespace Codex.AutoCAD.Host2016
                 return null;
             }
 
+            var isDynamic = false;
+            ObjectId definitionId;
             try
             {
-                var isDynamic = blockReference.IsDynamicBlock;
-                var definitionId = isDynamic
+                isDynamic = blockReference.IsDynamicBlock;
+                definitionId = isDynamic
                     ? blockReference.DynamicBlockTableRecord
                     : blockReference.BlockTableRecord;
-                if (definitionId.IsNull || definitionId.IsErased)
-                {
-                    limited = true;
-                    blockName = Unknown;
-                    return LimitedBlockDetails(isDynamic);
-                }
-
-                var definition = transaction.GetObject(
-                    definitionId,
-                    OpenMode.ForRead,
-                    false) as BlockTableRecord;
-                if (definition == null)
-                {
-                    limited = true;
-                    blockName = Unknown;
-                    return LimitedBlockDetails(isDynamic);
-                }
-
-                var detailsLimited = false;
-                blockName = Sanitize(
-                    definition.Name,
-                    DrawingIndexContractConstants.MaximumNameCharacters,
-                    Unknown,
-                    ref detailsLimited);
-                var details = new CadQueryBlockDetails
-                {
-                    IsDynamic = isDynamic,
-                    IsExternalReference = definition.IsFromExternalReference,
-                    IsOverlayReference = definition.IsFromOverlayReference,
-                    IsAnonymousDefinition = definition.IsAnonymous,
-                    IsLayoutDefinition = definition.IsLayout,
-                    HasAttributeDefinitions = definition.HasAttributeDefinitions,
-                };
-
-                ReadLayoutDetails(transaction, definition, details, ref detailsLimited);
-                ReadAttributeDetails(transaction, blockReference, details, ref detailsLimited);
-                ReadDynamicPropertyDetails(blockReference, details, ref detailsLimited);
-                ReadNestedBlockDetails(transaction, definition, details, ref detailsLimited);
-
-                if (detailsLimited)
-                {
-                    details.DetailStatus = CadQueryBlockDetailStatuses.Limited;
-                    limited = true;
-                }
-                return details;
             }
             catch (Exception exception) when (IsRecoverableBlockReadFailure(exception))
             {
                 limited = true;
                 blockName = Unknown;
-                return LimitedBlockDetails(false);
+                return LimitedBlockDetails(isDynamic);
             }
+
+            if (definitionId.IsNull || definitionId.IsErased)
+            {
+                limited = true;
+                blockName = Unknown;
+                return LimitedBlockDetails(isDynamic);
+            }
+
+            var definitionSummary = ResolveBlockDefinitionSummary(
+                transaction,
+                definitionId,
+                blockDefinitionCache,
+                readBudget);
+            blockName = definitionSummary.BlockName;
+            var details = definitionSummary.CreateDetails(isDynamic);
+            var detailsLimited = definitionSummary.Limited;
+
+            if (!readBudget.IsExpired)
+            {
+                try
+                {
+                    ReadAttributeDetails(
+                        transaction,
+                        blockReference,
+                        details,
+                        readBudget,
+                        ref detailsLimited);
+                }
+                catch (Exception exception) when (IsRecoverableBlockReadFailure(exception))
+                {
+                    detailsLimited = true;
+                }
+            }
+            else
+            {
+                detailsLimited = true;
+            }
+
+            if (!readBudget.IsExpired)
+            {
+                try
+                {
+                    ReadDynamicPropertyDetails(
+                        blockReference,
+                        details,
+                        readBudget,
+                        ref detailsLimited);
+                }
+                catch (Exception exception) when (IsRecoverableBlockReadFailure(exception))
+                {
+                    detailsLimited = true;
+                }
+            }
+            else
+            {
+                detailsLimited = true;
+            }
+
+            var nested = DrawingIndexBlockTraversal.Traverse(
+                definitionId,
+                id => ResolveBlockDefinitionSummary(
+                    transaction,
+                    id,
+                    blockDefinitionCache,
+                    readBudget),
+                () => readBudget.IsExpired,
+                DrawingIndexContractConstants.MaximumNestedBlockReferences,
+                DrawingIndexContractConstants.MaximumNestedBlockDepth,
+                DrawingIndexContractConstants.MaximumNestedBlockDefinitionEntities,
+                EqualityComparer<ObjectId>.Default);
+            details.NestedBlockReferenceCount = nested.NestedBlockReferenceCount;
+            details.MaximumNestedBlockDepth = nested.MaximumNestedBlockDepth;
+            detailsLimited |= nested.Limited || readBudget.IsExpired;
+
+            if (detailsLimited)
+            {
+                details.DetailStatus = CadQueryBlockDetailStatuses.Limited;
+                limited = true;
+            }
+
+            return details;
         }
 
         private static CadQueryBlockDetails LimitedBlockDetails(bool isDynamic)
@@ -214,19 +340,162 @@ namespace Codex.AutoCAD.Host2016
             };
         }
 
-        private static void ReadLayoutDetails(
+        private static DrawingIndexBlockDefinitionSummary<ObjectId>
+            ResolveBlockDefinitionSummary(
+                Transaction transaction,
+                ObjectId definitionId,
+                DrawingIndexBlockDefinitionSummaryCache<ObjectId> blockDefinitionCache,
+                DrawingIndexReadBudget readBudget)
+        {
+            if (blockDefinitionCache.TryGet(definitionId, out var cached))
+            {
+                return cached;
+            }
+
+            var summary = ReadBlockDefinitionSummary(
+                transaction,
+                definitionId,
+                readBudget);
+            blockDefinitionCache.StoreIfReusable(definitionId, summary);
+            return summary;
+        }
+
+        private static DrawingIndexBlockDefinitionSummary<ObjectId>
+            ReadBlockDefinitionSummary(
+                Transaction transaction,
+                ObjectId definitionId,
+                DrawingIndexReadBudget readBudget)
+        {
+            var summary = new DrawingIndexBlockDefinitionSummary<ObjectId>
+            {
+                BlockName = Unknown,
+            };
+            if (readBudget.IsExpired)
+            {
+                summary.Limited = true;
+                summary.BudgetExpired = true;
+                return summary;
+            }
+
+            BlockTableRecord definition;
+            try
+            {
+                definition = transaction.GetObject(
+                    definitionId,
+                    OpenMode.ForRead,
+                    false) as BlockTableRecord;
+            }
+            catch (Exception exception) when (IsRecoverableBlockReadFailure(exception))
+            {
+                summary.Limited = true;
+                return summary;
+            }
+            if (definition == null)
+            {
+                summary.Limited = true;
+                return summary;
+            }
+            if (readBudget.IsExpired)
+            {
+                summary.Limited = true;
+                summary.BudgetExpired = true;
+                return summary;
+            }
+
+            var nameLimited = false;
+            try
+            {
+                summary.BlockName = Sanitize(
+                    definition.Name,
+                    DrawingIndexContractConstants.MaximumNameCharacters,
+                    Unknown,
+                    ref nameLimited);
+            }
+            catch (Exception exception) when (IsRecoverableBlockReadFailure(exception))
+            {
+                summary.Limited = true;
+                return summary;
+            }
+            summary.Limited |= nameLimited;
+            if (readBudget.IsExpired)
+            {
+                summary.Limited = true;
+                summary.BudgetExpired = true;
+                return summary;
+            }
+
+            try
+            {
+                summary.IsExternalReference = definition.IsFromExternalReference;
+                summary.IsOverlayReference = definition.IsFromOverlayReference;
+                summary.IsAnonymousDefinition = definition.IsAnonymous;
+                summary.IsLayoutDefinition = definition.IsLayout;
+                summary.HasAttributeDefinitions = definition.HasAttributeDefinitions;
+            }
+            catch (Exception exception) when (IsRecoverableBlockReadFailure(exception))
+            {
+                summary.Limited = true;
+                return summary;
+            }
+            if (readBudget.IsExpired)
+            {
+                summary.Limited = true;
+                summary.BudgetExpired = true;
+                return summary;
+            }
+
+            try
+            {
+                var layoutLimited = false;
+                ReadLayoutDefinitionSummary(
+                    transaction,
+                    definition,
+                    summary,
+                    ref layoutLimited);
+                summary.Limited |= layoutLimited;
+            }
+            catch (Exception exception) when (IsRecoverableBlockReadFailure(exception))
+            {
+                summary.LayoutName = string.Empty;
+                summary.LayoutKind = CadQueryLayoutKinds.Unavailable;
+                summary.Limited = true;
+            }
+
+            if (summary.IsExternalReference)
+            {
+                summary.Limited = true;
+                return summary;
+            }
+
+            try
+            {
+                ReadNestedDefinitionIds(
+                    transaction,
+                    definition,
+                    summary,
+                    readBudget);
+            }
+            catch (Exception exception) when (IsRecoverableBlockReadFailure(exception))
+            {
+                summary.Limited = true;
+            }
+
+            return summary;
+        }
+
+        private static void ReadLayoutDefinitionSummary(
             Transaction transaction,
             BlockTableRecord definition,
-            CadQueryBlockDetails details,
+            DrawingIndexBlockDefinitionSummary<ObjectId> summary,
             ref bool limited)
         {
-            if (!details.IsLayoutDefinition)
+            if (!summary.IsLayoutDefinition)
             {
                 return;
             }
             if (definition.LayoutId.IsNull || definition.LayoutId.IsErased)
             {
-                details.LayoutKind = CadQueryLayoutKinds.Unavailable;
+                summary.LayoutKind = CadQueryLayoutKinds.Unavailable;
                 limited = true;
                 return;
             }
@@ -237,17 +506,17 @@ namespace Codex.AutoCAD.Host2016
                 false) as Layout;
             if (layout == null)
             {
-                details.LayoutKind = CadQueryLayoutKinds.Unavailable;
+                summary.LayoutKind = CadQueryLayoutKinds.Unavailable;
                 limited = true;
                 return;
             }
 
-            details.LayoutName = Sanitize(
+            summary.LayoutName = Sanitize(
                 layout.LayoutName,
                 DrawingIndexContractConstants.MaximumNameCharacters,
                 Unknown,
                 ref limited);
-            details.LayoutKind = layout.ModelType
+            summary.LayoutKind = layout.ModelType
                 ? CadQueryLayoutKinds.Model
                 : CadQueryLayoutKinds.Paper;
         }
@@ -256,6 +525,7 @@ namespace Codex.AutoCAD.Host2016
             Transaction transaction,
             BlockReference blockReference,
             CadQueryBlockDetails details,
+            DrawingIndexReadBudget readBudget,
             ref bool limited)
         {
             var attributes = new List<CadQueryBlockAttribute>();
@@ -274,6 +544,11 @@ namespace Codex.AutoCAD.Host2016
 
             foreach (ObjectId attributeId in collection)
             {
+                if (readBudget.IsExpired)
+                {
+                    limited = true;
+                    break;
+                }
                 if (attributes.Count >= DrawingIndexContractConstants.MaximumBlockAttributes)
                 {
                     limited = true;
@@ -326,6 +601,7 @@ namespace Codex.AutoCAD.Host2016
         private static void ReadDynamicPropertyDetails(
             BlockReference blockReference,
             CadQueryBlockDetails details,
+            DrawingIndexReadBudget readBudget,
             ref bool limited)
         {
             if (!details.IsDynamic)
@@ -338,11 +614,24 @@ namespace Codex.AutoCAD.Host2016
             foreach (DynamicBlockReferenceProperty property
                 in blockReference.DynamicBlockReferencePropertyCollection)
             {
-                total++;
-                if (properties.Count >= DrawingIndexContractConstants.MaximumDynamicBlockProperties)
+                if (readBudget.IsExpired)
                 {
                     limited = true;
                     break;
+                }
+                var retain = DrawingIndexBlockReadPolicy.RegisterSummaryItem(
+                    ref total,
+                    properties.Count,
+                    DrawingIndexContractConstants.MaximumDynamicBlockProperties,
+                    DrawingIndexContractConstants.MaximumReportedEntities,
+                    ref limited);
+                if (!retain)
+                {
+                    if (total >= DrawingIndexContractConstants.MaximumReportedEntities)
+                    {
+                        break;
+                    }
+                    continue;
                 }
                 if (property == null)
                 {
@@ -379,111 +668,74 @@ namespace Codex.AutoCAD.Host2016
             }
         }
 
-        private static void ReadNestedBlockDetails(
+        private static void ReadNestedDefinitionIds(
             Transaction transaction,
-            BlockTableRecord rootDefinition,
-            CadQueryBlockDetails details,
-            ref bool limited)
+            BlockTableRecord definition,
+            DrawingIndexBlockDefinitionSummary<ObjectId> summary,
+            DrawingIndexReadBudget readBudget)
         {
-            if (details.IsExternalReference)
+            var nestedDefinitionIds = new List<ObjectId>();
+            foreach (ObjectId entityId in definition)
             {
-                // Do not inspect external definitions. This keeps Xref file metadata out of the index.
-                limited = true;
-                return;
-            }
-
-            var pending = new Queue<BlockDefinitionDepth>();
-            var visited = new HashSet<ObjectId>();
-            pending.Enqueue(new BlockDefinitionDepth(rootDefinition.ObjectId, 0));
-            visited.Add(rootDefinition.ObjectId);
-            var inspectedEntities = 0;
-
-            while (pending.Count != 0)
-            {
-                var current = pending.Dequeue();
-                if (current.DefinitionId.IsNull || current.DefinitionId.IsErased)
+                if (readBudget.IsExpired)
                 {
-                    limited = true;
-                    continue;
+                    summary.Limited = true;
+                    summary.BudgetExpired = true;
+                    break;
                 }
-                var definition = transaction.GetObject(
-                    current.DefinitionId,
-                    OpenMode.ForRead,
-                    false) as BlockTableRecord;
-                if (definition == null)
+                if (summary.InspectedEntityCount
+                    >= DrawingIndexContractConstants.MaximumNestedBlockDefinitionEntities)
                 {
-                    limited = true;
+                    summary.Limited = true;
+                    break;
+                }
+                summary.InspectedEntityCount++;
+                if (entityId.IsNull || entityId.IsErased)
+                {
+                    summary.Limited = true;
                     continue;
                 }
 
-                foreach (ObjectId entityId in definition)
+                BlockReference nested;
+                try
                 {
-                    if (inspectedEntities >= DrawingIndexContractConstants.MaximumNestedBlockDefinitionEntities)
-                    {
-                        limited = true;
-                        return;
-                    }
-                    inspectedEntities++;
-                    if (entityId.IsNull || entityId.IsErased)
-                    {
-                        limited = true;
-                        continue;
-                    }
-                    var nested = transaction.GetObject(
+                    nested = transaction.GetObject(
                         entityId,
                         OpenMode.ForRead,
                         false) as BlockReference;
-                    if (nested == null)
-                    {
-                        continue;
-                    }
-                    if (details.NestedBlockReferenceCount
-                        >= DrawingIndexContractConstants.MaximumNestedBlockReferences)
-                    {
-                        limited = true;
-                        return;
-                    }
+                }
+                catch (Exception exception) when (IsRecoverableBlockReadFailure(exception))
+                {
+                    summary.Limited = true;
+                    continue;
+                }
+                if (nested == null)
+                {
+                    continue;
+                }
 
-                    details.NestedBlockReferenceCount++;
-                    var nestedDepth = current.Depth + 1;
-                    if (nestedDepth > details.MaximumNestedBlockDepth)
-                    {
-                        details.MaximumNestedBlockDepth = nestedDepth;
-                    }
-                    if (nestedDepth >= DrawingIndexContractConstants.MaximumNestedBlockDepth)
-                    {
-                        limited = true;
-                        continue;
-                    }
-
-                    var nestedDefinitionId = nested.IsDynamicBlock
+                ObjectId nestedDefinitionId;
+                try
+                {
+                    nestedDefinitionId = nested.IsDynamicBlock
                         ? nested.DynamicBlockTableRecord
                         : nested.BlockTableRecord;
-                    if (nestedDefinitionId.IsNull || nestedDefinitionId.IsErased)
-                    {
-                        limited = true;
-                        continue;
-                    }
-                    var nestedDefinition = transaction.GetObject(
-                        nestedDefinitionId,
-                        OpenMode.ForRead,
-                        false) as BlockTableRecord;
-                    if (nestedDefinition == null)
-                    {
-                        limited = true;
-                        continue;
-                    }
-                    if (nestedDefinition.IsFromExternalReference)
-                    {
-                        limited = true;
-                        continue;
-                    }
-                    if (visited.Add(nestedDefinitionId))
-                    {
-                        pending.Enqueue(new BlockDefinitionDepth(nestedDefinitionId, nestedDepth));
-                    }
                 }
+                catch (Exception exception) when (IsRecoverableBlockReadFailure(exception))
+                {
+                    summary.Limited = true;
+                    continue;
+                }
+                if (nestedDefinitionId.IsNull || nestedDefinitionId.IsErased)
+                {
+                    summary.Limited = true;
+                    continue;
+                }
+
+                nestedDefinitionIds.Add(nestedDefinitionId);
             }
+
+            summary.NestedDefinitionIds = nestedDefinitionIds.ToArray();
         }
 
         private static string FormatDynamicPropertyValue(
@@ -619,8 +871,7 @@ namespace Codex.AutoCAD.Host2016
                 || exception is InvalidOperationException
                 || exception is ArgumentException
                 || exception is InvalidCastException
-                || exception is OverflowException
-                || exception is NullReferenceException;
+                || exception is OverflowException;
         }
 
         private static string ReadText(Entity entity, ref bool limited)
@@ -813,17 +1064,5 @@ namespace Codex.AutoCAD.Host2016
             return result.Length == 0 ? fallback : result;
         }
 
-        private sealed class BlockDefinitionDepth
-        {
-            internal BlockDefinitionDepth(ObjectId definitionId, int depth)
-            {
-                DefinitionId = definitionId;
-                Depth = depth;
-            }
-
-            internal ObjectId DefinitionId { get; private set; }
-
-            internal int Depth { get; private set; }
-        }
     }
 }

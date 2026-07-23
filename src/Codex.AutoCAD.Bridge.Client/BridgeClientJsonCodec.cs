@@ -1412,7 +1412,7 @@ internal static class BridgeClientJsonCodec
         [DataMember(Name = "blockName", Order = 6, IsRequired = true)]
         public string BlockName { get; set; } = string.Empty;
 
-        [DataMember(Name = "blockDetails", Order = 7, IsRequired = true)]
+        [DataMember(Name = "blockDetails", Order = 7, IsRequired = false)]
         public CadQueryBlockDetailsWire? BlockDetails { get; set; }
 
         [DataMember(Name = "textExcerpt", Order = 8, IsRequired = true)]

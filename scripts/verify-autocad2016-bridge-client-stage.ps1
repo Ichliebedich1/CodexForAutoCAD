@@ -26,9 +26,9 @@ $bridgeSpecsProject = Join-Path $repoRoot "tests\Codex.AutoCAD.Bridge.Specs\Code
 $phase2Verifier = Join-Path $repoRoot "scripts\verify-phase2.ps1"
 $nugetConfig = Join-Path $repoRoot "src\Codex.AutoCAD.Host.2016\NuGet.Config"
 $expectedSdk = "8.0.319"
-$expectedClientSpecs = 29
+$expectedClientSpecs = 30
 $expectedBridgeSpecs = 39
-$expectedPhase2Specs = 310
+$expectedPhase2Specs = 322
 
 function Get-Sha256 {
     param([Parameter(Mandatory = $true)][string] $Path)
@@ -51,6 +51,32 @@ function Get-TextSha256 {
     }
     finally {
         [Array]::Clear($bytes, 0, $bytes.Length)
+    }
+}
+
+function Get-PackageLockSnapshots {
+    $snapshots = [ordered]@{}
+    foreach ($root in @(
+        (Join-Path $repoRoot "src"),
+        (Join-Path $repoRoot "tests")
+    )) {
+        foreach ($file in @(Get-ChildItem -LiteralPath $root -Recurse -File `
+            -Filter "packages.lock.json" | Where-Object {
+                $_.FullName -notmatch '\\(?:bin|obj)\\'
+            })) {
+            $snapshots[$file.FullName] = [IO.File]::ReadAllBytes($file.FullName)
+        }
+    }
+    return $snapshots
+}
+
+function Restore-PackageLockSnapshots {
+    param([Parameter(Mandatory = $true)] $Snapshots)
+
+    foreach ($entry in $Snapshots.GetEnumerator()) {
+        [IO.File]::WriteAllBytes(
+            [string]$entry.Key,
+            [byte[]]$entry.Value)
     }
 }
 
@@ -256,6 +282,7 @@ function Invoke-Worker {
     $previousTestServer = $env:CODEX_BRIDGE_TEST_SERVER_EXE
     $cadBefore = @(Get-ProcessIds -Name "acad")
     $testServerBefore = @(Get-ProcessIds -Name "Codex.AutoCAD.Bridge.Client.TestServer")
+    $packageLockSnapshots = Get-PackageLockSnapshots
     $sourceBefore = Get-SourceManifest
 
     try {
@@ -373,6 +400,7 @@ function Invoke-Worker {
         Write-Host "BRIDGE_CLIENT_WORKER_EVIDENCE=$resolvedEvidencePath"
     }
     finally {
+        Restore-PackageLockSnapshots -Snapshots $packageLockSnapshots
         $env:DOTNET_CLI_HOME = $previousDotnetHome
         $env:NUGET_PACKAGES = $previousNugetPackages
         $env:CODEX_BRIDGE_TEST_SERVER_EXE = $previousTestServer
@@ -509,7 +537,7 @@ $finalEvidence = [ordered]@{
     cadCommandsSent = $false
     netLoadVerified = $false
     autoCadLiveEvidence = $false
-    evidenceBoundary = "PowerShell 7 and Windows PowerShell 5.1 independently passed two isolated deterministic builds, net45/net8 Bridge Client 29/29, Bridge 39/39, and Phase2 310/310. Valid turn terminal events consume the active turn identity, and later events for that turn are rejected fail-closed. This is non-CAD evidence and does not prove unified Host.2016 NETLOAD, a live AgentHost connection from AutoCAD, or a real Codex CAD conversation."
+    evidenceBoundary = "PowerShell 7 and Windows PowerShell 5.1 independently passed two isolated deterministic builds, net45/net8 Bridge Client $expectedClientSpecs/$expectedClientSpecs, Bridge $expectedBridgeSpecs/$expectedBridgeSpecs, and Phase2 $expectedPhase2Specs/$expectedPhase2Specs. Valid turn terminal events consume the active turn identity, and later events for that turn are rejected fail-closed. This is non-CAD evidence and does not prove unified Host.2016 NETLOAD, a live AgentHost connection from AutoCAD, or a real Codex CAD conversation."
 }
 
 $resolvedFinalEvidencePath = if ([string]::IsNullOrWhiteSpace($EvidencePath)) {

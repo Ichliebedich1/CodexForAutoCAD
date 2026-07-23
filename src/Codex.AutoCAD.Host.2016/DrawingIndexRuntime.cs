@@ -488,16 +488,23 @@ namespace Codex.AutoCAD.Host2016
             }
 
             var timer = Stopwatch.StartNew();
+            var readBudget = new DrawingIndexReadBudget(
+                timer,
+                MaximumMillisecondsPerIdleSlice);
             var processed = 0;
             using (session.Document.LockDocument())
             using (var transaction = session.Document.Database.TransactionManager.StartOpenCloseTransaction())
             {
                 while (session.NextItemIndex < session.Items.Count
                        && processed < MaximumEntitiesPerIdleSlice
-                       && timer.ElapsedMilliseconds < MaximumMillisecondsPerIdleSlice)
+                       && !readBudget.IsExpired)
                 {
                     var item = session.Items[session.NextItemIndex];
-                    var entry = ReadItem(transaction, item);
+                    var entry = ReadItem(
+                        transaction,
+                        item,
+                        session.BlockDefinitionCache,
+                        readBudget);
                     if (!string.IsNullOrEmpty(session.PendingInvalidationReason))
                     {
                         break;
@@ -896,16 +903,21 @@ namespace Codex.AutoCAD.Host2016
             preparation.TotalEntityCount++;
         }
 
-        private static CadQueryEntity ReadItem(Transaction transaction, DrawingIndexScanItem item)
+        private static CadQueryEntity ReadItem(
+            Transaction transaction,
+            DrawingIndexScanItem item,
+            DrawingIndexBlockDefinitionSummaryCache<ObjectId> blockDefinitionCache,
+            DrawingIndexReadBudget readBudget)
         {
             if (item.ObjectId.IsNull || item.ObjectId.IsErased)
             {
                 return DrawingIndexEntityReader.ReadFailed(item.ObjectToken, item.Space);
             }
 
+            Entity entity = null;
             try
             {
-                var entity = transaction.GetObject(
+                entity = transaction.GetObject(
                     item.ObjectId,
                     OpenMode.ForRead,
                     false) as Entity;
@@ -915,15 +927,23 @@ namespace Codex.AutoCAD.Host2016
                         transaction,
                         entity,
                         item.Space,
-                        item.ObjectToken);
+                        item.ObjectToken,
+                        blockDefinitionCache,
+                        readBudget);
             }
             catch (Exception exception)
                 when (exception is Autodesk.AutoCAD.Runtime.Exception
                       || exception is ArgumentException
                       || exception is InvalidOperationException
-                      || exception is OverflowException)
+                      || exception is OverflowException
+                      || exception is NullReferenceException)
             {
-                return DrawingIndexEntityReader.ReadFailed(item.ObjectToken, item.Space);
+                return entity == null
+                    ? DrawingIndexEntityReader.ReadFailed(item.ObjectToken, item.Space)
+                    : DrawingIndexEntityReader.ReadFailed(
+                        entity,
+                        item.ObjectToken,
+                        item.Space);
             }
         }
 
@@ -1509,6 +1529,9 @@ namespace Codex.AutoCAD.Host2016
                 PerformanceMetrics = sourcePerformanceMetrics;
                 ScanTimer = Stopwatch.StartNew();
                 CurrentSpaceToken = ReadCurrentSpaceToken(document.Database);
+                BlockDefinitionCache =
+                    new DrawingIndexBlockDefinitionSummaryCache<ObjectId>(
+                        EqualityComparer<ObjectId>.Default);
             }
 
             internal Document Document { get; private set; }
@@ -1530,6 +1553,9 @@ namespace Codex.AutoCAD.Host2016
             internal Stopwatch ScanTimer { get; private set; }
 
             internal string CurrentSpaceToken { get; private set; }
+
+            internal DrawingIndexBlockDefinitionSummaryCache<ObjectId>
+                BlockDefinitionCache { get; private set; }
 
             internal DrawingIndexPreparationState Preparation { get; set; }
 
@@ -1562,6 +1588,7 @@ namespace Codex.AutoCAD.Host2016
                 {
                     preparation.Dispose();
                 }
+                BlockDefinitionCache.Clear();
             }
         }
 
