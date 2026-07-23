@@ -1,6 +1,6 @@
 # M4：本机 Codex 启动配置
 
-最后更新：2026-07-23（北京时间）
+最后更新：2026-07-24（北京时间）
 
 ## 目标和边界
 
@@ -35,8 +35,9 @@ dotnet build src\Codex.AutoCAD.AgentHost\Codex.AutoCAD.AgentHost.csproj --config
 Result: 0 warnings, 0 errors
 
 scripts\verify-phase2.ps1 -Configuration Release
-Result: Release 0 warnings / 0 errors; dynamic specs 318/318; Host disabled-API and basic
-sensitive-information scans passed; local AgentHost doctor handshake passed.
+Result at integration commit 25c373d: Release 0 warnings / 0 errors; dynamic specs 331/331
+in both PowerShell 7 and Windows PowerShell 5.1; Host disabled-API and sensitive-information
+scans passed; local AgentHost doctor handshake passed.
 
 AgentHost doctor
 Result: local npm-discovered Codex completed app-server initialize; doctor emitted the source label only.
@@ -51,5 +52,6 @@ Result: stable codex_configuration / InvalidConfiguredExecutable; no path escape
   策略。必须先冻结官方支持的版本范围和稳定的非交互 `--version` 协议，才能把版本设为硬门槛。
 - 当前 doctor 的 app-server initialize 是健康检查；正常 `bootstrap-serve` 仍会在实际会话启动时
   建立它自己的 app-server 连接。
-- 每会话独立 `CODEX_HOME`、环境白名单、空 MCP/插件配置、凭据隔离、Job Object、资源配额、
-  ACL、审计及故障/僵尸进程实测不属于本切口。
+- 每会话独立 `CODEX_HOME`、环境白名单、空 MCP/插件配置、凭据隔离、资源配额、ACL、审计及
+  故障/僵尸进程实测不属于本配置切口。后续 M4 集成已经加入基础 Job Object 回收边界，但没有
+  加入资源限制，也没有完成真实 Codex/AutoCAD/企业嵌套 Job 矩阵。

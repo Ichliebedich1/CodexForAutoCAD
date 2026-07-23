@@ -1,6 +1,6 @@
 # M4：进程隔离与诊断基线
 
-最后更新：2026-07-23（北京时间）
+最后更新：2026-07-24（北京时间）
 
 ## 状态
 
@@ -52,14 +52,29 @@ dotnet build src\Codex.AutoCAD.AgentHost\Codex.AutoCAD.AgentHost.csproj --config
 Result: 0 warnings, 0 errors
 
 dotnet run --project tests\Codex.AutoCAD.AppServer.Specs\Codex.AutoCAD.AppServer.Specs.csproj --configuration Release --no-build
-Result: 10/10 specs passed
+Result: 15/15 specs passed
 
 scripts\verify-phase2.ps1 -Configuration Release
-Result: Release 0 warnings / 0 errors; dynamic specs 313/313; Host disabled-API and basic
-sensitive-information scans passed; local AgentHost doctor handshake passed.
+Result at integration commit 25c373d: Release 0 warnings / 0 errors; dynamic specs 331/331
+in both PowerShell 7 and Windows PowerShell 5.1; Host disabled-API and sensitive-information
+scans passed; local AgentHost doctor handshake passed.
+
+AgentLauncher integration specs
+Result: net45 28/28; net8 28/28; StopAsync and Job-owner exit both remove the isolated
+AgentHost and its known descendant.
+
+R20.1 regression
+Result: dual-shell API Probe 29 passed / 8 expected failed; Host net45/x64 A/B outputs
+bit-for-bit identical; Autodesk DLL copied count 0.
 ```
 
-这些离线检查不证明真实 Codex 认证回合、AgentHost 后代进程清理或 AutoCAD 实机行为。
+从 `25c373d` 生成的 M3 只读回归包保持 Host `0.4.2.0` SHA-256
+`467BC9711F6BD9598D7E788CB211A39D8DEE47428748CB0BDB3AF81F6322428D`，AgentHost SHA-256
+`5DB1497A02B5C0F8E307C64A28D7EB4C589E233ABF04B9E98B1C73448E1EBB5A`。该包只证明当前
+M4 改动未破坏 M3 构建门禁；它不是新的正式 M3 候选，也不是 M4.16 安全候选。
+
+这些自动化检查不证明真实 Codex 认证回合、真实 Codex 后代清理、AutoCAD 实机行为或企业
+嵌套 Job 环境。
 
 ## 明确未完成
 

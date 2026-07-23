@@ -15,9 +15,9 @@
 ## 当前状态（2026-07-24）
 
 当前已在原版 AutoCAD 2016 R20.1 中建立 `0.3.2.0` 的 CadContextJson v2 只读 AI
-实机基线，并已完成 M2-A/M2-B `0.4.0.0` 图纸级只读索引、Codex 按需查询、确定性
-1k/10k/50k 基准图和 Host 本地性能遥测的自动化候选冻结；`0.3.3.0` M1 稳定化候选仍等待
-精确哈希实机绑定：
+实机基线，并已完成 M1 `0.3.3.0`、M2 `0.4.0.0` 和 M3 `0.4.2.0` 的源码/自动化候选冻结；
+M4 的本机 Codex 配置、诊断脱敏和 Job Object 进程树回收已进入受控集成，但 M1-M4
+所需实机、安全和最终候选证据仍未闭合：
 
 - Host/Doctor、Palette 和 v2 schema 已人工 `NETLOAD` 运行。
 - 100% DPI 下的打开、停靠、浮动、隐藏重开、重建、中文输入和布局由用户确认通过。
@@ -36,17 +36,23 @@
   双次生成、独立解析、哈希、拒绝覆盖和脱敏 evidence 记录门禁为 `6/6`。
 - `CODEX16INDEXINFO` 现显示 Idle 分片次数/最大耗时、总扫描耗时、估算内存以及本地和
   Codex 反向查询耗时；遥测不扩展 DrawingIndex/CadQuery wire 契约。
-- M3 `0.4.1.0` 开发纵切已在同一只读调用链中增加实际 placeholder 类型/原因统计：选择
+- M3 `0.4.2.0` source-bound 候选已在同一只读调用链中增加实际 placeholder 类型/原因统计：选择
   摘要、`CODEX16CTXINFO`、`CODEX16INDEXINFO` 和 Palette 不再只显示笼统的
   `unsupported` 数量，`CODEX16TYPEINFO` 还会输出 19 类现有强类型对象的中文目录。
   M3 还把受限 `blockDetails` 接入 DrawingIndex、CadQuery、认证 Bridge 和 Agent 工具，包含
   属性/动态属性、嵌套块计数与深度、布局和安全 Xref 元数据；外部 Xref 定义和真实路径不会
-  被读取或传播。该版本尚未冻结候选、未取得实机 `NETLOAD`，不能继承 M2 或 P1 的实机结论。
-- M3 当前自动门禁为 Contracts `86/86`、Bridge Client net45/net8 各 `29/29`、Bridge `39/39`、
-  AgentRuntime `33/33`、Host MVP `53/53`、完整 Phase 2 `310/310`。R20.1 API 双 Shell Probe
-  为 `29 passed / 8 expected failed`；R20.1/net45/x64 Host A/B 输出逐字节一致，当前 Host
-  SHA-256 为 `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，Autodesk DLL
-  复制数为 `0`。这些仅是自动化证据，不是候选 manifest 或 AutoCAD 实机证据。
+  被读取或传播；8 类高价值对象以 `data_limited` 安全摘要进入整图查询。
+- M3 正式 source-bound 自动门禁为 Contracts `96/96`、Bridge Client net45/net8 各
+  `30/30`、Bridge `39/39`、AgentRuntime `34/34`、Host MVP `54/54`、完整 Phase 2
+  `323/323`。R20.1 API 双 Shell Probe 为 `29 passed / 8 expected failed`；
+  R20.1/net45/x64 Host A/B 输出逐字节一致，Host SHA-256 为
+  `467BC9711F6BD9598D7E788CB211A39D8DEE47428748CB0BDB3AF81F6322428D`，Autodesk DLL
+  复制数为 `0`。这些是自动化候选证据，不是 AutoCAD 实机证据。
+- M4 受控集成分支 `codex/m4-integration@25c373d` 已接入有界无内容 stderr 诊断、固定本地
+  `codex.exe` 配置/健康检查和 `KILL_ON_JOB_CLOSE` 进程树边界。双 Shell Phase 2 均为
+  `331/331`，AppServer `15/15`，AgentLauncher net45/net8 各 `28/28`，Release
+  `0 warning / 0 error`。这不是 M4.16 安全候选；版本硬门槛、每会话 `CODEX_HOME`、
+  环境/凭据隔离、资源和磁盘配额、ACL、审计链及企业/真实 Codex 实机矩阵仍未完成。
 - 显式 CAD 上下文清除和文档激活清除旧缓存通过；CAD 写入和插件保存仍禁用。
 - P0 停止生命周期已有独立实机证据：重复 STOP、DBMOD 不变和 AgentHost 残留为零。
 - M1 已实现 Bridge 断线 fail-closed、结构化脱敏错误、request_id/唯一终态、幂等取消、
@@ -97,9 +103,11 @@ AgentHost doctor。查询对象身份现为不泄露 AutoCAD Handle 的 `obj-###
    `handoff/autocad2016/M2_DRAWING_INDEX_RUNTIME_TEST_20260722.md`。
 4. M2 的 1k/10k/50k fixture、采集字段和脱敏 evidence 写入器已完成；仍等待 AutoCAD 2016
    五种范围、无选择集 ASK、失效/取消及三档真实性能证据。
-5. M2 的实机/性能证据仍待完成；M3 已开始只读对象语义纵切，但不替代 M2 验收。M3 中文
-   目录和未来字段核对模板见 `handoff/autocad2016/M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
-6. 完成 M3 后关闭 M4 沙箱审计，随后才启用 AutoCAD 2016 强类型安全写入。
+5. M2 的实机/性能证据仍待完成；M3 已冻结 source-bound 自动化候选，但 19 类逐项、
+   复杂块/Xref 和受限对象仍需实机。字段核对模板见
+   `handoff/autocad2016/M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
+6. M4 正在受控集成进程、配置和诊断切口；必须完成环境、凭据、资源、审计及故障矩阵，
+   冻结 M4.16 安全候选后，才允许启用 AutoCAD 2016 强类型安全写入。
 7. 随后完成长期记忆、安装签名、企业部署和 AutoCAD 2025 适配。
 
 完整阶段与完成定义见 `handoff/autocad2016/LONG_TERM_MEMORY_TODO.md`。
@@ -120,7 +128,8 @@ dotnet run --project tests/Codex.AutoCAD.Contracts.Specs
 AutoCAD 2025 Host 保留在主解决方案中但不参与默认 Build。目标机提供原版托管程序集后，直接构建项目并传入 `AutoCad2025Dir`。
 
 AutoCAD 2016 Host 位于独立解决方案 `Codex.AutoCAD.2016.sln`。下列 M2 候选脚本只能在
-对应的冻结 `0.4.0.0` 源码工作树中运行；当前 `0.4.1.0` M3 工作树不应借它生成 M2 候选。
+对应的冻结 `0.4.0.0` 源码工作树中运行；当前 `0.4.2.0` M3/M4 集成工作树不应借它生成
+正式 M2 候选。
 M3 当前仅以自动化编译和 R20.1 API Probe 为准：
 
 ```powershell

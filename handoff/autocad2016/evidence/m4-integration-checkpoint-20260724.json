@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "scope": "m4-automated-integration-checkpoint",
+  "capturedAtUtc": "2026-07-23T20:11:45.0178095Z",
+  "branch": "codex/m4-integration",
+  "sourceCommit": "25c373d075b4c435a6fb38a7442233f31f56f091",
+  "baseCommit": "dcc723788b2ec52f4cc0468cb2ab3c43d560c1eb",
+  "integratedCommits": [
+    "c821e481227eb2db13626b6fc9f4a277ae727d1a",
+    "67345b20cfc9ed0b7027b507e35a9f6a6c313f4d",
+    "87d3624155a12285d2cdf48ebb95f06d9934e87e",
+    "25c373d075b4c435a6fb38a7442233f31f56f091"
+  ],
+  "gates": {
+    "releaseWarnings": 0,
+    "releaseErrors": 0,
+    "phase2PowerShell7": "331/331",
+    "phase2WindowsPowerShell51": "331/331",
+    "appServerSpecs": "15/15",
+    "agentLauncherNet45Specs": "28/28",
+    "agentLauncherNet8Specs": "28/28",
+    "localCodexAppServerDoctor": true,
+    "r20_1ApiProbePassed": 29,
+    "r20_1ApiProbeExpectedFailed": 8,
+    "r20_1CrossShellEquivalent": true,
+    "hostNet45X64ABBitForBitEqual": true,
+    "autodeskDllCopiedCount": 0,
+    "hostDisabledApiScan": true,
+    "sensitiveInformationScan": true,
+    "gitDiffCheck": true
+  },
+  "m3ReadOnlyRegression": {
+    "candidateStage": "M3",
+    "hostVersion": "0.4.2.0",
+    "hostSha256": "467BC9711F6BD9598D7E788CB211A39D8DEE47428748CB0BDB3AF81F6322428D",
+    "agentHostSha256": "5DB1497A02B5C0F8E307C64A28D7EB4C589E233ABF04B9E98B1C73448E1EBB5A",
+    "manifestSha256": "6CDE171520FDDA6E7FAE68E00038A90C8091E1D1EBAE0C7B63FAA199161E2CED",
+    "formalM3Candidate": false,
+    "m4SecurityCandidate": false
+  },
+  "implementedBoundaries": {
+    "boundedContentFreeCodexStderrDiagnostics": true,
+    "validatedLocalCodexExecutableAndWorkingDirectory": true,
+    "configuredStartupAndShutdownTimeouts": true,
+    "appServerInitializeHealthCheck": true,
+    "killOnJobCloseProcessTree": true
+  },
+  "notProven": [
+    "Codex version compatibility hard gate",
+    "per-session CODEX_HOME",
+    "child process environment allowlist",
+    "credential broker or isolated credentials",
+    "CPU, memory, process count, runtime, and disk quotas",
+    "workspace ACL and lease enforcement",
+    "JSONL audit hash chain and external anchor",
+    "unified redaction across all components",
+    "real Codex and AutoCAD abnormal-exit matrix",
+    "enterprise nested-Job compatibility",
+    "AutoCAD NETLOAD or runtime behavior",
+    "M4.16 security candidate"
+  ],
+  "boundaries": {
+    "autoCadStartedOrControlled": false,
+    "netLoadVerified": false,
+    "cadWriteEnabled": false,
+    "pluginInitiatedSaveEnabled": false,
+    "containsSecretsOrRawEnvironment": false
+  }
+}

@@ -243,6 +243,23 @@ NETLOAD 证据的能力一律视为未支持。
   bootstrap-serve 规格以真实 PID 验证 `StopAsync` 和拥有 Job 的启动器不调用停止逻辑直接
   退出后，父/后代均消失，net45/net8 各 `28/28`；这不替代真实 Codex 或 AutoCAD 异常退出
   矩阵，也不包含资源限制。
+- 上述三个 M4 切口已从 `codex/m3-integration@dcc7237` 受控吸收到
+  `codex/m4-integration@25c373d`，对应提交为 `c821e48`、`67345b2`、`87d3624` 和
+  `25c373d`。PowerShell 7 与 Windows PowerShell 5.1 的完整 Phase 2 均为 `331/331`，
+  AppServer 为 `15/15`，AgentLauncher net45/net8 各为 `28/28`，Release 为
+  `0 warning / 0 error`；R20.1 双 Shell API Probe 仍为
+  `29 passed / 8 expected failed`，Host A/B 编译位级一致。
+- 从该精确 M4 集成提交重跑 M3 候选脚本仅作为只读回归检查：Host `0.4.2.0` SHA-256
+  `467BC9711F6BD9598D7E788CB211A39D8DEE47428748CB0BDB3AF81F6322428D` 保持不变，
+  AgentHost SHA-256 为
+  `5DB1497A02B5C0F8E307C64A28D7EB4C589E233ABF04B9E98B1C73448E1EBB5A`，manifest 为
+  `6CDE171520FDDA6E7FAE68E00038A90C8091E1D1EBAE0C7B63FAA199161E2CED`。该临时包不是新的
+  正式 M3 候选，也不是 M4.16 安全候选；未启动 AutoCAD、未取得 NETLOAD 或真实 Codex
+  进程树证据。脱敏边界见 `evidence/m4-integration-checkpoint-20260724.json`。
+- 当前 M4.1 只完成 Codex 路径、工作目录及启动/关闭超时的部分配置；M4.2 只完成发现和
+  app-server initialize 健康检查，版本兼容硬门槛未完成；M4.6 只完成 Job Object 自动化
+  回收基础。每会话 `CODEX_HOME`、环境白名单、凭据 Broker、资源/磁盘配额、ACL/lease、
+  JSONL 哈希链审计、统一脱敏和故障/企业实机矩阵仍未完成，因此 M5 CAD 写入继续禁用。
 - 冻结构建哈希：AgentHost EXE `002BBA9D...49706`，AgentHost DLL
   `852BD92C...86033`，net45 Launcher `597D99E8...F849`，net8 Launcher
   `84E0E2A7...1FE9`；完整值保存在阶段 evidence。

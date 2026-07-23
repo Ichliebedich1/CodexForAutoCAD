@@ -66,6 +66,16 @@ M3 `0.4.2.0` 已形成 source-bound 自动化冻结候选：
 - 中文字段核对目录见 `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`；它不替代脱敏
   AutoCAD 测试图、R20.1 Probe 或实机逐类字段证据。当前候选尚未 `NETLOAD`。
 
+M4 当前只形成自动化集成检查点，不是安全候选：
+
+- `codex/m4-integration@25c373d` 已接入 Codex stderr 无内容摘要、本地固定
+  `codex.exe` 配置/健康检查和 `KILL_ON_JOB_CLOSE` 进程树边界。
+- 双 Shell Phase 2 均为 `331/331`，AppServer `15/15`，AgentLauncher net45/net8 各
+  `28/28`，Release `0 warning / 0 error`；M3/R20.1 只读回归保持通过。
+- 版本硬门槛、每会话 `CODEX_HOME`、环境白名单、凭据 Broker、CPU/内存/进程/时间和磁盘
+  配额、ACL/lease、JSONL 哈希链审计、统一脱敏与企业/真实 Codex 故障矩阵仍未完成。
+- M4.16 完成前 CAD 写入继续禁用，M5 不得进入产品调用链。
+
 脱敏实机范围证据：
 `evidence/cad-context-v2-live-observation-20260722.json`。
 
@@ -81,7 +91,23 @@ M3 `0.4.2.0` 已形成 source-bound 自动化冻结候选：
 
 ## 2. 当前候选身份
 
-当前开发候选是 M2-A/M2-B 加基准资产和性能遥测的合并候选：
+当前最新的正式 source-bound 自动化候选是 M3 `0.4.2.0`：
+
+```text
+Source commit: 00fe879a0ac056fab48c955e71d63c51ef3577d9
+Candidate ID:
+autocad2016-m3-read-semantics-v042-467bc971-44cd5448-f5ab78bc
+Host SHA-256:
+467BC9711F6BD9598D7E788CB211A39D8DEE47428748CB0BDB3AF81F6322428D
+AgentHost SHA-256:
+44CD544883F7BA7B790044220FAE3C5DDD2515C589CE3CC6910260F6C6795EF5
+Manifest SHA-256:
+02B5AE218CAFC19892F7CF086330D46EB237131A67BA61700D644E6A7E74D520
+```
+
+M4 集成分支从 `25c373d` 生成的 `5DB1497A...` AgentHost 仅是回归产物，没有
+M4.16 候选身份，也不得替代上述 M3 正式候选。M2 性能实机仍使用以下
+M2-A/M2-B 加基准资产和性能遥测候选：
 
 ```text
 Module version: 0.4.0.0
