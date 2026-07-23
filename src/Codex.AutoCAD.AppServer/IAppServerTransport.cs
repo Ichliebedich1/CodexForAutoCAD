@@ -21,17 +21,19 @@ public interface IAppServerTransport : IAsyncDisposable
 public sealed class AppServerTransportExitedEventArgs(
     int? exitCode,
     bool expected,
-    IReadOnlyList<string>? standardErrorTail = null) : EventArgs
+    IReadOnlyList<AppServerStandardErrorSummary>? standardErrorTail = null) : EventArgs
 {
     public int? ExitCode { get; } = exitCode;
 
     public bool Expected { get; } = expected;
 
-    public IReadOnlyList<string> StandardErrorTail { get; }
-        = standardErrorTail ?? Array.Empty<string>();
+    public IReadOnlyList<AppServerStandardErrorSummary> StandardErrorTail { get; }
+        = standardErrorTail ?? Array.Empty<AppServerStandardErrorSummary>();
 }
 
-public sealed class AppServerStandardErrorEventArgs(string line) : EventArgs
+public sealed class AppServerStandardErrorEventArgs(
+    AppServerStandardErrorSummary summary) : EventArgs
 {
-    public string Line { get; } = line;
+    public AppServerStandardErrorSummary Summary { get; }
+        = summary ?? throw new ArgumentNullException(nameof(summary));
 }

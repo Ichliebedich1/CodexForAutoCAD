@@ -35,14 +35,16 @@ public sealed class AppServerRpcException : AppServerException
 
 public sealed class AppServerProcessExitedException : AppServerException
 {
-    public AppServerProcessExitedException(int? exitCode, IReadOnlyList<string>? standardErrorTail = null)
+    public AppServerProcessExitedException(
+        int? exitCode,
+        IReadOnlyList<AppServerStandardErrorSummary>? standardErrorTail = null)
         : base(exitCode is null ? "Codex App Server connection closed." : $"Codex App Server exited with code {exitCode}.")
     {
         ExitCode = exitCode;
-        StandardErrorTail = standardErrorTail ?? Array.Empty<string>();
+        StandardErrorTail = standardErrorTail ?? Array.Empty<AppServerStandardErrorSummary>();
     }
 
     public int? ExitCode { get; }
 
-    public IReadOnlyList<string> StandardErrorTail { get; }
+    public IReadOnlyList<AppServerStandardErrorSummary> StandardErrorTail { get; }
 }

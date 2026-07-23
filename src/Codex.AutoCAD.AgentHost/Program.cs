@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Codex.AutoCAD.AgentRuntime;
 using Codex.AutoCAD.AppServer;
@@ -56,8 +57,7 @@ internal static class AgentHostProgram
             {
                 ok = false,
                 command,
-                error = exception.GetType().Name,
-                message = exception.Message
+                error = exception.GetType().Name
             });
             return 1;
         }
@@ -204,8 +204,8 @@ internal static class AgentHostProgram
         {
             ok = true,
             state = client.State.ToString(),
-            workspace = workspace.Root,
-            codexHome = initialized.CodexHome,
+            workspaceReady = true,
+            codexHomeConfigured = !string.IsNullOrWhiteSpace(initialized.CodexHome),
             platformFamily = initialized.PlatformFamily,
             platformOs = initialized.PlatformOs,
             userAgent = initialized.UserAgent,
@@ -235,7 +235,7 @@ internal static class AgentHostProgram
         {
             ok = true,
             state = "ready",
-            workspace = workspace.Root,
+            workspaceReady = true,
             platformFamily = initialized.PlatformFamily,
             userAgent = initialized.UserAgent
         });
@@ -265,9 +265,13 @@ internal static class AgentHostProgram
 
         var client = new CodexAppServerClient(options);
         client.StandardErrorReceived += (_, message) =>
-            Console.Error.WriteLine("codex: " + message.Line);
+            Console.Error.WriteLine(
+                "codex: stderrBytes="
+                + message.Summary.Bytes.ToString(CultureInfo.InvariantCulture)
+                + ", stderrTruncated="
+                + (message.Summary.Truncated ? "true" : "false"));
         client.ProtocolFaulted += (_, fault) =>
-            Console.Error.WriteLine("protocol: " + fault.Exception.Message);
+            Console.Error.WriteLine("protocol: " + fault.Exception.GetType().Name);
         return client;
     }
 
