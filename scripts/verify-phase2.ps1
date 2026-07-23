@@ -589,7 +589,7 @@ try {
         -FilePath $dotnetCommand `
         -ArgumentList $doctorArguments `
         -Description "执行 AgentHost doctor 活体握手"
-    Write-Warning "doctor 与 AppServer Specs 已覆盖 Codex 子进程环境白名单和默认空 MCP；每会话 CODEX_HOME、插件配置隔离和独立凭据仍未完成。"
+    Write-Warning "doctor 与 AppServer Specs 覆盖环境白名单、默认空 MCP 和可选 session-isolation 配置；本次 doctor 未配置真实 Credential Manager 引用，不能证明真实隔离登录、插件配置隔离或完整 OS 沙箱。"
 
     Invoke-CheckedCommand `
         -FilePath "git" `

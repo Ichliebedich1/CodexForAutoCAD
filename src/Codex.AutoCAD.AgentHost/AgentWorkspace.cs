@@ -35,6 +35,23 @@ public sealed class AgentWorkspace : IDisposable
 
     public string Temp { get; }
 
+    /// <summary>
+    /// Creates the two Codex state roots only for an explicitly credentialed session. They stay
+    /// under the leased workspace so normal disposal and stale-session pruning remove them.
+    /// </summary>
+    internal AgentWorkspaceCodexState PrepareCodexState()
+    {
+        lock (_sync)
+        {
+            ThrowIfDisposed();
+            return new AgentWorkspaceCodexState(
+                AgentHostPrivateStorage.PreparePrivateDirectory(
+                    Path.Combine(Root, "codex-home")),
+                AgentHostPrivateStorage.PreparePrivateDirectory(
+                    Path.Combine(Root, "codex-sqlite")));
+        }
+    }
+
     public static AgentWorkspace Create(string root)
     {
         var workspace = new AgentWorkspace(
@@ -153,6 +170,14 @@ public sealed class AgentWorkspace : IDisposable
         AgentHostPrivateStorage.PreparePrivateDirectory(Temp);
     }
 
+    private void ThrowIfDisposed()
+    {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(AgentWorkspace));
+        }
+    }
+
     private static void PruneSessions(
         string sessionsRoot,
         TimeSpan staleSessionAge,
@@ -268,3 +293,7 @@ public sealed class AgentWorkspace : IDisposable
         }
     }
 }
+
+internal sealed record AgentWorkspaceCodexState(
+    string CodexHomeDirectory,
+    string CodexSqliteHomeDirectory);

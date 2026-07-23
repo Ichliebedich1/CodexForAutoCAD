@@ -299,14 +299,18 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   `>=0.144.4 <0.145.0`，本机 `0.144.4`、其后的 `initialize`、真实两轮 live 和双 Shell
   `341/341` 均通过。未审查次版本、非 UTF-8、超限和超时输出 fail-closed；详情见
   `M4_CODEX_VERSION_PREFLIGHT_20260723.md`。这不覆盖每会话凭据、插件配置隔离或未来版本协议。
-- [ ] 每会话独立 CODEX_HOME；不得复制、链接或记录全局 Codex profile，需先采用经用户确认且
-  经审计的认证恢复方式。见 `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
+- [x] 可选每会话独立 `CODEX_HOME`/`CODEX_SQLITE_HOME` 与 Windows Generic Credential 边界：仅认证
+  `bootstrap-serve` 读取 `CODEX_AUTOCAD_CREDENTIAL_TARGET`，只接受 `CodexForAutoCAD/` 受限引用，
+  通过 `CredRead` 取得 token 后在私有 lease workspace 创建状态目录；运行时子进程才获得 token，版本
+  预检明确排除它。默认未配置时保留旧兼容路径；项目不复制、链接、直接读取、记录或修改全局
+  profile。AppServer `29/29`、Bridge `55/55` 为 synthetic 覆盖，真实 Credential Manager、真实隔离
+  登录和完整插件配置面仍待人工验收。见 `M4_CODEX_SESSION_ISOLATION_20260723.md`。
 - [x] 默认空 MCP：生产 `codex app-server --stdio` 固定追加 `-c mcp_servers={}`，覆盖默认用户
   profile 的 MCP server 表；AppServer `27/27`、Release 和真实两轮 live `2/2` 已通过。项目代码
   不直接读取或复制 profile 内容，但也不隔离 `CODEX_HOME`、凭据、技能或插件配置。见
   `M4_EMPTY_MCP_BOUNDARY_20260723.md`。
-- [ ] 空插件配置和独立凭据边界；默认用户 profile 仍可供 Codex 读取，未知配置布局不能作为
-  假定的复制来源。
+- [ ] 真实隔离登录与空插件配置边界：不可复制或猜测默认 profile 布局；必须以真实 Generic Credential
+  的受控人工验证确认空私有 `CODEX_HOME` 可工作，并逐项审查 Codex 插件/技能等剩余配置读取面。
 - [x] Codex 子进程生产路径先清空父环境，再注入固定 `16` 个变量名；`TEMP`/`TMP` 绑定
   `AgentWorkspace.Temp`，`PATH` 不复制父值。token/API key、代理、`CODEX_HOME`、`PSModulePath`
   和自定义变量均不自动继承。synthetic child、真实 doctor、两轮 live 与清理均通过；这不等于

@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+
 namespace Codex.AutoCAD.AppServer;
 
 /// <summary>Identifies the approved local source of the Codex executable without exposing its path to callers.</summary>
@@ -18,6 +20,9 @@ public enum CodexLocalConfigurationFailure
     InvalidWorkingDirectory,
     InvalidTemporaryDirectory,
     InvalidChildEnvironment,
+    IncompleteSessionIsolation,
+    InvalidSessionIsolationDirectory,
+    InvalidSessionIsolationToken,
     InvalidStartupTimeout,
     InvalidShutdownTimeout,
 }
@@ -53,6 +58,16 @@ public sealed record CodexLocalAppServerConfigurationRequest
 
     public string TemporaryDirectory { get; init; } = string.Empty;
 
+    /// <summary>
+    /// Optional all-or-nothing isolation inputs. They are only accepted after AgentHost creates
+    /// the private directories and reads a user-authorized Windows credential reference.
+    /// </summary>
+    public string? CodexHomeDirectory { get; init; }
+
+    public string? CodexSqliteHomeDirectory { get; init; }
+
+    public string? CodexAccessToken { get; init; }
+
     public TimeSpan StartupTimeout { get; init; } = CodexLocalAppServerConfiguration.DefaultStartupTimeout;
 
     public TimeSpan ShutdownTimeout { get; init; } = CodexLocalAppServerConfiguration.DefaultShutdownTimeout;
@@ -75,6 +90,7 @@ public sealed class CodexLocalAppServerConfiguration
     public static readonly TimeSpan DefaultStartupTimeout = TimeSpan.FromSeconds(15);
     public static readonly TimeSpan DefaultShutdownTimeout = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan MaximumTimeout = TimeSpan.FromMinutes(1);
+    public const int MaximumSessionAccessTokenCharacters = 16 * 1024;
 
     private static readonly IReadOnlyList<string> DefaultMcpIsolationArguments =
         Array.AsReadOnly(new[]
@@ -82,6 +98,8 @@ public sealed class CodexLocalAppServerConfiguration
             "-c",
             "mcp_servers={}",
         });
+
+    private readonly IReadOnlyDictionary<string, string?> versionPreflightEnvironment;
 
     internal CodexLocalAppServerConfiguration(
         string codexExecutablePath,
@@ -96,6 +114,7 @@ public sealed class CodexLocalAppServerConfiguration
         ExecutableSource = executableSource;
         WorkingDirectory = workingDirectory;
         ChildEnvironment = childEnvironment;
+        versionPreflightEnvironment = CreateVersionPreflightEnvironment(childEnvironment);
         StartupTimeout = startupTimeout;
         ShutdownTimeout = shutdownTimeout;
         VersionCompatibility = versionCompatibility ?? throw new ArgumentNullException(nameof(versionCompatibility));
@@ -109,6 +128,9 @@ public sealed class CodexLocalAppServerConfiguration
 
     internal IReadOnlyDictionary<string, string?> ChildEnvironment { get; }
 
+    /// <summary>True when this configuration uses an AgentHost-owned Codex state root.</summary>
+    public bool UsesSessionIsolation => ChildEnvironment.ContainsKey("CODEX_HOME");
+
     public TimeSpan StartupTimeout { get; }
 
     public TimeSpan ShutdownTimeout { get; }
@@ -117,19 +139,50 @@ public sealed class CodexLocalAppServerConfiguration
     public CodexVersionCompatibility VersionCompatibility { get; }
 
     public AppServerClientOptions CreateClientOptions()
+        => CreateClientOptions(ChildEnvironment);
+
+    /// <summary>
+    /// Creates the constrained preflight process configuration. A version query never needs an
+    /// access token, so the token is deliberately withheld until app-server startup.
+    /// </summary>
+    public AppServerClientOptions CreateVersionPreflightOptions()
+        => CreateClientOptions(versionPreflightEnvironment);
+
+    private AppServerClientOptions CreateClientOptions(
+        IReadOnlyDictionary<string, string?> environment)
     {
         return new AppServerClientOptions
         {
             CodexExecutablePath = CodexExecutablePath,
             WorkingDirectory = WorkingDirectory,
             AdditionalArguments = DefaultMcpIsolationArguments,
-            Environment = ChildEnvironment,
+            Environment = environment,
             InheritParentEnvironment = false,
             MaximumFrameBytes = 8 * 1024 * 1024,
             MaximumJsonDepth = 32,
             MaximumStandardErrorBytes = 16 * 1024,
             ShutdownTimeout = ShutdownTimeout,
         };
+    }
+
+    private static IReadOnlyDictionary<string, string?> CreateVersionPreflightEnvironment(
+        IReadOnlyDictionary<string, string?> childEnvironment)
+    {
+        if (!childEnvironment.ContainsKey("CODEX_ACCESS_TOKEN"))
+        {
+            return childEnvironment;
+        }
+
+        var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in childEnvironment)
+        {
+            if (!string.Equals(pair.Key, "CODEX_ACCESS_TOKEN", StringComparison.OrdinalIgnoreCase))
+            {
+                values.Add(pair.Key, pair.Value);
+            }
+        }
+
+        return new ReadOnlyDictionary<string, string?>(values);
     }
 }
 
@@ -164,11 +217,13 @@ public static class CodexLocalAppServerConfigurationResolver
 
         var workingDirectory = ValidateWorkingDirectory(request.WorkingDirectory);
         var temporaryDirectory = ValidateTemporaryDirectory(request.TemporaryDirectory);
+        var sessionIsolation = ValidateSessionIsolation(request);
         IReadOnlyDictionary<string, string?> childEnvironment;
         try
         {
             childEnvironment = CodexChildEnvironmentPolicy.CreateForCurrentProcess(
-                temporaryDirectory);
+                temporaryDirectory,
+                sessionIsolation);
         }
         catch (Exception exception) when (exception is ArgumentException
                                           or IOException
@@ -491,6 +546,101 @@ public static class CodexLocalAppServerConfigurationResolver
         }
 
         return timeout;
+    }
+
+    private static CodexSessionIsolation? ValidateSessionIsolation(
+        CodexLocalAppServerConfigurationRequest request)
+    {
+        var hasHome = !string.IsNullOrWhiteSpace(request.CodexHomeDirectory);
+        var hasSqliteHome = !string.IsNullOrWhiteSpace(request.CodexSqliteHomeDirectory);
+        var hasAccessToken = !string.IsNullOrWhiteSpace(request.CodexAccessToken);
+        if (!hasHome && !hasSqliteHome && !hasAccessToken)
+        {
+            return null;
+        }
+
+        if (!hasHome || !hasSqliteHome || !hasAccessToken)
+        {
+            throw Failure(
+                CodexLocalConfigurationFailure.IncompleteSessionIsolation,
+                "Codex session isolation requires private home, SQLite, and credential inputs together.");
+        }
+
+        var codexHome = ValidateSessionIsolationDirectory(request.CodexHomeDirectory);
+        var codexSqliteHome = ValidateSessionIsolationDirectory(request.CodexSqliteHomeDirectory);
+        if (string.Equals(codexHome, codexSqliteHome, StringComparison.OrdinalIgnoreCase))
+        {
+            throw Failure(
+                CodexLocalConfigurationFailure.InvalidSessionIsolationDirectory,
+                "Codex session isolation requires distinct private state directories.");
+        }
+
+        var accessToken = request.CodexAccessToken!;
+        if (!IsValidSessionAccessToken(accessToken))
+        {
+            throw Failure(
+                CodexLocalConfigurationFailure.InvalidSessionIsolationToken,
+                "Codex session isolation credential input is invalid.");
+        }
+
+        return new CodexSessionIsolation(codexHome, codexSqliteHome, accessToken);
+    }
+
+    private static string ValidateSessionIsolationDirectory(string? value)
+    {
+        var normalized = NormalizeOptionalPath(value);
+        if (normalized is null || !LooksLikeAbsoluteLocalWindowsPath(normalized))
+        {
+            throw Failure(
+                CodexLocalConfigurationFailure.InvalidSessionIsolationDirectory,
+                "Codex session isolation requires existing private state directories on a fixed local drive.");
+        }
+
+        try
+        {
+            var fullPath = Path.GetFullPath(normalized);
+            if (!LooksLikeAbsoluteLocalWindowsPath(fullPath)
+                || !Directory.Exists(fullPath)
+                || ContainsReparsePoint(fullPath)
+                || !IsFixedLocalDrive(fullPath))
+            {
+                throw Failure(
+                    CodexLocalConfigurationFailure.InvalidSessionIsolationDirectory,
+                    "Codex session isolation requires existing private state directories on a fixed local drive.");
+            }
+
+            return fullPath;
+        }
+        catch (CodexLocalConfigurationException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (IsPathOrFileSystemException(exception))
+        {
+            throw Failure(
+                CodexLocalConfigurationFailure.InvalidSessionIsolationDirectory,
+                "Codex session isolation requires existing private state directories on a fixed local drive.");
+        }
+    }
+
+    private static bool IsValidSessionAccessToken(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            || value.Length > CodexLocalAppServerConfiguration.MaximumSessionAccessTokenCharacters
+            || !string.Equals(value, value.Trim(), StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        foreach (var character in value)
+        {
+            if (char.IsControl(character))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool LooksLikeAbsoluteLocalWindowsPath(string path)

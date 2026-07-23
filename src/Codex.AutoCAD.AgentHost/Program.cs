@@ -190,7 +190,12 @@ internal static class AgentHostProgram
                 using var workspace = AgentWorkspace.CreateSession(
                     sessionsRoot,
                     directionKeys!.SessionId);
-                var codexConfiguration = CreateCodexConfiguration(null, workspace);
+                var sessionIsolation = AgentHostCodexSessionIsolation.CreateForCurrentProcess(
+                    workspace);
+                var codexConfiguration = CreateCodexConfiguration(
+                    null,
+                    workspace,
+                    sessionIsolation);
                 _ = await VerifyCodexVersionAsync(codexConfiguration, shutdown.Token)
                     .ConfigureAwait(false);
                 var cadQueryBroker = new AgentHostCadQueryBroker();
@@ -322,7 +327,7 @@ internal static class AgentHostProgram
     {
         ArgumentNullException.ThrowIfNull(codexConfiguration);
         return CodexVersionPreflight.VerifyAsync(
-            codexConfiguration.CreateClientOptions(),
+            codexConfiguration.CreateVersionPreflightOptions(),
             codexConfiguration.VersionCompatibility,
             codexConfiguration.StartupTimeout,
             cancellationToken);
@@ -330,13 +335,23 @@ internal static class AgentHostProgram
 
     private static CodexLocalAppServerConfiguration CreateCodexConfiguration(
         string? commandLineExecutablePath,
-        AgentWorkspace workspace)
+        AgentWorkspace workspace,
+        AgentHostCodexSessionIsolation? sessionIsolation = null)
     {
         ArgumentNullException.ThrowIfNull(workspace);
-        return CodexLocalAppServerConfigurationResolver.ResolveForCurrentProcess(
-            commandLineExecutablePath,
-            workspace.Work,
-            workspace.Temp);
+        return CodexLocalAppServerConfigurationResolver.Resolve(
+            new CodexLocalAppServerConfigurationRequest
+            {
+                CommandLineExecutablePath = commandLineExecutablePath,
+                EnvironmentExecutablePath = Environment.GetEnvironmentVariable("CODEX_EXECUTABLE"),
+                ApplicationDataDirectory = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                PathValue = Environment.GetEnvironmentVariable("PATH"),
+                WorkingDirectory = workspace.Work,
+                TemporaryDirectory = workspace.Temp,
+                CodexHomeDirectory = sessionIsolation?.CodexHomeDirectory,
+                CodexSqliteHomeDirectory = sessionIsolation?.CodexSqliteHomeDirectory,
+                CodexAccessToken = sessionIsolation?.CodexAccessToken,
+            });
     }
 
     private static string? GetOption(string[] args, string option)

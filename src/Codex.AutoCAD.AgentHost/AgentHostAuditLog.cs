@@ -62,6 +62,10 @@ public static class AgentHostAuditErrorCodes
     public const string CodexVersionProcessFailed = "codex_version_process_failed";
     public const string CodexVersionTimedOut = "codex_version_timeout";
     public const string CodexVersionUnsupported = "codex_version_unsupported";
+    public const string CodexCredentialReferenceInvalid = "codex_credential_reference_invalid";
+    public const string CodexCredentialUnavailable = "codex_credential_unavailable";
+    public const string CodexCredentialRejected = "codex_credential_rejected";
+    public const string CodexSessionWorkspaceUnavailable = "codex_session_workspace_unavailable";
     public const string InvalidRequest = "invalid_request";
     public const string InvalidState = "invalid_state";
     public const string IoFailure = "io_failure";
@@ -90,6 +94,19 @@ public static class AgentHostAuditErrorCodes
                     or CodexVersionPreflightFailure.VersionOutputTooLarge
             } => CodexVersionInvalidOutput,
             CodexVersionPreflightException => CodexVersionProcessFailed,
+            AgentHostCodexSessionIsolationException
+            {
+                Failure: AgentHostCodexSessionIsolationFailure.InvalidCredentialReference
+            } => CodexCredentialReferenceInvalid,
+            AgentHostCodexSessionIsolationException
+            {
+                Failure: AgentHostCodexSessionIsolationFailure.CredentialUnavailable
+            } => CodexCredentialUnavailable,
+            AgentHostCodexSessionIsolationException
+            {
+                Failure: AgentHostCodexSessionIsolationFailure.CredentialRejected
+            } => CodexCredentialRejected,
+            AgentHostCodexSessionIsolationException => CodexSessionWorkspaceUnavailable,
             OperationCanceledException => RequestCancelled,
             TimeoutException => Timeout,
             InvalidDataException or JsonException or ArgumentException => InvalidRequest,

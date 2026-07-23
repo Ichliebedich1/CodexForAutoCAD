@@ -94,11 +94,17 @@ M4 进程隔离已完成一个不依赖 AutoCAD 实机的小阶段：
   跟随重解析点。审计 `/2` 已加入 canonical SHA-256 前序链和有界完整性验证；它没有签名、远端
   锚定或 WORM 存储。当前 Bridge 为 `50/50`。
 - Codex 子进程现先清空父环境，再使用固定 `16` 个变量名；`TEMP`/`TMP` 指向每会话 workspace，
-  不自动传入 token/API key、代理、父 `PATH`、`CODEX_HOME` 或自定义变量。AppServer 为 `27/27`，
-  完整 Phase 2 双 Shell 均为 `342/342`，真实 doctor 和两轮 Codex live `2/2` 继续通过。
+  不自动传入 token/API key、代理、父 `PATH`、`CODEX_HOME` 或自定义变量。AppServer 为 `29/29`，
+  当前完整 Phase 2 为 `349/349`，真实 doctor 和两轮 Codex live `2/2` 继续通过。
 - 每次生产 app-server 调用都固定附加 `-c mcp_servers={}`，以 Codex 结构化配置覆盖默认用户
-  profile 的 MCP server 表。此变更的 AppServer `27/27`、AgentHost Release `0` warning / `0` error
+  profile 的 MCP server 表。此变更的 AppServer `29/29`、AgentHost Release `0` warning / `0` error
   和真实两轮 live `2/2` 已通过；它不隔离默认用户 `CODEX_HOME`、凭据、技能或插件配置。
+- 可选每会话 Codex 状态隔离已接入认证 `bootstrap-serve`：只有配置非秘密的
+  `CODEX_AUTOCAD_CREDENTIAL_TARGET`，且其值是格式受限的 `CodexForAutoCAD/...` Windows Generic
+  Credential 引用时，AgentHost 才读取该凭据并在私有 lease workspace 创建 `codex-home`/`codex-sqlite`。
+  运行时 app-server 取得 `CODEX_HOME`、`CODEX_SQLITE_HOME` 和 token，版本预检不取得 token；没有
+  引用则保持默认用户 profile 兼容路径。AppServer `29/29`、Bridge `55/55` synthetic 规格通过；未创建
+  或读取真实 Credential Manager 条目，真实隔离登录与插件配置面仍未验收。
 - `doctor`、`run` 和认证 `bootstrap-serve` 会先在同一受控子进程环境中运行 `codex --version`；当前
   仅接受 `>=0.144.4 <0.145.0`，本机 `0.144.4` 与其后的 app-server `initialize` 已通过。未审查
   的次版本、非 UTF-8、超限和超时输出 fail-closed，不公开路径、版本原文或 stderr。版本细节和
@@ -366,6 +372,10 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
 - `M4_EMPTY_MCP_BOUNDARY_20260723.md`：生产 app-server 的默认空 MCP 配置覆盖及明确未完成边界。
 - `evidence/m4-codex-empty-mcp-boundary-20260723.json`：空 MCP 规格、Release、真实两轮 live 和
   非 AutoCAD 范围的脱敏证据。
+- `M4_CODEX_SESSION_ISOLATION_20260723.md`：可选每会话 Codex 状态、Windows Generic Credential
+  引用、失败关闭、默认兼容与未完成的真实验证边界。
+- `evidence/m4-codex-session-isolation-20260723.json`：隔离目录/凭据 synthetic 规格和非实机范围的
+  脱敏证据。
 
 ## 11. 支持声明
 
@@ -382,8 +392,9 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
 > M4 已为 AgentHost/Codex Job 进程树应用清理与 CPU/内存/时间边界，将内容脱敏的只读运行
 > 审计接入真实 AgentHost 会话，并为 workspace/audit 启用受保护 ACL 与有界保留，为 Codex
 > 子进程启用固定父环境白名单、默认空 MCP 及 `>=0.144.4 <0.145.0` 的版本/App Server 健康预检；
-> 审计 `/2` 已有本地 canonical SHA-256 链，但没有签名、远端锚定或 WORM 存储。每会话
-> `CODEX_HOME`/凭据、插件配置隔离、磁盘硬配额、其余沙箱、受保护审计锚点和 CAD 写入终态仍未完成。
+> 认证 `bootstrap-serve` 已有可选每会话 `CODEX_HOME`/Windows Generic Credential 路径，默认仍保持
+> 用户 profile 兼容模式。审计 `/2` 已有本地 canonical SHA-256 链，但没有签名、远端锚定或 WORM
+> 存储。真实隔离登录、插件配置隔离、磁盘硬配额、其余沙箱、受保护审计锚点和 CAD 写入终态仍未完成。
 > 安全 CAD 写入、完整沙箱、长期记忆和发布安装
 > 尚未完成。
 

@@ -73,14 +73,22 @@
   锚点和日志导出仍未完成。
 - M4 Codex 子进程生产路径已关闭父环境继承：启动前清空环境，只注入固定 `16` 个变量名；
   `TEMP`/`TMP` 绑定每会话 workspace，父 `PATH`、token/API key、代理、`CODEX_HOME`、
-  `PSModulePath` 和自定义变量均不自动传入。AppServer `27/27`、完整 Phase 2 `342/342`、真实
-  doctor 和两轮 v2 live `2/2` 均通过，清理后 AgentHost/app-server 为 `0/0`。当前仍用默认用户
-  Codex home 兼容文件登录，不代表每会话凭据或插件配置隔离。
+  `PSModulePath` 和自定义变量均不自动传入。AppServer `29/29`、完整 Phase 2 `349/349`、真实
+  doctor 和两轮 v2 live `2/2` 均通过，清理后 AgentHost/app-server 为 `0/0`。未配置隔离时仍用默认用户
+  Codex home 兼容文件登录。
 - M4 生产 app-server 现固定附加 `-c mcp_servers={}`，用 Codex 的结构化配置覆盖使默认用户
-  profile 中配置的 MCP server 表不会进入 AgentHost 调用链。当前 AppServer `27/27`、AgentHost
+  profile 中配置的 MCP server 表不会进入 AgentHost 调用链。当前 AppServer `29/29`、AgentHost
   Release `0` warning / `0` error、真实两轮 v2 live `2/2` 均通过；该边界不隔离默认用户
   `CODEX_HOME`、凭据、技能或插件配置，详见
   `handoff/autocad2016/M4_EMPTY_MCP_BOUNDARY_20260723.md`。
+- M4 已将**可选**的每会话 Codex 状态隔离接入认证 `bootstrap-serve`：仅当非秘密环境引用
+  `CODEX_AUTOCAD_CREDENTIAL_TARGET` 指向格式受限的 Windows Generic Credential 时，AgentHost 才会
+  在私有 session workspace 创建 `codex-home`/`codex-sqlite`，运行时子进程接收
+  `CODEX_HOME`、`CODEX_SQLITE_HOME` 与 `CODEX_ACCESS_TOKEN`；`codex --version` 预检明确不接收
+  token。项目不复制、链接、读取、记录或修改全局 `.codex` profile。未配置该引用时保持旧兼容路径。
+  该切口只通过 synthetic 凭据和目录测试，尚未使用真实 Credential Manager 条目、真实隔离登录或真实
+  Codex profile 验收；插件配置其余读取面仍待单独审查。详见
+  `handoff/autocad2016/M4_CODEX_SESSION_ISOLATION_20260723.md`。
 - M4 已将本机 Codex 版本作为正式启动门槛：`doctor`、`run` 和认证 `bootstrap-serve` 都先在同一
   受控子进程环境中运行 `codex --version`，当前只接受 `>=0.144.4 <0.145.0`，随后仍须完成
   app-server `initialize`。本机 `0.144.4` 已通过；未审查的次版本、非 UTF-8、超限或超时输出均
@@ -152,8 +160,9 @@ fixture `6/6` 和 R20.1 API 双 Shell Probe `29 passed / 8 expected failed`；�
    `handoff/autocad2016/M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
 6. 实机测试暂缓期间继续收口不依赖 AutoCAD 的 M4 沙箱审计；进程树清理（含 synthetic
    AgentHost 异常退出）、进程数/内存/CPU/运行时限制、AgentHost 只读 JSONL 审计、工作区/审计
-   ACL 与有界保留、Codex 子进程父环境白名单和版本/App Server 健康预检已完成。工作目录磁盘硬配额、每会话 `CODEX_HOME`/凭据、
-   插件配置隔离、受限令牌/AppContainer、受保护审计锚点及 CAD 写入终态仍待完成。M4 完成前不启用
+   ACL 与有界保留、Codex 子进程父环境白名单、版本/App Server 健康预检和可选每会话
+   `CODEX_HOME`/Windows Generic Credential 边界已完成自动化覆盖。仍待真实隔离登录验证、插件配置
+   读取面审查、工作目录磁盘硬配额、受限令牌/AppContainer、受保护审计锚点及 CAD 写入终态。M4 完成前不启用
    AutoCAD 2016 强类型安全写入。
 7. 随后完成长期记忆、安装签名、企业部署和 AutoCAD 2025 适配。
 

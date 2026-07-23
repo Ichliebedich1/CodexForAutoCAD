@@ -9,7 +9,8 @@ namespace Codex.AutoCAD.AppServer;
 internal static class CodexChildEnvironmentPolicy
 {
     internal static IReadOnlyDictionary<string, string?> CreateForCurrentProcess(
-        string temporaryDirectory)
+        string temporaryDirectory,
+        CodexSessionIsolation? sessionIsolation = null)
     {
         var systemRoot = RequireDirectory(
             Environment.GetFolderPath(Environment.SpecialFolder.Windows),
@@ -56,6 +57,15 @@ internal static class CodexChildEnvironmentPolicy
             ["GIT_TERMINAL_PROMPT"] = "0",
             ["GCM_INTERACTIVE"] = "Never",
         };
+
+        if (sessionIsolation is not null)
+        {
+            // CODEX_HOME is an explicit Codex override. The home directories are created and
+            // ACL-checked by AgentHost before they reach this policy.
+            values["CODEX_HOME"] = sessionIsolation.CodexHomeDirectory;
+            values["CODEX_SQLITE_HOME"] = sessionIsolation.CodexSqliteHomeDirectory;
+            values["CODEX_ACCESS_TOKEN"] = sessionIsolation.CodexAccessToken;
+        }
 
         return new ReadOnlyDictionary<string, string?>(values);
     }

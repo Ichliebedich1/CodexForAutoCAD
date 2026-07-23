@@ -19,6 +19,8 @@ var specs = new (string Name, Func<Task> Run)[]
     ("非法环境键值启动前被拒绝", InvalidEnvironmentEntriesAreRejected),
     ("本地Codex配置只接受固定盘绝对exe", LocalCodexConfigurationAcceptsConfiguredExecutable),
     ("本地Codex配置强制使用环境白名单与空MCP", LocalCodexConfigurationUsesEnvironmentAllowlist),
+    ("本地Codex隔离配置只向运行时注入私有状态和令牌", LocalCodexConfigurationUsesSessionIsolation),
+    ("本地Codex隔离配置错误不泄露目录或令牌", LocalCodexConfigurationRejectsInvalidSessionIsolation),
     ("本地Codex配置错误不泄露路径", LocalCodexConfigurationFailsClosedWithoutPath),
     ("无效环境Codex路径不会回退", LocalCodexConfigurationDoesNotFallbackFromInvalidEnvironment),
     ("缺失本地Codex配置返回稳定错误", LocalCodexConfigurationReportsMissingExecutable),
@@ -346,6 +348,80 @@ static Task LocalCodexConfigurationUsesEnvironmentAllowlist()
     True(!options.Environment.ContainsKey("OPENAI_API_KEY"), "Policy inherited an API key.");
     True(!options.Environment.ContainsKey("HTTPS_PROXY"), "Policy inherited a proxy setting.");
     True(!options.Environment.ContainsKey("PSModulePath"), "Policy inherited PowerShell module state.");
+    return Task.CompletedTask;
+}
+
+static Task LocalCodexConfigurationUsesSessionIsolation()
+{
+    using var fixture = new LocalCodexConfigurationFixture();
+    const string accessToken = "test-session-access-token";
+    var configuration = CodexLocalAppServerConfigurationResolver.Resolve(
+        fixture.CreateRequest(
+            commandLineExecutablePath: fixture.ExecutablePath,
+            codexHomeDirectory: fixture.CodexHomeDirectory,
+            codexSqliteHomeDirectory: fixture.CodexSqliteHomeDirectory,
+            codexAccessToken: accessToken));
+
+    var runtime = configuration.CreateClientOptions();
+    var preflight = configuration.CreateVersionPreflightOptions();
+    True(configuration.UsesSessionIsolation, "Session isolation was not reported.");
+    Equal(fixture.CodexHomeDirectory, runtime.Environment["CODEX_HOME"]);
+    Equal(fixture.CodexSqliteHomeDirectory, runtime.Environment["CODEX_SQLITE_HOME"]);
+    Equal(accessToken, runtime.Environment["CODEX_ACCESS_TOKEN"]);
+    True(
+        !preflight.Environment.ContainsKey("CODEX_ACCESS_TOKEN"),
+        "Version preflight received the Codex access token.");
+    Equal(
+        string.Join(
+            "|",
+            runtime.Environment.Keys
+                .Where(name => !string.Equals(name, "CODEX_ACCESS_TOKEN", StringComparison.OrdinalIgnoreCase))
+                .Order(StringComparer.OrdinalIgnoreCase)),
+        string.Join("|", preflight.Environment.Keys.Order(StringComparer.OrdinalIgnoreCase)));
+    Equal(fixture.CodexHomeDirectory, preflight.Environment["CODEX_HOME"]);
+    Equal(fixture.CodexSqliteHomeDirectory, preflight.Environment["CODEX_SQLITE_HOME"]);
+    return Task.CompletedTask;
+}
+
+static Task LocalCodexConfigurationRejectsInvalidSessionIsolation()
+{
+    using var fixture = new LocalCodexConfigurationFixture();
+    const string accessToken = "test-session-access-token";
+    var incomplete = Capture<CodexLocalConfigurationException>(() =>
+        CodexLocalAppServerConfigurationResolver.Resolve(
+            fixture.CreateRequest(
+                commandLineExecutablePath: fixture.ExecutablePath,
+                codexHomeDirectory: fixture.CodexHomeDirectory)));
+    Equal(CodexLocalConfigurationFailure.IncompleteSessionIsolation, incomplete.Failure);
+
+    var missingDirectory = Path.Combine(fixture.DirectoryPath, "missing-private-home");
+    var invalidDirectory = Capture<CodexLocalConfigurationException>(() =>
+        CodexLocalAppServerConfigurationResolver.Resolve(
+            fixture.CreateRequest(
+                commandLineExecutablePath: fixture.ExecutablePath,
+                codexHomeDirectory: missingDirectory,
+                codexSqliteHomeDirectory: fixture.CodexSqliteHomeDirectory,
+                codexAccessToken: accessToken)));
+    Equal(CodexLocalConfigurationFailure.InvalidSessionIsolationDirectory, invalidDirectory.Failure);
+    True(
+        !invalidDirectory.Message.Contains(missingDirectory, StringComparison.OrdinalIgnoreCase)
+        && !invalidDirectory.Message.Contains(accessToken, StringComparison.Ordinal),
+        "Session-isolation directory failure exposed private input.");
+
+    var invalidToken = "test-session\u0001token";
+    var rejectedToken = Capture<CodexLocalConfigurationException>(() =>
+        CodexLocalAppServerConfigurationResolver.Resolve(
+            fixture.CreateRequest(
+                commandLineExecutablePath: fixture.ExecutablePath,
+                codexHomeDirectory: fixture.CodexHomeDirectory,
+                codexSqliteHomeDirectory: fixture.CodexSqliteHomeDirectory,
+                codexAccessToken: invalidToken)));
+    Equal(CodexLocalConfigurationFailure.InvalidSessionIsolationToken, rejectedToken.Failure);
+    True(
+        !rejectedToken.Message.Contains(fixture.CodexHomeDirectory, StringComparison.OrdinalIgnoreCase)
+        && !rejectedToken.Message.Contains(fixture.CodexSqliteHomeDirectory, StringComparison.OrdinalIgnoreCase)
+        && !rejectedToken.Message.Contains(invalidToken, StringComparison.Ordinal),
+        "Session-isolation token failure exposed a private input.");
     return Task.CompletedTask;
 }
 
@@ -780,6 +856,10 @@ internal sealed class LocalCodexConfigurationFixture : IDisposable
         Directory.CreateDirectory(DirectoryPath);
         TempDirectory = Path.Combine(DirectoryPath, "temp");
         Directory.CreateDirectory(TempDirectory);
+        CodexHomeDirectory = Path.Combine(DirectoryPath, "codex-home");
+        Directory.CreateDirectory(CodexHomeDirectory);
+        CodexSqliteHomeDirectory = Path.Combine(DirectoryPath, "codex-sqlite");
+        Directory.CreateDirectory(CodexSqliteHomeDirectory);
         ExecutablePath = Path.Combine(DirectoryPath, "codex.exe");
         File.WriteAllBytes(ExecutablePath, Array.Empty<byte>());
     }
@@ -790,11 +870,18 @@ internal sealed class LocalCodexConfigurationFixture : IDisposable
 
     public string TempDirectory { get; }
 
+    public string CodexHomeDirectory { get; }
+
+    public string CodexSqliteHomeDirectory { get; }
+
     public CodexLocalAppServerConfigurationRequest CreateRequest(
         string? commandLineExecutablePath = null,
         string? environmentExecutablePath = null,
         string? pathValue = null,
-        string? temporaryDirectory = null)
+        string? temporaryDirectory = null,
+        string? codexHomeDirectory = null,
+        string? codexSqliteHomeDirectory = null,
+        string? codexAccessToken = null)
     {
         return new CodexLocalAppServerConfigurationRequest
         {
@@ -804,6 +891,9 @@ internal sealed class LocalCodexConfigurationFixture : IDisposable
             PathValue = pathValue,
             WorkingDirectory = DirectoryPath,
             TemporaryDirectory = temporaryDirectory ?? TempDirectory,
+            CodexHomeDirectory = codexHomeDirectory,
+            CodexSqliteHomeDirectory = codexSqliteHomeDirectory,
+            CodexAccessToken = codexAccessToken,
             StartupTimeout = TimeSpan.FromSeconds(9),
             ShutdownTimeout = TimeSpan.FromSeconds(4),
         };

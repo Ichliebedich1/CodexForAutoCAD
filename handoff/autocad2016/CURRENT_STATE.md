@@ -237,7 +237,8 @@ NETLOAD 证据的能力一律视为未支持。
 - M4 第二启动配置边界已接入 AgentHost：`--codex`、`CODEX_EXECUTABLE`、已知 npm 安装布局和
   绝对 PATH 候选会被归一化为固定本地磁盘的绝对 `codex.exe`；显式无效配置 fail-closed，且
   doctor 仅显示来源标签、不显示路径。启动/关闭超时和工作目录同样进入该配置。当前版本硬门槛、
-  每会话 `CODEX_HOME` 与独立凭据仍未完成；环境白名单和只读运行审计已由后续切口补齐，详见
+  环境白名单和只读运行审计已由后续切口补齐；每会话 `CODEX_HOME`/独立凭据的可选实现已由后续
+  第十一边界接入，详见
   `M4_LOCAL_CODEX_CONFIGURATION_20260723.md` 与
   `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
 - M4 第三进程树边界已接入真实 AgentHost 启动链：校验后的 AgentHost 会在恢复前进入具有
@@ -268,8 +269,9 @@ NETLOAD 证据的能力一律视为未支持。
   `AgentWorkspace.Temp`，`PATH` 只由批准的 Windows 系统目录构成。`CODEX_HOME`、token/API key、
   代理、父 `PATH`、`PSModulePath` 和自定义/调试变量不会自动传入。AppServer `20/20` 包含
   synthetic child 泄漏/显式允许/null 删除/非法键值规格，真实 doctor 和两轮 v2 live `2/2`
-  继续通过，清理后 AgentHost/app-server 为 `0/0`。当前仍通过 `USERPROFILE`/`HOME` 使用默认
-  用户 Codex home 兼容文件登录，所以每会话凭据与插件配置隔离仍未完成。见
+  继续通过，清理后 AgentHost/app-server 为 `0/0`。该第六边界本身仍通过 `USERPROFILE`/`HOME`
+  保留默认用户 Codex home 兼容文件登录；每会话凭据的可选实现由后续第十一边界补齐，插件配置
+  隔离仍未完成。见
   `M4_CODEX_CHILD_ENVIRONMENT_ALLOWLIST_20260723.md`。
 - M4 第七 CPU/运行时间边界扩展同一 Job 与 service session：CPU hard cap 默认 `75%`
   （允许 `1..100%`），累计 Job user-time 默认 `8` 小时（允许 `100 ms..7 d`），认证后的
@@ -301,11 +303,23 @@ NETLOAD 证据的能力一律视为未支持。
   Codex 版本兼容。
 - M4 第十默认空 MCP 边界已进入生产 app-server 配置：
   `CodexLocalAppServerConfiguration` 固定传入 `-c mcp_servers={}`，使默认用户 profile 中的 MCP
-  server 表不会进入 AgentHost 子进程调用。AppServer `27/27`、AgentHost Release `0` warning /
+  server 表不会进入 AgentHost 子进程调用。AppServer `29/29`、AgentHost Release `0` warning /
   `0` error 和真实两轮 v2 live `2/2` 均通过。它没有隔离 `CODEX_HOME`、文件登录、技能或插件
   配置，不能描述为完整用户配置隔离；见 `M4_EMPTY_MCP_BOUNDARY_20260723.md` 和
   `evidence/m4-codex-empty-mcp-boundary-20260723.json`。
-- 当前 Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 双 Shell 动态汇总 `342/342`、
+- M4 第十一可选 Codex session isolation 已接入**认证** `bootstrap-serve` 实际调用链：未配置
+  `CODEX_AUTOCAD_CREDENTIAL_TARGET` 时保持默认用户 profile 的兼容文件登录；配置后只接受
+  `CodexForAutoCAD/` 前缀及受限字符的 Windows Generic Credential 引用。AgentHost 先通过
+  `CredRead` 读取 Generic Credential，再在已租约的私有 workspace 创建 `codex-home` 与
+  `codex-sqlite`，仅把 `CODEX_HOME`、`CODEX_SQLITE_HOME`、`CODEX_ACCESS_TOKEN` 给运行时
+  app-server；版本预检显式排除 token。全局 `.codex` 未被复制、链接、直接读取、记录或修改；无效
+  引用、不可读或不合规凭据、workspace 故障均在启动前以稳定脱敏码 fail-closed。AppServer `29/29`、
+  Bridge `55/55` 的 synthetic 覆盖包含目录 ACL/清理、默认兼容、引用拒绝、凭据读取失败和预检
+  token 排除。没有创建或读取真实 Credential Manager 条目，也没有验证真实隔离登录或完整插件配置
+  面；`doctor` 与独立 `run` 刻意仍为旧兼容路径。见
+  `M4_CODEX_SESSION_ISOLATION_20260723.md` 和
+  `evidence/m4-codex-session-isolation-20260723.json`。
+- 当前 Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 动态汇总 `349/349`、
   AgentHost doctor、Host 禁止 API、秘密扫描和 diff 通过；认证固定向量与现有 Bridge/IPC
   回归保持通过。
 - 本检查点未启动、重启或操作 AutoCAD。它不证明长运行 `IAgentBridgeClient`、Host.2016
@@ -552,8 +566,9 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
 6. M2 实机/性能 evidence 仍是 M2 完成前提；M3 的只读对象语义候选已冻结但仍待实机字段
    evidence，不替代 M2 验收，也不启用 CAD 写入。实机测试暂缓期间继续收口不依赖 AutoCAD
    的 M4 沙箱与审计；父环境白名单、版本/App Server 健康预检、CPU/运行时间限制和工作区/
-  审计 ACL/有界保留、默认空 MCP 和本地哈希链已完成，下一步是磁盘硬配额、每会话
-  `CODEX_HOME`/凭据、插件配置隔离、受限令牌/AppContainer 与受保护审计锚点。M4 完成前不启用
+  审计 ACL/有界保留、默认空 MCP、本地哈希链及可选每会话 `CODEX_HOME`/Windows Generic Credential
+  已完成自动化覆盖；下一步是真实隔离登录验证、插件配置隔离审查、磁盘硬配额、受限
+  令牌/AppContainer 与受保护审计锚点。M4 完成前不启用
   M5 CAD 写入。
 
 ## 更新纪律

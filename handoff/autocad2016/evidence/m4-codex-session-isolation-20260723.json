@@ -1,0 +1,63 @@
+{
+  "schema": "codex.autocad.m4-codex-session-isolation-evidence/1",
+  "capturedAt": "2026-07-23T19:34:08.2157286+08:00",
+  "sourceBranch": "codex/m4-workspace-acl",
+  "baseCommit": "71df839",
+  "scope": "Optional per-session Codex state directories and Windows Generic Credential reference for authenticated AgentHost bootstrap-serve",
+  "activation": {
+    "entryPoint": "bootstrap-serve",
+    "configuredBy": "CODEX_AUTOCAD_CREDENTIAL_TARGET",
+    "credentialTargetPrefix": "CodexForAutoCAD/",
+    "credentialType": "Windows Generic Credential",
+    "defaultWhenUnconfigured": "legacy user-profile compatibility mode",
+    "doctorAndStandaloneRun": "legacy compatibility mode"
+  },
+  "runtimeBoundary": {
+    "parentEnvironmentInherited": false,
+    "privateDirectories": [
+      "codex-home",
+      "codex-sqlite"
+    ],
+    "runtimeOnlyVariables": [
+      "CODEX_HOME",
+      "CODEX_SQLITE_HOME",
+      "CODEX_ACCESS_TOKEN"
+    ],
+    "versionPreflightExcludesAccessToken": true,
+    "defaultMcpOverrideRetained": "-c mcp_servers={}",
+    "globalProfileCopiedLinkedReadLoggedOrModifiedByProject": false
+  },
+  "failClosed": {
+    "invalidCredentialReference": "codex_credential_reference_invalid",
+    "credentialUnavailable": "codex_credential_unavailable",
+    "credentialRejected": "codex_credential_rejected",
+    "workspaceUnavailable": "codex_session_workspace_unavailable",
+    "secretsOrPrivatePathsInStableErrors": false
+  },
+  "verification": {
+    "releaseBuildWarnings": 0,
+    "releaseBuildErrors": 0,
+    "appServerSpecs": "29/29",
+    "bridgeSpecs": "55/55",
+    "phase2ReleaseGate": "349/349",
+    "agentHostDoctorHandshake": true,
+    "agentBootstrapVerifier": true,
+    "privateAclAndCleanupCovered": true,
+    "unconfiguredCompatibilityCovered": true,
+    "invalidReferenceRejectedBeforeCredentialReadAndDirectoryCreation": true,
+    "credentialReaderFailureSanitized": true,
+    "runtimeReceivesIsolationVariables": true,
+    "versionPreflightExcludesAccessToken": true
+  },
+  "notVerified": {
+    "realWindowsCredentialCreatedReadOrEnumerated": false,
+    "realIsolatedCodexAuthentication": false,
+    "realIsolatedAppServerInitialization": false,
+    "globalProfileContentsInspected": false,
+    "autocadStartedOrControlled": false,
+    "netLoadVerified": false,
+    "dwgModifiedOrSaved": false,
+    "pluginSkillsAndOtherProfileReadSurfaces": false,
+    "completeProcessSandbox": false
+  }
+}

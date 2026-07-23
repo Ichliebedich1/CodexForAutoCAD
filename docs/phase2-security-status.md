@@ -51,9 +51,14 @@ Host 禁用 API 扫描是保守的源码词法拒绝列表，会连同注释和�
 - AutoCAD 宿主尚未启动真实 AgentHost，也未实现 stdin 会话密钥引导和具体命名管道 `IAgentBridgeClient`。
 - `IAgentCadProposalBroker` 尚未连接到 AutoCAD 主线程的预览、审批和事务执行器，因此自然语言到 DWG 的完整 E2E 尚未成立。
 - 当前工作树中的 AutoCAD 2025 UI/选择/直线写入纵向原型不属于本阶段托管核心提交，也未完成目标版本真机验收；不得用该原型证明 Side Database 预演、Palette、`DocumentLock`、锁内重验、单事务或不自动保存已经交付。即使后续使用 Side Database，它也只是 CAD 一致性预演，不是进程隔离。
-- 独立受限令牌或 AppContainer、Windows Job Object、进程树终止、CPU/内存/时间配额尚未实现。
-- 每会话独立 `CODEX_HOME`、插件配置隔离和凭据隔离尚未实现；当前 M4 已实现受控子环境白名单与
-  默认空 MCP，详见 `handoff/autocad2016/M4_EMPTY_MCP_BOUNDARY_20260723.md`。
+- 独立受限令牌或 AppContainer、工作目录硬配额、受保护审计锚点及真实 Codex/AutoCAD 故障矩阵
+  尚未实现。后续 M4 已实现 Windows Job Object、进程树终止、CPU/内存/时间配额；其范围不等同于
+  完整 OS 沙箱。
+- 认证 `bootstrap-serve` 已有可选每会话 `CODEX_HOME`/`CODEX_SQLITE_HOME` 与 Windows Generic
+  Credential 路径：无引用时保持默认 profile 兼容；有引用时不复制、链接、读取、记录或修改全局
+  `.codex` profile，版本预检不接收 token。该结论目前仅来自 synthetic 凭据/目录规格；真实
+  Credential Manager、真实隔离登录及插件/技能配置读取面仍未验收。详见
+  `handoff/autocad2016/M4_CODEX_SESSION_ISOLATION_20260723.md`。
 - R4 审批门已经强制检查点证明，但真实恢复 DWG 的创建、摘要和恢复演练尚未接入。
 - SQLite 上下文记忆、审计哈希链、保留/清除策略尚未实现。
 - AutoCAD 2016 已完成 net45/x64 诊断薄宿主的目标机原版程序集编译与手工 NETLOAD；Palette、选择上下文、认证 Bridge、审批和 CAD 写入仍未接入，不能宣称完整支持。
