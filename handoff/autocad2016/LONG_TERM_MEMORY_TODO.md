@@ -332,7 +332,14 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   测量。见
   `M4_CPU_RUNTIME_LIMITS_20260723.md` 和
   `evidence/m4-agenthost-cpu-runtime-limits-20260723.json`。
-- [ ] 评估并实现受限令牌或 AppContainer。
+- [x] 受限 token/AppContainer source 与本机能力可行性审计：当前 Launcher 仍以同用户
+  `CreateProcessW` 启动，`CurrentUserOnly` 管道、严格三 SID workspace ACL 和 AgentHost 内 `CredRead`
+  不能直接承受身份替换。本机仅显示 `SeIncreaseQuotaPrivilege`/`SeImpersonatePrivilege` 的可行性信号；
+  不将其误写为已运行隔离。先做默认关闭、fail-closed 的受限自身 token synthetic bootstrap probe；
+  AppContainer 留待安装/部署预配。详见 `M4_PROCESS_IDENTITY_ISOLATION_FEASIBILITY_20260723.md`。
+- [ ] 实现并验证受限自身 token 的 private desktop、最小 runtime/workspace/pipe ACL、单次 bootstrap、
+  Job 归属、STOP/超时/清理；任何设置失败必须拒绝启动，不能回退到未受限启动。完成前 AppContainer
+  不得作为生产替代项。
 - [ ] 设置可靠的工作目录磁盘硬配额；为进程数/内存/CPU 限制增加真实 Codex 耗尽或节流验证与
   用户可理解的失败诊断。当前 Windows 10 Pro 的只读审计未发现 FSRM/`SrmSvc`、启用的卷 quota
   或 VHD 预配能力；现有 Job Object 不是磁盘配额。不要用轮询目录大小冒充硬配额，必须先部署

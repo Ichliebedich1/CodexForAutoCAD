@@ -346,6 +346,13 @@ NETLOAD 证据的能力一律视为未支持。
   额外双 Shell 门的 Bridge `56/56`、Phase 2 `351/351`、Release `0/0` 通过。详见
   `M4_BOOTSTRAP_ERROR_SANITIZATION_20260723.md` 与
   `evidence/m4-bootstrap-error-sanitization-20260723.json`。
+- M4 第十六受限 token/AppContainer 已完成 source 与本机能力可行性审计，但**没有启用**任何新身份：
+  当前 Launcher 仍以同用户 `CreateProcessW` 启动，Bridge 为 `CurrentUserOnly` 管道，私有 storage ACL
+  仅接受当前用户/SYSTEM/Administrators，Credential Manager 读取发生在 AgentHost 内。直接切换身份会
+  与管道、ACL、runtime 文件、desktop 和凭据边界冲突。下一步仅实现默认关闭、fail-closed 的受限自身
+  token synthetic bootstrap 探针；AppContainer 保留为安装/部署级方案。详见
+  `M4_PROCESS_IDENTITY_ISOLATION_FEASIBILITY_20260723.md` 与
+  `evidence/m4-process-identity-isolation-feasibility-20260723.json`。
 - 当前 Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 动态汇总 `351/351`、
   AgentHost doctor、Host 禁止 API、秘密扫描和 diff 通过；认证固定向量与现有 Bridge/IPC
   回归保持通过。
@@ -595,8 +602,8 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
    的 M4 沙箱与审计；父环境白名单、版本/App Server 健康预检、CPU/运行时间限制和工作区/
    审计 ACL/有界保留、默认空 MCP、本地哈希链、可选每会话 `CODEX_HOME`/Windows Generic Credential
    及 Bridge/Runtime/Host/Bootstrap 固定诊断脱敏边界已完成自动化覆盖；下一步是真实隔离登录验证、
-   插件配置隔离审查、磁盘硬配额、受限
-  令牌/AppContainer 与受保护审计锚点。M4 完成前不启用
+   插件配置隔离审查、磁盘硬配额、受限 token synthetic probe、AppContainer 部署契约与受保护审计锚点。
+   M4 完成前不启用
   M5 CAD 写入。
 
 ## 更新纪律

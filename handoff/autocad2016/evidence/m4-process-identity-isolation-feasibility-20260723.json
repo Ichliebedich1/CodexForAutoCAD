@@ -1,0 +1,58 @@
+{
+  "schema": "codex.autocad.m4-process-identity-isolation-feasibility-evidence/1",
+  "capturedAt": "2026-07-23T13:41:00Z",
+  "sourceBranch": "codex/m4-diagnostic-sanitization",
+  "sourceBaselineCommit": "c7c3d5b",
+  "scope": "restricted-token-and-appcontainer-launch-chain-feasibility-audit",
+  "sourceAudit": {
+    "launcherUsesCurrentTokenCreateProcess": true,
+    "restrictedTokenInteropAlreadyPresent": false,
+    "appContainerInteropAlreadyPresent": false,
+    "launcherSetsPrivateDesktop": false,
+    "jobObjectProcessTreeBoundaryPresent": true,
+    "bridgeUsesCurrentUserOnlyPipeOption": true,
+    "bridgeHasExplicitRestrictedOrAppContainerPipeAcl": false,
+    "privateStorageAclAllowsOnlyCurrentUserSystemAdministrators": true,
+    "sessionIsolationReadsCredentialInsideAgentHost": true
+  },
+  "localCapabilityObservation": {
+    "windowsNt": true,
+    "callerHasSeIncreaseQuotaPrivilege": true,
+    "callerHasSeImpersonatePrivilege": true,
+    "callerHasSeAssignPrimaryTokenPrivilege": false,
+    "callerHasSeTcbPrivilege": false,
+    "powershellCmdletForRestrictedToken": false,
+    "powershellCmdletForAppContainerProfile": false
+  },
+  "implementationDecision": {
+    "productionSandboxProfileEnabled": false,
+    "selectedNextEngineeringStep": "default-off-restricted-own-token-synthetic-bootstrap-probe",
+    "restrictedTokenDirectProductionEnablement": false,
+    "appContainerDirectProductionEnablement": false,
+    "mustFailClosedOnIsolationSetupFailure": true,
+    "mustUsePrivateDesktopForRestrictedToken": true,
+    "mustDesignExplicitPipeAclBeforeAppContainer": true,
+    "mustDesignExplicitWorkspaceAndRuntimeAclBeforeRestrictedOrAppContainer": true,
+    "mustNotPersistCredentialInWorkspace": true
+  },
+  "notProven": [
+    "create-restricted-token-process-start",
+    "private-desktop-compatibility",
+    "restricted-token-inherited-bootstrap-handles",
+    "restricted-token-named-pipe-connectivity",
+    "restricted-token-job-assignment",
+    "restricted-token-workspace-and-runtime-acl",
+    "appcontainer-profile-token-and-capability-contract",
+    "appcontainer-named-pipe-namespace-and-acl",
+    "appcontainer-credential-delivery",
+    "real-codex-child-tree-under-isolation",
+    "autocad-runtime-behavior",
+    "cad-write-authorization"
+  ],
+  "notes": [
+    "No user name, token, SID value, process command line, workspace path, credential target, CAD content, full privilege listing or environment value is retained.",
+    "Privilege observation is a local feasibility signal only and does not prove an API call will succeed.",
+    "The current Job Object limits remain separate from identity isolation and filesystem hard quota enforcement.",
+    "This is a design and capability audit, not a production isolation implementation completion."
+  ]
+}

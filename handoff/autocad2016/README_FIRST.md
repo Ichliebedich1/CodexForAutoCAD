@@ -116,6 +116,10 @@ M4 进程隔离已完成一个不依赖 AutoCAD 实机的小阶段：
   也没有 VHD 预配模块；现有 Job Object 只限制进程资源。项目拒绝用目录轮询冒充硬配额，须先由
   部署提供 FSRM 目录配额或专用固定大小卷并完成实际拒绝验证。详见
   `M4_WORKSPACE_HARD_QUOTA_FEASIBILITY_20260723.md`。
+- 受限 token/AppContainer 目前仅完成可行性审计，尚未启用：现有同用户 `CreateProcessW`、
+  `CurrentUserOnly` 管道、严格私有 ACL 和 AgentHost 内 `CredRead` 不能安全地直接换身份。下一步是默认
+  关闭且 fail-closed 的受限自身 token synthetic probe；AppContainer 必须等待安装/部署预配 profile、ACL、
+  runtime、命名空间和凭据边界。详见 `M4_PROCESS_IDENTITY_ISOLATION_FEASIBILITY_20260723.md`。
 - 每次生产 app-server 调用都固定附加 `-c mcp_servers={}`，以 Codex 结构化配置覆盖默认用户
   profile 的 MCP server 表。此变更的 AppServer `29/29`、AgentHost Release `0` warning / `0` error
   和真实两轮 live `2/2` 已通过；它不隔离默认用户 `CODEX_HOME`、凭据、技能或插件配置。
@@ -406,6 +410,10 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
 - `M4_WORKSPACE_HARD_QUOTA_FEASIBILITY_20260723.md`：工作目录硬配额的本机能力审计、禁止的伪方案与
   部署前置条件。
 - `evidence/m4-workspace-hard-quota-feasibility-20260723.json`：上述审计的脱敏能力记录，明确硬配额未完成。
+- `M4_PROCESS_IDENTITY_ISOLATION_FEASIBILITY_20260723.md`：受限 token/AppContainer 与当前启动、管道、
+  ACL、凭据边界的可行性结论及分阶段方案。
+- `evidence/m4-process-identity-isolation-feasibility-20260723.json`：上述 source/local capability 审计记录，
+  明确没有启动任何隔离进程。
 
 ## 11. 支持声明
 
@@ -425,7 +433,8 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
 > 认证 `bootstrap-serve` 已有可选每会话 `CODEX_HOME`/Windows Generic Credential 路径，默认仍保持
 > 用户 profile 兼容模式。Bridge/运行时/Host/本地配置/Bootstrap 公开诊断均已收敛为固定安全说明；
 > 审计 `/2` 已有本地 canonical SHA-256 链，但没有签名、远端锚定或 WORM
-> 存储。真实隔离登录、插件配置隔离、磁盘硬配额、其余沙箱、受保护审计锚点和 CAD 写入终态仍未完成。
+> 存储。真实隔离登录、插件配置隔离、磁盘硬配额、受限 token 探针、AppContainer 部署方案、其余沙箱、
+> 受保护审计锚点和 CAD 写入终态仍未完成。
 > 安全 CAD 写入、完整沙箱、长期记忆和发布安装
 > 尚未完成。
 
