@@ -589,7 +589,7 @@ try {
         -FilePath $dotnetCommand `
         -ArgumentList $doctorArguments `
         -Description "执行 AgentHost doctor 活体握手"
-    Write-Warning "doctor 仅证明本机 app-server 活体握手；每会话 CODEX_HOME、MCP/插件、凭据与环境变量隔离仍未完成。"
+    Write-Warning "doctor 与 AppServer Specs 已覆盖 Codex 子进程环境白名单；每会话 CODEX_HOME、MCP/插件和独立凭据隔离仍未完成。"
 
     Invoke-CheckedCommand `
         -FilePath "git" `

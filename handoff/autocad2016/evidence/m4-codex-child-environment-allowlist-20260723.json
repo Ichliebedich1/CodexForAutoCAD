@@ -1,0 +1,79 @@
+{
+  "schema": "codex.autocad.m4-child-environment-allowlist-evidence/1",
+  "capturedAt": "2026-07-23T14:31:13.018+08:00",
+  "sourceBranch": "codex/m4-job-limits",
+  "baseCommit": "004cbf79ec511f471c1a448960cc3a9a48211e16",
+  "scope": "AgentHost-owned Codex child process environment allowlist",
+  "productionPolicy": {
+    "inheritParentEnvironment": false,
+    "clearBeforeApply": true,
+    "temporaryDirectoryBinding": "AgentWorkspace.Temp",
+    "allowedNames": [
+      "SystemRoot",
+      "WINDIR",
+      "ComSpec",
+      "USERPROFILE",
+      "HOME",
+      "APPDATA",
+      "LOCALAPPDATA",
+      "TEMP",
+      "TMP",
+      "PATH",
+      "PATHEXT",
+      "RUST_LOG",
+      "GIT_CONFIG_NOSYSTEM",
+      "GIT_CONFIG_GLOBAL",
+      "GIT_TERMINAL_PROMPT",
+      "GCM_INTERACTIVE"
+    ],
+    "explicitlyNotInherited": [
+      "CODEX_HOME",
+      "CODEX_ACCESS_TOKEN",
+      "API key variables",
+      "proxy variables",
+      "parent PATH",
+      "PSModulePath",
+      "custom variables",
+      "debug variables"
+    ],
+    "invalidEntryBehavior": "fail before child start",
+    "nullOverrideBehavior": "remove named inherited variable"
+  },
+  "verification": {
+    "appServerSpecs": "20/20",
+    "syntheticChildParentSentinelVisible": false,
+    "syntheticChildExplicitAllowedVariableVisible": true,
+    "nullOverrideRemovalVerified": true,
+    "invalidNameAndValueValidationVerified": true,
+    "productionOptionsDisableInheritance": true,
+    "releaseBuildWarnings": 0,
+    "releaseBuildErrors": 0,
+    "agentHostDoctorUnderAllowlist": true,
+    "doctorCodexVersionObserved": "0.144.4",
+    "doctorStandardErrorBytes": 0,
+    "realAgentHostLiveSpecs": "2/2",
+    "windowsPowerShellPhase2Specs": "329/329",
+    "powerShell7Phase2Specs": "329/329",
+    "remainingAgentHostProcesses": 0,
+    "remainingCodexAppServerProcesses": 0
+  },
+  "credentialBoundary": {
+    "globalProfileReadCopiedLinkedOrParsedByPlugin": false,
+    "codexHomeExplicitlySet": false,
+    "defaultUserCodexHomeStillReachable": true,
+    "existingFileLoginCompatible": true,
+    "perSessionCodexHomeVerified": false,
+    "osKeyringCredentialIsolationVerified": false,
+    "trustedAccessTokenIsolationVerified": false,
+    "emptyMcpAndPluginConfigurationVerified": false
+  },
+  "boundaries": {
+    "autoCadStartedOrControlled": false,
+    "netLoadVerified": false,
+    "cadWriteEnabled": false,
+    "dwgSavedOrModified": false,
+    "completeProcessSandboxVerified": false,
+    "enterpriseProxyCompatibilityVerified": false,
+    "workspaceAclAndCleanupVerified": false
+  }
+}

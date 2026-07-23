@@ -4,10 +4,10 @@
 
 ## 状态
 
-本文件记录 M4 已完成的五个小切口：Codex 子进程 stderr/AgentHost 诊断脱敏、本机 Codex
+本文件记录 M4 已完成的六个小切口：Codex 子进程 stderr/AgentHost 诊断脱敏、本机 Codex
 启动配置、AgentHost 进程树的 Job Object 边界、该 Job 的进程数/总提交内存硬限制，以及
-AgentHost 只读会话的内容脱敏 JSONL 运行审计；不是完整沙箱候选，不代表已完成每会话
-`CODEX_HOME`、环境隔离、CPU/运行时/磁盘配额、凭据隔离、审计 ACL/保留策略或 CAD 写入
+AgentHost 只读会话的内容脱敏 JSONL 运行审计和 Codex 子进程父环境白名单；不是完整沙箱候选，
+不代表已完成每会话 `CODEX_HOME`、CPU/运行时/磁盘配额、凭据隔离、审计 ACL/保留策略或 CAD 写入
 终态审计。
 本轮没有启动、关闭或控制 AutoCAD，也没有加载 DLL、保存或修改图纸。
 
@@ -18,7 +18,8 @@ AutoCAD Host.2016
   -> authenticated AgentHost bootstrap
      (unnamed Windows Job Object; kill-on-close + process-count/job-memory limits)
   -> AgentHost Program
-  -> CodexProcessTransport
+  -> CodexChildEnvironmentPolicy
+  -> CodexProcessTransport (clear parent environment + fixed allowlist)
   -> codex app-server --stdio (inherits AgentHost Job membership)
 ```
 
@@ -65,6 +66,12 @@ AutoCAD Host.2016
 - 已接入 `session_started/stopped/failed`、`bridge_connected/disconnected`、请求收发/失败、
   thread/turn 创建、取消请求/已分派、审批请求和 turn 完成/取消/失败。审计容量或写入失败会
   取消并释放认证 Bridge 会话，不会静默丢弃记录后继续运行。
+- 生产 Codex client 强制关闭父环境继承，先清空 `ProcessStartInfo.Environment`，再注入固定 `16`
+  个变量名；`TEMP`/`TMP` 指向 `AgentWorkspace.Temp`，`PATH` 只含批准的 Windows 系统目录。
+  `CODEX_HOME`、token/API key、代理、父 `PATH`、`PSModulePath` 和自定义调试变量均不自动传入。
+- synthetic child 已证明父哨兵不可见、显式允许变量可见、`null` 删除继承值；真实 doctor 与
+  两轮认证 Codex v2 对话继续通过，清理后 AgentHost/app-server 均为 `0`。当前仍使用默认用户
+  Codex home 兼容文件登录，不应写成凭据、MCP 或插件隔离。
 
 ## 已验证
 
@@ -73,14 +80,14 @@ dotnet build src\Codex.AutoCAD.AgentHost\Codex.AutoCAD.AgentHost.csproj --config
 Result: 0 warnings, 0 errors
 
 dotnet run --project tests\Codex.AutoCAD.AppServer.Specs\Codex.AutoCAD.AppServer.Specs.csproj --configuration Release --no-build
-Result: 15/15 specs passed
+Result: 20/20 specs passed
 
 scripts\verify-autocad2016-agent-bootstrap.ps1 -Configuration Release
 Result: isolated net45/net8 builds 0 warnings / 0 errors; net45 30/30; net8 30/30;
 bit-for-bit runnable output match; relevant processes 0 -> 0.
 
 scripts\verify-phase2.ps1 -Configuration Release
-Result: Release 0 warnings / 0 errors; dynamic specs 324/324; Host disabled-API and basic
+Result: Release 0 warnings / 0 errors; dynamic specs 329/329; Host disabled-API and basic
 sensitive-information scans passed; local AgentHost doctor handshake passed.
 ```
 
@@ -94,7 +101,7 @@ sensitive-information scans passed; local AgentHost doctor handshake passed.
 - Codex 路径、工作目录和启动/关闭超时的正式配置已在
   `M4_LOCAL_CODEX_CONFIGURATION_20260723.md` 完成；Codex 兼容版本硬门槛仍未冻结。
 - 每会话独立 `CODEX_HOME`，以及不复制/泄露用户凭据的登录和恢复方案。
-- 空 MCP/插件配置、子进程环境白名单和最小继承策略。
+- 空 MCP/插件配置和独立凭据；父环境白名单已完成，但默认用户 Codex home 仍可被访问。
 - Windows Job Object 的进程数和 Job 总提交内存限制已应用；CPU、运行时和工作目录磁盘配额
   仍未实现，内存/进程数的真实 Codex 耗尽行为也未验证。
 - 受限令牌或 AppContainer。
@@ -106,9 +113,9 @@ sensitive-information scans passed; local AgentHost doctor handshake passed.
 
 ## 下一顺序
 
-1. 配置模型与只允许本地绝对 Codex 可执行文件的预检已完成，保留当前默认登录行为。
-2. 将 Codex 子进程的环境构建为显式白名单；独立 `CODEX_HOME` 需先确定安全登录和凭据边界，
-   不复制用户 profile 中的配置文件作为临时方案。
+1. 配置预检和 Codex 子进程显式环境白名单已完成，当前保留默认用户文件登录行为。
+2. 独立 `CODEX_HOME` 需先迁移到 OS keyring 或受信 token；不复制用户 profile 中的配置或
+   `auth.json` 作为临时方案，并补空 MCP/插件配置。
 3. 已完成 Job Object 进程数/总提交内存限制；继续补 CPU、运行时和工作目录磁盘配额，并以
    真实 Codex、异常退出和僵尸进程矩阵验证。
 4. 将当前只读审计扩展到审批解决和 M5 强类型 CAD 写入终态，并完成审计 ACL、保留、凭据/环境

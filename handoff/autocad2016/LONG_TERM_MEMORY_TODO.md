@@ -299,8 +299,10 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 - [ ] 每会话独立 CODEX_HOME；不得复制、链接或记录全局 Codex profile，需先采用经用户确认且
   经审计的认证恢复方式。见 `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
 - [ ] 默认空 MCP、空插件配置和独立凭据边界；当前未知 Codex 配置布局不能作为假定的复制来源。
-- [ ] 子进程仅继承白名单环境变量；当前仅是父环境覆写，尚非白名单。实施门槛见
-  `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
+- [x] Codex 子进程生产路径先清空父环境，再注入固定 `16` 个变量名；`TEMP`/`TMP` 绑定
+  `AgentWorkspace.Temp`，`PATH` 不复制父值。token/API key、代理、`CODEX_HOME`、`PSModulePath`
+  和自定义变量均不自动继承。synthetic child、真实 doctor、两轮 live 与清理均通过；这不等于
+  每会话凭据隔离。见 `M4_CODEX_CHILD_ENVIRONMENT_ALLOWLIST_20260723.md`。
 - [x] AgentHost 启动链在恢复前创建 `KILL_ON_JOB_CLOSE` 的未命名 Windows Job Object 并分配
   已校验的 AgentHost；普通后代继承该边界。隔离 `bootstrap-serve` 规格已按 PID 验证
   `StopAsync` 和拥有 Job 的启动器直接退出时均回收父/后代，net45/net8 各 `30/30`。真实
@@ -320,7 +322,8 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   文件中记录启动/停止/失败、Bridge 连接、请求、thread/turn、取消、审批请求和 turn 终态；
   每条为固定字段白名单、单调 sequence，默认限制 `10,000` 条/`4 MiB`，审计故障会关闭 Bridge。
   提示词、CAD JSON、路径、命令、环境变量、异常正文、token 和 Provider 原始 payload 不进入
-  记录。自动化验证为 Bridge `44/44`、完整 Phase 2 `324/324`，说明见
+  记录。审计切口冻结时为 Bridge `44/44`、Phase 2 `324/324`；环境白名单加入后完整 Phase 2
+  为 `329/329`，说明见
   `M4_RUNTIME_AUDIT_BASELINE_20260723.md`。
 - [ ] 将审批解决、M5 CAD 提案/执行终态和安全日志导出接入审计；补审计目录最小 ACL、保留/清理、
   哈希链或等价防篡改边界。当前 CAD 写入保持禁用，不能把只读审计基线写成 CAD 操作审计。

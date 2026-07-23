@@ -84,9 +84,12 @@ M4 进程隔离已完成一个不依赖 AutoCAD 实机的小阶段：
   与值，相关进程基线/终态为 `0 -> 0`。
 - AgentHost 只读会话现在强制写入每会话独立的有界 JSONL 审计，覆盖 session、Bridge、请求、
   thread/turn、取消、审批请求和 turn 终态；仅记录受限 ID/方法/稳定状态码，审计故障会关闭
-  Bridge。当前 Bridge 为 `44/44`，完整 Phase 2 为 `324/324`。
+  Bridge。当前 Bridge 为 `44/44`。
+- Codex 子进程现先清空父环境，再使用固定 `16` 个变量名；`TEMP`/`TMP` 指向每会话 workspace，
+  不自动传入 token/API key、代理、父 `PATH`、`CODEX_HOME` 或自定义变量。AppServer 为 `20/20`，
+  完整 Phase 2 为 `329/329`，真实 doctor 和两轮 Codex live 继续通过。
 - 这没有故意耗尽真实 Codex 的进程槽或内存，也没有启动或控制 AutoCAD；CPU、运行时、
-  工作目录磁盘、每会话 `CODEX_HOME`、环境白名单、凭据隔离、审计 ACL/保留、审批解决和 CAD
+  工作目录磁盘、每会话 `CODEX_HOME`、凭据隔离、审计 ACL/保留、审批解决和 CAD
   写入终态仍未完成。
 
 脱敏实机范围证据：
@@ -251,8 +254,8 @@ M1 仍使用 `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 和精确 `0.3.3.0
    候选均完成；等待实机与性能 evidence。
 4. M3：读取对象语义与覆盖的自动化候选已经冻结；中文目录、占位实际类型统计、8 类受限
    索引分类和 API Probe 不等于按精确 `0.4.2.0` 候选取得的实机逐类字段通过。
-5. M4：进程树清理、进程数/总提交内存限制和 AgentHost 只读 JSONL 审计基线已完成；继续
-   配置、凭据/环境边界、其余配额、审计 ACL/保留和 CAD 写入终态。
+5. M4：进程树清理、进程数/总提交内存限制、AgentHost 只读 JSONL 审计和 Codex 子进程父环境
+   白名单已完成；继续每会话 `CODEX_HOME`/凭据、其余配额、审计 ACL/保留和 CAD 写入终态。
 6. M5：AutoCAD 2016 `create_line` 安全写入最小闭环。
 7. 后续阶段见 `LONG_TERM_MEMORY_TODO.md`。
 
@@ -324,6 +327,10 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
   fail-closed 行为、自动化证据和未完成边界。
 - `evidence/m4-agenthost-runtime-audit-20260723.json`：M4 只读运行审计的脱敏结构、门禁结果和
   未实机/未写入边界。
+- `M4_CODEX_CHILD_ENVIRONMENT_ALLOWLIST_20260723.md`：M4 Codex 子进程父环境白名单、变量用途和
+  默认用户登录兼容边界。
+- `evidence/m4-codex-child-environment-allowlist-20260723.json`：M4 环境隔离规格、真实 doctor/live
+  和进程清理的脱敏证据。
 
 ## 11. 支持声明
 
@@ -338,8 +345,8 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
 > 查询，并将 8 类高价值对象接为 `data_limited` 的索引分类；尚未按精确候选 `NETLOAD`
 > 或取得逐类实机字段/降级证据。
 > M4 已为 AgentHost/Codex Job 进程树应用清理边界及默认 `16` 进程/`4 GiB` 总提交内存
-> 限制，并将内容脱敏的只读运行审计接入真实 AgentHost 会话；其余沙箱、凭据、审计保留和
-> CAD 写入终态仍未完成。
+> 限制，将内容脱敏的只读运行审计接入真实 AgentHost 会话，并为 Codex 子进程启用固定父环境
+> 白名单；每会话 `CODEX_HOME`/凭据、其余沙箱、审计保留和 CAD 写入终态仍未完成。
 > 安全 CAD 写入、完整沙箱、长期记忆和发布安装
 > 尚未完成。
 

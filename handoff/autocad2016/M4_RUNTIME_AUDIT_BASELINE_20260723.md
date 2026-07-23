@@ -93,7 +93,7 @@ CRLF 检出字节）。
 
 ## 下一步
 
-1. 继续完成每会话 `CODEX_HOME`、环境白名单、独立凭据和目录 ACL/清理策略。
+1. Codex 子进程父环境白名单已完成；继续完成每会话 `CODEX_HOME`、独立凭据和目录 ACL/清理策略。
 2. 将统一审批解决、CAD proposal/execute/rollback/Undo 终态接入同一固定字段审计。
 3. 增加故障注入、AgentHost/Codex 僵尸进程和日志导出脱敏测试。
 4. 在 M4 前置条件关闭前，不启用 AutoCAD 2016 CAD 写入。
