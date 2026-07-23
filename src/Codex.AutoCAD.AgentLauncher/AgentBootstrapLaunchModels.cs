@@ -39,6 +39,15 @@ public sealed class AgentHostBootstrapOptions
     public const long DefaultMaximumJobMemoryBytes = 4L * 1024 * 1024 * 1024;
     public const long MinimumMaximumJobMemoryBytes = 512L * 1024 * 1024;
     public const long MaximumMaximumJobMemoryBytes = 16L * 1024 * 1024 * 1024;
+    public const int DefaultMaximumCpuRatePercent = 75;
+    public const int MinimumMaximumCpuRatePercent = 1;
+    public const int MaximumMaximumCpuRatePercent = 100;
+    public static readonly TimeSpan DefaultMaximumJobUserTime = TimeSpan.FromHours(8);
+    public static readonly TimeSpan MinimumMaximumJobUserTime = TimeSpan.FromMilliseconds(100);
+    public static readonly TimeSpan MaximumMaximumJobUserTime = TimeSpan.FromDays(7);
+    public static readonly TimeSpan DefaultMaximumSessionRuntime = TimeSpan.FromHours(24);
+    public static readonly TimeSpan MinimumMaximumSessionRuntime = TimeSpan.FromSeconds(1);
+    public static readonly TimeSpan MaximumMaximumSessionRuntime = TimeSpan.FromDays(7);
 
     public AgentHostBootstrapOptions(
         string agentHostExecutablePath,
@@ -63,6 +72,17 @@ public sealed class AgentHostBootstrapOptions
 
     /// <summary>Total committed memory allowed for the complete AgentHost/Codex Job Object.</summary>
     public long MaximumJobMemoryBytes { get; set; } = DefaultMaximumJobMemoryBytes;
+
+    /// <summary>Aggregate hard CPU-rate cap for the complete AgentHost/Codex Job Object.</summary>
+    public int MaximumCpuRatePercent { get; set; } = DefaultMaximumCpuRatePercent;
+
+    /// <summary>
+    /// Aggregate user-mode CPU time allowed for the Job. This is not elapsed wall-clock time.
+    /// </summary>
+    public TimeSpan MaximumJobUserTime { get; set; } = DefaultMaximumJobUserTime;
+
+    /// <summary>Elapsed runtime allowed after an authenticated AgentHost service session starts.</summary>
+    public TimeSpan MaximumSessionRuntime { get; set; } = DefaultMaximumSessionRuntime;
 
     internal TimeSpan GetValidatedStartupTimeout()
     {
@@ -116,6 +136,7 @@ public sealed class AgentHostBootstrapOptions
         }
 
         GetValidatedProcessTreeLimits();
+        GetValidatedSessionRuntime();
 
         var expectedSha256 = NormalizeSha256(ExpectedExecutableSha256);
         return new AgentHostExecutableIdentity(fullPath, expectedSha256);
@@ -142,9 +163,49 @@ public sealed class AgentHostBootstrapOptions
                 "AgentHost process-tree memory limit is outside the supported range for this process architecture.");
         }
 
+        if (MaximumCpuRatePercent < MinimumMaximumCpuRatePercent
+            || MaximumCpuRatePercent > MaximumMaximumCpuRatePercent)
+        {
+            throw Invalid(
+                "AgentHost process-tree CPU-rate limit must be between "
+                + MinimumMaximumCpuRatePercent.ToString(CultureInfo.InvariantCulture)
+                + " and "
+                + MaximumMaximumCpuRatePercent.ToString(CultureInfo.InvariantCulture)
+                + " percent.");
+        }
+
+        if (MaximumJobUserTime < MinimumMaximumJobUserTime
+            || MaximumJobUserTime > MaximumMaximumJobUserTime)
+        {
+            throw Invalid(
+                "AgentHost process-tree user-time limit must be between "
+                + MinimumMaximumJobUserTime.TotalMilliseconds.ToString(CultureInfo.InvariantCulture)
+                + " milliseconds and "
+                + MaximumMaximumJobUserTime.TotalDays.ToString(CultureInfo.InvariantCulture)
+                + " days.");
+        }
+
         return new AgentHostProcessTreeLimits(
             MaximumActiveProcesses,
-            MaximumJobMemoryBytes);
+            MaximumJobMemoryBytes,
+            MaximumCpuRatePercent,
+            MaximumJobUserTime);
+    }
+
+    internal TimeSpan GetValidatedSessionRuntime()
+    {
+        if (MaximumSessionRuntime < MinimumMaximumSessionRuntime
+            || MaximumSessionRuntime > MaximumMaximumSessionRuntime)
+        {
+            throw Invalid(
+                "AgentHost service runtime limit must be between "
+                + MinimumMaximumSessionRuntime.TotalSeconds.ToString(CultureInfo.InvariantCulture)
+                + " second and "
+                + MaximumMaximumSessionRuntime.TotalDays.ToString(CultureInfo.InvariantCulture)
+                + " days.");
+        }
+
+        return MaximumSessionRuntime;
     }
 
     private static DriveType GetDriveType(string path)
@@ -213,15 +274,23 @@ internal sealed class AgentHostProcessTreeLimits
 {
     internal AgentHostProcessTreeLimits(
         int maximumActiveProcesses,
-        long maximumJobMemoryBytes)
+        long maximumJobMemoryBytes,
+        int maximumCpuRatePercent,
+        TimeSpan maximumJobUserTime)
     {
         MaximumActiveProcesses = maximumActiveProcesses;
         MaximumJobMemoryBytes = maximumJobMemoryBytes;
+        MaximumCpuRatePercent = maximumCpuRatePercent;
+        MaximumJobUserTime = maximumJobUserTime;
     }
 
     internal int MaximumActiveProcesses { get; }
 
     internal long MaximumJobMemoryBytes { get; }
+
+    internal int MaximumCpuRatePercent { get; }
+
+    internal TimeSpan MaximumJobUserTime { get; }
 }
 
 internal sealed class AgentHostExecutableIdentity

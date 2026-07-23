@@ -110,6 +110,25 @@ internal static class FakeAgentHostProgram
                 Thread.Sleep(Timeout.Infinite);
                 return 99;
             }
+            if (mode == "serveburn")
+            {
+                if (!serve)
+                {
+                    throw new ArgumentException("serveburn fake mode requires bootstrap-serve.");
+                }
+
+                confirmationOutput.Dispose();
+                var burn = 1L;
+                while (true)
+                {
+                    for (var index = 0; index < 1000000; index++)
+                    {
+                        burn = unchecked((burn * 6364136223846793005L) + 1442695040888963407L);
+                    }
+
+                    Interlocked.Exchange(ref CpuBurnSink, burn);
+                }
+            }
             if (mode == "trailing")
             {
                 confirmationOutput.WriteByte(0x7f);
@@ -136,6 +155,8 @@ internal static class FakeAgentHostProgram
             Array.Clear(bootstrapId, 0, bootstrapId.Length);
         }
     }
+
+    private static long CpuBurnSink;
 
     private static string GetMode()
     {

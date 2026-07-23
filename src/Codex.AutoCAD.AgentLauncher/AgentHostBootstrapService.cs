@@ -102,6 +102,7 @@ public static class AgentHostBootstrapService
 
         var executableIdentity = options.GetValidatedExecutableIdentity();
         var processTreeLimits = options.GetValidatedProcessTreeLimits();
+        var maximumSessionRuntime = options.GetValidatedSessionRuntime();
         controller.Checkpoint();
         var sessionId = CreateRandomIdentifier();
         var pipeName = PipeNamePrefix + CreateRandomIdentifier();
@@ -233,7 +234,8 @@ public static class AgentHostBootstrapService
                         child,
                         hostKeys,
                         standardErrorTask,
-                        result);
+                        result,
+                        maximumSessionRuntime);
                     child = null;
                     hostKeys = null;
                     standardErrorTask = null;
@@ -422,12 +424,15 @@ public static class AgentHostBootstrapService
 public sealed class AgentHostServiceSession : IDisposable
 {
     private const int TerminationWaitMilliseconds = 5000;
+    private const int RuntimeDeadlineCleanupAttempts = 2;
     private static readonly TimeSpan StandardErrorDrainTimeout = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan RuntimeDeadlineRetryDelay = TimeSpan.FromMilliseconds(100);
 
     private readonly object _sync = new object();
     private readonly Func<int, bool> _terminateAndWait;
     private readonly Func<Exception?> _abortIo;
     private readonly Action _disposeProcess;
+    private Timer? _runtimeDeadlineTimer;
     private AgentBootstrapDirectionKeys? _directionKeys;
     private Task<AgentHostStandardErrorCapture>? _standardErrorTask;
     private Task? _stopTask;
@@ -439,12 +444,14 @@ public sealed class AgentHostServiceSession : IDisposable
     private bool _processDisposed;
     private int _standardErrorBytes;
     private bool _standardErrorTruncated;
+    private int _runtimeExpired;
 
     internal AgentHostServiceSession(
         WindowsInheritedBootstrapProcess child,
         AgentBootstrapDirectionKeys directionKeys,
         Task<AgentHostStandardErrorCapture> standardErrorTask,
-        AgentBootstrapDoctorResult result)
+        AgentBootstrapDoctorResult result,
+        TimeSpan maximumSessionRuntime)
     {
         if (child == null)
         {
@@ -468,6 +475,7 @@ public sealed class AgentHostServiceSession : IDisposable
         SessionId = result.SessionId;
         PipeName = result.PipeName;
         ExecutableSha256 = result.ExecutableSha256;
+        StartRuntimeDeadline(maximumSessionRuntime);
     }
 
     internal AgentHostServiceSession(
@@ -495,6 +503,23 @@ public sealed class AgentHostServiceSession : IDisposable
         SessionId = result.SessionId;
         PipeName = result.PipeName;
         ExecutableSha256 = result.ExecutableSha256;
+    }
+
+    internal AgentHostServiceSession(
+        Func<int, bool> terminateAndWait,
+        Func<Exception?> abortIo,
+        Action disposeProcess,
+        Task<AgentHostStandardErrorCapture> standardErrorTask,
+        AgentBootstrapDoctorResult result,
+        TimeSpan maximumSessionRuntime)
+        : this(
+            terminateAndWait,
+            abortIo,
+            disposeProcess,
+            standardErrorTask,
+            result)
+    {
+        StartRuntimeDeadline(maximumSessionRuntime);
     }
 
     public int ProcessId { get; }
@@ -529,6 +554,11 @@ public sealed class AgentHostServiceSession : IDisposable
                 return _standardErrorTruncated;
             }
         }
+    }
+
+    public bool RuntimeExpired
+    {
+        get { return Volatile.Read(ref _runtimeExpired) != 0; }
     }
 
     public AgentBootstrapDirectionKeys ClaimDirectionKeys()
@@ -581,6 +611,9 @@ public sealed class AgentHostServiceSession : IDisposable
             }
 
             _stopping = true;
+            var runtimeDeadlineTimer = _runtimeDeadlineTimer;
+            _runtimeDeadlineTimer = null;
+            runtimeDeadlineTimer?.Dispose();
             var directionKeys = _directionKeys;
             _directionKeys = null;
             var completion = new TaskCompletionSource<bool>();
@@ -794,6 +827,84 @@ public sealed class AgentHostServiceSession : IDisposable
                 ? failures[0]
                 : new AggregateException(failures));
         return failure;
+    }
+
+    private void StartRuntimeDeadline(TimeSpan maximumSessionRuntime)
+    {
+        if (maximumSessionRuntime <= TimeSpan.Zero
+            || maximumSessionRuntime > AgentHostBootstrapOptions.MaximumMaximumSessionRuntime)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumSessionRuntime));
+        }
+
+        _runtimeDeadlineTimer = new Timer(
+            OnRuntimeDeadline,
+            null,
+            maximumSessionRuntime,
+            Timeout.InfiniteTimeSpan);
+    }
+
+    private void OnRuntimeDeadline(object? state)
+    {
+        lock (_sync)
+        {
+            if (_stopping
+                || _runtimeDeadlineTimer == null
+                || _runtimeExpired != 0)
+            {
+                return;
+            }
+
+            Volatile.Write(ref _runtimeExpired, 1);
+            var runtimeDeadlineTimer = _runtimeDeadlineTimer;
+            _runtimeDeadlineTimer = null;
+            runtimeDeadlineTimer.Dispose();
+        }
+
+        var cleanupTask = CompleteRuntimeDeadlineCleanupAsync();
+        cleanupTask.ContinueWith(
+            completed =>
+            {
+                var ignored = completed.Exception;
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private async Task CompleteRuntimeDeadlineCleanupAsync()
+    {
+        AgentBootstrapLaunchException? lastFailure = null;
+        for (var attempt = 0; attempt < RuntimeDeadlineCleanupAttempts; attempt++)
+        {
+            try
+            {
+                await GetOrStartStopTask().ConfigureAwait(false);
+                return;
+            }
+            catch (AgentBootstrapLaunchException exception)
+            {
+                lastFailure = exception;
+            }
+            catch (Exception exception)
+            {
+                lastFailure = new AgentBootstrapLaunchException(
+                    AgentBootstrapLaunchFailure.ChildTerminationFailed,
+                    "AgentHost runtime deadline cleanup failed.",
+                    exception);
+            }
+
+            if (attempt + 1 < RuntimeDeadlineCleanupAttempts)
+            {
+                await Task.Delay(RuntimeDeadlineRetryDelay).ConfigureAwait(false);
+            }
+        }
+
+        AgentBootstrapLateFailureRegistry.Record(
+            new AgentBootstrapLaunchException(
+                AgentBootstrapLaunchFailure.ChildTerminationFailed,
+                "AgentHost runtime deadline could not prove complete cleanup after retry.",
+                lastFailure));
     }
 
     private static async Task AwaitWithCancellationAsync(

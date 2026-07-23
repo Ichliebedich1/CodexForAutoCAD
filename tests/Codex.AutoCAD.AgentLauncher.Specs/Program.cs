@@ -20,8 +20,12 @@ try
     {
         new SpecCase("REAL_AGENTHOST_SUCCESS", "真实AgentHost完成认证bootstrap doctor且无残留", () => RealAgentHostSucceeds(arguments.AgentHostPath)),
         new SpecCase("REAL_AGENTHOST_REPEAT_5", "连续五次真实引导均成功且无残留", () => RepeatedRealAgentHostSucceeds(arguments.AgentHostPath)),
-        new SpecCase("JOB_RESOURCE_LIMITS_APPLIED", "Job Object应用进程数与总内存硬限制", ProcessTreeResourceLimitsAreApplied),
-        new SpecCase("JOB_RESOURCE_LIMITS_INVALID", "无效进程数与内存限制在启动前失败关闭", ProcessTreeResourceLimitsFailClosed),
+        new SpecCase("JOB_RESOURCE_LIMITS_APPLIED", "Job Object应用进程数、内存、CPU与累计用户时间硬限制", ProcessTreeResourceLimitsAreApplied),
+        new SpecCase("JOB_RESOURCE_LIMITS_INVALID", "无效进程树与会话运行限制在启动前失败关闭", ProcessTreeResourceLimitsFailClosed),
+        new SpecCase("JOB_USER_TIME_TERMINATES_TREE", "累计Job用户时间耗尽会终止忙碌进程树", () => JobUserTimeTerminatesBusyTree(fixture)),
+        new SpecCase("SESSION_RUNTIME_TERMINATES_TREE", "会话墙钟截止会终止AgentHost进程树", () => SessionRuntimeTerminatesTree(fixture)),
+        new SpecCase("SESSION_RUNTIME_RETRIES_CLEANUP", "会话墙钟截止首次清理失败后自动重试", SessionRuntimeRetriesCleanup),
+        new SpecCase("SESSION_STOP_PREVENTS_RUNTIME_EXPIRY", "显式停止完成后会话墙钟状态不得反转", SessionStopPreventsRuntimeExpiry),
         new SpecCase("SERVICE_STOP_KILLS_PROCESS_TREE", "停止服务会回收AgentHost及其受监管后代进程", () => ServiceStopKillsProcessTree(fixture)),
         new SpecCase("OWNER_EXIT_KILLS_PROCESS_TREE", "拥有Job的启动器退出会回收AgentHost及其受监管后代进程", () => JobOwnerExitKillsProcessTree(fixture)),
         new SpecCase("INVALID_EXECUTABLE_PATHS", "相对路径、真实非EXE与缺失文件均失败关闭", () => InvalidExecutablePathsFailClosed(fixture)),
@@ -47,7 +51,10 @@ try
         new SpecCase("SERVICE_STOP_RETRY_DOES_NOT_POISON_START", "显式STOP失败重试成功后不会永久阻断下一次启动", ServiceStopRetryDoesNotPoisonStart),
         new SpecCase("SERVICE_DISPOSE_FAILURE_CAN_RETRY", "service Dispose失败后再次Dispose继续剩余清理", ServiceDisposeFailureCanRetry),
         new SpecCase("SERVICE_STOP_CONCURRENT_CALLERS", "并发service STOP共享同一个有界终止尝试", ServiceStopConcurrentCallers),
-        new SpecCase("SERVICE_STOP_CONCURRENT_FAILURE_SHARED", "并发service STOP共享同一失败尝试并在其后重试", ServiceStopConcurrentFailureShared)
+        new SpecCase("SERVICE_STOP_CONCURRENT_FAILURE_SHARED", "并发service STOP共享同一失败尝试并在其后重试", ServiceStopConcurrentFailureShared),
+        // This process-wide poison assertion must remain last. A failed cleanup intentionally
+        // prevents every later launch in the same process.
+        new SpecCase("SESSION_RUNTIME_FAILURE_POISONS_START", "会话墙钟清理连续失败后阻断后续启动", () => SessionRuntimeCleanupFailurePoisonsStart(fixture))
     };
 
     var failed = 0;
@@ -102,6 +109,8 @@ static void ProcessTreeResourceLimitsAreApplied()
 {
     const int processLimit = 7;
     const long memoryLimit = 768L * 1024 * 1024;
+    const int cpuRatePercent = 37;
+    var jobUserTime = TimeSpan.FromMinutes(2);
     var defaults = new AgentHostBootstrapOptions("relative.exe", new string('0', 64))
         .GetValidatedProcessTreeLimits();
     Equal(
@@ -110,13 +119,29 @@ static void ProcessTreeResourceLimitsAreApplied()
     Equal(
         AgentHostBootstrapOptions.DefaultMaximumJobMemoryBytes,
         defaults.MaximumJobMemoryBytes);
+    Equal(
+        AgentHostBootstrapOptions.DefaultMaximumCpuRatePercent,
+        defaults.MaximumCpuRatePercent);
+    Equal(
+        AgentHostBootstrapOptions.DefaultMaximumJobUserTime,
+        defaults.MaximumJobUserTime);
+    Equal(
+        AgentHostBootstrapOptions.DefaultMaximumSessionRuntime,
+        new AgentHostBootstrapOptions("relative.exe", new string('0', 64))
+            .GetValidatedSessionRuntime());
 
     using (var job = WindowsProcessTreeJob.CreateKillOnClose(
-               new AgentHostProcessTreeLimits(processLimit, memoryLimit)))
+               new AgentHostProcessTreeLimits(
+                   processLimit,
+                   memoryLimit,
+                   cpuRatePercent,
+                   jobUserTime)))
     {
         var applied = job.QueryLimits();
         Equal(processLimit, applied.MaximumActiveProcesses);
         Equal(memoryLimit, applied.MaximumJobMemoryBytes);
+        Equal(jobUserTime, applied.MaximumJobUserTime);
+        Equal(cpuRatePercent * 100, applied.CpuRateBasisPoints);
         True(
             (applied.LimitFlags & WindowsNative.JobObjectLimitKillOnJobClose) != 0,
             "KILL_ON_JOB_CLOSE was not applied.");
@@ -126,6 +151,15 @@ static void ProcessTreeResourceLimitsAreApplied()
         True(
             (applied.LimitFlags & WindowsNative.JobObjectLimitJobMemory) != 0,
             "JOB_MEMORY was not applied.");
+        True(
+            (applied.LimitFlags & WindowsNative.JobObjectLimitJobTime) != 0,
+            "JOB_TIME was not applied.");
+        True(
+            (applied.CpuControlFlags & WindowsNative.JobObjectCpuRateControlEnable) != 0,
+            "CPU rate control was not enabled.");
+        True(
+            (applied.CpuControlFlags & WindowsNative.JobObjectCpuRateControlHardCap) != 0,
+            "CPU hard cap was not applied.");
     }
 }
 
@@ -157,6 +191,210 @@ static void ProcessTreeResourceLimitsFailClosed()
     ExpectFailure(
         AgentBootstrapLaunchFailure.InvalidConfiguration,
         () => options.GetValidatedProcessTreeLimits());
+
+    options.MaximumJobMemoryBytes = AgentHostBootstrapOptions.DefaultMaximumJobMemoryBytes;
+    options.MaximumCpuRatePercent =
+        AgentHostBootstrapOptions.MinimumMaximumCpuRatePercent - 1;
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => options.GetValidatedProcessTreeLimits());
+
+    options.MaximumCpuRatePercent =
+        AgentHostBootstrapOptions.MaximumMaximumCpuRatePercent + 1;
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => options.GetValidatedProcessTreeLimits());
+
+    options.MaximumCpuRatePercent = AgentHostBootstrapOptions.DefaultMaximumCpuRatePercent;
+    options.MaximumJobUserTime =
+        AgentHostBootstrapOptions.MinimumMaximumJobUserTime - TimeSpan.FromTicks(1);
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => options.GetValidatedProcessTreeLimits());
+
+    options.MaximumJobUserTime =
+        AgentHostBootstrapOptions.MaximumMaximumJobUserTime + TimeSpan.FromTicks(1);
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => options.GetValidatedProcessTreeLimits());
+
+    options.MaximumJobUserTime = AgentHostBootstrapOptions.DefaultMaximumJobUserTime;
+    options.MaximumSessionRuntime =
+        AgentHostBootstrapOptions.MinimumMaximumSessionRuntime - TimeSpan.FromTicks(1);
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => options.GetValidatedSessionRuntime());
+
+    options.MaximumSessionRuntime =
+        AgentHostBootstrapOptions.MaximumMaximumSessionRuntime + TimeSpan.FromTicks(1);
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => options.GetValidatedSessionRuntime());
+}
+
+static void JobUserTimeTerminatesBusyTree(FakeAgentHostFixture fixture)
+{
+    AgentHostServiceSession? session = null;
+    try
+    {
+        var options = CreateOptions(fixture.CreateMode("serveburn"));
+        options.MaximumCpuRatePercent = 100;
+        options.MaximumJobUserTime = TimeSpan.FromSeconds(1);
+        options.MaximumSessionRuntime = TimeSpan.FromSeconds(15);
+        session = AgentHostBootstrapService.StartAsync(options, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+
+        WaitForProcessToExit(session.ProcessId, TimeSpan.FromSeconds(10));
+        True(!session.RuntimeExpired, "The wall-clock deadline fired before the Job user-time limit.");
+        session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+        session.Dispose();
+        session = null;
+    }
+    finally
+    {
+        session?.Dispose();
+    }
+}
+
+static void SessionRuntimeTerminatesTree(FakeAgentHostFixture fixture)
+{
+    AgentHostServiceSession? session = null;
+    try
+    {
+        var options = CreateOptions(fixture.CreateMode("servewall"));
+        options.MaximumJobUserTime = TimeSpan.FromHours(1);
+        options.MaximumSessionRuntime = TimeSpan.FromSeconds(1);
+        session = AgentHostBootstrapService.StartAsync(options, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+
+        WaitForProcessToExit(session.ProcessId, TimeSpan.FromSeconds(5));
+        WaitForCondition(
+            () => session.RuntimeExpired,
+            TimeSpan.FromSeconds(1),
+            "The service process exited without publishing the wall-clock deadline state.");
+        session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+        session.Dispose();
+        session = null;
+    }
+    finally
+    {
+        session?.Dispose();
+    }
+}
+
+static void SessionRuntimeRetriesCleanup()
+{
+    var terminateCount = 0;
+    var abortIoCount = 0;
+    var disposeCount = 0;
+    var session = new AgentHostServiceSession(
+        _ => Interlocked.Increment(ref terminateCount) > 1,
+        () =>
+        {
+            Interlocked.Increment(ref abortIoCount);
+            return null;
+        },
+        () => Interlocked.Increment(ref disposeCount),
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateServiceResult(),
+        TimeSpan.FromSeconds(1));
+    try
+    {
+        WaitForCondition(
+            () => Volatile.Read(ref terminateCount) >= 2,
+            TimeSpan.FromSeconds(5),
+            "The runtime deadline did not retry failed termination.");
+        session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+        True(session.RuntimeExpired, "The session did not retain its runtime-expired state.");
+        Equal(2, Volatile.Read(ref terminateCount));
+        Equal(1, Volatile.Read(ref abortIoCount));
+        Equal(1, Volatile.Read(ref disposeCount));
+    }
+    finally
+    {
+        session.Dispose();
+    }
+}
+
+static void SessionStopPreventsRuntimeExpiry()
+{
+    var terminateCount = 0;
+    var abortIoCount = 0;
+    var disposeCount = 0;
+    var session = new AgentHostServiceSession(
+        _ =>
+        {
+            Interlocked.Increment(ref terminateCount);
+            return true;
+        },
+        () =>
+        {
+            Interlocked.Increment(ref abortIoCount);
+            return null;
+        },
+        () => Interlocked.Increment(ref disposeCount),
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateServiceResult(),
+        TimeSpan.FromMilliseconds(250));
+    try
+    {
+        session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+        Thread.Sleep(500);
+        True(!session.RuntimeExpired, "A cancelled runtime deadline reversed the stopped state.");
+        Equal(1, Volatile.Read(ref terminateCount));
+        Equal(1, Volatile.Read(ref abortIoCount));
+        Equal(1, Volatile.Read(ref disposeCount));
+    }
+    finally
+    {
+        session.Dispose();
+    }
+}
+
+static void SessionRuntimeCleanupFailurePoisonsStart(FakeAgentHostFixture fixture)
+{
+    var terminateCount = 0;
+    var session = new AgentHostServiceSession(
+        _ =>
+        {
+            Interlocked.Increment(ref terminateCount);
+            return false;
+        },
+        () => null,
+        () => { },
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateServiceResult(),
+        TimeSpan.FromSeconds(1));
+
+    WaitForCondition(
+        () =>
+        {
+            try
+            {
+                AgentBootstrapLateFailureRegistry.ThrowIfPoisoned();
+                return false;
+            }
+            catch (AgentBootstrapLaunchException exception)
+            {
+                return exception.Failure == AgentBootstrapLaunchFailure.ChildTerminationFailed;
+            }
+        },
+        TimeSpan.FromSeconds(5),
+        "The runtime deadline did not poison later launches after two cleanup failures.");
+
+    True(session.RuntimeExpired, "The failed cleanup did not retain its runtime-expired state.");
+    Equal(2, Volatile.Read(ref terminateCount));
+    var fakePath = fixture.CreateMode("success");
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.ChildTerminationFailed,
+        () => AgentHostBootstrapService.StartAsync(
+                CreateOptions(fakePath),
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult());
+    ProcessNameMustBeGone(fakePath);
 }
 
 static void ServiceStopKillsProcessTree(FakeAgentHostFixture fixture)
@@ -235,6 +473,8 @@ static void JobOwnerExitKillsProcessTree(FakeAgentHostFixture fixture)
         "CodexAgentLauncherAgentHost-" + unique + ".txt");
     var descendantProcessId = 0;
     var agentHostProcessId = 0;
+    var descendantExitVerified = false;
+    var agentHostExitVerified = false;
     try
     {
         using (var owner = StartJobOwnerHelper(
@@ -256,12 +496,20 @@ static void JobOwnerExitKillsProcessTree(FakeAgentHostFixture fixture)
         descendantProcessId = ReadProcessIdFile(descendantProcessIdPath);
         agentHostProcessId = ReadProcessIdFile(agentHostProcessIdPath);
         WaitForProcessToExit(agentHostProcessId, TimeSpan.FromSeconds(3));
+        agentHostExitVerified = true;
         WaitForProcessToExit(descendantProcessId, TimeSpan.FromSeconds(3));
+        descendantExitVerified = true;
     }
     finally
     {
-        KillFixtureProcessIfStillRunning(agentHostProcessId, agentHostExecutable);
-        KillFixtureProcessIfStillRunning(descendantProcessId, descendantExecutable);
+        if (!agentHostExitVerified)
+        {
+            KillFixtureProcessIfStillRunning(agentHostProcessId, agentHostExecutable);
+        }
+        if (!descendantExitVerified)
+        {
+            KillFixtureProcessIfStillRunning(descendantProcessId, descendantExecutable);
+        }
         DeleteFileIfPresent(descendantProcessIdPath);
         DeleteFileIfPresent(agentHostProcessIdPath);
     }
@@ -321,18 +569,14 @@ static Process StartJobOwnerHelper(
         "--descendant-process-id-path", QuoteCommandLineArgument(descendantProcessIdPath),
         "--agenthost-process-id-path", QuoteCommandLineArgument(agentHostProcessIdPath),
     });
+    var usesDotNetHost = string.Equals(
+        Path.GetFileNameWithoutExtension(hostExecutable),
+        "dotnet",
+        StringComparison.OrdinalIgnoreCase);
     var startInfo = new ProcessStartInfo
     {
-        FileName = string.Equals(
-            Path.GetExtension(entryAssemblyPath),
-            ".dll",
-            StringComparison.OrdinalIgnoreCase)
-            ? hostExecutable
-            : entryAssemblyPath,
-        Arguments = string.Equals(
-            Path.GetExtension(entryAssemblyPath),
-            ".dll",
-            StringComparison.OrdinalIgnoreCase)
+        FileName = hostExecutable,
+        Arguments = usesDotNetHost
             ? QuoteCommandLineArgument(entryAssemblyPath) + " " + arguments
             : arguments,
         UseShellExecute = false,
@@ -1110,8 +1354,32 @@ static void WaitForProcessToExit(int processId, TimeSpan timeout)
         "Expected process did not exit inside the process-tree Job cleanup deadline: " + processId + ".");
 }
 
+static void WaitForCondition(Func<bool> condition, TimeSpan timeout, string failureMessage)
+{
+    var stopwatch = Stopwatch.StartNew();
+    do
+    {
+        if (condition())
+        {
+            return;
+        }
+
+        Thread.Sleep(25);
+    } while (stopwatch.Elapsed < timeout);
+
+    if (!condition())
+    {
+        throw new InvalidOperationException(failureMessage);
+    }
+}
+
 static void KillFixtureProcessIfStillRunning(int processId, string executablePath)
 {
+    if (processId <= 0)
+    {
+        return;
+    }
+
     try
     {
         using (var process = Process.GetProcessById(processId))
