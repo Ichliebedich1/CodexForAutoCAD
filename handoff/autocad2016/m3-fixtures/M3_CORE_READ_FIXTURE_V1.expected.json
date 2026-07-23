@@ -1,0 +1,113 @@
+{
+  "schema": "codex.autocad.m3-core-read-fixture/1",
+  "fixtureId": "autocad2016-m3-core-read-fixture-v1",
+  "generatorVersion": "1.0.0",
+  "dxfVersion": "AC1015",
+  "expectedEntityRecordCount": 14,
+  "expectedDxfBytes": 4540,
+  "expectedDxfSha256": "b393ab1b7b5ca9a8731a08a22aabe0ae64db421821c2e8eaab7406fa68f97f0a",
+  "entities": [
+    {
+      "dxfType": "LINE",
+      "layer": "M3_CORE",
+      "hostType": "Line",
+      "variant": "line",
+      "polylineFlags": 0
+    },
+    {
+      "dxfType": "CIRCLE",
+      "layer": "M3_CORE",
+      "hostType": "Circle",
+      "variant": "circle",
+      "polylineFlags": 0
+    },
+    {
+      "dxfType": "ARC",
+      "layer": "M3_CORE",
+      "hostType": "Arc",
+      "variant": "arc",
+      "polylineFlags": 0
+    },
+    {
+      "dxfType": "ELLIPSE",
+      "layer": "M3_CORE",
+      "hostType": "Ellipse",
+      "variant": "ellipse",
+      "polylineFlags": 0
+    },
+    {
+      "dxfType": "SPLINE",
+      "layer": "M3_CORE",
+      "hostType": "Spline",
+      "variant": "spline",
+      "polylineFlags": 0
+    },
+    {
+      "dxfType": "POINT",
+      "layer": "M3_CORE",
+      "hostType": "DBPoint",
+      "variant": "point",
+      "polylineFlags": 0
+    },
+    {
+      "dxfType": "RAY",
+      "layer": "M3_CORE",
+      "hostType": "Ray",
+      "variant": "ray",
+      "polylineFlags": 0
+    },
+    {
+      "dxfType": "XLINE",
+      "layer": "M3_CORE",
+      "hostType": "Xline",
+      "variant": "xline",
+      "polylineFlags": 0
+    },
+    {
+      "dxfType": "LWPOLYLINE",
+      "layer": "M3_CORE",
+      "hostType": "Polyline",
+      "variant": "lightweight-polyline",
+      "polylineFlags": 0
+    },
+    {
+      "dxfType": "TEXT",
+      "layer": "M3_CORE",
+      "hostType": "DBText",
+      "variant": "dbtext",
+      "polylineFlags": 0
+    },
+    {
+      "dxfType": "MTEXT",
+      "layer": "M3_CORE",
+      "hostType": "MText",
+      "variant": "mtext",
+      "polylineFlags": 0
+    },
+    {
+      "dxfType": "INSERT",
+      "layer": "M3_CORE",
+      "hostType": "BlockReference",
+      "variant": "attributed-nested-block",
+      "polylineFlags": 0
+    },
+    {
+      "dxfType": "POLYLINE",
+      "layer": "M3_LEGACY",
+      "hostType": "Polyline2d",
+      "variant": "legacy-2d-polyline",
+      "polylineFlags": 1
+    },
+    {
+      "dxfType": "POLYLINE",
+      "layer": "M3_LEGACY",
+      "hostType": "Polyline3d",
+      "variant": "legacy-3d-polyline",
+      "polylineFlags": 8
+    }
+  ],
+  "limitations": [
+    "Dimension, Hatch, Leader, MLeader, and Table require separate manual AutoCAD fixtures.",
+    "Generation does not imply AutoCAD load or field verification."
+  ]
+}
