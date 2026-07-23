@@ -20,6 +20,8 @@ try
     {
         new SpecCase("REAL_AGENTHOST_SUCCESS", "真实AgentHost完成认证bootstrap doctor且无残留", () => RealAgentHostSucceeds(arguments.AgentHostPath)),
         new SpecCase("REAL_AGENTHOST_REPEAT_5", "连续五次真实引导均成功且无残留", () => RepeatedRealAgentHostSucceeds(arguments.AgentHostPath)),
+        new SpecCase("JOB_RESOURCE_LIMITS_APPLIED", "Job Object应用进程数与总内存硬限制", ProcessTreeResourceLimitsAreApplied),
+        new SpecCase("JOB_RESOURCE_LIMITS_INVALID", "无效进程数与内存限制在启动前失败关闭", ProcessTreeResourceLimitsFailClosed),
         new SpecCase("SERVICE_STOP_KILLS_PROCESS_TREE", "停止服务会回收AgentHost及其受监管后代进程", () => ServiceStopKillsProcessTree(fixture)),
         new SpecCase("OWNER_EXIT_KILLS_PROCESS_TREE", "拥有Job的启动器退出会回收AgentHost及其受监管后代进程", () => JobOwnerExitKillsProcessTree(fixture)),
         new SpecCase("INVALID_EXECUTABLE_PATHS", "相对路径、真实非EXE与缺失文件均失败关闭", () => InvalidExecutablePathsFailClosed(fixture)),
@@ -94,6 +96,67 @@ static void RepeatedRealAgentHostSucceeds(string agentHostPath)
     {
         RealAgentHostSucceeds(agentHostPath);
     }
+}
+
+static void ProcessTreeResourceLimitsAreApplied()
+{
+    const int processLimit = 7;
+    const long memoryLimit = 768L * 1024 * 1024;
+    var defaults = new AgentHostBootstrapOptions("relative.exe", new string('0', 64))
+        .GetValidatedProcessTreeLimits();
+    Equal(
+        AgentHostBootstrapOptions.DefaultMaximumActiveProcesses,
+        defaults.MaximumActiveProcesses);
+    Equal(
+        AgentHostBootstrapOptions.DefaultMaximumJobMemoryBytes,
+        defaults.MaximumJobMemoryBytes);
+
+    using (var job = WindowsProcessTreeJob.CreateKillOnClose(
+               new AgentHostProcessTreeLimits(processLimit, memoryLimit)))
+    {
+        var applied = job.QueryLimits();
+        Equal(processLimit, applied.MaximumActiveProcesses);
+        Equal(memoryLimit, applied.MaximumJobMemoryBytes);
+        True(
+            (applied.LimitFlags & WindowsNative.JobObjectLimitKillOnJobClose) != 0,
+            "KILL_ON_JOB_CLOSE was not applied.");
+        True(
+            (applied.LimitFlags & WindowsNative.JobObjectLimitActiveProcess) != 0,
+            "ACTIVE_PROCESS was not applied.");
+        True(
+            (applied.LimitFlags & WindowsNative.JobObjectLimitJobMemory) != 0,
+            "JOB_MEMORY was not applied.");
+    }
+}
+
+static void ProcessTreeResourceLimitsFailClosed()
+{
+    var options = new AgentHostBootstrapOptions("relative.exe", new string('0', 64));
+
+    options.MaximumActiveProcesses =
+        AgentHostBootstrapOptions.MinimumMaximumActiveProcesses - 1;
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => options.GetValidatedProcessTreeLimits());
+
+    options.MaximumActiveProcesses =
+        AgentHostBootstrapOptions.MaximumMaximumActiveProcesses + 1;
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => options.GetValidatedProcessTreeLimits());
+
+    options.MaximumActiveProcesses = AgentHostBootstrapOptions.DefaultMaximumActiveProcesses;
+    options.MaximumJobMemoryBytes =
+        AgentHostBootstrapOptions.MinimumMaximumJobMemoryBytes - 1;
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => options.GetValidatedProcessTreeLimits());
+
+    options.MaximumJobMemoryBytes =
+        AgentHostBootstrapOptions.MaximumMaximumJobMemoryBytes + 1;
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => options.GetValidatedProcessTreeLimits());
 }
 
 static void ServiceStopKillsProcessTree(FakeAgentHostFixture fixture)

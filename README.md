@@ -51,6 +51,11 @@
   为 `29 passed / 8 expected failed`；R20.1/net45/x64 Host A/B 输出逐字节一致，当前 Host
   SHA-256 为 `B5081C63DD11BD36706B529EC28C58BB1DEA22FEF6D50BA0E76C5E3E4CE67879`，Autodesk DLL
   复制数为 `0`。这些结果已写入候选 manifest 和脱敏 evidence，但仍不是 AutoCAD 实机证据。
+- M4 已在真实 AgentHost 启动链的未命名 Windows Job Object 上应用进程树硬限制：默认最多
+  `16` 个进程、Job 总提交内存最多 `4 GiB`，并保留 `KILL_ON_JOB_CLOSE`。非法值在进程创建
+  前 fail-closed；net45/net8 AgentLauncher Specs 各 `30/30`，Windows 已读回相同限制标志
+  与值。该结果没有故意耗尽真实 Codex 配额，也不代表 CPU、运行时、磁盘、凭据或环境隔离
+  已完成。
 - 显式 CAD 上下文清除和文档激活清除旧缓存通过；CAD 写入和插件保存仍禁用。
 - P0 停止生命周期已有独立实机证据：重复 STOP、DBMOD 不变和 AgentHost 残留为零。
 - M1 已实现 Bridge 断线 fail-closed、结构化脱敏错误、request_id/唯一终态、幂等取消、
@@ -115,7 +120,9 @@ fixture `6/6` 和 R20.1 API 双 Shell Probe `29 passed / 8 expected failed`；�
 5. M2 的实机/性能证据仍待完成；M3 的只读对象语义候选已经冻结，但尚未按精确哈希
    `NETLOAD`，不替代 M2 验收。M3 中文目录和字段核对模板见
    `handoff/autocad2016/M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
-6. 完成 M3 后关闭 M4 沙箱审计，随后才启用 AutoCAD 2016 强类型安全写入。
+6. 实机测试暂缓期间继续收口不依赖 AutoCAD 的 M4 沙箱审计；进程树清理和进程数/内存
+   限制已完成，CPU/运行时/磁盘、凭据/环境边界与结构化审计仍待完成。M4 完成前不启用
+   AutoCAD 2016 强类型安全写入。
 7. 随后完成长期记忆、安装签名、企业部署和 AutoCAD 2025 适配。
 
 完整阶段与完成定义见 `handoff/autocad2016/LONG_TERM_MEMORY_TODO.md`。

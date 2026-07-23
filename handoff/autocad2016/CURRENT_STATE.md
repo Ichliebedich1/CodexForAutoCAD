@@ -232,25 +232,32 @@ NETLOAD 证据的能力一律视为未支持。
 - M4 第一诊断边界已在独立 `codex/m4-process-config` 分支完成：Codex App Server stderr
   不再以原文进入事件、退出异常或 AgentHost 控制台，改为有界 `bytes`/`truncated` 摘要；
   退出事件会等待该无内容摘要形成而不阻塞进程事件线程；normal doctor 也不再回显工作目录
-  或 `CODEX_HOME`。该分支尚未冻结候选，环境白名单、
-  独立凭据、资源配额和完整审计仍未完成，不能据此宣称完整 OS 沙箱。
+  或 `CODEX_HOME`。该分支尚未冻结候选，环境白名单、独立凭据和完整审计仍未完成，不能
+  据此宣称完整 OS 沙箱。
 - M4 第二启动配置边界已接入 AgentHost：`--codex`、`CODEX_EXECUTABLE`、已知 npm 安装布局和
   绝对 PATH 候选会被归一化为固定本地磁盘的绝对 `codex.exe`；显式无效配置 fail-closed，且
   doctor 仅显示来源标签、不显示路径。启动/关闭超时和工作目录同样进入该配置。版本兼容硬门槛、
-  每会话 `CODEX_HOME`、环境白名单、资源配额与审计仍未完成，详见
+  每会话 `CODEX_HOME`、环境白名单与审计仍未完成，详见
   `M4_LOCAL_CODEX_CONFIGURATION_20260723.md` 与
   `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
 - M4 第三进程树边界已接入真实 AgentHost 启动链：校验后的 AgentHost 会在恢复前进入具有
   `KILL_ON_JOB_CLOSE` 的未命名 Windows Job Object；普通后代由该 Job 统一回收。隔离
   bootstrap-serve 规格以真实 PID 验证 `StopAsync` 和拥有 Job 的启动器不调用停止逻辑直接
-  退出后，父/后代均消失，net45/net8 各 `28/28`；这不替代真实 Codex 或 AutoCAD 异常退出
-  矩阵，也不包含资源限制。
-- 冻结构建哈希：AgentHost EXE `002BBA9D...49706`，AgentHost DLL
-  `852BD92C...86033`，net45 Launcher `597D99E8...F849`，net8 Launcher
-  `84E0E2A7...1FE9`；完整值保存在阶段 evidence。
-- Phase 2 回归为 Release `0` warning / `0` error、七个既有 Specs `145/145`、
-  AgentHost doctor、Host 禁止 API、秘密扫描和 diff 通过；认证兼容回归在两个 PowerShell
-  下均保持 Bridge `29/29`、net45/net8 `35/35` 和固定向量一致。
+  退出后，父/后代均消失。
+- M4 第四资源限制边界在同一 Job 上增加 `ACTIVE_PROCESS` 与 `JOB_MEMORY`：默认最多 `16`
+  个进程、Job 总提交内存最多 `4 GiB`，允许范围分别为 `2..64` 与 `512 MiB..16 GiB`。
+  非法配置在创建子进程前 fail-closed；同一 Job 工厂通过 `QueryInformationJobObject`
+  读回 Windows 实际接受的标志和值。AgentLauncher net45/net8 均为 `30/30`，专用门禁
+  双构建 `0/0`、相关进程 `0 -> 0`。脱敏证据为
+  `evidence/m4-agenthost-job-resource-limits-20260723.json`。这不替代真实 Codex 配额耗尽、
+  AutoCAD 异常退出、CPU/运行时/磁盘配额或完整 M4 沙箱验收。
+- 当前资源限制证据的构建哈希：AgentHost EXE `B31015B2...233B8`，AgentHost DLL
+  `801C6BF0...60EA`，net45 Launcher `B88DDC8F...975B`，net8 Launcher
+  `6619D54F...9F69`；完整值保存在阶段 evidence，其文件 SHA-256 为
+  `A6E22226423B2339EFE46034500D491E46829B651BDA9885B6F55194498AD8DD`。
+- Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 动态汇总 `319/319`、
+  AgentHost doctor、Host 禁止 API、秘密扫描和 diff 通过；认证固定向量与现有 Bridge/IPC
+  回归保持通过。
 - 本检查点未启动、重启或操作 AutoCAD。它不证明长运行 `IAgentBridgeClient`、Host.2016
   live handshake、外部进程复制句柄的对抗性、刻意替换 EXE 的 suspended-launch TOCTOU
   动态攻击、CAD 审批/写入或完整 AutoCAD 2016 支持。
@@ -493,8 +500,8 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
 5. M2-A 图纸索引、M2-B `cad.query_drawing`、三档 fixture、性能遥测和脱敏记录器已完成并
    冻结 `0.4.0.0` 候选；等待实机/性能 evidence 后冻结验收预算。
 6. M2 实机/性能 evidence 仍是 M2 完成前提；M3 的只读对象语义候选已冻结但仍待实机字段
-   evidence，不替代 M2 验收，也不启用 CAD 写入。随后关闭 M4 沙箱与审计；M4 完成前不启用
-   M5 CAD 写入。
+   evidence，不替代 M2 验收，也不启用 CAD 写入。实机测试暂缓期间继续收口不依赖 AutoCAD
+   的 M4 沙箱与审计；M4 完成前不启用 M5 CAD 写入。
 
 ## 更新纪律
 

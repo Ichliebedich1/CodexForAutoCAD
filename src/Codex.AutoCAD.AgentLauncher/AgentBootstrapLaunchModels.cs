@@ -33,6 +33,12 @@ public sealed class AgentHostBootstrapOptions
 {
     public static readonly TimeSpan DefaultStartupTimeout = TimeSpan.FromSeconds(10);
     public static readonly TimeSpan MaximumStartupTimeout = TimeSpan.FromMinutes(1);
+    public const int DefaultMaximumActiveProcesses = 16;
+    public const int MinimumMaximumActiveProcesses = 2;
+    public const int MaximumMaximumActiveProcesses = 64;
+    public const long DefaultMaximumJobMemoryBytes = 4L * 1024 * 1024 * 1024;
+    public const long MinimumMaximumJobMemoryBytes = 512L * 1024 * 1024;
+    public const long MaximumMaximumJobMemoryBytes = 16L * 1024 * 1024 * 1024;
 
     public AgentHostBootstrapOptions(
         string agentHostExecutablePath,
@@ -49,6 +55,14 @@ public sealed class AgentHostBootstrapOptions
     public TimeSpan StartupTimeout { get; set; } = DefaultStartupTimeout;
 
     public int MaximumStandardErrorBytes { get; set; } = 16 * 1024;
+
+    /// <summary>
+    /// Maximum number of processes in the AgentHost/Codex Job Object, including AgentHost itself.
+    /// </summary>
+    public int MaximumActiveProcesses { get; set; } = DefaultMaximumActiveProcesses;
+
+    /// <summary>Total committed memory allowed for the complete AgentHost/Codex Job Object.</summary>
+    public long MaximumJobMemoryBytes { get; set; } = DefaultMaximumJobMemoryBytes;
 
     internal TimeSpan GetValidatedStartupTimeout()
     {
@@ -101,8 +115,36 @@ public sealed class AgentHostBootstrapOptions
             throw Invalid("AgentHost stderr capture limit must be between 0 and 1048576 bytes.");
         }
 
+        GetValidatedProcessTreeLimits();
+
         var expectedSha256 = NormalizeSha256(ExpectedExecutableSha256);
         return new AgentHostExecutableIdentity(fullPath, expectedSha256);
+    }
+
+    internal AgentHostProcessTreeLimits GetValidatedProcessTreeLimits()
+    {
+        if (MaximumActiveProcesses < MinimumMaximumActiveProcesses
+            || MaximumActiveProcesses > MaximumMaximumActiveProcesses)
+        {
+            throw Invalid(
+                "AgentHost process-tree limit must be between "
+                + MinimumMaximumActiveProcesses.ToString(CultureInfo.InvariantCulture)
+                + " and "
+                + MaximumMaximumActiveProcesses.ToString(CultureInfo.InvariantCulture)
+                + " processes.");
+        }
+
+        if (MaximumJobMemoryBytes < MinimumMaximumJobMemoryBytes
+            || MaximumJobMemoryBytes > MaximumMaximumJobMemoryBytes
+            || (IntPtr.Size == 4 && MaximumJobMemoryBytes > uint.MaxValue))
+        {
+            throw Invalid(
+                "AgentHost process-tree memory limit is outside the supported range for this process architecture.");
+        }
+
+        return new AgentHostProcessTreeLimits(
+            MaximumActiveProcesses,
+            MaximumJobMemoryBytes);
     }
 
     private static DriveType GetDriveType(string path)
@@ -165,6 +207,21 @@ public sealed class AgentHostBootstrapOptions
             AgentBootstrapLaunchFailure.InvalidConfiguration,
             message);
     }
+}
+
+internal sealed class AgentHostProcessTreeLimits
+{
+    internal AgentHostProcessTreeLimits(
+        int maximumActiveProcesses,
+        long maximumJobMemoryBytes)
+    {
+        MaximumActiveProcesses = maximumActiveProcesses;
+        MaximumJobMemoryBytes = maximumJobMemoryBytes;
+    }
+
+    internal int MaximumActiveProcesses { get; }
+
+    internal long MaximumJobMemoryBytes { get; }
 }
 
 internal sealed class AgentHostExecutableIdentity

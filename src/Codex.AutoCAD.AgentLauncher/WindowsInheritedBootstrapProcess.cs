@@ -221,19 +221,26 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
 
     internal static WindowsInheritedBootstrapProcess Start(
         AgentHostExecutableIdentity executableIdentity,
+        AgentHostProcessTreeLimits processTreeLimits,
         Action throwIfLaunchAborted)
     {
         return Start(
             executableIdentity,
             AgentHostBootstrapCommand.Doctor,
+            processTreeLimits,
             throwIfLaunchAborted);
     }
 
     internal static WindowsInheritedBootstrapProcess Start(
         AgentHostExecutableIdentity executableIdentity,
         AgentHostBootstrapCommand command,
+        AgentHostProcessTreeLimits processTreeLimits,
         Action throwIfLaunchAborted)
     {
+        if (processTreeLimits == null)
+        {
+            throw new ArgumentNullException(nameof(processTreeLimits));
+        }
         if (throwIfLaunchAborted == null)
         {
             throw new ArgumentNullException(nameof(throwIfLaunchAborted));
@@ -377,7 +384,7 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
             }
             throwIfLaunchAborted();
 
-            processTreeJob = WindowsProcessTreeJob.CreateKillOnClose();
+            processTreeJob = WindowsProcessTreeJob.CreateKillOnClose(processTreeLimits);
             processTreeJob.Assign(processHandle);
             throwIfLaunchAborted();
 
@@ -817,8 +824,14 @@ internal sealed class WindowsProcessTreeJob : IDisposable
         this.handle = handle;
     }
 
-    internal static WindowsProcessTreeJob CreateKillOnClose()
+    internal static WindowsProcessTreeJob CreateKillOnClose(
+        AgentHostProcessTreeLimits processTreeLimits)
     {
+        if (processTreeLimits == null)
+        {
+            throw new ArgumentNullException(nameof(processTreeLimits));
+        }
+
         var rawHandle = WindowsNative.CreateJobObject(IntPtr.Zero, null);
         var safeHandle = new SafeKernelHandle(rawHandle, true);
         if (safeHandle.IsInvalid)
@@ -834,7 +847,13 @@ internal sealed class WindowsProcessTreeJob : IDisposable
         try
         {
             var limits = new WindowsNative.JobObjectExtendedLimitInformation();
-            limits.BasicLimitInformation.LimitFlags = WindowsNative.JobObjectLimitKillOnJobClose;
+            limits.BasicLimitInformation.LimitFlags =
+                WindowsNative.JobObjectLimitKillOnJobClose
+                | WindowsNative.JobObjectLimitActiveProcess
+                | WindowsNative.JobObjectLimitJobMemory;
+            limits.BasicLimitInformation.ActiveProcessLimit =
+                checked((uint)processTreeLimits.MaximumActiveProcesses);
+            limits.JobMemoryLimit = ToUIntPtr(processTreeLimits.MaximumJobMemoryBytes);
             if (!WindowsNative.SetInformationJobObject(
                     safeHandle,
                     WindowsNative.JobObjectExtendedLimitInformationClass,
@@ -856,6 +875,29 @@ internal sealed class WindowsProcessTreeJob : IDisposable
                 "Configuring the AgentHost process-tree job failed.",
                 exception);
         }
+    }
+
+    internal AgentHostProcessTreeLimitSnapshot QueryLimits()
+    {
+        ThrowIfDisposed();
+        var limits = new WindowsNative.JobObjectExtendedLimitInformation();
+        uint returnedLength;
+        if (!WindowsNative.QueryInformationJobObject(
+                handle,
+                WindowsNative.JobObjectExtendedLimitInformationClass,
+                ref limits,
+                checked((uint)Marshal.SizeOf(typeof(WindowsNative.JobObjectExtendedLimitInformation))),
+                out returnedLength))
+        {
+            throw new Win32Exception(
+                Marshal.GetLastWin32Error(),
+                "Querying the AgentHost process-tree job limits failed.");
+        }
+
+        return new AgentHostProcessTreeLimitSnapshot(
+            limits.BasicLimitInformation.LimitFlags,
+            checked((int)limits.BasicLimitInformation.ActiveProcessLimit),
+            checked((long)limits.JobMemoryLimit.ToUInt64()));
     }
 
     internal void Assign(SafeKernelHandle process)
@@ -893,6 +935,37 @@ internal sealed class WindowsProcessTreeJob : IDisposable
             throw new ObjectDisposedException(nameof(WindowsProcessTreeJob));
         }
     }
+
+    private static UIntPtr ToUIntPtr(long value)
+    {
+        if (value <= 0 || (IntPtr.Size == 4 && value > uint.MaxValue))
+        {
+            throw new ArgumentOutOfRangeException(nameof(value));
+        }
+
+        return IntPtr.Size == 4
+            ? new UIntPtr(checked((uint)value))
+            : new UIntPtr(checked((ulong)value));
+    }
+}
+
+internal sealed class AgentHostProcessTreeLimitSnapshot
+{
+    internal AgentHostProcessTreeLimitSnapshot(
+        uint limitFlags,
+        int maximumActiveProcesses,
+        long maximumJobMemoryBytes)
+    {
+        LimitFlags = limitFlags;
+        MaximumActiveProcesses = maximumActiveProcesses;
+        MaximumJobMemoryBytes = maximumJobMemoryBytes;
+    }
+
+    internal uint LimitFlags { get; }
+
+    internal int MaximumActiveProcesses { get; }
+
+    internal long MaximumJobMemoryBytes { get; }
 }
 
 internal static class WindowsNative
@@ -904,6 +977,8 @@ internal static class WindowsNative
     internal const uint CreateSuspended = 0x00000004;
     internal const uint StartfUseStdHandles = 0x00000100;
     internal const uint JobObjectLimitKillOnJobClose = 0x00002000;
+    internal const uint JobObjectLimitActiveProcess = 0x00000008;
+    internal const uint JobObjectLimitJobMemory = 0x00000200;
     internal const int ProcThreadAttributeHandleList = 0x00020002;
     internal const int JobObjectExtendedLimitInformationClass = 9;
     internal const int StandardInputHandle = -10;
@@ -1069,6 +1144,15 @@ internal static class WindowsNative
         int jobObjectInformationClass,
         ref JobObjectExtendedLimitInformation jobObjectInformation,
         uint jobObjectInformationLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool QueryInformationJobObject(
+        SafeKernelHandle job,
+        int jobObjectInformationClass,
+        ref JobObjectExtendedLimitInformation jobObjectInformation,
+        uint jobObjectInformationLength,
+        out uint returnLength);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

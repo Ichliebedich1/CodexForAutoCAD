@@ -74,6 +74,17 @@ M3 `0.4.2.0` 的读取语义纵切已冻结自动化候选，但尚未人工 `NE
 - M3 另有离线验证 `6/6` 的 AC1015 核心 DXF fixture，涵盖 14 个可直接编码的基础/旧式实体变体。
   它不是 AutoCAD 实机通过证据，Dimension、Hatch、Leader、MLeader 和 Table 仍需专用脱敏测试图。
 
+M4 进程隔离已完成一个不依赖 AutoCAD 实机的小阶段：
+
+- 校验后的 AgentHost 在恢复前进入未命名 Windows Job Object；正常 STOP 或 Job 拥有者退出
+  会回收 AgentHost 及其普通后代。
+- 同一 Job 保留 `KILL_ON_JOB_CLOSE`，并默认限制进程树最多 `16` 个进程、Job 总提交内存
+  最多 `4 GiB`；非法配置在创建子进程前 fail-closed。
+- net45/net8 AgentLauncher Specs 各 `30/30`；Windows 已读回同一 Job 工厂设置的实际标志
+  与值，相关进程基线/终态为 `0 -> 0`。
+- 这没有故意耗尽真实 Codex 的进程槽或内存，也没有启动或控制 AutoCAD；CPU、运行时、
+  工作目录磁盘、每会话 `CODEX_HOME`、环境白名单、凭据隔离和结构化审计仍未完成。
+
 脱敏实机范围证据：
 `evidence/cad-context-v2-live-observation-20260722.json`。
 
@@ -85,7 +96,8 @@ M3 `0.4.2.0` 的读取语义纵切已冻结自动化候选，但尚未人工 `NE
 - 当前选择快照仍最多 64 个实体、canonical JSON 最多 256 KiB；大图走独立索引。
 - M3 精确候选尚未完成 19 类对象、`blockDetails`、复杂对象和高价值受限读取的实机字段核对。
 - AutoCAD 正常退出、125%/150% DPI 和故障矩阵尚未完成。
-- CAD 写入、完整 OS 沙箱、长期记忆、签名安装和企业部署尚未完成。
+- CAD 写入、完整 OS 沙箱、长期记忆、签名安装和企业部署尚未完成；现有 Job 资源限制只是
+  M4 的一个已验证小阶段。
 
 ## 2. 当前候选身份
 
@@ -235,7 +247,7 @@ M1 仍使用 `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 和精确 `0.3.3.0
    候选均完成；等待实机与性能 evidence。
 4. M3：读取对象语义与覆盖的自动化候选已经冻结；中文目录、占位实际类型统计、8 类受限
    索引分类和 API Probe 不等于按精确 `0.4.2.0` 候选取得的实机逐类字段通过。
-5. M4：进程沙箱、配置和审计基础。
+5. M4：进程树清理和进程数/总提交内存限制已完成；继续配置、凭据/环境边界、其余配额和审计。
 6. M5：AutoCAD 2016 `create_line` 安全写入最小闭环。
 7. 后续阶段见 `LONG_TERM_MEMORY_TODO.md`。
 
@@ -301,6 +313,8 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
   M2 自动化冻结、候选身份和未实机边界。
 - `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v042-b5081c63-e3dbe955-0b06bcf7.json`：
   M3 自动化冻结、候选身份和未实机边界。
+- `evidence/m4-agenthost-job-resource-limits-20260723.json`：M4 AgentHost Job 进程树清理、
+  进程数/总提交内存限制、双运行时 Specs 和未实机边界。
 
 ## 11. 支持声明
 
@@ -314,6 +328,8 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
 > M3 `0.4.2.0` 已将受限块属性、动态块、嵌套块、布局和安全 Xref 元数据接入整图只读
 > 查询，并将 8 类高价值对象接为 `data_limited` 的索引分类；尚未按精确候选 `NETLOAD`
 > 或取得逐类实机字段/降级证据。
+> M4 已为 AgentHost/Codex Job 进程树应用清理边界及默认 `16` 进程/`4 GiB` 总提交内存
+> 限制；其余沙箱、凭据和审计工作仍未完成。
 > 安全 CAD 写入、完整沙箱、长期记忆和发布安装
 > 尚未完成。
 
