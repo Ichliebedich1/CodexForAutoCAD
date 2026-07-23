@@ -3,7 +3,10 @@ param(
     [ValidateSet('Release')]
     [string] $Configuration = 'Release',
 
-    [string] $AutoCad2016Dir = 'D:\AutoCAD 2016'
+    [string] $AutoCad2016Dir = 'D:\AutoCAD 2016',
+
+    [ValidateSet('M2', 'M3')]
+    [string] $CandidateStage = 'M2'
 )
 
 Set-StrictMode -Version Latest
@@ -14,12 +17,37 @@ $dotnet = (Get-Command dotnet -ErrorAction Stop).Source
 $git = (Get-Command git -ErrorAction Stop).Source
 $powerShell = (Get-Process -Id $PID).Path
 $runId = [Guid]::NewGuid().ToString('N')
-$stageRoot = Join-Path $repoRoot ('artifacts\autocad2016-m2-drawing-index-' + $runId)
+$candidateProfile = if ($CandidateStage -ceq 'M2') {
+    [pscustomobject]@{
+        Title = 'M2 DrawingIndex'
+        ArtifactPrefix = 'autocad2016-m2-drawing-index'
+        CandidatePrefix = 'autocad2016-m2-drawing-index-v040'
+        ExpectedHostVersion = '0.4.0.0'
+        EvidenceScope = 'autocad2016-m2-drawing-index-candidate-build'
+        EvidencePrefix = 'm2-drawing-index-candidate-'
+        ContractsSpecs = '84/84'
+        UsesM3ApiProbe = $false
+    }
+}
+else {
+    [pscustomobject]@{
+        Title = 'M3 CAD 读取语义'
+        ArtifactPrefix = 'autocad2016-m3-read-semantics'
+        CandidatePrefix = 'autocad2016-m3-read-semantics-v041'
+        ExpectedHostVersion = '0.4.1.0'
+        EvidenceScope = 'autocad2016-m3-read-semantics-candidate-build'
+        EvidencePrefix = 'm3-read-semantics-candidate-'
+        ContractsSpecs = '86/86'
+        UsesM3ApiProbe = $true
+    }
+}
+$stageRoot = Join-Path $repoRoot ('artifacts\' + $candidateProfile.ArtifactPrefix + '-' + $runId)
 $packageRoot = Join-Path $stageRoot 'packages'
 $publishRoot = Join-Path $stageRoot 'agenthost-publish'
 $net45ReferencePath = Join-Path $packageRoot 'microsoft.netframework.referenceassemblies.net45\1.0.3\build\.NETFramework\v4.5'
 $phase2Script = Join-Path $repoRoot 'scripts\verify-phase2.ps1'
 $benchmarkScript = Join-Path $repoRoot 'scripts\verify-autocad2016-drawing-index-benchmarks.ps1'
+$m3ApiProbeStageScript = Join-Path $repoRoot 'scripts\verify-autocad2016-v2-api-surface-stage.ps1'
 $benchmarkManifestPath = Join-Path $repoRoot 'handoff\autocad2016\benchmark-fixtures\DRAWING_INDEX_BENCHMARKS_V1.expected.json'
 $hostProject = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\Codex.AutoCAD.Host.2016.csproj'
 $nugetConfig = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\NuGet.Config'
@@ -139,7 +167,7 @@ function Get-HostCompileSources([string] $ProjectPath) {
     return $sources
 }
 
-function Assert-M2ReadOnlySource([string[]] $SourceFiles) {
+function Assert-DrawingIndexReadOnlySource([string[]] $SourceFiles) {
     $forbidden = [ordered]@{
         'CAD ForWrite' = '(?i)\bOpenMode\s*\.\s*ForWrite\b'
         'CAD mutation' = '(?i)\.\s*(?:UpgradeOpen|DowngradeOpen|AppendEntity|AddNewlyCreatedDBObject|Erase|WblockCloneObjects|DeepCloneObjects|TransformBy)\s*\('
@@ -157,12 +185,12 @@ function Assert-M2ReadOnlySource([string[]] $SourceFiles) {
         }
     )
     if ($findings.Count -ne 0) {
-        throw "M2 Host.2016 只读源码扫描失败：$($findings | ConvertTo-Json -Compress)"
+        throw "DrawingIndex Host.2016 只读源码扫描失败：$($findings | ConvertTo-Json -Compress)"
     }
 
     $lockMatches = @(Select-String -LiteralPath $SourceFiles -Pattern '(?i)\.\s*LockDocument\s*\(')
     if ($lockMatches.Count -ne 2) {
-        throw "M2 必须且只能包含两处 DocumentLock，实际：$($lockMatches.Count)。"
+        throw "DrawingIndex 候选必须且只能包含两处 DocumentLock，实际：$($lockMatches.Count)。"
     }
     foreach ($match in $lockMatches) {
         if ([IO.Path]::GetFileName($match.Path) -cne 'DrawingIndexRuntime.cs') {
@@ -270,28 +298,95 @@ function Assert-M2ReadOnlySource([string[]] $SourceFiles) {
         'Codex 动态查询工具尚未接入')) {
         if ($commandsText.IndexOf($staleDeclaration, [StringComparison]::Ordinal) -ge 0 -or
             $extensionText.IndexOf($staleDeclaration, [StringComparison]::Ordinal) -ge 0) {
-            throw "M2-B 已接入，但 Host 仍包含过期诊断声明：$staleDeclaration"
+            throw "Drawing-query 已接入，但 Host 仍包含过期诊断声明：$staleDeclaration"
         }
     }
     foreach ($required in @(
         'Codex drawing-query tool: authenticated AgentHost Bridge; manual Agent start',
-        'DrawingIndex v1/CadQuery v1 通过认证 AgentHost Bridge')) {
+        'DrawingIndex: codex.autocad.drawing-index/1; Idle-chunked read-only scan',
+        'CadQuery: codex.autocad.cad-query/1; cursor pagination')) {
         if ($commandsText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
-            throw "Host 诊断缺少 M2-B 已接入声明：$required"
+            throw "Host 诊断缺少 drawing-query 已接入声明：$required"
         }
     }
-    if ($extensionText.IndexOf('手动启动的 Codex 通过认证 Bridge 按需分页查询', [StringComparison]::Ordinal) -lt 0) {
-        throw 'Host 加载横幅缺少 M2-B 已接入声明。'
+    if ($extensionText.IndexOf('DrawingIndexRuntime.Initialize();', [StringComparison]::Ordinal) -lt 0) {
+        throw 'Host 扩展入口缺少 DrawingIndex 初始化。'
     }
     foreach ($command in @('CODEX16INDEX','CODEX16INDEXINFO','CODEX16INDEXCANCEL','CODEX16QUERY','CODEX16QUERYNEXT')) {
         $count = [regex]::Matches($commandsText, 'CommandMethod\("' + [regex]::Escape($command) + '"').Count
         if ($count -ne 1) {
-            throw "M2 命令必须精确声明一次：$command，实际：$count。"
+            throw "DrawingIndex 命令必须精确声明一次：$command，实际：$count。"
         }
     }
 }
 
-foreach ($path in @(
+function Assert-M3ReadSemantics([string[]] $SourceFiles) {
+    $typeStatisticsPath = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\CadReadTypeStatistics.cs'
+    if ($SourceFiles -notcontains $typeStatisticsPath) {
+        throw 'M3 Host.2016 Compile 闭包缺少 CadReadTypeStatistics.cs。'
+    }
+    $typeStatisticsText = Get-Content -LiteralPath $typeStatisticsPath -Raw -Encoding UTF8
+    foreach ($required in @(
+        'MaximumCountBuckets',
+        'FromSelection',
+        'FormatActualTypeCounts',
+        'BuildSupportedTypeCatalog',
+        '当前 19 类强类型读取对象：')) {
+        if ($typeStatisticsText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "CadReadTypeStatistics 缺少 M3 受审要素：$required"
+        }
+    }
+    $catalogCount = [regex]::Matches($typeStatisticsText, 'AppendCatalogEntry\(builder,').Count
+    if ($catalogCount -ne 19) {
+        throw "M3 中文对象目录必须精确包含 19 项，实际：$catalogCount。"
+    }
+
+    $readerPath = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\DrawingIndexEntityReader.cs'
+    $readerText = Get-Content -LiteralPath $readerPath -Raw -Encoding UTF8
+    foreach ($required in @(
+        'ReadBlockDetails',
+        'ReadAttributeDetails',
+        'ReadDynamicPropertyDetails',
+        'ReadNestedBlockDetails',
+        'IsFromExternalReference',
+        'IsFromOverlayReference',
+        'HasAttributeDefinitions',
+        'DynamicBlockReferencePropertyCollection')) {
+        if ($readerText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "DrawingIndexEntityReader 缺少 M3 块详情要素：$required"
+        }
+    }
+    if ($readerText -match '(?i)\b(?:PathName|XrefPath|ExternalReferencePath)\b') {
+        throw 'M3 块详情读取禁止引用外部 Xref 路径字段。'
+    }
+
+    $commandsText = Get-Content -LiteralPath (Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\CodexCad2016Commands.cs') -Raw -Encoding UTF8
+    if ([regex]::Matches($commandsText, 'CommandMethod\("CODEX16TYPEINFO"').Count -ne 1 -or
+        $commandsText.IndexOf('CadReadTypeStatistics.BuildSupportedTypeCatalog()', [StringComparison]::Ordinal) -lt 0) {
+        throw 'M3 CODEX16TYPEINFO 必须精确声明一次并连接中文对象目录。'
+    }
+
+    $contractsText = Get-Content -LiteralPath (Join-Path $repoRoot 'src\Codex.AutoCAD.Contracts\DrawingIndexContracts.cs') -Raw -Encoding UTF8
+    $bridgeCodecText = Get-Content -LiteralPath (Join-Path $repoRoot 'src\Codex.AutoCAD.Bridge.Client\BridgeClientJsonCodec.cs') -Raw -Encoding UTF8
+    $agentToolText = Get-Content -LiteralPath (Join-Path $repoRoot 'src\Codex.AutoCAD.AgentRuntime\IAgentCadDrawingQueryBroker.cs') -Raw -Encoding UTF8
+    foreach ($required in @('CadQueryBlockDetails', 'CadQueryBlockDetailsCloner', 'public static CadQueryBlockDetails? Clone(', 'MaximumBlockAttributes')) {
+        if ($contractsText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "M3 Contracts 缺少 blockDetails 边界：$required"
+        }
+    }
+    foreach ($required in @('BlockDetails = ToWire', 'DataMember(Name = "blockDetails"')) {
+        if ($bridgeCodecText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "M3 Bridge Codec 缺少 blockDetails 传输边界：$required"
+        }
+    }
+    foreach ($required in @('CadDrawingQueryToolBlockDetailsWire', 'JsonPropertyName("blockDetails")')) {
+        if ($agentToolText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "M3 Agent 工具缺少 blockDetails 传输边界：$required"
+        }
+    }
+}
+
+$requiredPaths = @(
     $AutoCad2016Dir,
     (Join-Path $AutoCad2016Dir 'acad.exe'),
     (Join-Path $AutoCad2016Dir 'accoremgd.dll'),
@@ -300,7 +395,11 @@ foreach ($path in @(
     $phase2Script,
     $hostProject,
     $nugetConfig,
-    $assemblyInfoPath)) {
+    $assemblyInfoPath)
+if ($candidateProfile.UsesM3ApiProbe) {
+    $requiredPaths += $m3ApiProbeStageScript
+}
+foreach ($path in $requiredPaths) {
     if (-not (Test-Path -LiteralPath $path)) {
         throw "缺少必要路径：$path"
     }
@@ -330,12 +429,15 @@ if (-not $versionMatch.Success -or -not $fileVersionMatch.Success -or
     throw 'Host.2016 AssemblyVersion 与 AssemblyFileVersion 必须存在且完全一致。'
 }
 $hostVersion = $versionMatch.Groups['Version'].Value
-if ($hostVersion -cne '0.4.0.0') {
-    throw "M2 DrawingIndex 候选必须为 0.4.0.0，实际：$hostVersion"
+if ($hostVersion -cne $candidateProfile.ExpectedHostVersion) {
+    throw "$($candidateProfile.Title) 候选必须为 $($candidateProfile.ExpectedHostVersion)，实际：$hostVersion"
 }
 
 $sourceFiles = Get-HostCompileSources $hostProject
-Assert-M2ReadOnlySource $sourceFiles
+Assert-DrawingIndexReadOnlySource $sourceFiles
+if ($candidateProfile.UsesM3ApiProbe) {
+    Assert-M3ReadSemantics $sourceFiles
+}
 
 $lockSnapshots = [ordered]@{}
 foreach ($lockFile in @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src') -Recurse -File -Filter 'packages.lock.json')) {
@@ -354,7 +456,7 @@ try {
         '-NoProfile',
         '-File', $phase2Script,
         '-Configuration', $Configuration
-    ) 'M2 Phase 2 动态门禁'
+    ) ($candidateProfile.Title + ' Phase 2 动态门禁')
 
     $phase2Summary = @(
         foreach ($line in $phase2Output) {
@@ -371,7 +473,7 @@ try {
     $benchmarkOutput = Invoke-CapturedOutput $powerShell @(
         '-NoProfile',
         '-File', $benchmarkScript
-    ) 'M2 1k/10k/50k benchmark fixture 门禁'
+    ) ($candidateProfile.Title + ' 1k/10k/50k benchmark fixture 门禁')
     $benchmarkSummary = @(
         foreach ($line in $benchmarkOutput) {
             $match = [regex]::Match($line, 'benchmark fixture checks passed: (?<Passed>\d+)/(?<Total>\d+)')
@@ -384,6 +486,43 @@ try {
         throw 'Benchmark fixture 输出缺少全部通过的动态门禁摘要。'
     }
     $benchmarkManifest = Get-Content -LiteralPath $benchmarkManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+
+    $m3ApiProbeSummary = $null
+    if ($candidateProfile.UsesM3ApiProbe) {
+        $m3ApiProbeEvidenceDirectory = Join-Path $stageRoot 'm3-api-probe-evidence'
+        [void](Invoke-CapturedOutput $powerShell @(
+            '-NoProfile',
+            '-File', $m3ApiProbeStageScript,
+            '-AutoCad2016Dir', $AutoCad2016Dir,
+            '-Configuration', $Configuration,
+            '-EvidenceDirectory', $m3ApiProbeEvidenceDirectory
+        ) ($candidateProfile.Title + ' R20.1 API 双 Shell Probe'))
+
+        $m3ApiProbeEvidencePath = Join-Path $m3ApiProbeEvidenceDirectory 'v2-api-surface-probe-m3-cross-shell-20260723.json'
+        if (-not (Test-Path -LiteralPath $m3ApiProbeEvidencePath -PathType Leaf)) {
+            throw 'M3 API Probe 未产生聚合 evidence。'
+        }
+        $m3ApiProbeEvidence = Get-Content -LiteralPath $m3ApiProbeEvidencePath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ([string] $m3ApiProbeEvidence.status -cne 'dual-shell-gate-passed' -or
+            [int] $m3ApiProbeEvidence.runtimeChecksPassed -ne 29 -or
+            [int] $m3ApiProbeEvidence.runtimeChecksFailed -ne 8 -or
+            -not [bool] $m3ApiProbeEvidence.crossShellNormalizedIdentical -or
+            -not [bool] $m3ApiProbeEvidence.crossShellDllSha256Identical -or
+            [int] $m3ApiProbeEvidence.autodeskDllsInOutput -ne 0 -or
+            [bool] $m3ApiProbeEvidence.autoCadStartedOrRestarted -or
+            [bool] $m3ApiProbeEvidence.cadCommandsSent) {
+            throw 'M3 API Probe evidence 未满足冻结门禁。'
+        }
+        $m3ApiProbeSummary = [ordered]@{
+            runtimeChecksPassed = [int] $m3ApiProbeEvidence.runtimeChecksPassed
+            runtimeChecksFailed = [int] $m3ApiProbeEvidence.runtimeChecksFailed
+            crossShellNormalizedIdentical = [bool] $m3ApiProbeEvidence.crossShellNormalizedIdentical
+            crossShellDllSha256Identical = [bool] $m3ApiProbeEvidence.crossShellDllSha256Identical
+            dllSha256 = [string] $m3ApiProbeEvidence.dllSha256
+            aggregateEvidenceSha256 = Get-Sha256 $m3ApiProbeEvidencePath
+        }
+    }
+
     foreach ($snapshot in $lockSnapshots.GetEnumerator()) {
         [IO.File]::WriteAllBytes([string] $snapshot.Key, [byte[]] $snapshot.Value)
     }
@@ -457,7 +596,7 @@ try {
             '/p:DebugType=None',
             '/p:ContinuousIntegrationBuild=true',
             '/m:1', '/nologo'
-        ) ('Host.2016 R20.1 M2 编译 ' + $label)
+        ) ('Host.2016 R20.1 ' + $candidateProfile.Title + ' 编译 ' + $label)
 
         $hostDll = Join-Path $output 'Codex.AutoCAD.Host.2016.dll'
         if (-not (Test-X64Pe $hostDll)) {
@@ -480,7 +619,7 @@ try {
             Sha256 = Get-Sha256 $hostDll
         }
     }
-    Assert-Same (Get-FilesSnapshot $hostBuilds[0].Root) (Get-FilesSnapshot $hostBuilds[1].Root) 'Host.2016 M2 A/B 输出'
+    Assert-Same (Get-FilesSnapshot $hostBuilds[0].Root) (Get-FilesSnapshot $hostBuilds[1].Root) ('Host.2016 ' + $candidateProfile.Title + ' A/B 输出')
 
     Invoke-Captured $dotnet @(
         'publish', (Join-Path $repoRoot 'src\Codex.AutoCAD.AgentHost\Codex.AutoCAD.AgentHost.csproj'),
@@ -497,7 +636,7 @@ try {
     $hostSha = $hostBuilds[0].Sha256
     $agentExe = Join-Path $publishRoot 'Codex.AutoCAD.AgentHost.exe'
     $agentSha = Get-Sha256 $agentExe
-    $candidateId = 'autocad2016-m2-drawing-index-v040-' +
+    $candidateId = $candidateProfile.CandidatePrefix + '-' +
         $hostSha.Substring(0,8).ToLowerInvariant() + '-' +
         $agentSha.Substring(0,8).ToLowerInvariant() + '-' +
         $runId.Substring(0,8)
@@ -541,6 +680,7 @@ try {
     $manifest = [ordered]@{
         schemaVersion = 1
         candidateId = $candidateId
+        candidateStage = $CandidateStage
         hostVersion = $hostVersion
         cadContextSchema = 'codex.autocad.cad-context/2'
         drawingIndexSchema = 'codex.autocad.drawing-index/1'
@@ -569,36 +709,64 @@ try {
         )
         files = $files
     }
+    if ($candidateProfile.UsesM3ApiProbe) {
+        $manifest['readSemantics'] = [ordered]@{
+            issueTypeStatistics = $true
+            supportedTypeCatalogCount = 19
+            blockDetails = $true
+            externalXrefPathsExcluded = $true
+            apiProbe = $m3ApiProbeSummary
+        }
+    }
     $manifestPath = Join-Path $candidateRoot 'manifest.json'
     [IO.File]::WriteAllText(
         $manifestPath,
         ($manifest | ConvertTo-Json -Depth 40) + "`n",
         (New-Object Text.UTF8Encoding($false)))
 
+    $gates = [ordered]@{
+        phase2Specs = $phase2Summary
+        contractsNet45Net8 = $candidateProfile.ContractsSpecs
+        r20_1ReleaseX64Build = $true
+        hostABBitForBitEqual = $true
+        hostReadOnlySourceScan = $true
+        earlyReverseDrawingQueryRaceCovered = $true
+        frozenEntityArrayOwnershipTransfer = $true
+        benchmarkFixtures = $benchmarkSummary
+        hostLocalPerformanceTelemetry = $true
+        hostCompileSourceCount = $sourceFiles.Count
+        documentLockCount = 2
+        lockFileHashesPreserved = $true
+        autoCadStartedOrRestarted = $false
+        commandsSent = $false
+    }
+    if ($candidateProfile.UsesM3ApiProbe) {
+        $gates['m3ReadSemantics'] = $true
+        $gates['m3DualShellApiProbe'] = $true
+        $gates['m3SupportedTypeCatalogCount'] = 19
+        $gates['m3ExternalXrefPathsExcluded'] = $true
+    }
+
+    $limitations = @(
+        '本证据未启动、重启或操作 AutoCAD；人工 NETLOAD 和图纸级运行时行为仍需实机验证。',
+        'CadContextJson v2 的 64 实体选择上限保持不变；M2 通过独立 DrawingIndex/CadQuery 处理大图。',
+        'Codex 动态 drawing-query 已接入认证反向 Bridge；仍需 AutoCAD 实机验证整图索引、无选择集提问和失效行为。',
+        'CAD 写入、插件保存、Provider 抽象、Direct API 和自研 Agent Loop 均不在本候选范围。'
+    )
+    if ($candidateProfile.UsesM3ApiProbe) {
+        $limitations += 'M3 块详情、19 类字段、高价值受限对象和复杂 Xref 仍需按精确候选进行 AutoCAD 实机核对。'
+    }
+
     $evidence = [ordered]@{
         schemaVersion = 1
-        scope = 'autocad2016-m2-drawing-index-candidate-build'
+        scope = $candidateProfile.EvidenceScope
         candidateFrozenAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
         candidateId = $candidateId
+        candidateStage = $CandidateStage
         hostVersion = $hostVersion
         autoCadLiveEvidence = $false
         netLoadVerified = $false
-        gates = [ordered]@{
-            phase2Specs = $phase2Summary
-            contractsNet45Net8 = '84/84'
-            r20_1ReleaseX64Build = $true
-            hostABBitForBitEqual = $true
-            hostReadOnlySourceScan = $true
-            earlyReverseDrawingQueryRaceCovered = $true
-            frozenEntityArrayOwnershipTransfer = $true
-            benchmarkFixtures = $benchmarkSummary
-            hostLocalPerformanceTelemetry = $true
-            hostCompileSourceCount = $sourceFiles.Count
-            documentLockCount = 2
-            lockFileHashesPreserved = $true
-            autoCadStartedOrRestarted = $false
-            commandsSent = $false
-        }
+        gates = $gates
         build = [ordered]@{
             hostDllSha256 = $hostSha
             agentHostExeSha256 = $agentSha
@@ -608,23 +776,22 @@ try {
             root = 'artifacts/' + $candidateId
             files = $files
         }
-        limitations = @(
-            '本证据未启动、重启或操作 AutoCAD；人工 NETLOAD 和图纸级运行时行为仍需实机验证。',
-            'CadContextJson v2 的 64 实体选择上限保持不变；M2 通过独立 DrawingIndex/CadQuery 处理大图。',
-            'Codex 动态 drawing-query 已接入认证反向 Bridge；仍需 AutoCAD 实机验证整图索引、无选择集提问和失效行为。',
-            'CAD 写入、插件保存、Provider 抽象、Direct API 和自研 Agent Loop 均不在本候选范围。'
-        )
+        limitations = $limitations
+    }
+    if ($candidateProfile.UsesM3ApiProbe) {
+        $evidence['m3ApiProbe'] = $m3ApiProbeSummary
     }
     New-Item -ItemType Directory -Path $evidenceDirectory -Force | Out-Null
-    $evidencePath = Join-Path $evidenceDirectory ('m2-drawing-index-candidate-' + $candidateId + '.json')
+    $evidencePath = Join-Path $evidenceDirectory ($candidateProfile.EvidencePrefix + $candidateId + '.json')
     [IO.File]::WriteAllText(
         $evidencePath,
         ($evidence | ConvertTo-Json -Depth 50) + "`n",
         (New-Object Text.UTF8Encoding($false)))
 
-    Write-Host 'AutoCAD 2016 M2 DrawingIndex 候选自动化冻结通过。' -ForegroundColor Green
+    Write-Host ('AutoCAD 2016 ' + $candidateProfile.Title + ' 候选自动化冻结通过。') -ForegroundColor Green
     Write-Host "CANDIDATE_ROOT=$candidateRoot"
     Write-Host "CANDIDATE_ID=$candidateId"
+    Write-Host "CANDIDATE_STAGE=$CandidateStage"
     Write-Host "HOST_VERSION=$hostVersion"
     Write-Host "PHASE2_SPECS=$phase2Summary"
     Write-Host "BENCHMARK_FIXTURES=$benchmarkSummary"

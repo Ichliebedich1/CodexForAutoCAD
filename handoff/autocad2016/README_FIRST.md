@@ -46,7 +46,7 @@ M2 `0.4.0.0` 已把独立只读整图索引和 Codex 按需查询接成一条调
 - 查询页硬上限为 `200` 个实体，IPC 单帧硬上限为 `8,388,608` 字节；两项均写入候选
   manifest 并由 `CODEX16INDEXINFO` 显示，不依赖人工记忆常量。
 
-M3 `0.4.1.0` 正在开发第一条读取语义纵切，不是冻结候选：
+M3 `0.4.1.0` 的第一条读取语义纵切已冻结自动化候选，但尚未人工 `NETLOAD`：
 
 - 选择快照、整图索引、Palette 和 `CODEX16CTXINFO` / `CODEX16INDEXINFO` 会按实际类型
   显示未支持、数据超限和读取失败对象的数量；统计不带图层、Handle、路径或对象内容。
@@ -62,6 +62,12 @@ M3 `0.4.1.0` 正在开发第一条读取语义纵切，不是冻结候选：
   复制数为 `0`。
 - 中文字段核对目录见 `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`；它不替代脱敏
   示例测试图、R20.1 Probe 或实机逐类字段证据。
+- M3 精确候选为
+  `artifacts/autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b/`；AgentHost
+  SHA-256 为 `A63EFAE71CE95FAC5F764235B11C7F84E1A47CDE7BF4A0984185DADFF793C6C7`，manifest
+  SHA-256 为 `2264787CC219B864E516AFC4AD0E1E1593C314BF9A0106D6B78BCB49CC66B1EF`，冻结 evidence
+  为 `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`。
+  它保持 `NetLoadVerified=false`、`AutoCadLiveEvidence=false`，不能继承 M2 或 P1 的实机结论。
 
 脱敏实机范围证据：
 `evidence/cad-context-v2-live-observation-20260722.json`。
@@ -72,45 +78,45 @@ M3 `0.4.1.0` 正在开发第一条读取语义纵切，不是冻结候选：
 - M2 `0.4.0.0` 尚未人工 `NETLOAD`；五种范围、无选择集 ASK、Agent 动态分页、
   1k/10k/50k 响应性、Idle 枚举器生命周期、取消、失效和退出清理均是未验证项。
 - 当前选择快照仍最多 64 个实体、canonical JSON 最多 256 KiB；大图走独立索引。
-- 19 类对象尚未逐类完成字段实机核对。
+- M3 精确候选尚未完成 19 类对象、`blockDetails`、复杂对象和高价值受限读取的实机字段核对。
 - AutoCAD 正常退出、125%/150% DPI 和故障矩阵尚未完成。
 - CAD 写入、完整 OS 沙箱、长期记忆、签名安装和企业部署尚未完成。
 
 ## 2. 当前候选身份
 
-当前开发候选是 M2-A/M2-B 加基准资产和性能遥测的合并候选：
+当前可用于下一轮 M3 实机核对的是下列 `0.4.1.0` 自动化候选：
 
 ```text
-Module version: 0.4.0.0
+Module version: 0.4.1.0
 CadContext schema: codex.autocad.cad-context/2
 DrawingIndex schema: codex.autocad.drawing-index/1
 CadQuery schema: codex.autocad.cad-query/1
 Candidate directory:
-C:\tmp\CodexForAutoCAD-m2-benchmark\artifacts\autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2
+C:\tmp\CodexForAutoCAD-m3-read-semantics\artifacts\autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b
 
 Host:
 Codex.AutoCAD.Host.2016.dll
 SHA-256:
-E85D97EC02505EF69C67F710EAD5D35D18481B7D2DBB4C3D87195FCDE4156B7E
+FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673
 
 AgentHost:
 AgentHost\Codex.AutoCAD.AgentHost.exe
 SHA-256:
-FA16355C185F61CD7E85446E884C2FF9D7C745E5E2EB0CC40747C916C215371B
+A63EFAE71CE95FAC5F764235B11C7F84E1A47CDE7BF4A0984185DADFF793C6C7
 
 Manifest SHA-256:
-95427BD85E70870C483512CD4401228B70F63608802512119F5ECB6486844356
+2264787CC219B864E516AFC4AD0E1E1593C314BF9A0106D6B78BCB49CC66B1EF
 ```
 
-该候选通过 Contracts net8/net45 `84/84`、Bridge Client net8/net45 `29/29`、
+该候选通过 Contracts net8/net45 `86/86`、Bridge Client net45/net8 各 `29/29`、
 Bridge/AgentHost `39/39`、AgentRuntime `33/33`、Host MVP `53/53`、完整 Phase 2
-`308/308`、benchmark `6/6`、30 文件 Host.2016 只读 Compile 闭包、R20.1/net45/x64 双构建位级一致、
-敏感信息扫描和候选包自身 AgentHost doctor。构建证据为
-`evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2.json`。
+`310/310`、benchmark `6/6`、R20.1 API 双 Shell Probe `29 passed / 8 expected failed`、
+R20.1/net45/x64 Host A/B 位级一致、敏感信息扫描和候选包自身 AgentHost doctor。构建证据为
+`evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`。
 
-它尚未按精确哈希在 AutoCAD 内人工 NETLOAD，因此保持 `NetLoadVerified=false`。已经取得
-实机证据的仍是旧 `0.3.2.0` P1 候选 Host `0D72EDC3...`、AgentHost `10BEA363...`；M1
-`0.3.3.0` 与 M2 `0.4.0.0` 的自动化证据都不能继承该实机结论。
+它没有启动、重启或操作 AutoCAD，尚未按精确哈希在 AutoCAD 内人工 `NETLOAD`，因此保持
+`NetLoadVerified=false`、`AutoCadLiveEvidence=false`。M2 `0.4.0.0` 候选仍是其独立
+图纸索引/性能验收入口；M3 候选不继承 M2、M1 或 P1 的实机结论。
 
 ## 3. 当前架构
 
@@ -213,7 +219,8 @@ M1 仍使用 `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 和精确 `0.3.3.0
 11. 仅有 DrawingIndex、无选择上下文时 ASK，并明确触发 `cad.query_drawing` 多页查询。
 12. 索引修改/撤销/切图失效、查询/回合取消及断线后的 fail-closed。
 13. M2 1k/10k/50k 图纸扫描、Agent 查询、UI 响应、内存和 DBMOD 基准。
-14. M3 的 19 类强类型对象逐类字段核对、R20.1 API Probe、示例图资产和高价值受限读取。
+14. 按精确 M3 `0.4.1.0` 候选进行 `NETLOAD`，完成 19 类强类型对象、`blockDetails`、示例图资产、
+    复杂对象和高价值受限读取的实机字段核对。
 
 ## 7. 当前开发顺序
 
@@ -221,8 +228,8 @@ M1 仍使用 `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 和精确 `0.3.3.0
 2. M1：代码、自动化和 `0.3.3.0` 候选冻结完成；当前只剩实机矩阵与 evidence 绑定。
 3. M2-A/M2-B：图纸索引、分页命令、Codex `cad.query_drawing`、自动化和 `0.4.0.0`
    候选均完成；等待实机与性能 evidence。
-4. M3：读取对象语义与覆盖已开始开发纵切；当前中文目录和占位实际类型统计不等于实机
-   逐类字段通过。
+4. M3：读取对象语义与覆盖的自动化候选已经冻结；中文目录、占位实际类型统计和 API Probe
+   不等于按精确 `0.4.1.0` 候选取得的实机逐类字段通过。
 5. M4：进程沙箱、配置和审计基础。
 6. M5：AutoCAD 2016 `create_line` 安全写入最小闭环。
 7. 后续阶段见 `LONG_TERM_MEMORY_TODO.md`。
@@ -243,15 +250,16 @@ M2 `0.4.0.0` 候选已重跑以下门禁：
 这些门禁不替代 AutoCAD 2016 人工 `NETLOAD`。历史 `0.3.2.0` 实机结果也不能自动证明
 新的 `0.4.0.0` 候选，更不能证明 50k 运行时性能。
 
-M3 当前自动门禁已完整运行：Contracts `86/86`、Bridge Client net45/net8 各 `29/29`、
+M3 自动候选门禁已完整运行：Contracts `86/86`、Bridge Client net45/net8 各 `29/29`、
 Bridge `39/39`、AgentRuntime `33/33`、Host MVP `53/53`、完整 Phase 2 `310/310`。R20.1
 API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员集合和 Probe DLL
 哈希一致；R20.1/net45/x64 Host A/B 输出也逐字节一致，Host SHA-256 为
 `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，Autodesk DLL 复制数
-为 `0`。这些记录分别见
-`evidence/v2-api-surface-probe-m3-cross-shell-20260723.json` 和当前 `artifacts` 编译输出。
-它们不是候选 manifest，不是冻结候选，也尚未 AutoCAD `NETLOAD`；候选冻结和实机测试仍须
-在对应纵切完成后单独执行。
+为 `0`。精确候选目录为
+`artifacts/autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b/`，manifest SHA-256 为
+`2264787CC219B864E516AFC4AD0E1E1593C314BF9A0106D6B78BCB49CC66B1EF`；冻结记录为
+`evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`。
+它没有启动或操作 AutoCAD，也尚未按精确哈希 `NETLOAD`；实机测试仍须由用户单独执行。
 
 ## 9. 安全与隐私
 
@@ -286,6 +294,8 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
   双 Shell 脱敏 Probe 结果，不等于 AutoCAD 实机验证。
 - `evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2.json`：
   M2 自动化冻结、候选身份和未实机边界。
+- `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`：
+  M3 自动化冻结、候选身份和未实机边界。
 
 ## 11. 支持声明
 
@@ -297,7 +307,7 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
 > 分片、本地分页命令和 Codex `cad.query_drawing` 认证反向查询；确定性 1k/10k/50k
 > fixture、性能遥测和脱敏记录器已经通过自动化，但尚未完成 AutoCAD 实机性能验证。
 > M3 `0.4.1.0` 已将受限块属性、动态块、嵌套块、布局和安全 Xref 元数据接入整图只读
-> 查询；尚未冻结候选或取得逐类实机字段证据。
+> 查询，并完成自动化候选冻结；尚未按精确候选 `NETLOAD` 或取得逐类实机字段证据。
 > 安全 CAD 写入、完整沙箱、长期记忆和发布安装
 > 尚未完成。
 

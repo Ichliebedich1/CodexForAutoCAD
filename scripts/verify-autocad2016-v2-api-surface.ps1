@@ -34,9 +34,19 @@ $intermediateDirectory = Join-Path $verificationRoot 'obj-compile'
 $projectExtensionsDirectory = Join-Path $verificationRoot 'obj-project-extensions'
 $packageCache = Join-Path $verificationRoot 'packages'
 $dotnetCliHome = Join-Path $verificationRoot 'dotnet-state\cli-home'
-$dotnetNuGetPackages = Join-Path $verificationRoot 'dotnet-state\packages'
 $dotnetHttpCache = Join-Path $verificationRoot 'dotnet-state\http-cache'
 
+# The reference-assemblies package contains deeply nested framework files.
+# Keep the private NuGet cache near the drive root so legacy NuGet/MSBuild
+# extraction does not exceed MAX_PATH when the verifier itself is staged deeply.
+$shortCacheRoot = Join-Path ([IO.Path]::GetPathRoot($repoRoot)) 'tmp'
+$dotnetNuGetPackages = Join-Path $shortCacheRoot (
+    'codex-autocad-v2nuget-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+if ($dotnetNuGetPackages.Length -gt 64) {
+    throw "V2ApiProbe private NuGet cache root is too long: $dotnetNuGetPackages"
+}
+
+try {
 foreach ($directory in @($outputDirectory, $baseIntermediateDirectory, $intermediateDirectory, $projectExtensionsDirectory, $packageCache, $dotnetCliHome, $dotnetNuGetPackages, $dotnetHttpCache)) {
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
 }
@@ -92,6 +102,7 @@ function Invoke-DotNetIsolated {
         DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
         DOTNET_CLI_TELEMETRY_OPTOUT = '1'
         DOTNET_NOLOGO = '1'
+        NUGET_PACKAGES = $script:dotnetNuGetPackages
     }
     $originalEnvironment = @{}
     try {
@@ -459,3 +470,21 @@ $evidence = [ordered]@{
 $evidenceJson = $evidence | ConvertTo-Json -Depth 4
 [IO.File]::WriteAllText($resolvedEvidencePath, $evidenceJson, $strictUtf8)
 Write-Host "Evidence written to: $resolvedEvidencePath"
+}
+finally {
+    $shortCacheRootFull = [IO.Path]::GetFullPath($shortCacheRoot).TrimEnd('\') + '\'
+    $privateCacheFull = [IO.Path]::GetFullPath($dotnetNuGetPackages)
+    $privateCacheLeaf = Split-Path -Leaf $privateCacheFull
+    $isExpectedCache = $privateCacheFull.StartsWith(
+        $shortCacheRootFull,
+        [StringComparison]::OrdinalIgnoreCase) -and
+        $privateCacheLeaf.StartsWith(
+            'codex-autocad-v2nuget-',
+            [StringComparison]::Ordinal)
+    if ($isExpectedCache -and (Test-Path -LiteralPath $privateCacheFull)) {
+        Remove-Item -LiteralPath $privateCacheFull -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    elseif (-not $isExpectedCache) {
+        Write-Warning 'Skipped cleanup of an unexpected V2ApiProbe NuGet cache path.'
+    }
+}

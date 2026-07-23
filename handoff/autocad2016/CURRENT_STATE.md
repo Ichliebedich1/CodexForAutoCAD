@@ -128,20 +128,29 @@ NETLOAD 证据的能力一律视为未支持。
   它没有启动或操作 AutoCAD，不能证明跨 Idle 枚举器生命周期、动态查询实机行为或真实性能。
   旧 `597A7A3D...` 候选只保留为历史 M2-B 冻结点。Provider-neutral 抽象、Direct API 和
   自研 Agent Loop 继续冻结。
-- M3 的第一条开发纵切将 Host 版本推进到 `0.4.1.0`：选择快照、整图索引、
+- M3 的第一条读取语义纵切将 Host 版本推进到 `0.4.1.0`：选择快照、整图索引、
   `CODEX16CTXINFO`、`CODEX16INDEXINFO` 和 Palette 均按实际类型统计未支持、数据超限和
   读取失败对象；`CODEX16TYPEINFO` 提供 19 类现有强类型对象的中文名称与人工创建入口。
   类型统计受 `4,096` 个桶限制，且不包含图层、Handle、路径或对象内容。
 - M3 的块读取纵切已把受限 `blockDetails` 接入 DrawingIndex、CadQuery、认证 Bridge 和
   Agent 工具。它包含属性/动态属性、嵌套块计数与深度、布局标志及安全 Xref 布尔元数据；
   外部 Xref 定义和真实路径不会读取或传播，任何受限情况以 `limited` 降级。
-- 该 M3 纵切已通过 Contracts `86/86`、Bridge Client net45/net8 各 `29/29`、Bridge `39/39`、
+- M3 自动化候选已冻结为
+  `artifacts/autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b/`。Host SHA-256 为
+  `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，AgentHost EXE 为
+  `A63EFAE71CE95FAC5F764235B11C7F84E1A47CDE7BF4A0984185DADFF793C6C7`，manifest 为
+  `2264787CC219B864E516AFC4AD0E1E1593C314BF9A0106D6B78BCB49CC66B1EF`。
+- 该 M3 候选通过 Contracts `86/86`、Bridge Client net45/net8 各 `29/29`、Bridge `39/39`、
   AgentRuntime `33/33`、Host MVP `53/53` 和完整 Phase 2 `310/310`。R20.1 API 双 Shell
   Probe 为 `29 passed / 8 expected failed`；目标 R20.1/net45/x64 Host A/B 输出逐字节一致，
   `0.4.1.0` 当前 Host SHA-256 为
   `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，Autodesk DLL 复制数
-  为 `0`。这些是编译门禁和 Probe 证据，不是候选 manifest，尚未冻结候选或实机 `NETLOAD`，
-  不能把它表述为已验证的 AutoCAD 2016 能力。中文对象目录、字段核对模板和边界见
+  为 `0`。冻结 evidence 为
+  `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`，
+  SHA-256 为 `2FFD56D4CB138EF5EEBEF74BDF2D47350D0A32E53CC451624BC6D148B5DD6E8E`。
+- 该候选没有启动、重启或操作 AutoCAD，保持 `NetLoadVerified=false`、
+  `AutoCadLiveEvidence=false`；它不能继承 M2、M1 或 P1 的实机结论。中文对象目录、字段
+  核对模板和边界见
   `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
 - M3 的构建诊断显示：在同一新鲜依赖闭包下，R20.1 Host A/B 输出一致；跨独立依赖构建时
   当前工具链会改变 timestamp、MVID 与 TargetFramework metadata。归一化后的 Host IL
@@ -448,8 +457,9 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
 10. 修改/撤销/切图后的 stale 拒绝，以及查询、回合取消和断线 fail-closed。
 11. 使用已冻结 fixture 和 Host 遥测完成 M2 1k/10k/50k 扫描响应性、总时间、工作集、
     DBMOD 和 Agent 查询真实性能；自动化资产已完成，实机数值仍待采集。
-12. M3 中文对象目录、块详情自动化纵切和 R20.1 API Probe 已完成；19 类对象的逐类实机
-    字段核对、脱敏示例图资产、复杂对象语义和高价值受限读取仍待精确 M3 候选后执行。
+12. M3 中文对象目录、块详情自动化纵切、R20.1 API Probe 和精确 `0.4.1.0` 候选冻结已完成；
+    仍待按该候选 `NETLOAD` 后完成 19 类对象的逐类字段核对、脱敏示例图资产、复杂对象语义
+    和高价值受限读取。
 
 ## 下一步顺序
 
@@ -459,8 +469,9 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
 4. M1 代码、自动化和 `0.3.3.0` 候选冻结已完成；精确候选实机矩阵仍待 evidence。
 5. M2-A 图纸索引、M2-B `cad.query_drawing`、三档 fixture、性能遥测和脱敏记录器已完成并
    冻结 `0.4.0.0` 候选；等待实机/性能 evidence 后冻结验收预算。
-6. M2 实机/性能 evidence 仍是 M2 完成前提；M3 已开始只读对象语义纵切，但不替代 M2
-   验收，也不启用 CAD 写入。随后关闭 M4 沙箱与审计；M4 完成前不启用 M5 CAD 写入。
+6. M2 实机/性能 evidence 仍是 M2 完成前提；M3 的只读对象语义候选已冻结但仍待实机字段
+   evidence，不替代 M2 验收，也不启用 CAD 写入。随后关闭 M4 沙箱与审计；M4 完成前不启用
+   M5 CAD 写入。
 
 ## 更新纪律
 

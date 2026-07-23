@@ -36,17 +36,17 @@
   双次生成、独立解析、哈希、拒绝覆盖和脱敏 evidence 记录门禁为 `6/6`。
 - `CODEX16INDEXINFO` 现显示 Idle 分片次数/最大耗时、总扫描耗时、估算内存以及本地和
   Codex 反向查询耗时；遥测不扩展 DrawingIndex/CadQuery wire 契约。
-- M3 `0.4.1.0` 开发纵切已在同一只读调用链中增加实际 placeholder 类型/原因统计：选择
+- M3 `0.4.1.0` 已冻结自动化候选，并在同一只读调用链中增加实际 placeholder 类型/原因统计：选择
   摘要、`CODEX16CTXINFO`、`CODEX16INDEXINFO` 和 Palette 不再只显示笼统的
   `unsupported` 数量，`CODEX16TYPEINFO` 还会输出 19 类现有强类型对象的中文目录。
   M3 还把受限 `blockDetails` 接入 DrawingIndex、CadQuery、认证 Bridge 和 Agent 工具，包含
   属性/动态属性、嵌套块计数与深度、布局和安全 Xref 元数据；外部 Xref 定义和真实路径不会
-  被读取或传播。该版本尚未冻结候选、未取得实机 `NETLOAD`，不能继承 M2 或 P1 的实机结论。
+  被读取或传播。
 - M3 当前自动门禁为 Contracts `86/86`、Bridge Client net45/net8 各 `29/29`、Bridge `39/39`、
   AgentRuntime `33/33`、Host MVP `53/53`、完整 Phase 2 `310/310`。R20.1 API 双 Shell Probe
   为 `29 passed / 8 expected failed`；R20.1/net45/x64 Host A/B 输出逐字节一致，当前 Host
   SHA-256 为 `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，Autodesk DLL
-  复制数为 `0`。这些仅是自动化证据，不是候选 manifest 或 AutoCAD 实机证据。
+  复制数为 `0`。这些结果已写入候选 manifest 和脱敏 evidence，但仍不是 AutoCAD 实机证据。
 - 显式 CAD 上下文清除和文档激活清除旧缓存通过；CAD 写入和插件保存仍禁用。
 - P0 停止生命周期已有独立实机证据：重复 STOP、DBMOD 不变和 AgentHost 残留为零。
 - M1 已实现 Bridge 断线 fail-closed、结构化脱敏错误、request_id/唯一终态、幂等取消、
@@ -75,6 +75,21 @@ AgentHost doctor；尚未在 AutoCAD 2016 中按精确哈希 `NETLOAD`。旧 `59
 当前 M2 自动化冻结证据为
 `handoff/autocad2016/evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2.json`。
 
+当前 M3 `0.4.1.0` 自动化候选为：
+
+```text
+C:\tmp\CodexForAutoCAD-m3-read-semantics\artifacts\autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b
+Host SHA-256: FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673
+AgentHost SHA-256: A63EFAE71CE95FAC5F764235B11C7F84E1A47CDE7BF4A0984185DADFF793C6C7
+Manifest SHA-256: 2264787CC219B864E516AFC4AD0E1E1593C314BF9A0106D6B78BCB49CC66B1EF
+Evidence SHA-256: 2FFD56D4CB138EF5EEBEF74BDF2D47350D0A32E53CC451624BC6D148B5DD6E8E
+```
+
+该候选通过完整 Phase 2 `310/310`、benchmark fixture/evidence `6/6` 和 R20.1 API 双 Shell
+Probe `29 passed / 8 expected failed`；它没有启动或操作 AutoCAD，保持
+`NetLoadVerified=false`、`AutoCadLiveEvidence=false`。精确冻结证据为
+`handoff/autocad2016/evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`。
+
 `0.3.2.0` 脱敏实机范围证据见
 `handoff/autocad2016/evidence/cad-context-v2-live-observation-20260722.json`；`0.3.3.0`
 自动化冻结证据见
@@ -93,8 +108,9 @@ AgentHost doctor；尚未在 AutoCAD 2016 中按精确哈希 `NETLOAD`。旧 `59
    `handoff/autocad2016/M2_DRAWING_INDEX_RUNTIME_TEST_20260722.md`。
 4. M2 的 1k/10k/50k fixture、采集字段和脱敏 evidence 写入器已完成；仍等待 AutoCAD 2016
    五种范围、无选择集 ASK、失效/取消及三档真实性能证据。
-5. M2 的实机/性能证据仍待完成；M3 已开始只读对象语义纵切，但不替代 M2 验收。M3 中文
-   目录和未来字段核对模板见 `handoff/autocad2016/M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
+5. M2 的实机/性能证据仍待完成；M3 的只读对象语义候选已经冻结，但尚未按精确哈希
+   `NETLOAD`，不替代 M2 验收。M3 中文目录和字段核对模板见
+   `handoff/autocad2016/M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
 6. 完成 M3 后关闭 M4 沙箱审计，随后才启用 AutoCAD 2016 强类型安全写入。
 7. 随后完成长期记忆、安装签名、企业部署和 AutoCAD 2025 适配。
 
@@ -115,14 +131,15 @@ dotnet run --project tests/Codex.AutoCAD.Contracts.Specs
 
 AutoCAD 2025 Host 保留在主解决方案中但不参与默认 Build。目标机提供原版托管程序集后，直接构建项目并传入 `AutoCad2025Dir`。
 
-AutoCAD 2016 Host 位于独立解决方案 `Codex.AutoCAD.2016.sln`。下列 M2 候选脚本只能在
-对应的冻结 `0.4.0.0` 源码工作树中运行；当前 `0.4.1.0` M3 工作树不应借它生成 M2 候选。
-M3 当前仅以自动化编译和 R20.1 API Probe 为准：
+AutoCAD 2016 Host 位于独立解决方案 `Codex.AutoCAD.2016.sln`。候选脚本必须在对应源码
+工作树中运行：`0.4.0.0` 使用默认 M2 配置，`0.4.1.0` M3 使用 `-CandidateStage M3`；不得用
+M3 源码重新生成 M2 候选。M3 已以该脚本完成自动化冻结，后续只等待人工 `NETLOAD`：
 
 ```powershell
 .\scripts\verify-autocad2016-drawing-index-candidate.ps1 `
   -AutoCad2016Dir 'D:\AutoCAD 2016' `
-  -Configuration Release
+  -Configuration Release `
+  -CandidateStage M3
 
 pwsh.exe -NoProfile -File .\scripts\verify-autocad2016-v2-api-surface-stage.ps1 `
   -AutoCad2016Dir 'D:\AutoCAD 2016'

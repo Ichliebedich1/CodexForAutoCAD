@@ -4,9 +4,29 @@
 
 ## 当前状态与边界
 
-本文件是 M3 的中文对象目录和未来实机核对模板。当前实现是 `0.4.1.0` 开发纵切，已有当前
-源码的 R20.1 compile-only A/B 哈希证据，但尚未冻结候选目录/manifest 或取得 AutoCAD
-`NETLOAD` 证据；因此本文件不能把任何 M3 项目写成实机通过。
+本文件是 M3 的中文对象目录和实机核对模板。`0.4.1.0` 自动化候选已经冻结，但尚未取得
+AutoCAD `NETLOAD` 证据；因此本文件不能把任何 M3 项目写成实机通过。
+
+精确候选身份：
+
+```text
+Candidate directory:
+C:\tmp\CodexForAutoCAD-m3-read-semantics\artifacts\autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b
+
+NETLOAD target:
+Codex.AutoCAD.Host.2016.dll
+
+Host version: 0.4.1.0
+Host SHA-256: FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673
+AgentHost SHA-256: A63EFAE71CE95FAC5F764235B11C7F84E1A47CDE7BF4A0984185DADFF793C6C7
+Manifest SHA-256: 2264787CC219B864E516AFC4AD0E1E1593C314BF9A0106D6B78BCB49CC66B1EF
+Evidence SHA-256: 2FFD56D4CB138EF5EEBEF74BDF2D47350D0A32E53CC451624BC6D148B5DD6E8E
+```
+
+对应的脱敏冻结证据是
+`evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`。
+它明确记录 `NetLoadVerified=false`、`AutoCadLiveEvidence=false`，并记录冻结过程没有启动、
+重启或操作 AutoCAD。
 
 这一纵切没有开启 CAD 写入、插件保存、命令字符串、LISP、脚本或反射式 CAD 调用。它只在
 既有只读调用链中增加受限对象统计和块详情：
@@ -43,7 +63,7 @@ Idle 分片 DrawingIndex
 
 ## 19 类强类型对象目录
 
-在未来冻结的 M3 候选中，先执行 `CODEX16TYPEINFO` 核对此目录。下表的“首要核对字段”
+在上述精确 M3 候选中，先执行 `CODEX16TYPEINFO` 核对此目录。下表的“首要核对字段”
 是当前可读摘要/Canonical JSON 应有的重点，不是对完整语义已完成的承诺。
 
 | # | 中文名称（强类型） | 人工创建或取得方式 | 首要核对字段 |
@@ -68,9 +88,9 @@ Idle 分片 DrawingIndex
 | 18 | 多重引线（MLeader） | 注释功能区 → 多重引线 | layer、leaderLines、text |
 | 19 | 表格（Table） | 注释功能区 → 表格 | layer、rows、columns、position、display text |
 
-块属性、动态块、嵌套块、布局/空间和安全 Xref 元数据已经进入当前开发纵切的自动化调用链，
-但仍没有精确候选或实机字段证据。复杂块、复杂标注、复杂 Hatch、复杂 MLeader 与复杂 Table
-仍是 M3 后续语义工作，不能由“强类型名称出现”或 `blockDetails` 出现推断为完全支持。
+块属性、动态块、嵌套块、布局/空间和安全 Xref 元数据已经进入精确候选的自动化调用链，
+但仍没有实机字段证据。复杂块、复杂标注、复杂 Hatch、复杂 MLeader 与复杂 Table 仍是 M3
+后续语义工作，不能由“强类型名称出现”或 `blockDetails` 出现推断为完全支持。
 
 ## 未支持与高价值受限对象
 
@@ -84,10 +104,11 @@ Idle 分片 DrawingIndex
 Xref 的外部真实路径不允许进入可读摘要、Canonical JSON、日志或人工测试回报。长文字、
 复杂 Hatch、Table 和 Spline 发生限额时必须标记 `data_limited`，不能假装完整。
 
-## 未来实机核对模板（当前延期）
+## 精确候选的实机核对模板（当前待用户执行）
 
-仅在存在精确 M3 候选、版本、SHA-256 和 manifest 后执行。请在脱敏副本或专用测试图中
-人工操作；本项目不会启动、关闭或控制 AutoCAD，也不会保存图纸。
+使用上方的精确目录、版本、SHA-256 和 manifest。请在脱敏副本或专用测试图中人工操作；
+本项目不会启动、关闭或控制 AutoCAD，也不会保存图纸。先人工 `NETLOAD` 该候选根目录中的
+`Codex.AutoCAD.Host.2016.dll`，再执行下列测试。
 
 1. 人工准备一类或少量同类对象后，先执行 `DBMOD` 记下此时的值。对象创建本身可以改变
    `DBMOD`；本步骤只验证随后插件只读捕获不再改变它。
@@ -135,12 +156,16 @@ Xref 的外部真实路径不允许进入可读摘要、Canonical JSON、日志�
 - R20.1 API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员集合和
   Probe DLL 哈希一致。脱敏聚合 evidence 为
   `evidence/v2-api-surface-probe-m3-cross-shell-20260723.json`。
-- 禁止 API、AgentHost doctor、敏感信息和 `git diff --check` 均通过。
+- 禁止 API、AgentHost doctor、敏感信息和 `git diff --check` 均通过；candidate manifest 与
+  evidence 已冻结。
 - 当前 R20.1/net45/x64 Host A/B 输出逐字节一致，Autodesk DLL 复制数为 `0`。Host
   `0.4.1.0` SHA-256 为
   `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`。
-- 当前编译输出位于 `artifacts/m3-r201-current-compile-*/`；其中 `compile-summary.json`
-  不是候选 manifest，不是冻结候选，也没有 AutoCAD `NETLOAD` 证据。
+- 自动化候选目录为
+  `artifacts/autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b/`；manifest SHA-256
+  为 `2264787CC219B864E516AFC4AD0E1E1593C314BF9A0106D6B78BCB49CC66B1EF`，冻结 evidence 为
+  `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`。
+  该自动化候选仍没有 AutoCAD `NETLOAD` 证据。
 
 仍未完成：19 类对象与块详情的实机字段证据、脱敏示例测试图资产、复杂对象语义、复杂块/
 Xref 边界，以及高价值对象的受限读取。M2 的 1k/10k/50k 实机性能和查询证据仍独立待办，
