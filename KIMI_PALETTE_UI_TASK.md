@@ -9,7 +9,7 @@
 ```text
 Worktree: C:\tmp\CodexForAutoCAD-kimi-palette-ui
 Branch: codex/kimi-palette-ui
-Required starting commit: 47c8faa8dd9eaf74747f15aff7a34edced7b4ce0
+Required implementation baseline: 47c8faa8dd9eaf74747f15aff7a34edced7b4ce0
 ```
 
 先执行并记录：
@@ -17,9 +17,11 @@ Required starting commit: 47c8faa8dd9eaf74747f15aff7a34edced7b4ce0
 ```powershell
 git status --short --branch
 git rev-parse HEAD
+git merge-base --is-ancestor 47c8faa8dd9eaf74747f15aff7a34edced7b4ce0 HEAD
 ```
 
-如果分支、提交或工作树不符，立即停止，不要自行 reset、rebase、merge、删除或覆盖文件。
+`HEAD` 会包含本任务书提交，因此不要求它等于实现基线；第三条命令返回 `0` 才表示基线正确。
+如果分支、基线祖先关系或工作树不符，立即停止，不要自行 reset、rebase、merge、删除或覆盖文件。
 不要触碰主工作区，也不要修改其他 worktree。
 
 ## 2. 项目现状
