@@ -1,0 +1,80 @@
+{
+  "evidenceType": "m4-agenthost-private-storage-retention",
+  "recordedAtUtc": "2026-07-23T08:10:55.7399966Z",
+  "sourceBaselineCommit": "e2e1fe9227fd53d56bf6d7af4718bc7404ee446a",
+  "platform": "windows-x64",
+  "scope": "agenthost-session-workspace-and-audit-private-storage",
+  "implementation": {
+    "workspaceLifecycle": "bootstrap-serve-session",
+    "workspaceSessionIdFormat": "32-lower-hex",
+    "workspaceExclusiveLease": true,
+    "workspaceDeleteOnNormalExit": true,
+    "workspaceStaleAgeHours": 24,
+    "workspaceMaximumRetainedSessions": 64,
+    "auditRetentionDays": 30,
+    "auditMaximumRetainedFiles": 512,
+    "maximumCleanupEntries": 50000,
+    "cleanupFollowsReparsePoints": false,
+    "localFixedDriveOnly": true,
+    "uncDeviceAndAlternateDataStreamPathsRejected": true,
+    "directoryAclInheritanceProtected": true,
+    "fileAclInheritanceProtected": true,
+    "aclOwner": "current-windows-user",
+    "aclPrincipals": [
+      "current-windows-user",
+      "local-system",
+      "builtin-administrators"
+    ],
+    "serviceStopNaturalExitGraceMilliseconds": 1000,
+    "serviceStopForcedCleanupMilliseconds": 5000
+  },
+  "verification": {
+    "bridgeSpecs": "49/49",
+    "agentLauncherNet45Specs": "36/36",
+    "agentLauncherNet8Specs": "36/36",
+    "phase2WindowsPowerShell51": "334/334",
+    "phase2PowerShell7": "334/334",
+    "releaseWarnings": 0,
+    "releaseErrors": 0,
+    "realCodexLive": "2/2",
+    "realCodexSameThreadTwoTurns": true,
+    "concurrentBridgeAndAgentHostStop": true,
+    "currentSessionWorkspaceRemovedAfterLiveStop": true,
+    "managedSessionDirectoryCountBeforeLive": 2,
+    "managedSessionDirectoryCountAfterLive": 2,
+    "relevantAgentHostProcessCountAfterLive": 0,
+    "preExistingCodexDesktopProcessSetUnchanged": true,
+    "sessionsRootPrivateAclObserved": true,
+    "auditRootPrivateAclObserved": true,
+    "hostDisabledApiScan": "passed",
+    "sensitiveInformationScan": "passed",
+    "autoCadStartedOrControlled": false,
+    "netLoadAttempted": false,
+    "cadWriteEnabled": false,
+    "pluginSaveEnabled": false
+  },
+  "artifactHashes": {
+    "agentHostExeSha256": "36A94009056C051FDFCF82890BD997901F0100F8A01EAE4CBA4F7D02F87AF492",
+    "agentHostPrivateStorageSourceSha256": "0F3B32CD935C9133AD01B970B9DF002F7F454EC98584A4CC84C6ED2124483E03",
+    "agentWorkspaceSourceSha256": "D086CC7E3149AA233EA00CAFD93D39F912B2EA31AA58C15A09CF5A430297E842",
+    "agentHostAuditLogSourceSha256": "07C1A1BD9AAD0A7B71F20E3D47CAD99125203DAB7DD1FB5A5AEAB398442805E2",
+    "agentHostProgramSourceSha256": "A904A614D7709DCF2AB645DCC2B020A5E16FF907C6345FBA960030AA9CA27900",
+    "agentHostBootstrapServiceSourceSha256": "DE758CF3AFF84D7AFF406CCDE48BE026BC95C94E5967185F6688B87AE55C7524"
+  },
+  "notProven": [
+    "workspace-disk-hard-quota",
+    "per-session-codex-home-and-credential-isolation",
+    "empty-mcp-and-plugin-configuration",
+    "restricted-token-or-appcontainer",
+    "real-codex-process-memory-slot-or-cpu-exhaustion",
+    "autocad-or-agenthost-crash-matrix",
+    "tamper-evident-audit-chain",
+    "cad-write-terminal-audit"
+  ],
+  "notes": [
+    "The live test used synthetic CadContext v2 values and did not start or control AutoCAD.",
+    "No drawing path, drawing name, context hash, user identity, token, API key, environment dump, prompt, or provider payload is recorded.",
+    "Two pre-existing managed session directories remain governed by the bounded stale-retention policy and were not manually deleted.",
+    "This evidence closes the private ACL and bounded retention slice only; it does not complete M4 or authorize CAD writes."
+  ]
+}

@@ -323,7 +323,12 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 - [ ] 评估并实现受限令牌或 AppContainer。
 - [ ] 设置可靠的工作目录磁盘硬配额；为进程数/内存/CPU 限制增加真实 Codex 耗尽或节流验证与
   用户可理解的失败诊断。不要用轮询目录大小冒充硬配额。
-- [ ] 工作目录使用最小 ACL 并按策略清理。
+- [x] AgentHost workspace 与 audit 根、子目录和受管理文件关闭 ACL 继承，仅允许当前用户、
+  SYSTEM 和内置 Administrators；每 session 使用独占 lease，正常退出删除，残留默认按
+  `24` 小时/最多 `64` 个清理，审计默认按 `30` 天/最多 `512` 个清理。清理拒绝重解析根、
+  不跟随目录链接并限制单次 `50,000` 项；真实 Codex 并发 Bridge/AgentHost STOP 后当前
+  workspace 消失。见 `M4_PRIVATE_STORAGE_RETENTION_20260723.md` 和
+  `evidence/m4-agenthost-private-storage-retention-20260723.json`。
 - [ ] 将 AgentRuntime、Bridge、Host、配置和日志导出纳入同一脱敏策略；当前仅完成 Codex
   子进程 stderr 与 AgentHost 控制台诊断边界。
 - [x] AgentHost 只读运行审计基线：`bootstrap-serve` 每会话在当前用户本地固定盘的独占 JSONL
@@ -333,8 +338,9 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   记录。审计切口冻结时为 Bridge `44/44`、Phase 2 `324/324`；环境白名单加入后完整 Phase 2
   为 `329/329`，说明见
   `M4_RUNTIME_AUDIT_BASELINE_20260723.md`。
-- [ ] 将审批解决、M5 CAD 提案/执行终态和安全日志导出接入审计；补审计目录最小 ACL、保留/清理、
-  哈希链或等价防篡改边界。当前 CAD 写入保持禁用，不能把只读审计基线写成 CAD 操作审计。
+- [ ] 将审批解决、M5 CAD 提案/执行终态和安全日志导出接入审计；审计目录最小 ACL 与保留/清理
+  已完成，仍需哈希链或等价防篡改边界。当前 CAD 写入保持禁用，不能把只读审计基线写成
+  CAD 操作审计。
 - [ ] 增加安全故障注入和僵尸进程测试。
 
 ## 10. M5：AutoCAD 2016 安全写入最小闭环

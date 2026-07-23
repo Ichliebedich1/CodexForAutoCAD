@@ -81,18 +81,21 @@ M4 进程隔离已完成一个不依赖 AutoCAD 实机的小阶段：
 - 同一 Job 保留 `KILL_ON_JOB_CLOSE`，并默认限制进程树最多 `16` 个进程、Job 总提交内存
   最多 `4 GiB`、CPU hard cap `75%`、累计 Job user-time `8` 小时；认证后的 service session
   另有 `24` 小时墙钟截止。非法配置在创建子进程前 fail-closed。
-- net45/net8 AgentLauncher Specs 各 `35/35`；Windows 已读回同一 Job 工厂设置的实际标志
+- net45/net8 AgentLauncher Specs 各 `36/36`；Windows 已读回同一 Job 工厂设置的实际标志
   与值，CPU-busy synthetic child user-time 耗尽、墙钟终止、显式 STOP 胜过已撤销截止、一次
-  清理重试及连续失败后阻断后续启动均通过，相关进程基线/终态为 `0 -> 0`。
+  清理重试及连续失败后阻断后续启动均通过；正常 STOP 先等待 `1` 秒自然退出，再进入原有
+  `5` 秒强制回收。相关进程基线/终态为 `0 -> 0`。
 - AgentHost 只读会话现在强制写入每会话独立的有界 JSONL 审计，覆盖 session、Bridge、请求、
   thread/turn、取消、审批请求和 turn 终态；仅记录受限 ID/方法/稳定状态码，审计故障会关闭
-  Bridge。当前 Bridge 为 `44/44`。
+  Bridge。workspace 和 audit 使用受保护的当前用户/SYSTEM/Administrators ACL；session 正常
+  退出删除，残留按 `24` 小时/最多 `64` 个清理，审计按 `30` 天/最多 `512` 个清理，清理不
+  跟随重解析点。当前 Bridge 为 `49/49`。
 - Codex 子进程现先清空父环境，再使用固定 `16` 个变量名；`TEMP`/`TMP` 指向每会话 workspace，
   不自动传入 token/API key、代理、父 `PATH`、`CODEX_HOME` 或自定义变量。AppServer 为 `20/20`，
-  完整 Phase 2 为 `329/329`，真实 doctor 和两轮 Codex live 继续通过。
+  完整 Phase 2 双 Shell 均为 `334/334`，真实 doctor 和两轮 Codex live `2/2` 继续通过。
 - 这没有故意耗尽真实 Codex 的进程槽或内存、测量 CPU 节流性能，也没有启动或控制 AutoCAD；
-  工作目录磁盘、每会话 `CODEX_HOME`、凭据隔离、审计 ACL/保留、审批解决和 CAD
-  写入终态仍未完成。
+  工作目录磁盘硬配额、每会话 `CODEX_HOME`、凭据隔离、审计防篡改、审批解决和 CAD 写入终态
+  仍未完成。
 
 脱敏实机范围证据：
 `evidence/cad-context-v2-live-observation-20260722.json`。
@@ -256,8 +259,9 @@ M1 仍使用 `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 和精确 `0.3.3.0
    候选均完成；等待实机与性能 evidence。
 4. M3：读取对象语义与覆盖的自动化候选已经冻结；中文目录、占位实际类型统计、8 类受限
    索引分类和 API Probe 不等于按精确 `0.4.2.0` 候选取得的实机逐类字段通过。
-5. M4：进程树清理、进程数/总提交内存限制、AgentHost 只读 JSONL 审计和 Codex 子进程父环境
-   白名单已完成；继续每会话 `CODEX_HOME`/凭据、其余配额、审计 ACL/保留和 CAD 写入终态。
+5. M4：进程树清理、进程数/内存/CPU/运行时限制、AgentHost 只读 JSONL 审计、工作区/审计
+   ACL 与有界保留、Codex 子进程父环境白名单已完成；继续磁盘硬配额、每会话 `CODEX_HOME`/
+   凭据、受限令牌/AppContainer、审计防篡改和 CAD 写入终态。
 6. M5：AutoCAD 2016 `create_line` 安全写入最小闭环。
 7. 后续阶段见 `LONG_TERM_MEMORY_TODO.md`。
 
@@ -333,6 +337,10 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
   默认用户登录兼容边界。
 - `evidence/m4-codex-child-environment-allowlist-20260723.json`：M4 环境隔离规格、真实 doctor/live
   和进程清理的脱敏证据。
+- `M4_PRIVATE_STORAGE_RETENTION_20260723.md`：M4 workspace/audit 私有 ACL、lease、保留和
+  不跟随重解析点的清理策略。
+- `evidence/m4-agenthost-private-storage-retention-20260723.json`：双 Shell 门禁、真实 Codex live、
+  ACL 观察和工作区删除的脱敏证据。
 
 ## 11. 支持声明
 
@@ -346,9 +354,10 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
 > M3 `0.4.2.0` 已将受限块属性、动态块、嵌套块、布局和安全 Xref 元数据接入整图只读
 > 查询，并将 8 类高价值对象接为 `data_limited` 的索引分类；尚未按精确候选 `NETLOAD`
 > 或取得逐类实机字段/降级证据。
-> M4 已为 AgentHost/Codex Job 进程树应用清理边界及默认 `16` 进程/`4 GiB` 总提交内存
-> 限制，将内容脱敏的只读运行审计接入真实 AgentHost 会话，并为 Codex 子进程启用固定父环境
-> 白名单；每会话 `CODEX_HOME`/凭据、其余沙箱、审计保留和 CAD 写入终态仍未完成。
+> M4 已为 AgentHost/Codex Job 进程树应用清理与 CPU/内存/时间边界，将内容脱敏的只读运行
+> 审计接入真实 AgentHost 会话，并为 workspace/audit 启用受保护 ACL 与有界保留，为 Codex
+> 子进程启用固定父环境白名单；每会话 `CODEX_HOME`/凭据、磁盘硬配额、其余沙箱、审计
+> 防篡改和 CAD 写入终态仍未完成。
 > 安全 CAD 写入、完整沙箱、长期记忆和发布安装
 > 尚未完成。
 

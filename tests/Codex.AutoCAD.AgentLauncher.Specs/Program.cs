@@ -26,6 +26,7 @@ try
         new SpecCase("SESSION_RUNTIME_TERMINATES_TREE", "会话墙钟截止会终止AgentHost进程树", () => SessionRuntimeTerminatesTree(fixture)),
         new SpecCase("SESSION_RUNTIME_RETRIES_CLEANUP", "会话墙钟截止首次清理失败后自动重试", SessionRuntimeRetriesCleanup),
         new SpecCase("SESSION_STOP_PREVENTS_RUNTIME_EXPIRY", "显式停止完成后会话墙钟状态不得反转", SessionStopPreventsRuntimeExpiry),
+        new SpecCase("SERVICE_STOP_ALLOWS_GRACEFUL_EXIT", "service停止在强制终止前允许一次自然退出", ServiceStopAllowsGracefulExit),
         new SpecCase("SERVICE_STOP_KILLS_PROCESS_TREE", "停止服务会回收AgentHost及其受监管后代进程", () => ServiceStopKillsProcessTree(fixture)),
         new SpecCase("OWNER_EXIT_KILLS_PROCESS_TREE", "拥有Job的启动器退出会回收AgentHost及其受监管后代进程", () => JobOwnerExitKillsProcessTree(fixture)),
         new SpecCase("INVALID_EXECUTABLE_PATHS", "相对路径、真实非EXE与缺失文件均失败关闭", () => InvalidExecutablePathsFailClosed(fixture)),
@@ -395,6 +396,40 @@ static void SessionRuntimeCleanupFailurePoisonsStart(FakeAgentHostFixture fixtur
             .GetAwaiter()
             .GetResult());
     ProcessNameMustBeGone(fakePath);
+}
+
+static void ServiceStopAllowsGracefulExit()
+{
+    var waitCount = 0;
+    var terminateCount = 0;
+    var abortIoCount = 0;
+    var disposeCount = 0;
+    var session = new AgentHostServiceSession(
+        _ =>
+        {
+            Interlocked.Increment(ref waitCount);
+            return true;
+        },
+        _ =>
+        {
+            Interlocked.Increment(ref terminateCount);
+            return false;
+        },
+        () =>
+        {
+            Interlocked.Increment(ref abortIoCount);
+            return null;
+        },
+        () => Interlocked.Increment(ref disposeCount),
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateServiceResult());
+    session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+    session.Dispose();
+
+    Equal(1, Volatile.Read(ref waitCount));
+    Equal(0, Volatile.Read(ref terminateCount));
+    Equal(1, Volatile.Read(ref abortIoCount));
+    Equal(1, Volatile.Read(ref disposeCount));
 }
 
 static void ServiceStopKillsProcessTree(FakeAgentHostFixture fixture)

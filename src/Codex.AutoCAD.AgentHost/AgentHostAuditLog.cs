@@ -125,11 +125,14 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
     public const string Schema = "codex.autocad.agenthost.audit/1";
     public const int DefaultMaximumRecords = 10_000;
     public const long DefaultMaximumBytes = 4L * 1024 * 1024;
+    public const int DefaultMaximumRetainedFiles = 512;
+    public static readonly TimeSpan DefaultRetentionAge = TimeSpan.FromDays(30);
 
     private const int MaximumIdentifierCharacters = 256;
     private const int MaximumCodeCharacters = 128;
     private const int AbsoluteMaximumRecords = 1_000_000;
     private const long AbsoluteMaximumBytes = 64L * 1024 * 1024;
+    private const int AbsoluteMaximumRetainedFiles = 4096;
 
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
     {
@@ -200,25 +203,70 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
             "CodexForAutoCAD",
             "audit",
             "agenthost");
-        var auditPath = Path.Combine(auditDirectory, sessionId + ".jsonl");
+        return CreateForDirectory(auditDirectory, sessionId);
+    }
+
+    internal static AgentHostAuditLog CreateForDirectory(
+        string auditDirectory,
+        string sessionId,
+        TimeSpan? retentionAge = null,
+        int maximumRetainedFiles = DefaultMaximumRetainedFiles,
+        DateTime? utcNow = null)
+    {
+        ValidateBootstrapSessionId(sessionId);
+        var maximumAge = retentionAge ?? DefaultRetentionAge;
+        if (maximumAge < TimeSpan.Zero || maximumAge > TimeSpan.FromDays(3650))
+        {
+            throw new ArgumentOutOfRangeException(nameof(retentionAge));
+        }
+
+        if (maximumRetainedFiles is < 2 or > AbsoluteMaximumRetainedFiles)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumRetainedFiles));
+        }
+
         try
         {
-            EnsureSafeLocalDirectory(auditDirectory);
-            var stream = new FileStream(
-                auditPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.Read,
-                4096,
-                FileOptions.SequentialScan | FileOptions.WriteThrough);
+            var safeAuditDirectory = AgentHostPrivateStorage.PreparePrivateDirectory(
+                auditDirectory);
+            PruneAuditFiles(
+                safeAuditDirectory,
+                maximumAge,
+                maximumRetainedFiles,
+                utcNow ?? DateTime.UtcNow);
+            var auditPath = Path.Combine(safeAuditDirectory, sessionId + ".jsonl");
             try
             {
-                EnsureSafeLocalDirectory(auditDirectory);
-                return new AgentHostAuditLog(stream, sessionId);
+                using (new FileStream(
+                           auditPath,
+                           FileMode.CreateNew,
+                           FileAccess.Write,
+                           FileShare.None,
+                           1,
+                           FileOptions.WriteThrough))
+                {
+                }
+                AgentHostPrivateStorage.ApplyPrivateFileAcl(auditPath);
+                var stream = new FileStream(
+                    auditPath,
+                    FileMode.Open,
+                    FileAccess.Write,
+                    FileShare.Read,
+                    4096,
+                    FileOptions.SequentialScan | FileOptions.WriteThrough);
+                try
+                {
+                    return new AgentHostAuditLog(stream, sessionId);
+                }
+                catch
+                {
+                    stream.Dispose();
+                    throw;
+                }
             }
             catch
             {
-                stream.Dispose();
+                TryDeleteFailedAuditFile(auditPath);
                 throw;
             }
         }
@@ -230,6 +278,7 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
             or UnauthorizedAccessException
             or NotSupportedException
             or ArgumentException
+            or AgentHostPrivateStorageException
             or System.Security.SecurityException)
         {
             throw new AgentHostAuditException(
@@ -478,36 +527,113 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
             or >= '0' and <= '9'
             or '-' or '_' or '.' or ':';
 
-    private static void EnsureSafeLocalDirectory(string directory)
+    private static void PruneAuditFiles(
+        string auditDirectory,
+        TimeSpan retentionAge,
+        int maximumRetainedFiles,
+        DateTime utcNow)
     {
-        var fullPath = Path.GetFullPath(directory);
-        if (!Path.IsPathFullyQualified(fullPath)
-            || fullPath.StartsWith("\\\\", StringComparison.Ordinal)
-            || fullPath.StartsWith("\\\\?\\", StringComparison.Ordinal)
-            || fullPath.StartsWith("\\\\.\\", StringComparison.Ordinal))
+        var discovered = Directory.EnumerateFileSystemEntries(auditDirectory)
+            .Take(AbsoluteMaximumRetainedFiles + 1)
+            .ToList();
+        if (discovered.Count > AbsoluteMaximumRetainedFiles)
         {
-            throw new AgentHostAuditException("AgentHost audit directory must be local.");
+            throw new AgentHostAuditException(
+                "AgentHost audit retention exceeded its scan limit.");
         }
 
-        var root = Path.GetPathRoot(fullPath);
-        if (string.IsNullOrWhiteSpace(root)
-            || new DriveInfo(root).DriveType != DriveType.Fixed)
-        {
-            throw new AgentHostAuditException("AgentHost audit directory must use a fixed drive.");
-        }
+        var files = discovered
+            .Select(path => new AuditFile(path))
+            .Where(file => file.IsManaged)
+            .OrderBy(file => file.LastWriteTimeUtc)
+            .ToList();
 
-        Directory.CreateDirectory(fullPath);
-        for (var current = new DirectoryInfo(fullPath); current is not null; current = current.Parent)
+        foreach (var file in files)
         {
-            if ((current.Attributes & FileAttributes.ReparsePoint) != 0)
+            if (utcNow - file.LastWriteTimeUtc >= retentionAge)
             {
-                throw new AgentHostAuditException(
-                    "AgentHost audit directory cannot traverse a reparse point.");
+                file.TryDelete();
             }
+        }
 
-            if (string.Equals(current.FullName, root, StringComparison.OrdinalIgnoreCase))
+        files = files.Where(file => File.Exists(file.Path))
+            .OrderBy(file => file.LastWriteTimeUtc)
+            .ToList();
+        var remainingCount = files.Count;
+        foreach (var file in files)
+        {
+            if (remainingCount < maximumRetainedFiles)
             {
                 break;
+            }
+
+            if (file.TryDelete())
+            {
+                remainingCount--;
+            }
+        }
+
+        if (remainingCount >= maximumRetainedFiles)
+        {
+            throw new AgentHostAuditException(
+                "AgentHost audit retention is at capacity.");
+        }
+    }
+
+    private static void TryDeleteFailedAuditFile(string auditPath)
+    {
+        try
+        {
+            File.Delete(auditPath);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private sealed class AuditFile
+    {
+        internal AuditFile(string path)
+        {
+            Path = path;
+            var name = System.IO.Path.GetFileName(path);
+            IsManaged = name.EndsWith(".jsonl", StringComparison.Ordinal)
+                && AgentHostPrivateStorage.IsLowerHexIdentifier(name[..^6]);
+            if (!IsManaged)
+            {
+                return;
+            }
+
+            var attributes = File.GetAttributes(path);
+            if ((attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0)
+            {
+                throw new AgentHostAuditException(
+                    "AgentHost audit retention refused a non-file entry.");
+            }
+
+            LastWriteTimeUtc = File.GetLastWriteTimeUtc(path);
+        }
+
+        internal string Path { get; }
+
+        internal bool IsManaged { get; }
+
+        internal DateTime LastWriteTimeUtc { get; }
+
+        internal bool TryDelete()
+        {
+            try
+            {
+                File.Delete(Path);
+                return true;
+            }
+            catch (IOException exception) when (
+                AgentHostPrivateStorage.IsSharingViolation(exception))
+            {
+                return false;
             }
         }
     }

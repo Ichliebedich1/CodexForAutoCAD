@@ -54,19 +54,22 @@
 - M4 已在真实 AgentHost 启动链的未命名 Windows Job Object 上应用进程树硬限制：默认最多
   `16` 个进程、Job 总提交内存 `4 GiB`、CPU hard cap `75%`、累计 Job user-time `8` 小时，
   并保留 `KILL_ON_JOB_CLOSE`；认证后的 service session 另有 `24` 小时墙钟截止。非法值在进程
-  创建前 fail-closed；net45/net8 AgentLauncher Specs 各 `35/35`，Windows 已读回全部 Job 标志
+  创建前 fail-closed；net45/net8 AgentLauncher Specs 各 `36/36`，Windows 已读回全部 Job 标志
   与值，并用 CPU-busy synthetic child 验证 user-time 耗尽终止、用挂起 service 验证墙钟终止和
-  一次清理重试，并验证显式 STOP 不会被已撤销截止反转、连续两次清理失败会阻断后续启动。
+  一次清理重试，并验证显式 STOP 不会被已撤销截止反转、连续两次清理失败会阻断后续启动；
+  正常 STOP 先给进程 `1` 秒自然退出，再进入原有 `5` 秒强制回收。
   该结果没有测量 CPU 节流性能、故意
   耗尽真实 Codex 的内存/进程槽，也不代表
   工作目录磁盘或凭据隔离已完成。
 - M4 AgentHost 只读运行审计已进入真实 `bootstrap-serve` 调用链：每会话独立有界 JSONL 记录
   session、Bridge、请求、thread/turn、取消、审批请求和 turn 终态；只允许脱敏 ID、方法和稳定
-  状态码，审计故障会关闭 Bridge。当前 Bridge 为 `44/44`。
-  审批解决、CAD 写入终态、审计 ACL/保留和日志导出仍未完成。
+  状态码，审计故障会关闭 Bridge。workspace 与 audit 根、子目录及受管理文件现使用受保护的
+  当前用户/SYSTEM/Administrators ACL；session 正常退出删除，残留默认按 `24` 小时/最多 `64`
+  个清理，审计按 `30` 天/最多 `512` 个清理，且不跟随重解析点。当前 Bridge 为 `49/49`。
+  审批解决、CAD 写入终态、审计防篡改和日志导出仍未完成。
 - M4 Codex 子进程生产路径已关闭父环境继承：启动前清空环境，只注入固定 `16` 个变量名；
   `TEMP`/`TMP` 绑定每会话 workspace，父 `PATH`、token/API key、代理、`CODEX_HOME`、
-  `PSModulePath` 和自定义变量均不自动传入。AppServer `20/20`、完整 Phase 2 `329/329`、真实
+  `PSModulePath` 和自定义变量均不自动传入。AppServer `20/20`、完整 Phase 2 `334/334`、真实
   doctor 和两轮 v2 live `2/2` 均通过，清理后 AgentHost/app-server 为 `0/0`。当前仍用默认用户
   Codex home 兼容文件登录，不代表每会话凭据、空 MCP 或插件隔离。
 - 显式 CAD 上下文清除和文档激活清除旧缓存通过；CAD 写入和插件保存仍禁用。
@@ -133,10 +136,10 @@ fixture `6/6` 和 R20.1 API 双 Shell Probe `29 passed / 8 expected failed`；�
 5. M2 的实机/性能证据仍待完成；M3 的只读对象语义候选已经冻结，但尚未按精确哈希
    `NETLOAD`，不替代 M2 验收。M3 中文目录和字段核对模板见
    `handoff/autocad2016/M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
-6. 实机测试暂缓期间继续收口不依赖 AutoCAD 的 M4 沙箱审计；进程树清理、进程数/内存限制、
-   AgentHost 只读 JSONL 审计和 Codex 子进程父环境白名单已完成，CPU/运行时/磁盘、每会话
-   `CODEX_HOME`/凭据、审计 ACL/保留及
-   CAD 写入终态仍待完成。M4 完成前不启用 AutoCAD 2016 强类型安全写入。
+6. 实机测试暂缓期间继续收口不依赖 AutoCAD 的 M4 沙箱审计；进程树清理、进程数/内存/CPU/
+   运行时限制、AgentHost 只读 JSONL 审计、工作区/审计 ACL 与有界保留、Codex 子进程父环境
+   白名单已完成。工作目录磁盘硬配额、每会话 `CODEX_HOME`/凭据、受限令牌/AppContainer、
+   审计防篡改及 CAD 写入终态仍待完成。M4 完成前不启用 AutoCAD 2016 强类型安全写入。
 7. 随后完成长期记忆、安装签名、企业部署和 AutoCAD 2025 适配。
 
 完整阶段与完成定义见 `handoff/autocad2016/LONG_TERM_MEMORY_TODO.md`。

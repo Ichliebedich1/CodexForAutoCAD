@@ -76,7 +76,8 @@ evidence SHA-256：
 - synthetic user-time 终止不等价于真实 Codex 长时间压力测试。
 - 没有可靠的工作目录磁盘硬配额；不得用轮询目录大小冒充硬配额。
 - 每会话 `CODEX_HOME`、独立凭据、空 MCP/插件配置、受限令牌/AppContainer 仍未完成。
-- 工作区/审计目录最小 ACL、保留清理、AutoCAD 异常退出和僵尸进程矩阵仍未完成。
+- 工作区/审计目录最小 ACL 与有界保留已由后续
+  `M4_PRIVATE_STORAGE_RETENTION_20260723.md` 完成；AutoCAD 异常退出和僵尸进程矩阵仍未完成。
 
 因此本切片关闭了 M4 的 CPU 与运行时间待办，但不代表 M4 或产品已经完成，也不能据此启用 CAD
 写入。

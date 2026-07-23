@@ -16,6 +16,16 @@ using Codex.AutoCAD.Ipc;
 
 var specs = new (string Name, Func<Task> Run)[]
 {
+    ("AgentHost会话工作区使用私有ACL且正常结束清理",
+        AgentHostStorageSpecs.WorkspaceUsesPrivateAclAndCleansNormally),
+    ("AgentHost工作区清理过期残留且保护活动会话",
+        AgentHostStorageSpecs.WorkspacePrunesStaleAndProtectsActiveSession),
+    ("AgentHost工作区清理不跟随目录链接",
+        AgentHostStorageSpecs.WorkspaceCleanupDoesNotFollowDirectoryLinks),
+    ("AgentHost审计目录使用私有ACL与有界保留",
+        AgentHostStorageSpecs.AuditUsesPrivateAclAndBoundedRetention),
+    ("AgentHost私有目录拒绝重解析根",
+        AgentHostStorageSpecs.PrivateStorageRejectsReparseRoot),
     ("AgentHost审计日志为有界内容脱敏JSONL",
         AgentHostBridgeSessionSpecs.AuditLogIsBoundedContentFreeJsonl),
     ("AgentHost审计不可继续时会终止Bridge会话",

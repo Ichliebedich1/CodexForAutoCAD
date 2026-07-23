@@ -423,12 +423,14 @@ public static class AgentHostBootstrapService
 
 public sealed class AgentHostServiceSession : IDisposable
 {
+    private const int GracefulExitWaitMilliseconds = 1000;
     private const int TerminationWaitMilliseconds = 5000;
     private const int RuntimeDeadlineCleanupAttempts = 2;
     private static readonly TimeSpan StandardErrorDrainTimeout = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan RuntimeDeadlineRetryDelay = TimeSpan.FromMilliseconds(100);
 
     private readonly object _sync = new object();
+    private readonly Func<int, bool> _waitForExit;
     private readonly Func<int, bool> _terminateAndWait;
     private readonly Func<Exception?> _abortIo;
     private readonly Action _disposeProcess;
@@ -458,6 +460,7 @@ public sealed class AgentHostServiceSession : IDisposable
             throw new ArgumentNullException(nameof(child));
         }
 
+        _waitForExit = milliseconds => child.WaitForExit(milliseconds, out _);
         _terminateAndWait = child.TerminateAndWait;
         _abortIo = child.AbortIo;
         _disposeProcess = child.Dispose;
@@ -484,7 +487,26 @@ public sealed class AgentHostServiceSession : IDisposable
         Action disposeProcess,
         Task<AgentHostStandardErrorCapture> standardErrorTask,
         AgentBootstrapDoctorResult result)
+        : this(
+            _ => false,
+            terminateAndWait,
+            abortIo,
+            disposeProcess,
+            standardErrorTask,
+            result)
     {
+    }
+
+    internal AgentHostServiceSession(
+        Func<int, bool> waitForExit,
+        Func<int, bool> terminateAndWait,
+        Func<Exception?> abortIo,
+        Action disposeProcess,
+        Task<AgentHostStandardErrorCapture> standardErrorTask,
+        AgentBootstrapDoctorResult result)
+    {
+        _waitForExit = waitForExit
+            ?? throw new ArgumentNullException(nameof(waitForExit));
         _terminateAndWait = terminateAndWait
             ?? throw new ArgumentNullException(nameof(terminateAndWait));
         _abortIo = abortIo ?? throw new ArgumentNullException(nameof(abortIo));
@@ -668,6 +690,26 @@ public sealed class AgentHostServiceSession : IDisposable
             terminationProved = _terminationProved;
         }
 
+        Exception? gracefulWaitFailure = null;
+        if (!terminationProved)
+        {
+            try
+            {
+                terminationProved = _waitForExit(GracefulExitWaitMilliseconds);
+                if (terminationProved)
+                {
+                    lock (_sync)
+                    {
+                        _terminationProved = true;
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                gracefulWaitFailure = exception;
+            }
+        }
+
         if (!terminationProved)
         {
             try
@@ -694,6 +736,11 @@ public sealed class AgentHostServiceSession : IDisposable
 
         if (!terminationProved)
         {
+            if (gracefulWaitFailure != null)
+            {
+                failures.Insert(0, gracefulWaitFailure);
+            }
+
             throw CreateStopFailure(failures);
         }
 

@@ -27,6 +27,13 @@ try
     session = await AgentHostBootstrapService.StartAsync(options, timeout.Token);
     Stage("bootstrap.completed");
     var processId = session.ProcessId;
+    var sessionWorkspacePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "OpenAI",
+        "CodexForAutoCAD",
+        "workspace",
+        "sessions",
+        session.SessionId);
     ProcessMustBeAlive(processId);
     using (var keys = session.ClaimDirectionKeys())
     {
@@ -153,11 +160,13 @@ try
         "PASS REAL_CODEX_V2_TWO_CONTEXT_TURNS "
         + "同一thread完成两轮真实Codex v2上下文分析、哈希绑定和assistant事件回传");
 
-    await client.StopAsync(CancellationToken.None);
+    var bridgeStop = client.StopAsync(CancellationToken.None);
+    var agentHostStop = session.StopAsync(CancellationToken.None);
+    await Task.WhenAll(bridgeStop, agentHostStop);
     client.Dispose();
     client = null;
-    await session.StopAsync(CancellationToken.None);
     ProcessMustBeGone(processId);
+    WaitForDirectoryToDisappear(sessionWorkspacePath, TimeSpan.FromSeconds(2));
     Console.WriteLine(passed + "/2 specs passed");
     return 0;
 }
@@ -368,6 +377,21 @@ static void ProcessMustBeAlive(int processId)
     using (var process = Process.GetProcessById(processId))
     {
         True(!process.HasExited, "AgentHost exited before live validation.");
+    }
+}
+
+static void WaitForDirectoryToDisappear(string path, TimeSpan timeout)
+{
+    var deadline = Stopwatch.StartNew();
+    while (Directory.Exists(path))
+    {
+        if (deadline.Elapsed >= timeout)
+        {
+            throw new InvalidOperationException(
+                "AgentHost session workspace remained after normal service cleanup.");
+        }
+
+        Thread.Sleep(25);
     }
 }
 

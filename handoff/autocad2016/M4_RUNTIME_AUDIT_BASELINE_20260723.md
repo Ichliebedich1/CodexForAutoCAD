@@ -15,8 +15,9 @@ M4 沙箱，也不是 CAD 写入审计。`AgentHostBridgeSession` 必须接收�
 ```
 
 每个 bootstrap session 使用 `FileMode.CreateNew` 创建独占文件。目录校验拒绝 UNC/设备路径、
-非固定盘和路径中的重解析点；审计目录与普通 Codex 工作目录分离。当前实现尚未设置最小 ACL、
-保留期限或清理任务，这些仍是 M4 待办。
+非固定盘和路径中的重解析点；审计目录与普通 Codex 工作目录分离。后续私有存储切片已为目录
+和文件应用受保护 ACL，并加入默认 `30` 天/最多 `512` 个文件的有界保留；详情见
+`M4_PRIVATE_STORAGE_RETENTION_20260723.md`。本文件仍以审计内容契约为主。
 
 ## 记录契约
 
@@ -72,12 +73,13 @@ ID 不会取代系统 ID。审批当前只记录“请求已到达”和审批�
 本切片通过：
 
 ```text
-Bridge/AgentHost Specs: 44/44
-完整 Phase 2: 324/324
+Bridge/AgentHost Specs: 49/49
+完整 Phase 2（Windows PowerShell 5.1 / PowerShell 7）: 334/334
 Release build: 0 warnings / 0 errors
 Host 禁用 API 扫描: passed
 敏感信息基础扫描: passed
 AgentHost doctor 活体握手: passed
+真实 Codex v2 live: 2/2
 ```
 
 覆盖的行为包括：JSONL 白名单和单调序号、记录/字节上限、真实两轮 Bridge 会话、系统/Bridge/
@@ -85,7 +87,8 @@ Provider ID 关联、失败请求稳定错误码、取消请求/分派/终态、
 容量耗尽时的连接终止。
 
 这些是托管运行时证据，不证明 AutoCAD `NETLOAD`、真实 Codex 配额耗尽、AutoCAD 异常退出、
-审计目录 ACL/保留策略、审批解决或 M5 CAD 写入终态。
+审计防篡改、审批解决或 M5 CAD 写入终态。ACL/保留由独立私有存储 evidence 证明，不能倒推为
+本审计 schema 已形成完整安全日志闭环。
 
 脱敏证据为 `evidence/m4-agenthost-runtime-audit-20260723.json`；其 SHA-256 为
 `08A6BD80FB38F584F1A8C5C6675C40C18977718B24F12FA76EA61DB9242DC4DE`（仓库规范
@@ -93,7 +96,8 @@ CRLF 检出字节）。
 
 ## 下一步
 
-1. Codex 子进程父环境白名单已完成；继续完成每会话 `CODEX_HOME`、独立凭据和目录 ACL/清理策略。
+1. Codex 子进程父环境白名单及 workspace/audit ACL/清理已完成；继续每会话 `CODEX_HOME`、
+   独立凭据和磁盘硬配额。
 2. 将统一审批解决、CAD proposal/execute/rollback/Undo 终态接入同一固定字段审计。
 3. 增加故障注入、AgentHost/Codex 僵尸进程和日志导出脱敏测试。
 4. 在 M4 前置条件关闭前，不启用 AutoCAD 2016 CAD 写入。

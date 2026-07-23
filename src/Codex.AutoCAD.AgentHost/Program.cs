@@ -170,14 +170,15 @@ internal static class AgentHostProgram
                 directionKeys!.SessionId);
             try
             {
-                var workspaceRoot = Path.Combine(
+                var sessionsRoot = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "OpenAI",
                     "CodexForAutoCAD",
                     "workspace",
-                    "sessions",
+                    "sessions");
+                using var workspace = AgentWorkspace.CreateSession(
+                    sessionsRoot,
                     directionKeys!.SessionId);
-                var workspace = AgentWorkspace.Create(workspaceRoot);
                 var codexConfiguration = CreateCodexConfiguration(null, workspace);
                 var cadQueryBroker = new AgentHostCadQueryBroker();
                 await using var runtime = new CodexAgentRuntime(
