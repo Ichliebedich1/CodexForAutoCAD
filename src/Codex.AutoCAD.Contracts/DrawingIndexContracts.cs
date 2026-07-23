@@ -27,7 +27,55 @@ public static class DrawingIndexContractConstants
     public const int MaximumTextExcerptCharacters = 256;
     public const int MaximumCursorCharacters = 512;
     public const int MaximumIdentifierCharacters = 128;
+    public const string EntityTokenPrefix = "obj-";
+    public const int EntityTokenDigits = 8;
+    public const int EntityTokenCharacters = 12;
     public const double MaximumCoordinateMagnitude = 1_000_000_000d;
+}
+
+public static class CadQueryEntityTokens
+{
+    public static string Create(int ordinal)
+    {
+        if (ordinal < 1 || ordinal > DrawingIndexContractConstants.MaximumIndexedEntities)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ordinal));
+        }
+
+        return DrawingIndexContractConstants.EntityTokenPrefix
+               + ordinal.ToString(
+                   "D" + DrawingIndexContractConstants.EntityTokenDigits.ToString(
+                       CultureInfo.InvariantCulture),
+                   CultureInfo.InvariantCulture);
+    }
+
+    public static bool IsValid(string? token)
+    {
+        if (token is null
+            || token.Length != DrawingIndexContractConstants.EntityTokenCharacters
+            || !token.StartsWith(
+                DrawingIndexContractConstants.EntityTokenPrefix,
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var ordinal = 0;
+        for (var index = DrawingIndexContractConstants.EntityTokenPrefix.Length;
+             index < token.Length;
+             index++)
+        {
+            var character = token[index];
+            if (character < '0' || character > '9')
+            {
+                return false;
+            }
+            ordinal = checked((ordinal * 10) + character - '0');
+        }
+
+        return ordinal >= 1
+               && ordinal <= DrawingIndexContractConstants.MaximumIndexedEntities;
+    }
 }
 
 public static class DrawingIndexScopes
@@ -402,7 +450,7 @@ public static class DrawingIndexContractValidator
             "$.filter.spaces", failures);
         ValidateValues(filter.BlockNames, DrawingIndexContractConstants.MaximumNameCharacters,
             "$.filter.blockNames", failures);
-        ValidateValues(filter.ObjectIds, 32, "$.filter.objectIds", failures);
+        ValidateEntityTokens(filter.ObjectIds, "$.filter.objectIds", failures);
         ValidateSafeOptionalString(filter.TextContains,
             DrawingIndexContractConstants.MaximumTextQueryCharacters, "cad_query_text",
             "$.filter.textContains", failures);
@@ -423,7 +471,9 @@ public static class DrawingIndexContractValidator
             return;
         }
 
-        ValidateIdentifier(entity.ObjectId, "cad_query_object_id", path + ".objectId", failures, 32);
+        Require(CadQueryEntityTokens.IsValid(entity.ObjectId), failures,
+            "cad_query_object_id", path + ".objectId",
+            "查询实体令牌必须是当前索引签发的不透明序号令牌。");
         ValidateSafeRequiredString(entity.EntityType, DrawingIndexContractConstants.MaximumTypeCharacters,
             "cad_query_entity_type", path + ".entityType", failures);
         ValidateSafeRequiredString(entity.ActualType, DrawingIndexContractConstants.MaximumTypeCharacters,
@@ -475,6 +525,27 @@ public static class DrawingIndexContractValidator
                 Require(seen.Add(bucket.Key), failures,
                     "drawing_count_bucket_duplicate", itemPath + ".key", "统计桶键不能重复。");
             }
+        }
+    }
+
+    private static void ValidateEntityTokens(
+        string[]? values,
+        string path,
+        List<CadValidationFailure> failures)
+    {
+        var tokens = values ?? new string[0];
+        Require(tokens.Length <= DrawingIndexContractConstants.MaximumFilterValues, failures,
+            "cad_query_filter_values_limit", path, "过滤值数量超出硬限额。");
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = 0; index < tokens.Length; index++)
+        {
+            var itemPath = path + "[" + index.ToString(CultureInfo.InvariantCulture) + "]";
+            Require(CadQueryEntityTokens.IsValid(tokens[index]), failures,
+                "cad_query_object_id", itemPath,
+                "对象过滤值必须是当前索引签发的不透明序号令牌。");
+            Require(tokens[index] is not null && seen.Add(tokens[index]), failures,
+                "cad_query_filter_value_duplicate", itemPath,
+                "过滤值不能重复。");
         }
     }
 

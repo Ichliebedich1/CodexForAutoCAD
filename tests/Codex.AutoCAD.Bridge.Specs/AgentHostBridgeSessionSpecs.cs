@@ -170,7 +170,7 @@ internal static class AgentHostBridgeSessionSpecs
                             [
                                 new CadQueryEntity
                                 {
-                                    ObjectId = "2A",
+                                    ObjectId = "obj-00000042",
                                     EntityType = "line",
                                     ActualType = "AcDbLine",
                                     Layer = "AI",
@@ -238,7 +238,7 @@ internal static class AgentHostBridgeSessionSpecs
             using var contentDocument = JsonDocument.Parse(content);
             var toolResult = contentDocument.RootElement;
             Equal(CadQueryStatuses.Ok, toolResult.GetProperty("status").GetString());
-            Equal("2A", toolResult.GetProperty("entities")[0]
+            Equal("obj-00000042", toolResult.GetProperty("entities")[0]
                 .GetProperty("objectId")
                 .GetString());
             Equal(false, toolResult.TryGetProperty("indexId", out _));

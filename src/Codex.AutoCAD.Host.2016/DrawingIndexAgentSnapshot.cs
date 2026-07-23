@@ -36,6 +36,8 @@ namespace Codex.AutoCAD.Host2016
         private readonly CadQueryEntity[] entities;
         private readonly DrawingIndexSnapshotValidity validity;
         private readonly DrawingIndexPerformanceMetrics performanceMetrics;
+        private readonly DrawingIndexCursorRegistry cursorRegistry =
+            new DrawingIndexCursorRegistry();
 
         internal DrawingIndexAgentSnapshot(
             int generation,
@@ -211,6 +213,7 @@ namespace Codex.AutoCAD.Host2016
                     descriptor,
                     entities,
                     boundRequest,
+                    cursorRegistry,
                     cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!validity.IsCurrent)

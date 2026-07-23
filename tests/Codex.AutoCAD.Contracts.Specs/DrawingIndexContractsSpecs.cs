@@ -35,7 +35,7 @@ internal static class DrawingIndexContractsSpecs
         request.Filter.Layers = new[] { "A-WALL" };
         request.Filter.Spaces = new[] { "model" };
         request.Filter.BlockNames = new[] { "Door" };
-        request.Filter.ObjectIds = new[] { "10" };
+        request.Filter.ObjectIds = new[] { Token("10") };
         request.Filter.TextContains = "fire";
         request.Filter.Bounds = new CadQueryBounds
         {
@@ -52,11 +52,12 @@ internal static class DrawingIndexContractsSpecs
                 Entity("12", "blockReference", "A-DOOR", "model", "Door", "Fire rated", 1),
                 Entity("13", "line", "A-WALL", "model", string.Empty, string.Empty, 1),
             },
-            request);
+            request,
+            new DrawingIndexCursorRegistry());
 
         Equal(CadQueryStatuses.Ok, response.Status);
         Equal(1, response.TotalMatches);
-        Equal("10", response.Entities[0].ObjectId);
+        Equal(Token("10"), response.Entities[0].ObjectId);
         Equal(0, DrawingIndexContractValidator.Validate(response).Length);
     }
 
@@ -72,45 +73,187 @@ internal static class DrawingIndexContractsSpecs
             Entity("1", "line"),
         };
         var request = CreateRequest(descriptor, 2);
+        var cursorRegistry = new DrawingIndexCursorRegistry();
 
-        var first = DrawingIndexQueryEngine.Execute(descriptor, entities, request);
-        Equal("1", first.Entities[0].ObjectId);
-        Equal("F", first.Entities[1].ObjectId);
+        var first = DrawingIndexQueryEngine.Execute(
+            descriptor,
+            entities,
+            request,
+            cursorRegistry);
+        Equal(Token("1"), first.Entities[0].ObjectId);
+        Equal(Token("F"), first.Entities[1].ObjectId);
         True(!string.IsNullOrEmpty(first.NextCursor));
         True(!first.Complete);
 
         request.Cursor = first.NextCursor;
-        var second = DrawingIndexQueryEngine.Execute(descriptor, entities, request);
-        Equal("10", second.Entities[0].ObjectId);
-        Equal("1A", second.Entities[1].ObjectId);
+        var second = DrawingIndexQueryEngine.Execute(
+            descriptor,
+            entities,
+            request,
+            cursorRegistry);
+        Equal(Token("10"), second.Entities[0].ObjectId);
+        Equal(Token("1A"), second.Entities[1].ObjectId);
 
         request.Cursor = second.NextCursor;
-        var third = DrawingIndexQueryEngine.Execute(descriptor, entities, request);
+        var third = DrawingIndexQueryEngine.Execute(
+            descriptor,
+            entities,
+            request,
+            cursorRegistry);
         Equal(1, third.ReturnedCount);
-        Equal("100", third.Entities[0].ObjectId);
+        Equal(Token("100"), third.Entities[0].ObjectId);
         Equal(string.Empty, third.NextCursor);
         True(third.Complete);
     }
 
-    internal static void CursorIsBoundToQueryIdentity()
+    internal static void CursorIsBoundToQueryShapeAcrossRequestIdentities()
     {
         var descriptor = CreateDescriptor(3, DrawingIndexStatuses.Ready, complete: true);
         var entities = new[] { Entity("1", "line"), Entity("2", "line"), Entity("3", "line") };
         var request = CreateRequest(descriptor, 1);
-        var first = DrawingIndexQueryEngine.Execute(descriptor, entities, request);
+        var cursorRegistry = new DrawingIndexCursorRegistry();
+        var first = DrawingIndexQueryEngine.Execute(
+            descriptor,
+            entities,
+            request,
+            cursorRegistry);
 
         request.PageSize = 2;
         request.Cursor = first.NextCursor;
         var exception = Throws<DrawingIndexQueryException>(
-            () => DrawingIndexQueryEngine.Execute(descriptor, entities, request));
+            () => DrawingIndexQueryEngine.Execute(
+                descriptor,
+                entities,
+                request,
+                cursorRegistry));
         Equal("cad_query_cursor_invalid", exception.Code);
 
         request = CreateRequest(descriptor, 1);
         request.QueryId = "query-other";
         request.Cursor = first.NextCursor;
+        var second = DrawingIndexQueryEngine.Execute(
+            descriptor,
+            entities,
+            request,
+            cursorRegistry);
+        Equal(1, second.ReturnedCount);
+        Equal(Token("2"), second.Entities[0].ObjectId);
+
+        request = CreateRequest(descriptor, 1);
+        request.Filter.EntityTypes = new[] { "circle" };
+        request.Cursor = first.NextCursor;
         exception = Throws<DrawingIndexQueryException>(
-            () => DrawingIndexQueryEngine.Execute(descriptor, entities, request));
+            () => DrawingIndexQueryEngine.Execute(
+                descriptor,
+                entities,
+                request,
+                cursorRegistry));
         Equal("cad_query_cursor_invalid", exception.Code);
+    }
+
+    internal static void CursorCannotCrossIndexOrRevision()
+    {
+        var descriptor = CreateDescriptor(2, DrawingIndexStatuses.Ready, complete: true);
+        var entities = new[] { Entity("1", "line"), Entity("2", "line") };
+        var cursorRegistry = new DrawingIndexCursorRegistry();
+        var firstRequest = CreateRequest(descriptor, 1);
+        var first = DrawingIndexQueryEngine.Execute(
+            descriptor,
+            entities,
+            firstRequest,
+            cursorRegistry);
+
+        var otherIndex = CreateDescriptor(2, DrawingIndexStatuses.Ready, complete: true);
+        otherIndex.IndexId = "index-fedcba9876543210";
+        var otherIndexRequest = CreateRequest(otherIndex, 1);
+        otherIndexRequest.Cursor = first.NextCursor;
+        var exception = Throws<DrawingIndexQueryException>(
+            () => DrawingIndexQueryEngine.Execute(
+                otherIndex,
+                entities,
+                otherIndexRequest,
+                cursorRegistry));
+        Equal("cad_query_cursor_invalid", exception.Code);
+
+        var otherRevision = CreateDescriptor(2, DrawingIndexStatuses.Ready, complete: true);
+        otherRevision.DocumentRevision++;
+        var otherRevisionRequest = CreateRequest(otherRevision, 1);
+        otherRevisionRequest.Cursor = first.NextCursor;
+        exception = Throws<DrawingIndexQueryException>(
+            () => DrawingIndexQueryEngine.Execute(
+                otherRevision,
+                entities,
+                otherRevisionRequest,
+                cursorRegistry));
+        Equal("cad_query_cursor_invalid", exception.Code);
+    }
+
+    internal static void ForgedCursorOffsetIsRejected()
+    {
+        var descriptor = CreateDescriptor(4, DrawingIndexStatuses.Ready, complete: true);
+        var entities = new[]
+        {
+            Entity("1", "line"),
+            Entity("2", "line"),
+            Entity("3", "line"),
+            Entity("4", "line"),
+        };
+        var request = CreateRequest(descriptor, 1);
+        var cursorRegistry = new DrawingIndexCursorRegistry();
+        var first = DrawingIndexQueryEngine.Execute(
+            descriptor,
+            entities,
+            request,
+            cursorRegistry);
+        request.Cursor = MutateCursor(first.NextCursor);
+
+        var exception = Throws<DrawingIndexQueryException>(
+            () => DrawingIndexQueryEngine.Execute(
+                descriptor,
+                entities,
+                request,
+                cursorRegistry));
+        Equal("cad_query_cursor_invalid", exception.Code);
+    }
+
+    internal static void ExpiredCursorIsRejected()
+    {
+        var now = new DateTimeOffset(2026, 7, 24, 0, 0, 0, TimeSpan.Zero);
+        var cursorRegistry = new DrawingIndexCursorRegistry(
+            TimeSpan.FromSeconds(1),
+            () => now,
+            () => "dq1_expiry_token");
+        var descriptor = CreateDescriptor(2, DrawingIndexStatuses.Ready, complete: true);
+        var entities = new[] { Entity("1", "line"), Entity("2", "line") };
+        var request = CreateRequest(descriptor, 1);
+        var first = DrawingIndexQueryEngine.Execute(
+            descriptor,
+            entities,
+            request,
+            cursorRegistry);
+
+        now = now.AddSeconds(1);
+        request.Cursor = first.NextCursor;
+        var exception = Throws<DrawingIndexQueryException>(
+            () => DrawingIndexQueryEngine.Execute(
+                descriptor,
+                entities,
+                request,
+                cursorRegistry));
+        Equal("cad_query_cursor_invalid", exception.Code);
+    }
+
+    private static string MutateCursor(string cursor)
+    {
+        if (string.IsNullOrEmpty(cursor))
+        {
+            throw new InvalidOperationException("Expected a non-empty cursor.");
+        }
+
+        var characters = cursor.ToCharArray();
+        var index = characters.Length - 1;
+        characters[index] = characters[index] == 'A' ? 'B' : 'A';
+        return new string(characters);
     }
 
     internal static void RevisionMismatchReturnsStale()
@@ -121,7 +264,8 @@ internal static class DrawingIndexContractsSpecs
         var response = DrawingIndexQueryEngine.Execute(
             descriptor,
             new[] { Entity("1", "line") },
-            request);
+            request,
+            new DrawingIndexCursorRegistry());
         Equal(CadQueryStatuses.Stale, response.Status);
         Equal(0, response.ReturnedCount);
         True(!response.Complete);
@@ -135,7 +279,8 @@ internal static class DrawingIndexContractsSpecs
         var partialResponse = DrawingIndexQueryEngine.Execute(
             partial,
             new[] { Entity("1", "line"), Entity("2", "line") },
-            CreateRequest(partial, 10));
+            CreateRequest(partial, 10),
+            new DrawingIndexCursorRegistry());
         Equal(CadQueryStatuses.Partial, partialResponse.Status);
         True(!partialResponse.Complete);
 
@@ -147,7 +292,8 @@ internal static class DrawingIndexContractsSpecs
         var limitedResponse = DrawingIndexQueryEngine.Execute(
             limited,
             new[] { Entity("1", "line"), Entity("2", "line") },
-            CreateRequest(limited, 10));
+            CreateRequest(limited, 10),
+            new DrawingIndexCursorRegistry());
         Equal(CadQueryStatuses.Limited, limitedResponse.Status);
         True(!limitedResponse.Complete);
     }
@@ -188,7 +334,11 @@ internal static class DrawingIndexContractsSpecs
         request.Filter.EntityTypes = new[] { "circle" };
         request.Filter.Layers = new[] { "A" };
         var timer = System.Diagnostics.Stopwatch.StartNew();
-        var response = DrawingIndexQueryEngine.Execute(descriptor, entities, request);
+        var response = DrawingIndexQueryEngine.Execute(
+            descriptor,
+            entities,
+            request,
+            new DrawingIndexCursorRegistry());
         timer.Stop();
 
         Equal(5_000, response.TotalMatches);
@@ -252,6 +402,37 @@ internal static class DrawingIndexContractsSpecs
         Equal(1, accumulator.Count);
     }
 
+    internal static void RawHandleShapedObjectTokensFailClosed()
+    {
+        var descriptor = CreateDescriptor(1, DrawingIndexStatuses.Ready, complete: true);
+        var entity = Entity("1A", "line");
+        entity.ObjectId = "1A";
+        var response = new CadQueryResponse
+        {
+            IndexId = descriptor.IndexId,
+            DocumentId = descriptor.DocumentId,
+            DocumentRevision = descriptor.DocumentRevision,
+            QueryId = "query-raw-handle-token",
+            Status = CadQueryStatuses.Ok,
+            Complete = true,
+            TotalMatches = 1,
+            ReturnedCount = 1,
+            Entities = new[] { entity },
+        };
+        Contains(
+            DrawingIndexContractValidator.Validate(response),
+            "cad_query_object_id");
+
+        var request = CreateRequest(descriptor, 1);
+        request.Filter.ObjectIds = new[] { "1A" };
+        Contains(
+            DrawingIndexContractValidator.Validate(request),
+            "cad_query_object_id");
+
+        True(CadQueryEntityTokens.IsValid(Token("1A")));
+        True(!CadQueryEntityTokens.IsValid("1A"));
+    }
+
     private static DrawingIndexDescriptor CreateDescriptor(
         int count,
         string status,
@@ -301,7 +482,7 @@ internal static class DrawingIndexContractsSpecs
     {
         return new CadQueryEntity
         {
-            ObjectId = objectId,
+            ObjectId = Token(objectId),
             EntityType = type,
             ActualType = "AcDb" + type,
             Layer = layer,
@@ -316,6 +497,15 @@ internal static class DrawingIndexContractsSpecs
             Unsupported = false,
             ReadStatus = CadQueryReadStatuses.Parsed,
         };
+    }
+
+    private static string Token(string hexadecimalOrdinal)
+    {
+        var ordinal = int.Parse(
+            hexadecimalOrdinal,
+            System.Globalization.NumberStyles.AllowHexSpecifier,
+            System.Globalization.CultureInfo.InvariantCulture);
+        return CadQueryEntityTokens.Create(ordinal);
     }
 
     private static void Contains(CadValidationFailure[] failures, string code)

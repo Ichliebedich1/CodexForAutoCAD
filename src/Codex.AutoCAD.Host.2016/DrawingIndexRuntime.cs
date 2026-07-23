@@ -21,6 +21,8 @@ namespace Codex.AutoCAD.Host2016
         private static readonly TimeSpan MaximumScanDuration = TimeSpan.FromMinutes(2);
 
         private static readonly CadQueryEntity[] EmptyEntities = new CadQueryEntity[0];
+        private static readonly DrawingIndexCursorRegistry LocalCursorRegistry =
+            new DrawingIndexCursorRegistry();
         private static DrawingIndexDescriptor descriptor = CreateEmptyDescriptor();
         private static CadQueryEntity[] publishedEntities = EmptyEntities;
         private static DrawingIndexBuildSession activeSession;
@@ -337,7 +339,11 @@ namespace Codex.AutoCAD.Host2016
             var timer = Stopwatch.StartNew();
             try
             {
-                var response = DrawingIndexQueryEngine.Execute(descriptor, publishedEntities, request);
+                var response = DrawingIndexQueryEngine.Execute(
+                    descriptor,
+                    publishedEntities,
+                    request,
+                    LocalCursorRegistry);
                 lastQueryRequest = CloneRequest(request);
                 lastQueryResponse = response;
                 NotifyPalette();
@@ -745,46 +751,108 @@ namespace Codex.AutoCAD.Host2016
 
             while (preparation.SpaceIndex < preparation.SpaceSources.Length)
             {
-                if (preparation.CurrentEnumerator == null)
+                if (preparation.CurrentObjectIds == null)
                 {
                     var source = preparation.SpaceSources[preparation.SpaceIndex];
-                    using (var transaction = session.Document.Database.TransactionManager.StartOpenCloseTransaction())
+                    var maximumCollected = Math.Max(
+                        0,
+                        DrawingIndexContractConstants.MaximumIndexedEntities
+                        - preparation.Items.Count);
+                    var snapshot = ReadSpaceObjectIds(
+                        session.Document.Database,
+                        source.RecordId,
+                        maximumCollected);
+                    if (snapshot.CountOverflow)
                     {
-                        if (source.RecordId.IsNull || source.RecordId.IsErased)
-                        {
-                            preparation.SpaceIndex++;
-                            continue;
-                        }
-
-                        var record = transaction.GetObject(
-                            source.RecordId,
-                            OpenMode.ForRead,
-                            false) as BlockTableRecord;
-                        if (record == null)
-                        {
-                            preparation.SpaceIndex++;
-                            continue;
-                        }
-
-                        preparation.CurrentEnumerator = record.GetEnumerator();
-                        preparation.CurrentSpace = source.Space;
+                        preparation.CountOverflow = true;
+                        preparation.EntityBudgetExceeded = true;
+                        objectId = ObjectId.Null;
+                        space = string.Empty;
+                        return false;
                     }
+
+                    var skipped = snapshot.TotalEntityCount - snapshot.ObjectIds.Length;
+                    if (preparation.TotalEntityCount
+                        > DrawingIndexContractConstants.MaximumReportedEntities - skipped)
+                    {
+                        preparation.CountOverflow = true;
+                        preparation.EntityBudgetExceeded = true;
+                        objectId = ObjectId.Null;
+                        space = string.Empty;
+                        return false;
+                    }
+
+                    preparation.TotalEntityCount += skipped;
+                    preparation.EntityBudgetExceeded |= skipped > 0;
+                    preparation.CurrentObjectIds = snapshot.ObjectIds;
+                    preparation.CurrentObjectIndex = 0;
+                    preparation.CurrentSpace = source.Space;
                 }
 
-                if (preparation.CurrentEnumerator.MoveNext())
+                if (preparation.CurrentObjectIndex < preparation.CurrentObjectIds.Length)
                 {
-                    objectId = preparation.CurrentEnumerator.Current;
+                    objectId = preparation.CurrentObjectIds[preparation.CurrentObjectIndex++];
                     space = preparation.CurrentSpace;
                     return true;
                 }
 
-                preparation.DisposeCurrentEnumerator();
+                preparation.ClearCurrentSpace();
                 preparation.SpaceIndex++;
             }
 
             objectId = ObjectId.Null;
             space = string.Empty;
             return false;
+        }
+
+        private static DrawingIndexSpaceSnapshot ReadSpaceObjectIds(
+            Database database,
+            ObjectId recordId,
+            int maximumCollected)
+        {
+            if (recordId.IsNull || recordId.IsErased)
+            {
+                return DrawingIndexSpaceSnapshot.Empty;
+            }
+
+            using (var transaction = database.TransactionManager.StartOpenCloseTransaction())
+            {
+                var record = transaction.GetObject(
+                    recordId,
+                    OpenMode.ForRead,
+                    false) as BlockTableRecord;
+                if (record == null)
+                {
+                    return DrawingIndexSpaceSnapshot.Empty;
+                }
+
+                var objectIds = new List<ObjectId>(Math.Min(maximumCollected, 4096));
+                var total = 0;
+                using (var enumerator = record.GetEnumerator())
+                {
+                    while (enumerator.MoveNext())
+                    {
+                        if (total >= DrawingIndexContractConstants.MaximumReportedEntities)
+                        {
+                            return new DrawingIndexSpaceSnapshot(
+                                objectIds.ToArray(),
+                                total,
+                                true);
+                        }
+
+                        total++;
+                        if (objectIds.Count < maximumCollected)
+                        {
+                            objectIds.Add(enumerator.Current);
+                        }
+                    }
+                }
+
+                return new DrawingIndexSpaceSnapshot(
+                    objectIds.ToArray(),
+                    total,
+                    false);
+            }
         }
 
         private static void AddScanItem(
@@ -810,7 +878,7 @@ namespace Codex.AutoCAD.Host2016
                     return;
                 }
 
-                var objectToken = CreateUniqueObjectToken(preparation, objectId);
+                var objectToken = CadQueryEntityTokens.Create(preparation.Items.Count + 1);
                 preparation.Items.Add(new DrawingIndexScanItem(objectId, objectToken, space));
             }
             else
@@ -819,32 +887,6 @@ namespace Codex.AutoCAD.Host2016
             }
 
             preparation.TotalEntityCount++;
-        }
-
-        private static string CreateUniqueObjectToken(
-            DrawingIndexPreparationState preparation,
-            ObjectId objectId)
-        {
-            var baseToken = DrawingIndexEntityReader.ReadObjectToken(objectId);
-            if (preparation.SeenObjectTokens.Add(baseToken))
-            {
-                return baseToken;
-            }
-
-            while (true)
-            {
-                preparation.TokenCollisionSequence++;
-                var suffix = preparation.TokenCollisionSequence.ToString("X", CultureInfo.InvariantCulture);
-                var maximumPrefix = 32 - suffix.Length - 1;
-                var prefix = baseToken.Length <= maximumPrefix
-                    ? baseToken
-                    : baseToken.Substring(0, maximumPrefix);
-                var candidate = prefix + "-" + suffix;
-                if (preparation.SeenObjectTokens.Add(candidate))
-                {
-                    return candidate;
-                }
-            }
         }
 
         private static CadQueryEntity ReadItem(Transaction transaction, DrawingIndexScanItem item)
@@ -1075,6 +1117,7 @@ namespace Codex.AutoCAD.Host2016
 
         private static void InvalidatePublishedAgentSnapshot()
         {
+            LocalCursorRegistry.Clear();
             var validity = publishedAgentSnapshotValidity;
             publishedAgentSnapshotValidity = null;
             publishedAgentSnapshot = null;
@@ -1518,9 +1561,6 @@ namespace Codex.AutoCAD.Host2016
             internal HashSet<ObjectId> SeenObjectIds { get; } =
                 new HashSet<ObjectId>();
 
-            internal HashSet<string> SeenObjectTokens { get; } =
-                new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
             internal ObjectId[] SelectionObjectIds { get; private set; }
 
             internal string SelectionSpace { get; private set; }
@@ -1531,13 +1571,13 @@ namespace Codex.AutoCAD.Host2016
 
             internal int SpaceIndex { get; set; }
 
-            internal BlockTableRecordEnumerator CurrentEnumerator { get; set; }
+            internal ObjectId[] CurrentObjectIds { get; set; }
 
             internal string CurrentSpace { get; set; }
 
-            internal int TotalEntityCount { get; set; }
+            internal int CurrentObjectIndex { get; set; }
 
-            internal int TokenCollisionSequence { get; set; }
+            internal int TotalEntityCount { get; set; }
 
             internal bool CountOverflow { get; set; }
 
@@ -1568,21 +1608,39 @@ namespace Codex.AutoCAD.Host2016
                 };
             }
 
-            internal void DisposeCurrentEnumerator()
+            internal void ClearCurrentSpace()
             {
-                var current = CurrentEnumerator;
-                CurrentEnumerator = null;
+                CurrentObjectIds = null;
                 CurrentSpace = string.Empty;
-                if (current != null)
-                {
-                    current.Dispose();
-                }
+                CurrentObjectIndex = 0;
             }
 
             public void Dispose()
             {
-                DisposeCurrentEnumerator();
+                ClearCurrentSpace();
             }
+        }
+
+        private sealed class DrawingIndexSpaceSnapshot
+        {
+            internal static readonly DrawingIndexSpaceSnapshot Empty =
+                new DrawingIndexSpaceSnapshot(new ObjectId[0], 0, false);
+
+            internal DrawingIndexSpaceSnapshot(
+                ObjectId[] objectIds,
+                int totalEntityCount,
+                bool countOverflow)
+            {
+                ObjectIds = objectIds ?? new ObjectId[0];
+                TotalEntityCount = totalEntityCount;
+                CountOverflow = countOverflow;
+            }
+
+            internal ObjectId[] ObjectIds { get; private set; }
+
+            internal int TotalEntityCount { get; private set; }
+
+            internal bool CountOverflow { get; private set; }
         }
 
         private sealed class DrawingIndexSpaceSource

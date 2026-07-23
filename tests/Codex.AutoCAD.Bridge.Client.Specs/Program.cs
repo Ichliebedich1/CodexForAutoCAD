@@ -265,7 +265,7 @@ try
                     {
                         new CadQueryEntity
                         {
-                            ObjectId = "1A",
+                            ObjectId = "obj-00000026",
                             EntityType = "line",
                             ActualType = "AcDbLine",
                             Layer = "AI",
@@ -363,7 +363,7 @@ try
                     {
                         new CadQueryEntity
                         {
-                            ObjectId = "1A",
+                            ObjectId = "obj-00000026",
                             EntityType = "line",
                             ActualType = "AcDbLine",
                             Layer = "AI",

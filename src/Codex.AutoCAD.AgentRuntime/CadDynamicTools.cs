@@ -488,7 +488,7 @@ internal static class CadDynamicToolCatalog
                 "layers": { "type": "array", "maxItems": 64, "items": { "type": "string", "maxLength": 255 } },
                 "spaces": { "type": "array", "maxItems": 64, "items": { "type": "string", "maxLength": 255 } },
                 "blockNames": { "type": "array", "maxItems": 64, "items": { "type": "string", "maxLength": 255 } },
-                "objectIds": { "type": "array", "maxItems": 64, "items": { "type": "string", "maxLength": 32 } },
+                "objectIds": { "type": "array", "maxItems": 64, "items": { "type": "string", "minLength": 12, "maxLength": 12, "pattern": "^obj-[0-9]{8}$" } },
                 "textContains": { "type": "string", "maxLength": 256 },
                 "bounds": {
                   "type": "object",
@@ -501,7 +501,7 @@ internal static class CadDynamicToolCatalog
                 },
                 "includeUnsupported": { "type": "boolean" },
                 "pageSize": { "type": "integer", "minimum": 1, "maximum": 200 },
-                "cursor": { "type": "string", "maxLength": 1024 }
+                "cursor": { "type": "string", "maxLength": 512 }
               },
               "$defs": {
                 "point3d": {

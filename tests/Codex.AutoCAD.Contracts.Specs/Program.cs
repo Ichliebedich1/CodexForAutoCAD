@@ -80,7 +80,10 @@ var specs = new[]
     new SpecCase("INDEX-V1-002 DrawingIndex计数与终态不一致被拒绝", DrawingIndexContractsSpecs.DescriptorInvariantsFailClosed),
     new SpecCase("QUERY-V1-001 类型图层块文字范围和对象ID过滤正确", DrawingIndexContractsSpecs.FiltersAreCombined),
     new SpecCase("QUERY-V1-002 游标分页稳定且不重复不遗漏", DrawingIndexContractsSpecs.CursorPaginationIsStable),
-    new SpecCase("QUERY-V1-003 游标绑定索引查询和页大小", DrawingIndexContractsSpecs.CursorIsBoundToQueryIdentity),
+    new SpecCase("QUERY-V1-003 游标绑定索引与查询形状但允许跨请求分页", DrawingIndexContractsSpecs.CursorIsBoundToQueryShapeAcrossRequestIdentities),
+    new SpecCase("QUERY-V1-010 游标不能跨索引或revision使用", DrawingIndexContractsSpecs.CursorCannotCrossIndexOrRevision),
+    new SpecCase("QUERY-V1-008 篡改游标偏移量被拒绝", DrawingIndexContractsSpecs.ForgedCursorOffsetIsRejected),
+    new SpecCase("QUERY-V1-009 过期游标被拒绝", DrawingIndexContractsSpecs.ExpiredCursorIsRejected),
     new SpecCase("QUERY-V1-004 图纸revision变化返回stale而非旧结果", DrawingIndexContractsSpecs.RevisionMismatchReturnsStale),
     new SpecCase("QUERY-V1-005 partial与limited完整性不被伪装", DrawingIndexContractsSpecs.PartialAndLimitedStayExplicit),
     new SpecCase("QUERY-V1-006 内存预算在加入实体前fail-closed", DrawingIndexContractsSpecs.AccumulatorHonorsMemoryBudget),
@@ -88,6 +91,7 @@ var specs = new[]
     new SpecCase("INDEX-V1-003 完成状态不会把占位或预算超限伪装为完整", DrawingIndexContractsSpecs.CompletionPolicyIsFailClosed),
     new SpecCase("INDEX-V1-004 图纸身份或revision变化使索引失效", DrawingIndexContractsSpecs.IdentityPolicyRejectsStaleIndex),
     new SpecCase("INDEX-V1-005 重复实体令牌在累积与响应层均fail-closed", DrawingIndexContractsSpecs.DuplicateObjectTokensFailClosed),
+    new SpecCase("INDEX-V1-006 原始Handle形状不能作为查询实体令牌", DrawingIndexContractsSpecs.RawHandleShapedObjectTokensFailClosed),
 };
 
 var failed = 0;

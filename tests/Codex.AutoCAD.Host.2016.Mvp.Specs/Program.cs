@@ -314,7 +314,7 @@ static Task DrawingQueryCapabilitiesRejectMissing()
 static Task DrawingSnapshotIsDeepManaged()
 {
     var descriptor = CreateReadyDrawingDescriptor("deep-managed-document");
-    var entity = CreateDrawingEntity("object-deep-managed", "Layer-A");
+    var entity = CreateDrawingEntity(1, "Layer-A");
     var validity = new DrawingIndexSnapshotValidity();
     var snapshot = new DrawingIndexAgentSnapshot(
         7,
@@ -349,7 +349,7 @@ static Task DrawingSnapshotIsDeepManaged()
 static Task DrawingSnapshotTakesFrozenOwnership()
 {
     var descriptor = CreateReadyDrawingDescriptor("owned-frozen-document");
-    var frozenEntities = new[] { CreateDrawingEntity("object-owned-frozen", "Layer-A") };
+    var frozenEntities = new[] { CreateDrawingEntity(2, "Layer-A") };
     var snapshot = DrawingIndexAgentSnapshot.CreateFromOwnedFrozenEntities(
         19,
         descriptor,
@@ -704,7 +704,7 @@ static DrawingIndexAgentSnapshot CreateDrawingSnapshot(
     return new DrawingIndexAgentSnapshot(
         generation,
         CreateReadyDrawingDescriptor(documentId),
-        new[] { CreateDrawingEntity("object-" + generation, "Layer-A") },
+        new[] { CreateDrawingEntity(generation, "Layer-A") },
         validity);
 }
 
@@ -725,7 +725,7 @@ static Task DrawingIndexPerformanceTelemetry()
     var drawingSnapshot = DrawingIndexAgentSnapshot.CreateFromOwnedFrozenEntities(
         1,
         CreateReadyDrawingDescriptor("doc-performance"),
-        new[] { CreateDrawingEntity("object-performance", "Layer-A") },
+        new[] { CreateDrawingEntity(3, "Layer-A") },
         validity,
         metrics);
     drawingSnapshot.Query(
@@ -778,11 +778,11 @@ static DrawingIndexDescriptor CreateReadyDrawingDescriptor(string documentId)
     };
 }
 
-static CadQueryEntity CreateDrawingEntity(string objectId, string layer)
+static CadQueryEntity CreateDrawingEntity(int ordinal, string layer)
 {
     return new CadQueryEntity
     {
-        ObjectId = objectId,
+        ObjectId = CadQueryEntityTokens.Create(ordinal),
         EntityType = "line",
         ActualType = "Line",
         Layer = layer,

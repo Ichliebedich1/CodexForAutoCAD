@@ -292,22 +292,257 @@ namespace Codex.AutoCAD.Host2016
         }
     }
 
+    internal sealed class DrawingIndexCursorRegistry
+    {
+        private const int MaximumEntries = 4096;
+        private const int MaximumTokenAttempts = 16;
+        private static readonly TimeSpan DefaultLifetime = TimeSpan.FromMinutes(5);
+
+        private readonly object sync = new object();
+        private readonly Dictionary<string, CursorEntry> entries =
+            new Dictionary<string, CursorEntry>(StringComparer.Ordinal);
+        private readonly TimeSpan lifetime;
+        private readonly Func<DateTimeOffset> utcNow;
+        private readonly Func<string> tokenFactory;
+
+        internal DrawingIndexCursorRegistry()
+            : this(DefaultLifetime, () => DateTimeOffset.UtcNow, CreateToken)
+        {
+        }
+
+        internal DrawingIndexCursorRegistry(
+            TimeSpan cursorLifetime,
+            Func<DateTimeOffset> clock,
+            Func<string> createToken)
+        {
+            if (cursorLifetime <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(cursorLifetime));
+            }
+            if (clock == null)
+            {
+                throw new ArgumentNullException(nameof(clock));
+            }
+            if (createToken == null)
+            {
+                throw new ArgumentNullException(nameof(createToken));
+            }
+
+            lifetime = cursorLifetime;
+            utcNow = clock;
+            tokenFactory = createToken;
+        }
+
+        internal string Issue(
+            string indexId,
+            long documentRevision,
+            string queryFingerprint,
+            int offset)
+        {
+            if (string.IsNullOrEmpty(indexId)
+                || string.IsNullOrEmpty(queryFingerprint)
+                || documentRevision < 0
+                || offset < 0)
+            {
+                throw new ArgumentException("查询游标绑定参数无效。");
+            }
+
+            lock (sync)
+            {
+                var now = utcNow();
+                RemoveExpired(now);
+                if (entries.Count >= MaximumEntries)
+                {
+                    throw new DrawingIndexQueryException(
+                        "cad_query_cursor_capacity",
+                        "查询游标容量已满；请重新建立索引或稍后重试。");
+                }
+
+                for (var attempt = 0; attempt < MaximumTokenAttempts; attempt++)
+                {
+                    var token = tokenFactory();
+                    if (!IsValidToken(token) || entries.ContainsKey(token))
+                    {
+                        continue;
+                    }
+
+                    entries.Add(
+                        token,
+                        new CursorEntry(
+                            indexId,
+                            documentRevision,
+                            queryFingerprint,
+                            offset,
+                            now.Add(lifetime)));
+                    return token;
+                }
+            }
+
+            throw new DrawingIndexQueryException(
+                "cad_query_cursor_generation",
+                "无法生成唯一查询游标。");
+        }
+
+        internal int Resolve(
+            string token,
+            string indexId,
+            long documentRevision,
+            string queryFingerprint)
+        {
+            if (!IsValidToken(token))
+            {
+                throw InvalidCursor();
+            }
+
+            lock (sync)
+            {
+                var now = utcNow();
+                RemoveExpired(now);
+                CursorEntry? entry;
+                if (!entries.TryGetValue(token, out entry)
+                    || entry == null
+                    || !string.Equals(entry.IndexId, indexId, StringComparison.Ordinal)
+                    || entry.DocumentRevision != documentRevision
+                    || !string.Equals(
+                        entry.QueryFingerprint,
+                        queryFingerprint,
+                        StringComparison.Ordinal))
+                {
+                    throw InvalidCursor();
+                }
+
+                return entry.Offset;
+            }
+        }
+
+        internal void Clear()
+        {
+            lock (sync)
+            {
+                entries.Clear();
+            }
+        }
+
+        private void RemoveExpired(DateTimeOffset now)
+        {
+            if (entries.Count == 0)
+            {
+                return;
+            }
+
+            var expired = new List<string>();
+            foreach (var pair in entries)
+            {
+                if (pair.Value.ExpiresAtUtc <= now)
+                {
+                    expired.Add(pair.Key);
+                }
+            }
+            for (var index = 0; index < expired.Count; index++)
+            {
+                entries.Remove(expired[index]);
+            }
+        }
+
+        private static bool IsValidToken(string token)
+        {
+            if (string.IsNullOrEmpty(token)
+                || token.Length > DrawingIndexContractConstants.MaximumCursorCharacters
+                || !token.StartsWith("dq1_", StringComparison.Ordinal))
+            {
+                return false;
+            }
+            for (var index = 0; index < token.Length; index++)
+            {
+                var character = token[index];
+                if (!(character >= 'A' && character <= 'Z')
+                    && !(character >= 'a' && character <= 'z')
+                    && !(character >= '0' && character <= '9')
+                    && character != '-'
+                    && character != '_')
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static string CreateToken()
+        {
+            var bytes = new byte[24];
+            try
+            {
+                using (var random = RandomNumberGenerator.Create())
+                {
+                    random.GetBytes(bytes);
+                }
+                return "dq1_" + Convert.ToBase64String(bytes)
+                    .TrimEnd('=')
+                    .Replace('+', '-')
+                    .Replace('/', '_');
+            }
+            finally
+            {
+                Array.Clear(bytes, 0, bytes.Length);
+            }
+        }
+
+        private static DrawingIndexQueryException InvalidCursor()
+        {
+            return new DrawingIndexQueryException(
+                "cad_query_cursor_invalid",
+                "查询游标无效、被篡改、已过期或不属于当前查询。");
+        }
+
+        private sealed class CursorEntry
+        {
+            internal CursorEntry(
+                string indexId,
+                long documentRevision,
+                string queryFingerprint,
+                int offset,
+                DateTimeOffset expiresAtUtc)
+            {
+                IndexId = indexId;
+                DocumentRevision = documentRevision;
+                QueryFingerprint = queryFingerprint;
+                Offset = offset;
+                ExpiresAtUtc = expiresAtUtc;
+            }
+
+            internal string IndexId { get; private set; }
+
+            internal long DocumentRevision { get; private set; }
+
+            internal string QueryFingerprint { get; private set; }
+
+            internal int Offset { get; private set; }
+
+            internal DateTimeOffset ExpiresAtUtc { get; private set; }
+        }
+    }
+
     internal static class DrawingIndexQueryEngine
     {
-        private const string CursorPrefix = "dq1";
-
         internal static CadQueryResponse Execute(
             DrawingIndexDescriptor descriptor,
             IReadOnlyList<CadQueryEntity> entities,
-            CadQueryRequest request)
+            CadQueryRequest request,
+            DrawingIndexCursorRegistry cursorRegistry)
         {
-            return Execute(descriptor, entities, request, CancellationToken.None);
+            return Execute(
+                descriptor,
+                entities,
+                request,
+                cursorRegistry,
+                CancellationToken.None);
         }
 
         internal static CadQueryResponse Execute(
             DrawingIndexDescriptor descriptor,
             IReadOnlyList<CadQueryEntity> entities,
             CadQueryRequest request,
+            DrawingIndexCursorRegistry cursorRegistry,
             CancellationToken cancellationToken)
         {
             if (descriptor == null)
@@ -317,6 +552,10 @@ namespace Codex.AutoCAD.Host2016
             if (entities == null)
             {
                 throw new ArgumentNullException(nameof(entities));
+            }
+            if (cursorRegistry == null)
+            {
+                throw new ArgumentNullException(nameof(cursorRegistry));
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -370,7 +609,11 @@ namespace Codex.AutoCAD.Host2016
             var fingerprint = ComputeFingerprint(request);
             var offset = string.IsNullOrEmpty(request.Cursor)
                 ? 0
-                : DecodeCursor(request.Cursor, descriptor.IndexId, fingerprint);
+                : cursorRegistry.Resolve(
+                    request.Cursor,
+                    descriptor.IndexId,
+                    descriptor.DocumentRevision,
+                    fingerprint);
             var matches = new List<CadQueryEntity>();
             for (var index = 0; index < entities.Count; index++)
             {
@@ -408,7 +651,11 @@ namespace Codex.AutoCAD.Host2016
 
             var nextOffset = offset + returned;
             var nextCursor = nextOffset < matches.Count
-                ? EncodeCursor(descriptor.IndexId, nextOffset, fingerprint)
+                ? cursorRegistry.Issue(
+                    descriptor.IndexId,
+                    descriptor.DocumentRevision,
+                    fingerprint,
+                    nextOffset)
                 : string.Empty;
             var response = new CadQueryResponse
             {
@@ -555,26 +802,12 @@ namespace Codex.AutoCAD.Host2016
 
         private static int CompareEntities(CadQueryEntity left, CadQueryEntity right)
         {
-            ulong leftHandle;
-            ulong rightHandle;
-            if (ulong.TryParse(left.ObjectId, NumberStyles.AllowHexSpecifier,
-                    CultureInfo.InvariantCulture, out leftHandle)
-                && ulong.TryParse(right.ObjectId, NumberStyles.AllowHexSpecifier,
-                    CultureInfo.InvariantCulture, out rightHandle))
-            {
-                var numeric = leftHandle.CompareTo(rightHandle);
-                if (numeric != 0)
-                {
-                    return numeric;
-                }
-            }
             return string.Compare(left.ObjectId, right.ObjectId, StringComparison.Ordinal);
         }
 
         private static string ComputeFingerprint(CadQueryRequest request)
         {
             var builder = new StringBuilder();
-            builder.Append(request.QueryId).Append('|');
             AppendNormalized(builder, request.Filter.EntityTypes);
             AppendNormalized(builder, request.Filter.Layers);
             AppendNormalized(builder, request.Filter.Spaces);
@@ -619,62 +852,6 @@ namespace Codex.AutoCAD.Host2016
                 builder.Append(normalized[index]).Append(',');
             }
             builder.Append('|');
-        }
-
-        private static string EncodeCursor(string indexId, int offset, string fingerprint)
-        {
-            var payload = string.Concat(
-                CursorPrefix,
-                "|",
-                indexId,
-                "|",
-                offset.ToString(CultureInfo.InvariantCulture),
-                "|",
-                fingerprint);
-            return Convert.ToBase64String(Encoding.ASCII.GetBytes(payload))
-                .TrimEnd('=')
-                .Replace('+', '-')
-                .Replace('/', '_');
-        }
-
-        private static int DecodeCursor(string cursor, string indexId, string fingerprint)
-        {
-            try
-            {
-                var padded = cursor.Replace('-', '+').Replace('_', '/');
-                switch (padded.Length % 4)
-                {
-                    case 2:
-                        padded += "==";
-                        break;
-                    case 3:
-                        padded += "=";
-                        break;
-                    case 1:
-                        throw new FormatException();
-                }
-                var payload = Encoding.ASCII.GetString(Convert.FromBase64String(padded));
-                var parts = payload.Split('|');
-                int offset;
-                if (parts.Length != 4
-                    || parts[0] != CursorPrefix
-                    || !string.Equals(parts[1], indexId, StringComparison.Ordinal)
-                    || !int.TryParse(parts[2], NumberStyles.None,
-                        CultureInfo.InvariantCulture, out offset)
-                    || offset < 0
-                    || !string.Equals(parts[3], fingerprint, StringComparison.Ordinal))
-                {
-                    throw new FormatException();
-                }
-                return offset;
-            }
-            catch (Exception exception)
-                when (exception is FormatException or ArgumentException)
-            {
-                throw new DrawingIndexQueryException(
-                    "cad_query_cursor_invalid",
-                    "查询游标无效、被篡改或不属于当前查询。");
-            }
         }
 
         private static CadPoint3 ClonePoint(CadPoint3 point)

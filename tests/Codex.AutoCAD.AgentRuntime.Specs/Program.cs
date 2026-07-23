@@ -16,6 +16,7 @@ var specs = new (string Name, Func<Task> Run)[]
     ("新线程注册cad声明式提案工具", ThreadRegistersCadProposalTool),
     ("只读图纸查询工具可独立于CAD写入提案注册", ThreadRegistersOnlyReadOnlyDrawingQueryTool),
     ("只读图纸查询通过Broker执行且隐藏Host绑定身份", CadDrawingQueryUsesBrokerAndHidesBindingIdentity),
+    ("只读图纸查询拒绝原始Handle形状对象令牌", CadDrawingQueryRejectsRawHandleToken),
     ("cad动态工具仅在Broker确认落盘后成功", CadDynamicToolRequiresAppliedTerminalResult),
     ("cad提案事件是与Broker隔离的深不可变快照", CadProposalEventIsDeeplyIsolatedFromBroker),
     ("cad动态工具未连接Broker时默认失败", CadDynamicToolWithoutBrokerFailsClosed),
@@ -183,6 +184,13 @@ static async Task ThreadRegistersOnlyReadOnlyDrawingQueryTool()
     Equal(false, schema.GetProperty("properties").TryGetProperty("documentId", out _));
     Equal(false, schema.GetProperty("properties").TryGetProperty("documentRevision", out _));
     Equal(false, schema.GetProperty("properties").TryGetProperty("queryId", out _));
+    var objectToken = schema.GetProperty("properties").GetProperty("objectIds")
+        .GetProperty("items");
+    Equal(12, objectToken.GetProperty("minLength").GetInt32());
+    Equal(12, objectToken.GetProperty("maxLength").GetInt32());
+    Equal("^obj-[0-9]{8}$", String(objectToken, "pattern"));
+    Equal(512, schema.GetProperty("properties").GetProperty("cursor")
+        .GetProperty("maxLength").GetInt32());
     Equal(false, tools.EnumerateArray().Any(tool =>
         string.Equals(String(tool, "name"), "propose_operations", StringComparison.Ordinal)));
 }
@@ -207,7 +215,7 @@ static async Task CadDrawingQueryUsesBrokerAndHidesBindingIdentity()
                 [
                     new CadQueryEntity
                     {
-                        ObjectId = "1A",
+                        ObjectId = "obj-00000026",
                         EntityType = "line",
                         ActualType = "AcDbLine",
                         Layer = "AI",
@@ -237,7 +245,7 @@ static async Task CadDrawingQueryUsesBrokerAndHidesBindingIdentity()
     Equal(CadQueryStatuses.Ok, String(result, "status"));
     Equal(2, result.GetProperty("totalMatches").GetInt32());
     Equal("dq1-safe-cursor", String(result, "nextCursor"));
-    Equal("1A", String(result.GetProperty("entities")[0], "objectId"));
+    Equal("obj-00000026", String(result.GetProperty("entities")[0], "objectId"));
     Equal(false, result.TryGetProperty("indexId", out _));
     Equal(false, result.TryGetProperty("documentId", out _));
     Equal(false, result.TryGetProperty("documentRevision", out _));
@@ -252,6 +260,28 @@ static async Task CadDrawingQueryUsesBrokerAndHidesBindingIdentity()
     Equal("AI", Single(broker.LastQuery.Filter.Layers));
     Equal(1, broker.LastQuery.PageSize);
     Equal(false, broker.LastQuery.Filter.IncludeUnsupported);
+}
+
+static async Task CadDrawingQueryRejectsRawHandleToken()
+{
+    await using var server = new FakeAgentAppServer();
+    var broker = new FunctionalCadDrawingQueryBroker(
+        query => throw new InvalidOperationException("Broker must not receive invalid tokens."));
+    await using var runtime = new CodexAgentRuntime(server, cadDrawingQueryBroker: broker);
+    await PrepareActiveTurnAsync(server, runtime);
+
+    var resolution = await server.RequestServerAsync("item/tool/call", """
+        {
+          "threadId":"thread-1","turnId":"turn-1","callId":"call-query-raw-handle",
+          "namespace":"cad","tool":"query_drawing",
+          "arguments":{"objectIds":["1A"],"pageSize":1}
+        }
+        """);
+
+    NotNull(resolution);
+    var response = ResolutionResult(resolution!);
+    Equal(false, response.GetProperty("success").GetBoolean());
+    Equal(0, broker.CallCount);
 }
 
 static async Task CadDynamicToolRequiresAppliedTerminalResult()

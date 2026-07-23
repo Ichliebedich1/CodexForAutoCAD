@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet('Release')]
     [string] $Configuration = 'Release',
@@ -188,6 +188,60 @@ function Assert-M2ReadOnlySource([string[]] $SourceFiles) {
             throw "DrawingIndexRuntime 缺少受审只读/分片要素：$required"
         }
     }
+    if ($drawingText -match '\bBlockTableRecordEnumerator\b') {
+        throw 'DrawingIndexRuntime 禁止跨 Idle 或 Transaction 保存 BlockTableRecordEnumerator。'
+    }
+    if ($drawingText -match 'CreateUniqueObjectToken|ReadObjectToken\s*\(\s*objectId\s*\)') {
+        throw 'DrawingIndex 查询实体令牌禁止由 AutoCAD Handle/ObjectId 派生。'
+    }
+    foreach ($required in @(
+        'CadQueryEntityTokens.Create(preparation.Items.Count + 1)',
+        'using (var enumerator = record.GetEnumerator())',
+        'CurrentObjectIds',
+        'DrawingIndexSpaceSnapshot')) {
+        if ($drawingText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "DrawingIndexRuntime 缺少枚举生命周期或 opaque token 门禁要素：$required"
+        }
+    }
+
+    $drawingCorePath = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\DrawingIndexCore.cs'
+    $drawingCoreText = Get-Content -LiteralPath $drawingCorePath -Raw -Encoding UTF8
+    foreach ($required in @(
+        'DrawingIndexCursorRegistry',
+        'TimeSpan.FromMinutes(5)',
+        'RandomNumberGenerator.Create()',
+        'entry.DocumentRevision != documentRevision',
+        'entry.QueryFingerprint')) {
+        if ($drawingCoreText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "DrawingIndexCore 缺少服务端 opaque cursor 门禁要素：$required"
+        }
+    }
+    if ($drawingCoreText -match '\b(?:EncodeCursor|DecodeCursor)\s*\(') {
+        throw 'DrawingIndex cursor 禁止恢复为客户端可解码的偏移载荷。'
+    }
+
+    $contractsText = Get-Content -LiteralPath (
+        Join-Path $repoRoot 'src\Codex.AutoCAD.Contracts\DrawingIndexContracts.cs'
+    ) -Raw -Encoding UTF8
+    foreach ($required in @(
+        'EntityTokenPrefix = "obj-"',
+        'EntityTokenCharacters = 12',
+        'CadQueryEntityTokens.IsValid')) {
+        if ($contractsText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "DrawingIndex Contracts 缺少 opaque entity token 门禁要素：$required"
+        }
+    }
+
+    $agentToolsText = Get-Content -LiteralPath (
+        Join-Path $repoRoot 'src\Codex.AutoCAD.AgentRuntime\CadDynamicTools.cs'
+    ) -Raw -Encoding UTF8
+    foreach ($required in @(
+        '"pattern": "^obj-[0-9]{8}$"',
+        '"cursor": { "type": "string", "maxLength": 512 }')) {
+        if ($agentToolsText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "AgentRuntime drawing-query schema 缺少受审限制：$required"
+        }
+    }
 
     $performancePath = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\DrawingIndexPerformanceMetrics.cs'
     if ($SourceFiles -notcontains $performancePath) {
@@ -336,6 +390,9 @@ if ($hostVersion -cne '0.4.0.0') {
 
 $sourceFiles = Get-HostCompileSources $hostProject
 Assert-M2ReadOnlySource $sourceFiles
+$documentLockCount = @(
+    Select-String -LiteralPath $sourceFiles -Pattern '(?i)\.\s*LockDocument\s*\('
+).Count
 
 $lockSnapshots = [ordered]@{}
 foreach ($lockFile in @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src') -Recurse -File -Filter 'packages.lock.json')) {
@@ -346,6 +403,8 @@ New-Item -ItemType Directory -Path $stageRoot,$packageRoot,$publishRoot -Force |
 $env:DOTNET_CLI_HOME = Join-Path $stageRoot 'dotnet-cli-home'
 $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
+$env:DOTNET_CLI_USE_MSBUILD_SERVER = '0'
+$env:MSBUILDDISABLENODEREUSE = '1'
 $env:NUGET_PACKAGES = $packageRoot
 $env:NUGET_HTTP_CACHE_PATH = Join-Path $stageRoot 'nuget-http-cache'
 
@@ -366,6 +425,20 @@ try {
     ) | Select-Object -Last 1
     if ([string]::IsNullOrWhiteSpace($phase2Summary)) {
         throw 'Phase 2 输出缺少全部通过的动态规格摘要。'
+    }
+    $phase2ProjectSummaries = [ordered]@{}
+    foreach ($line in $phase2Output) {
+        $match = [regex]::Match(
+            $line,
+            '^\s*(?<Project>Codex\.AutoCAD\.[A-Za-z0-9.]+\.Specs):\s*(?<Passed>\d+)/(?<Total>\d+)\s*$')
+        if ($match.Success -and $match.Groups['Passed'].Value -ceq $match.Groups['Total'].Value) {
+            $phase2ProjectSummaries[$match.Groups['Project'].Value] =
+                $match.Groups['Passed'].Value + '/' + $match.Groups['Total'].Value
+        }
+    }
+    $contractsProject = 'Codex.AutoCAD.Contracts.Specs'
+    if (-not $phase2ProjectSummaries.Contains($contractsProject)) {
+        throw 'Phase 2 输出缺少 Contracts 动态规格摘要。'
     }
 
     $benchmarkOutput = Invoke-CapturedOutput $powerShell @(
@@ -401,6 +474,7 @@ try {
             '--configfile', $nugetConfig,
             '--packages', $packageRoot,
             '--force', '--no-cache', '--disable-parallel',
+            '--disable-build-servers',
             '-p:EnableAutoCad2016=true'
         )
         if ($project -eq $hostProject) {
@@ -421,8 +495,9 @@ try {
             'build', $dependency,
             '--configuration', $Configuration,
             '--framework', 'net45',
-            '--no-restore', '--nologo', '-m:1',
+            '--no-restore', '--nologo', '--disable-build-servers', '-m:1',
             '-p:BuildProjectReferences=false',
+            '-p:UseSharedCompilation=false',
             '-p:EnableAutoCad2016=true',
             ('-p:FrameworkPathOverride=' + $net45ReferencePath)
         ) ('net45 依赖编译 ' + (Split-Path -Leaf $dependency))
@@ -456,7 +531,7 @@ try {
             '/p:DebugSymbols=false',
             '/p:DebugType=None',
             '/p:ContinuousIntegrationBuild=true',
-            '/m:1', '/nologo'
+            '/m:1', '/nr:false', '/nologo'
         ) ('Host.2016 R20.1 M2 编译 ' + $label)
 
         $hostDll = Join-Path $output 'Codex.AutoCAD.Host.2016.dll'
@@ -489,7 +564,7 @@ try {
         '--self-contained', 'false',
         '--no-restore',
         '--output', $publishRoot,
-        '--nologo', '-m:1',
+        '--nologo', '--disable-build-servers', '-m:1',
         '-p:BuildInParallel=false',
         '-p:UseSharedCompilation=false'
     ) 'AgentHost framework-dependent 发布'
@@ -554,7 +629,7 @@ try {
             maximumReportedEntities = 2000000
             maximumEstimatedManagedBytes = 67108864
             maximumScanSeconds = 120
-            maximumIdleSliceMilliseconds = 12
+            cooperativeIdleSliceTargetMilliseconds = 12
             maximumCadQueryPageSize = 200
             maximumIpcMessageBytes = 8388608
         }
@@ -585,16 +660,21 @@ try {
         netLoadVerified = $false
         gates = [ordered]@{
             phase2Specs = $phase2Summary
-            contractsNet45Net8 = '84/84'
+            phase2Projects = $phase2ProjectSummaries
+            contractsNet45Net8 = $phase2ProjectSummaries[$contractsProject]
             r20_1ReleaseX64Build = $true
             hostABBitForBitEqual = $true
             hostReadOnlySourceScan = $true
             earlyReverseDrawingQueryRaceCovered = $true
             frozenEntityArrayOwnershipTransfer = $true
+            opaqueEntityTokens = $true
+            serverSideOpaqueCursorWithExpiry = $true
+            blockTableRecordEnumeratorEscapesTransaction = $false
+            autoCadPreparationSliceBudgetVerified = $false
             benchmarkFixtures = $benchmarkSummary
             hostLocalPerformanceTelemetry = $true
             hostCompileSourceCount = $sourceFiles.Count
-            documentLockCount = 2
+            documentLockCount = $documentLockCount
             lockFileHashesPreserved = $true
             autoCadStartedOrRestarted = $false
             commandsSent = $false
@@ -612,6 +692,7 @@ try {
             '本证据未启动、重启或操作 AutoCAD；人工 NETLOAD 和图纸级运行时行为仍需实机验证。',
             'CadContextJson v2 的 64 实体选择上限保持不变；M2 通过独立 DrawingIndex/CadQuery 处理大图。',
             'Codex 动态 drawing-query 已接入认证反向 Bridge；仍需 AutoCAD 实机验证整图索引、无选择集提问和失效行为。',
+            '空间 ObjectId 在单个只读 Transaction 内形成有界托管快照；50k preparation 最大 Idle slice 仍必须由精确候选实机遥测证明。',
             'CAD 写入、插件保存、Provider 抽象、Direct API 和自研 Agent Loop 均不在本候选范围。'
         )
     }
@@ -634,6 +715,12 @@ try {
     Write-Host "EVIDENCE=$evidencePath"
 }
 finally {
+    try {
+        & $dotnet 'build-server' 'shutdown' 2>&1 | Out-Null
+    }
+    catch {
+        # Lock snapshots still must be restored if build-server shutdown is unavailable.
+    }
     foreach ($snapshot in $lockSnapshots.GetEnumerator()) {
         [IO.File]::WriteAllBytes([string] $snapshot.Key, [byte[]] $snapshot.Value)
     }
