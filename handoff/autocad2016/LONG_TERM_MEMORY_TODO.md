@@ -1,6 +1,6 @@
 # AutoCAD 2016 项目长期记忆与完整待办
 
-最后更新：2026-07-22（北京时间）
+最后更新：2026-07-24（北京时间）
 
 本文件是项目长期“固定目标、已验证基线、M0-M12 未完成队列和阶段纪律”的权威入口。
 运行状态细节见 `CURRENT_STATE.md`，人工测试入口见 `README_FIRST.md`，脱敏证据见
@@ -124,17 +124,20 @@ Host.2025 原型和未跟踪辅助文件仍保留且未纳入提交。远端推�
 当前冻结候选：
 
 - Host 版本：`0.3.3.0`。
-- 候选：`autocad2016-m1-readonly-v033-c3478920-a47d86a6-7fc17895`。
+- 集成分支：`codex/m1-integration@ebba703`，从 `main@9edc83e` 受控吸收 10 个提交；
+  树与来源 `88c0a29` 一致，无 Host.2025/Kimi/M4 夹带。
+- 候选：`autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3`。
 - Host SHA-256：
-  `C34789205C56D125C363962FEA8BA0EDCED0C23589D21EFB1586535DE348DAF3`。
+  `E6701A771D17EC3EC8B2CA7DA78B553E27897639DC48B3BC0435F07249C9B5F6`。
 - AgentHost SHA-256：
-  `A47D86A6512B23694B566B0FF272EA3C22183F691ABF3334EE639A7A0EF03FE0`。
+  `4B60296581224ADCDF1E8B0C8F1C766AE896796DA2DCF0B73E5EEFE6BBFE6966`。
 - manifest SHA-256：
-  `2702D4F1E86ECD87F31A84541D96DECDE48C9632E67EF8473FB4CEC41C947EFF`。
-- 自动化：Host MVP `40/40`、Phase 2 `275/275`、25 文件 Host.2016 只读闭包、
+  `B081B93A6BE99D8D16304A3A1B2EABD93D352E92613F370C5450E448E8507E40`。
+- 自动化：Host MVP `41/41`；PowerShell 7 与 Windows PowerShell 5.1 均为 Phase 2
+  `276/276`；25 文件 Host.2016 只读闭包、
   R20.1/net45/x64 双构建位级一致、候选 AgentHost doctor、diff 和敏感信息扫描通过。
 - 证据：
-  `cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-c3478920-a47d86a6-7fc17895.json`。
+  `cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3.json`。
 - 实机入口：`M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md`。
 
 代码与自动化已完成：

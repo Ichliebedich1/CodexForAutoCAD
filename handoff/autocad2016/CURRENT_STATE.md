@@ -1,6 +1,6 @@
 # AutoCAD 2016 当前状态索引
 
-最后更新：2026-07-22（北京时间）
+最后更新：2026-07-24（北京时间）
 
 本文件是项目的长期“当前状态索引”。它不替代 `README_FIRST.md`、
 `COMPANY_PC_RUNBOOK.md`、测试报告、证据 JSON 或 Git 历史；只把当前成立的结论、
@@ -16,7 +16,7 @@
 若摘要与原始证据冲突，以更具体、更新且可复现的原始证据为准。没有真实编译和
 NETLOAD 证据的能力一律视为未支持。
 
-## 当前活动快照（2026-07-22）
+## 当前活动快照（2026-07-24）
 
 - P0 `codex/bridge-client-net45` 的 0.3.2 停止生命周期候选已由用户在 AutoCAD 2016
   中完成人工启停、重复 STOP、DBMOD 和残留检查；独立提交为 `8a4ee57`，实机证据为
@@ -70,7 +70,9 @@ NETLOAD 证据的能力一律视为未支持。
   自动化复验和候选冻结；本地 `main` 已安全快进并吸收冻结提交 `4833e76`。主工作树中的
   Host.2025 UI/选择/写入原型不属于本阶段，仍保留且未被清理、覆盖或误提交；远端尚未
   因本次收尾自动推送。
-- M1 `codex/m1-readonly-stability` 已完成 Bridge 断线 fail-closed、结构化脱敏错误、Host
+- M1 已在干净 `codex/m1-integration` Worktree 从 `main@9edc83e` 受控吸收 10 个提交；
+  集成树与来源 `codex/m1-readonly-stability@88c0a29` 完全一致，且未夹带 Host.2025、
+  Kimi UI、M4 或主工作区补丁。该线已完成 Bridge 断线 fail-closed、结构化脱敏错误、Host
   自有 request_id、唯一终态、幂等取消、10 分钟回合超时和迟到事件拒绝；相关运行时代码
   提交为 `eb4e36c`、`9f1ffb6`、`8455000`、`41d184b`。
 - M1 已新增 `CODEX16NEWCHAT` 和 `CODEX16CLEARALL`；`CODEX16CTXCLEAR` 明确只清 CAD
@@ -79,15 +81,16 @@ NETLOAD 证据的能力一律视为未支持。
 - 对话现按图纸隔离；图纸切换会终止旧活动回合、清空旧可见回答，并使下一次 ASK 建立新
   Provider thread。图 A 的迟到事件不能更新图 B，即使 Provider turn ID 碰撞。相关提交为
   `621b057`、`8b695fb`。
-- M1 已冻结 `0.3.3.0` 自动化候选
-  `artifacts/autocad2016-m1-readonly-v033-c3478920-a47d86a6-7fc17895/`。Host SHA-256 为
-  `C34789205C56D125C363962FEA8BA0EDCED0C23589D21EFB1586535DE348DAF3`，AgentHost EXE 为
-  `A47D86A6512B23694B566B0FF272EA3C22183F691ABF3334EE639A7A0EF03FE0`，manifest 为
-  `2702D4F1E86ECD87F31A84541D96DECDE48C9632E67EF8473FB4CEC41C947EFF`。
-- 该候选通过 Host MVP `40/40`、Phase 2 `275/275`、25 文件 Host.2016 只读 Compile
+- M1 已冻结 `0.3.3.0` 集成候选
+  `artifacts/autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3/`。Host SHA-256 为
+  `E6701A771D17EC3EC8B2CA7DA78B553E27897639DC48B3BC0435F07249C9B5F6`，AgentHost EXE 为
+  `4B60296581224ADCDF1E8B0C8F1C766AE896796DA2DCF0B73E5EEFE6BBFE6966`，manifest 为
+  `B081B93A6BE99D8D16304A3A1B2EABD93D352E92613F370C5450E448E8507E40`。
+- 该候选通过 Host MVP `41/41`、PowerShell 7 与 Windows PowerShell 5.1 各自
+  Phase 2 `276/276`、25 文件 Host.2016 只读 Compile
   闭包、R20.1/net45/x64 双构建位级一致、敏感信息扫描、diff 和候选包自身 AgentHost
   doctor。证据为
-  `evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-c3478920-a47d86a6-7fc17895.json`。
+  `evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3.json`。
   它尚未按精确哈希在 AutoCAD 内 NETLOAD，不能继承 `0.3.2.0` 的实机结论。
 - 当前 v2 选择快照仍有 `64` 实体和 `256 KiB` canonical JSON 硬上限。用户已明确要求
   整图数量级支持；M2 将保留 v2 兼容快照，新增 DrawingIndex、分页和按需 CadQuery，

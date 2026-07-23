@@ -12,7 +12,7 @@
 
 以上是目标边界，不代表当前全部能力已经接通。实际完成状态和真机证据以 `handoff/autocad2016/CURRENT_STATE.md`、`handoff/autocad2016/README_FIRST.md` 及对应阶段证据为准。
 
-## 当前状态（2026-07-22）
+## 当前状态（2026-07-24）
 
 当前已在原版 AutoCAD 2016 R20.1 中建立 `0.3.2.0` 的 CadContextJson v2 只读 AI
 实机基线，并已冻结等待实机验证的 `0.3.3.0` M1 只读稳定化候选：
@@ -25,17 +25,18 @@
 - 显式 CAD 上下文清除和文档激活清除旧缓存通过；CAD 写入和插件保存仍禁用。
 - P0 停止生命周期已有独立实机证据：重复 STOP、DBMOD 不变和 AgentHost 残留为零。
 - M1 已实现 Bridge 断线 fail-closed、结构化脱敏错误、request_id/唯一终态、幂等取消、
-  10 分钟回合超时、新建对话、清除全部和按图纸隔离对话；图纸切换会立即清空旧回答。
+  覆盖 Provider 启动阶段的 10 分钟总超时、新建对话、清除全部和按图纸隔离对话；
+  图纸切换会立即清空旧回答。
 - `0.3.3.0` 冻结候选为
-  `artifacts/autocad2016-m1-readonly-v033-c3478920-a47d86a6-7fc17895/`；Host SHA-256
-  前缀 `C3478920`、AgentHost 前缀 `A47D86A6`、manifest 前缀 `2702D4F1`。
-- 该候选通过 Host MVP `40/40`、完整 Phase 2 `275/275`、Host.2016 只读 Compile 闭包、
+  `artifacts/autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3/`；Host SHA-256
+  前缀 `E6701A77`、AgentHost 前缀 `4B602965`、manifest 前缀 `B081B93A`。
+- 该候选通过 Host MVP `41/41`、完整 Phase 2 `276/276`、Host.2016 只读 Compile 闭包、
   R20.1/net45/x64 双构建位级一致、敏感信息扫描和候选包自身 AgentHost doctor。
 
 `0.3.2.0` 脱敏实机范围证据见
 `handoff/autocad2016/evidence/cad-context-v2-live-observation-20260722.json`；`0.3.3.0`
 自动化冻结证据见
-`handoff/autocad2016/evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-c3478920-a47d86a6-7fc17895.json`。
+`handoff/autocad2016/evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3.json`。
 后者尚未在 AutoCAD 中按精确哈希 `NETLOAD`，不能继承前者的实机结论。
 
 当前选择快照仍有明确的 `64` 实体和 `256 KiB` canonical JSON 上限。下一阶段不会

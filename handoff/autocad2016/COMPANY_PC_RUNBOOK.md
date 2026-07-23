@@ -4,7 +4,7 @@
 
 本手册用于复验已成立的 AutoCAD 2016 诊断候选，并继续完成 Palette、只读上下文、Agent/Bridge 和审批写入阶段。
 
-## 2026-07-22 当前操作入口
+## 2026-07-24 当前操作入口
 
 P0 停止生命周期和 P1 v2 happy path 已完成，不需要重复加载旧 P0 候选。已经取得
 AutoCAD 实机证据的 P1 `0.3.2.0` 候选仍记录在
@@ -13,19 +13,19 @@ AutoCAD 实机证据的 P1 `0.3.2.0` 候选仍记录在
 
 ```text
 Candidate directory:
-C:\tmp\CodexForAutoCAD-m1-readonly-stability\artifacts\autocad2016-m1-readonly-v033-c3478920-a47d86a6-7fc17895
+C:\tmp\CodexForAutoCAD-m1-integration\artifacts\autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3
 
 NETLOAD only:
 Codex.AutoCAD.Host.2016.dll
 
 Host SHA-256:
-C34789205C56D125C363962FEA8BA0EDCED0C23589D21EFB1586535DE348DAF3
+E6701A771D17EC3EC8B2CA7DA78B553E27897639DC48B3BC0435F07249C9B5F6
 
 AgentHost SHA-256:
-A47D86A6512B23694B566B0FF272EA3C22183F691ABF3334EE639A7A0EF03FE0
+4B60296581224ADCDF1E8B0C8F1C766AE896796DA2DCF0B73E5EEFE6BBFE6966
 
 Manifest SHA-256:
-2702D4F1E86ECD87F31A84541D96DECDE48C9632E67EF8473FB4CEC41C947EFF
+B081B93A6BE99D8D16304A3A1B2EABD93D352E92613F370C5450E448E8507E40
 ```
 
 只对根目录 `Codex.AutoCAD.Host.2016.dll` 执行 `NETLOAD`；其他依赖 DLL、`AgentHost`
@@ -35,14 +35,15 @@ Manifest SHA-256:
 M1 候选已完成：
 
 - Bridge 断线 fail-closed、结构化脱敏错误、Host request_id 和唯一终态。
-- 幂等取消、10 分钟回合超时和迟到事件拒绝。
+- 幂等取消、覆盖 Provider 启动阶段的 10 分钟总超时和迟到事件拒绝。
 - `CODEX16NEWCHAT`、`CODEX16CLEARALL` 和明确的 `CODEX16CTXCLEAR` 语义。
 - 图纸切换后对话隔离和旧回答立即清空。
-- Host MVP `40/40`、Phase 2 `275/275`、R20.1 双构建一致和候选 AgentHost doctor。
+- Host MVP `41/41`、PowerShell 7 与 Windows PowerShell 5.1 各自 Phase 2 `276/276`、
+  R20.1 双构建一致和候选 AgentHost doctor。
 - CAD 写入和插件发起的保存继续禁用。
 
 自动化冻结证据：
-`evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-c3478920-a47d86a6-7fc17895.json`。
+`evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3.json`。
 该证据尚未绑定 AutoCAD `NETLOAD`，不能继承旧 P1 实机结果。
 
 当前按 `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 验证新建对话、只清 CAD 上下文、
@@ -61,7 +62,7 @@ M1 候选已完成：
 ## 当前已知状态
 
 - 目标机为 AutoCAD 2016 R20.1 x64，托管 API `20.1.0.0`。
-- M1 当前自动化门禁为 Host.2016 MVP `40/40`、Phase 2 `275/275`、25 文件只读闭包和
+- M1 当前自动化门禁为 Host.2016 MVP `41/41`、双 Shell Phase 2 `276/276`、25 文件只读闭包和
   R20.1/net45/x64 双构建位级一致。
 - P1 实机只证明已观察范围，不证明 19 类对象全部字段、AutoCAD 正常退出、
   125%/150% DPI 或故障矩阵。

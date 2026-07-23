@@ -1,6 +1,6 @@
 # Codex for AutoCAD 2016：先读这里
 
-最后更新：2026-07-22（北京时间）
+最后更新：2026-07-24（北京时间）
 
 长期目标与完整 M0-M12 队列见 `LONG_TERM_MEMORY_TODO.md`；当前证据边界见
 `CURRENT_STATE.md`。本文件只提供当前基线、候选身份、操作入口和下一步验证顺序。
@@ -22,7 +22,7 @@ AutoCAD 2016 R20.1 已建立一个真实运行的 CadContextJson v2 只读 AI �
 在该基线上，M1 `0.3.3.0` 候选已经完成代码与自动化冻结：
 
 - Bridge 断线后原子离线并终止当前回合，后续 ASK fail-closed。
-- request_id、回合状态、取消、10 分钟超时和唯一终态由 Host 管理。
+- request_id、回合状态、取消、覆盖 Provider 启动阶段的 10 分钟总超时和唯一终态由 Host 管理。
 - 重复取消幂等，终态后的迟到事件不能恢复或覆盖状态。
 - `CODEX16NEWCHAT` 保留 CAD 上下文并建立新 Codex 对话。
 - `CODEX16CLEARALL` 清除 CAD 上下文、回答文本和当前对话。
@@ -48,25 +48,26 @@ M1 当前冻结候选：
 Module version: 0.3.3.0
 CadContext schema: codex.autocad.cad-context/2
 Candidate directory:
-C:\tmp\CodexForAutoCAD-m1-readonly-stability\artifacts\autocad2016-m1-readonly-v033-c3478920-a47d86a6-7fc17895
+C:\tmp\CodexForAutoCAD-m1-integration\artifacts\autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3
 
 Host:
 Codex.AutoCAD.Host.2016.dll
 SHA-256:
-C34789205C56D125C363962FEA8BA0EDCED0C23589D21EFB1586535DE348DAF3
+E6701A771D17EC3EC8B2CA7DA78B553E27897639DC48B3BC0435F07249C9B5F6
 
 AgentHost:
 AgentHost\Codex.AutoCAD.AgentHost.exe
 SHA-256:
-A47D86A6512B23694B566B0FF272EA3C22183F691ABF3334EE639A7A0EF03FE0
+4B60296581224ADCDF1E8B0C8F1C766AE896796DA2DCF0B73E5EEFE6BBFE6966
 
 Manifest SHA-256:
-2702D4F1E86ECD87F31A84541D96DECDE48C9632E67EF8473FB4CEC41C947EFF
+B081B93A6BE99D8D16304A3A1B2EABD93D352E92613F370C5450E448E8507E40
 ```
 
-该候选通过 Host MVP `40/40`、完整 Phase 2 `275/275`、Host.2016 只读 Compile 闭包、
+该候选通过 Host MVP `41/41`、PowerShell 7 与 Windows PowerShell 5.1 各自完整
+Phase 2 `276/276`、Host.2016 只读 Compile 闭包、
 R20.1/net45/x64 双构建位级一致、敏感信息扫描和候选包自身 AgentHost doctor。构建证据为
-`evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-c3478920-a47d86a6-7fc17895.json`。
+`evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3.json`。
 
 它尚未按精确哈希在 AutoCAD 内人工 NETLOAD，因此保持 `NetLoadVerified=false`。已经取得
 实机证据的仍是旧 `0.3.2.0` P1 候选 Host `0D72EDC3...`、AgentHost `10BEA363...`；两份
@@ -166,8 +167,8 @@ CODEX16PALRESET
 
 M1 `0.3.3.0` 候选已重跑以下门禁：
 
-- Host.2016 MVP：`40/40`。
-- 完整 Phase 2：`275/275`。
+- Host.2016 MVP：`41/41`。
+- 完整 Phase 2：PowerShell 7 与 Windows PowerShell 5.1 均为 `276/276`。
 - R20.1 Host Release：0 warning / 0 error。
 - Host.2016 真实 Compile 闭包：25 个源文件，CAD 写入/命令/保存 API 扫描通过。
 - R20.1/net45/x64 A/B 输出位级一致。
@@ -198,7 +199,7 @@ M1 `0.3.3.0` 候选已重跑以下门禁：
 - `evidence/host2016-terminate-exit-retry-20260722.json`：退出清理重试自动化 `24/24`。
 - `evidence/m0-baseline-verification-20260722.json`：M0 聚合门禁、候选身份和实机边界。
 - `M0_BASELINE_RELEASE_20260722.md`：M0 冻结记录与下一阶段入口。
-- `evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-c3478920-a47d86a6-7fc17895.json`：
+- `evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3.json`：
   M1 `0.3.3.0` 自动化冻结、候选身份和未实机边界。
 - `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md`：M1 唯一当前实机测试入口。
 
