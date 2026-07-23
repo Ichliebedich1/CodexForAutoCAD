@@ -171,21 +171,23 @@ DBMOD。
 M2-A 图纸索引和 M2-B Codex 动态查询已形成同一自动化候选：
 
 - Host 版本：`0.4.0.0`。
-- 候选：`autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2`。
+- 源码提交：`34cef1214ad22822996db4e4ad33013f855751e3`。
+- 候选：`autocad2016-m2-drawing-index-v040-bc6011d3-6de30db9-a43ac024`。
 - Host SHA-256：
-  `E85D97EC02505EF69C67F710EAD5D35D18481B7D2DBB4C3D87195FCDE4156B7E`。
+  `BC6011D3C0C00222BE266E27A26770B87FC4CE542A9516640AEC1A959950C5D5`。
 - AgentHost SHA-256：
-  `FA16355C185F61CD7E85446E884C2FF9D7C745E5E2EB0CC40747C916C215371B`。
+  `6DE30DB91C466CA0CA87E6202926FB893165CE8950B1CCAB9E0E3C49650CDD89`。
 - manifest SHA-256：
-  `95427BD85E70870C483512CD4401228B70F63608802512119F5ECB6486844356`。
-- 自动化：Contracts net8/net45 `84/84`、Bridge Client net8/net45 `29/29`、
-  Bridge/AgentHost `39/39`、AgentRuntime `33/33`、Host MVP `53/53`、完整 Phase 2
-  `308/308`、benchmark fixture/evidence `6/6`、R20.1 Release、30 文件只读闭包和 Host
+  `CDE0E31D9B2342B322D1850224B6DE78755B97EAEF7802C7D609F86E58E7D917`。
+- 自动化：Contracts net8/net45 `88/88`、Bridge Client net8/net45 `29/29`、
+  Bridge/AgentHost `39/39`、AgentRuntime `34/34`、Host MVP `54/54`、完整 Phase 2
+  `314/314`、benchmark fixture/evidence `6/6`、R20.1 Release、30 文件只读闭包和 Host
   A/B 位级一致通过。
 - 证据：
-  `m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2.json`。
+  `m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-bc6011d3-6de30db9-a43ac024.json`。
 - 说明：`M2_DRAWING_INDEX_VERTICAL_SLICE_20260722.md`。
 - 实机入口：`M2_DRAWING_INDEX_RUNTIME_TEST_20260722.md`。
+- 旧 `E85D97EC...` 和 `597A7A3D...` 候选仅保留为历史记录，不得继续用于当前验收。
 
 M2-A/M2-B 代码与自动化已完成：
 
@@ -196,7 +198,9 @@ M2-A/M2-B 代码与自动化已完成：
   索引只保留深拷贝强类型摘要。
 - [x] 支持进度、幂等取消、2 分钟超时、100,000 实体索引和 64 MiB 估算预算。
 - [x] 建立类型、图层、空间、块、包围盒、文字、对象令牌和数量摘要。
-- [x] 支持绑定索引/过滤器/页大小的游标分页，不一次发送整图 JSON。
+- [x] 对象身份使用 `obj-########` 不透明令牌，不向 Agent 暴露 AutoCAD Handle。
+- [x] 支持 Host 随机生成的 `dq1_...` 游标分页；游标五分钟过期，并绑定索引、revision、
+  查询形状和 offset，不一次发送整图 JSON。
 - [x] 为 Codex 提供 `cad.query_drawing`，支持按类型、图层、空间、块、范围、文字和对象
   ID 的只读分页查询。
 - [x] Host 命令可发布大选择集总数、摘要、分页引用和完整性，不复用 v2 数量上限。
@@ -217,6 +221,12 @@ M2-A/M2-B 代码与自动化已完成：
   当前 12 ms cooperative slice、120 s 扫描、64 MiB 估算内存只是代码 guardrail，不得冒充
   已验证的产品性能预算。
 - [x] 自动化证明实体、统计桶、内存和时间预算映射为 `partial/limited`，不伪装完整。
+- [x] `BlockTableRecordEnumerator` 在同一个有效只读 transaction 内创建、遍历并释放，
+  不再跨 Idle 或 transaction 保存 Autodesk 枚举器。
+- [ ] M2.3：每个 space 的 ObjectId 仍在单个 preparation Idle 回调内形成托管数组；必须
+  使用精确候选证明 50k 最大 preparation 分片低于 20 ms，或继续拆分准备阶段。
+- [ ] M2.13：完成 1k/10k/50k 响应性、耗时、工作集、取消和 DBMOD 实机性能资源门禁。
+- [ ] M2.14：完成精确候选的五种范围、本地/Agent 查询、失效、退出清理和整图候选冻结。
 
 M2 仍未完成，以下内容不能由自动化候选替代：
 

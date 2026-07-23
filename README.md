@@ -47,23 +47,26 @@
 - 该候选通过 Host MVP `41/41`、完整 Phase 2 `276/276`、Host.2016 只读 Compile 闭包、
   R20.1/net45/x64 双构建位级一致、敏感信息扫描和候选包自身 AgentHost doctor。
 
-当前 M2 `0.4.0.0` 自动化候选为：
+当前 M2 `0.4.0.0` 自动化候选由源码提交
+`34cef1214ad22822996db4e4ad33013f855751e3` 精确生成：
 
 ```text
-C:\tmp\CodexForAutoCAD-m2-benchmark\artifacts\autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2
-Host SHA-256: E85D97EC02505EF69C67F710EAD5D35D18481B7D2DBB4C3D87195FCDE4156B7E
-AgentHost SHA-256: FA16355C185F61CD7E85446E884C2FF9D7C745E5E2EB0CC40747C916C215371B
-Manifest SHA-256: 95427BD85E70870C483512CD4401228B70F63608802512119F5ECB6486844356
+C:\tmp\CodexForAutoCAD-m2-integration\artifacts\autocad2016-m2-drawing-index-v040-bc6011d3-6de30db9-a43ac024
+Host SHA-256: BC6011D3C0C00222BE266E27A26770B87FC4CE542A9516640AEC1A959950C5D5
+AgentHost SHA-256: 6DE30DB91C466CA0CA87E6202926FB893165CE8950B1CCAB9E0E3C49650CDD89
+Manifest SHA-256: CDE0E31D9B2342B322D1850224B6DE78755B97EAEF7802C7D609F86E58E7D917
 ```
 
-它通过 Contracts net8/net45 `84/84`、Bridge Client net8/net45 `29/29`、Bridge/AgentHost
-`39/39`、AgentRuntime `33/33`、Host MVP `53/53`、完整 Phase 2 `308/308`、benchmark
+它通过 Contracts net8/net45 `88/88`、Bridge Client net8/net45 `29/29`、Bridge/AgentHost
+`39/39`、AgentRuntime `34/34`、Host MVP `54/54`、完整 Phase 2 `314/314`、benchmark
 fixture/evidence `6/6`、R20.1/net45/x64 Host A/B 位级一致、30 文件只读扫描和候选
-AgentHost doctor；尚未在 AutoCAD 2016 中按精确哈希 `NETLOAD`。旧 `597A7A3D...`
-候选保留为历史 M2-B 冻结点，不再作为下一轮实机入口。
+AgentHost doctor。查询对象身份现为不泄露 AutoCAD Handle 的 `obj-########` 令牌；分页
+使用 Host 随机生成、五分钟过期并绑定索引、revision、查询形状和 offset 的 `dq1_...`
+游标。尚未在 AutoCAD 2016 中按精确哈希 `NETLOAD`；M2.3、M2.13、M2.14 仍未完成。
+旧 `E85D97EC...` 和 `597A7A3D...` 候选仅保留为历史冻结点，均不是当前实机入口。
 
 当前 M2 自动化冻结证据为
-`handoff/autocad2016/evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2.json`。
+`handoff/autocad2016/evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-bc6011d3-6de30db9-a43ac024.json`。
 
 `0.3.2.0` 脱敏实机范围证据见
 `handoff/autocad2016/evidence/cad-context-v2-live-observation-20260722.json`；`0.3.3.0`

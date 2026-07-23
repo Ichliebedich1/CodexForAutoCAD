@@ -118,19 +118,25 @@ NETLOAD 证据的能力一律视为未支持。
 - 已建立确定性 AC1009 脱敏 DXF：模型空间精确 1,000、10,000、50,000 个实体，覆盖
   Line/Circle/Arc/Text/Insert 和 8 个图层。生成器拒绝覆盖已有目录，不启动 AutoCAD；
   独立流式解析、双次哈希、脱敏 evidence 和 fail-closed 测试为 `6/6`。
-- 当前 M2 `0.4.0.0` 自动化候选为
-  `C:\tmp\CodexForAutoCAD-m2-benchmark\artifacts\autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2`。
-  Host SHA-256 为 `E85D97EC02505EF69C67F710EAD5D35D18481B7D2DBB4C3D87195FCDE4156B7E`，
-  AgentHost EXE 为 `FA16355C185F61CD7E85446E884C2FF9D7C745E5E2EB0CC40747C916C215371B`，
-  manifest 为 `95427BD85E70870C483512CD4401228B70F63608802512119F5ECB6486844356`。
-- 当前候选通过 Contracts net8/net45 `84/84`、Bridge Client net8/net45 `29/29`、
-  Bridge/AgentHost `39/39`、AgentRuntime `33/33`、Host MVP `53/53`、完整 Phase 2
-  `308/308`、benchmark `6/6`、30 文件 Host.2016 只读 Compile 闭包、R20.1/net45/x64
+- 当前 M2 `0.4.0.0` 自动化候选由源码提交
+  `34cef1214ad22822996db4e4ad33013f855751e3` 精确生成，目录为
+  `C:\tmp\CodexForAutoCAD-m2-integration\artifacts\autocad2016-m2-drawing-index-v040-bc6011d3-6de30db9-a43ac024`。
+  Host SHA-256 为 `BC6011D3C0C00222BE266E27A26770B87FC4CE542A9516640AEC1A959950C5D5`，
+  AgentHost EXE 为 `6DE30DB91C466CA0CA87E6202926FB893165CE8950B1CCAB9E0E3C49650CDD89`，
+  manifest 为 `CDE0E31D9B2342B322D1850224B6DE78755B97EAEF7802C7D609F86E58E7D917`。
+- 当前候选通过 Contracts net8/net45 `88/88`、Bridge Client net8/net45 `29/29`、
+  Bridge/AgentHost `39/39`、AgentRuntime `34/34`、Host MVP `54/54`、完整 Phase 2
+  `314/314`、benchmark `6/6`、30 文件 Host.2016 只读 Compile 闭包、R20.1/net45/x64
   双构建位级一致、敏感信息门禁和候选 AgentHost doctor。证据为
-  `evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2.json`。
-  它没有启动或操作 AutoCAD，不能证明跨 Idle 枚举器生命周期、动态查询实机行为或真实性能。
-  旧 `597A7A3D...` 候选只保留为历史 M2-B 冻结点。Provider-neutral 抽象、Direct API 和
-  自研 Agent Loop 继续冻结。
+  `evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-bc6011d3-6de30db9-a43ac024.json`。
+  对象查询身份为不泄露 Handle 的 `obj-########` 令牌；`dq1_...` 分页游标由 Host 随机
+  生成，五分钟过期，并绑定索引 ID、文档 revision、查询形状和 offset。
+- 枚举器已在同一个有效只读 transaction 内创建、遍历并释放；当前真实剩余风险是每个
+  space 的 ObjectId 仍会在一个 preparation Idle 回调内形成托管数组，尚未证明 50k 最大
+  preparation 分片低于 20 ms。候选也未启动或操作 AutoCAD，因此不能证明动态查询实机
+  行为和真实性能；M2.3、M2.13、M2.14 保持未完成。
+- 旧 `E85D97EC...` 与 `597A7A3D...` 候选只保留为历史冻结点，均不可作为当前测试入口。
+  Provider-neutral 抽象、Direct API 和自研 Agent Loop 继续冻结。
 
 ## 已验证检查点
 

@@ -1,6 +1,6 @@
 # M2：AutoCAD 2016 图纸级索引与 Codex 按需查询实机测试
 
-最后更新：2026-07-22（北京时间）
+最后更新：2026-07-24（北京时间）
 
 这是 M2-A/M2-B 的唯一人工入口。测试必须由用户在自己的 AutoCAD 2016 进程中执行；
 Codex 不启动、关闭、重启或操作 AutoCAD。请使用脱敏测试图或副本，不要在生产图纸上
@@ -11,20 +11,26 @@ Codex 不启动、关闭、重启或操作 AutoCAD。请使用脱敏测试图或
 候选目录：
 
 ```text
-C:\\tmp\\CodexForAutoCAD-m2-benchmark\\artifacts\\autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2
+C:\tmp\CodexForAutoCAD-m2-integration\artifacts\autocad2016-m2-drawing-index-v040-bc6011d3-6de30db9-a43ac024
 ```
 
 加载前核对：
 
 ```powershell
-Get-FileHash 'C:\\tmp\\CodexForAutoCAD-m2-benchmark\\artifacts\\autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2\\Codex.AutoCAD.Host.2016.dll' -Algorithm SHA256
+Get-FileHash 'C:\tmp\CodexForAutoCAD-m2-integration\artifacts\autocad2016-m2-drawing-index-v040-bc6011d3-6de30db9-a43ac024\Codex.AutoCAD.Host.2016.dll' -Algorithm SHA256
 ```
 
 应为：
 
 ```text
-E85D97EC02505EF69C67F710EAD5D35D18481B7D2DBB4C3D87195FCDE4156B7E
+BC6011D3C0C00222BE266E27A26770B87FC4CE542A9516640AEC1A959950C5D5
 ```
+
+该目录必须来自源码提交 `34cef1214ad22822996db4e4ad33013f855751e3`。AgentHost EXE
+SHA-256 必须为
+`6DE30DB91C466CA0CA87E6202926FB893165CE8950B1CCAB9E0E3C49650CDD89`，manifest SHA-256
+必须为 `CDE0E31D9B2342B322D1850224B6DE78755B97EAEF7802C7D609F86E58E7D917`。
+旧 `E85D97EC...` 和 `597A7A3D...` 候选均已作废为历史测试入口。
 
 在 AutoCAD 中只需 `NETLOAD` 这一份：
 
@@ -126,6 +132,10 @@ CODEX16QUERYNEXT
 
 直到 `next=false`。不得把全部结果或真实图纸信息粘贴到聊天；只反馈页数、计数、状态和
 字段是否合理。
+
+结果中的对象 ID 应为 `obj-########` 形式的不透明令牌，不应显示 AutoCAD Handle。
+`nextCursor` 应为 `dq1_...` 形式；它由 Host 随机生成、五分钟过期，并绑定当前索引、
+文档 revision、查询形状和 offset。旧游标不得跨查询、跨索引或跨 revision 使用。
 
 再分别验证 `Type`、`Layer`、`Space`、`Block`、`Text`、`Object`：输入精确值（Text 为
 包含匹配），确认结果集合符合属性面板或 LIST。查询应只返回受限摘要，不执行 AutoCAD
@@ -264,8 +274,10 @@ DBMOD before -> after：
 插件发送 CAD 写入命令或修改 fixture。完成后使用基准说明中的记录器生成脱敏 JSON
 evidence。工作集由外部 PowerShell 只读采样，不由插件采集；没有真实样本、计时或工作集
 数据时标为“未验证”。自动化 `6/6` 和 50,000 个合成
-契约测试不能替代这里的 AutoCAD 运行时证据。12 ms 是 cooperative slice 目标，不是
-“实测最大卡顿已通过”；实际最大值必须如实保留，待三档证据齐全后冻结验收预算。
+契约测试不能替代这里的 AutoCAD 运行时证据。当前每个 space 的 ObjectId 仍可能在单个
+preparation Idle 回调内形成托管数组；必须重点记录 50k 的 maximum preparation slice，
+并以低于 20 ms 作为本轮目标。12 ms 是 cooperative read slice guardrail，不是“实测最大
+卡顿已通过”；实际最大值必须如实保留，待三档证据齐全后冻结验收预算。
 
 ## 9. 证据和隐私规则
 
@@ -279,3 +291,6 @@ evidence。工作集由外部 PowerShell 只读采样，不由插件采集；没
 - 19 类对象逐字段实机语义核对（M3）。
 - 125%/150% DPI、M1 故障矩阵和精确 `0.3.3.0` 候选实机绑定。
 - 50k 的冻结性能预算、长时间 soak、沙箱、CAD 写入和自动保存验证。
+
+在五种范围、动态查询、取消/失效/退出及三档性能证据完成前，M2.3、M2.13、M2.14
+保持未完成，不能仅凭 `314/314` 自动化结果标记 M2 完成。

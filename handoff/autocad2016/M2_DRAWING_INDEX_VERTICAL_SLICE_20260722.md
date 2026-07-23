@@ -167,20 +167,21 @@ Agent；Codex 只在 ASK 回合中通过 `cad.query_drawing` 按需取得分页�
 
 候选目录：
 
-`C:\\tmp\\CodexForAutoCAD-m2-benchmark\\artifacts\\autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2`
+`C:\tmp\CodexForAutoCAD-m2-integration\artifacts\autocad2016-m2-drawing-index-v040-bc6011d3-6de30db9-a43ac024`
 
 | 项目 | 值 |
 | --- | --- |
 | Host 版本 | `0.4.0.0` |
-| Host SHA-256 | `E85D97EC02505EF69C67F710EAD5D35D18481B7D2DBB4C3D87195FCDE4156B7E` |
-| AgentHost EXE SHA-256 | `FA16355C185F61CD7E85446E884C2FF9D7C745E5E2EB0CC40747C916C215371B` |
-| manifest SHA-256 | `95427BD85E70870C483512CD4401228B70F63608802512119F5ECB6486844356` |
-| Contracts net8/net45 | `84/84` |
+| 源码提交 | `34cef1214ad22822996db4e4ad33013f855751e3` |
+| Host SHA-256 | `BC6011D3C0C00222BE266E27A26770B87FC4CE542A9516640AEC1A959950C5D5` |
+| AgentHost EXE SHA-256 | `6DE30DB91C466CA0CA87E6202926FB893165CE8950B1CCAB9E0E3C49650CDD89` |
+| manifest SHA-256 | `CDE0E31D9B2342B322D1850224B6DE78755B97EAEF7802C7D609F86E58E7D917` |
+| Contracts net8/net45 | `88/88` |
 | Bridge Client net8/net45 | `29/29` |
 | Bridge/AgentHost | `39/39` |
-| AgentRuntime | `33/33` |
-| Host MVP | `53/53` |
-| 完整 Phase 2 | `308/308` |
+| AgentRuntime | `34/34` |
+| Host MVP | `54/54` |
+| 完整 Phase 2 | `314/314` |
 | Benchmark fixture/evidence | `6/6` |
 | R20.1 Release x64 | 通过 |
 | Host A/B | 逐字节一致 |
@@ -188,7 +189,11 @@ Agent；Codex 只在 ASK 回合中通过 `cad.query_drawing` 按需取得分页�
 
 证据：
 
-`handoff/autocad2016/evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2.json`
+`handoff/autocad2016/evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-bc6011d3-6de30db9-a43ac024.json`
+
+该候选使用 `obj-########` 不透明对象令牌和 Host 随机生成的 `dq1_...` 分页游标。游标
+五分钟过期，并绑定索引 ID、文档 revision、查询形状和 offset。旧 `E85D97EC...` 与
+`597A7A3D...` 候选只保留为历史记录，不得继续用于当前测试。
 
 ## 8. M2 剩余完成条件
 
@@ -200,3 +205,9 @@ M2-A 和 M2-B 已进入同一真实调用链并通过自动化门禁。下一步
 M2 总完成条件仍是：1k/10k/50k 脱敏图纸可扫描和查询，AutoCAD 可操作、DBMOD 不被读取
 改变，未知对象只降低完整性，超预算明确返回 `partial/limited`，且 Codex 能在不接收整图
 JSON 的前提下按需查询并在索引失效后 fail-closed。
+
+Autodesk `BlockTableRecordEnumerator` 已在同一个有效只读 transaction 内创建、遍历并
+释放，不再跨 Idle 保存。当前剩余的 M2.3 风险是每个 space 的 ObjectId 仍会在一个
+preparation Idle 回调内形成托管数组；精确候选必须证明 50k 最大 preparation slice 低于
+20 ms。M2.3、M2.13 和 M2.14 在实机响应性、资源、取消、DBMOD 和动态查询证据完成前
+保持未完成。
