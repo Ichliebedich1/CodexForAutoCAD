@@ -5,6 +5,7 @@ using System.Text;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using Codex.AutoCAD.Contracts;
+using CadSurface = Autodesk.AutoCAD.DatabaseServices.Surface;
 
 namespace Codex.AutoCAD.Host2016
 {
@@ -27,8 +28,11 @@ namespace Codex.AutoCAD.Host2016
                 throw new ArgumentNullException(nameof(entity));
             }
 
-            var limited = false;
             var entityType = Classify(entity);
+            // These categories deliberately retain only the generic, bounded index fields
+            // (type/layer/space/bounds). They are queryable by category but never masquerade
+            // as a complete CadContextJson v2 semantic payload.
+            var limited = DrawingIndexEntityTypes.IsHighValueLimited(entityType);
             var actualType = Sanitize(
                 entity.GetType().Name,
                 DrawingIndexContractConstants.MaximumTypeCharacters,
@@ -93,6 +97,17 @@ namespace Codex.AutoCAD.Host2016
 
         private static string Classify(Entity entity)
         {
+            if (entity is Wipeout) return DrawingIndexEntityTypes.Wipeout;
+            if (entity is RasterImage) return DrawingIndexEntityTypes.RasterImage;
+            if (entity is UnderlayReference) return DrawingIndexEntityTypes.Underlay;
+            if (entity is ProxyEntity) return DrawingIndexEntityTypes.Proxy;
+            if (entity is Region) return DrawingIndexEntityTypes.Region;
+            if (entity is Solid3d || entity is Solid) return DrawingIndexEntityTypes.Solid;
+            if (entity is SubDMesh
+                || entity is PolyFaceMesh
+                || entity is PolygonMesh
+                || entity is Face) return DrawingIndexEntityTypes.Mesh;
+            if (entity is CadSurface) return DrawingIndexEntityTypes.Surface;
             if (entity is Table) return CadContextEntityTypesV2.Table;
             if (entity is MLeader) return CadContextEntityTypesV2.MLeader;
             if (entity is Leader) return CadContextEntityTypesV2.Leader;

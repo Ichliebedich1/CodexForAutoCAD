@@ -24,6 +24,7 @@ var specs = new[]
     new SpecCase("HOST2016-V2-013", SelectionReadIssuesExposeActualTypes),
     new SpecCase("HOST2016-V2-014", ChineseTypeCatalogListsNineteenSupportedTypes),
     new SpecCase("HOST2016-V2-015", ReadableSummaryUsesActualTypeStatistics),
+    new SpecCase("HOST2016-V2-016", HighValueDrawingIndexCategoriesRemainLimited),
 };
 
 var passed = 0;
@@ -251,7 +252,7 @@ void ChineseTypeCatalogListsNineteenSupportedTypes()
     var catalog = CadReadTypeStatistics.BuildSupportedTypeCatalog();
     Contains(catalog, "01. 直线 (Line)", "first supported type");
     Contains(catalog, "19. 表格 (Table)", "last supported type");
-    Contains(catalog, "高价值受限读取候选", "limited read candidates");
+    Contains(catalog, "整图索引受限类别", "limited read categories");
     var numberedEntries = 0;
     foreach (var line in catalog.Replace("\r", string.Empty).Split('\n'))
     {
@@ -302,6 +303,48 @@ void ReadableSummaryUsesActualTypeStatistics()
     Contains(summary, "代理对象(ACAD_PROXY_ENTITY) x1", "mapped proxy summary");
     Contains(summary, "三维实体(3DSOLID) x1", "mapped solid summary");
     Contains(summary, "[2] 未解析对象", "mapped unsupported entity summary");
+}
+
+void HighValueDrawingIndexCategoriesRemainLimited()
+{
+    var types = new[]
+    {
+        DrawingIndexEntityTypes.Region,
+        DrawingIndexEntityTypes.Solid,
+        DrawingIndexEntityTypes.Mesh,
+        DrawingIndexEntityTypes.Surface,
+        DrawingIndexEntityTypes.RasterImage,
+        DrawingIndexEntityTypes.Underlay,
+        DrawingIndexEntityTypes.Proxy,
+        DrawingIndexEntityTypes.Wipeout,
+    };
+    foreach (var entityType in types)
+    {
+        Equal(true, DrawingIndexEntityTypes.IsHighValueLimited(entityType),
+            "high-value DrawingIndex category");
+    }
+    Equal(false, DrawingIndexEntityTypes.IsHighValueLimited(CadContextEntityTypesV2.Line),
+        "strong v2 entity type must not become data_limited");
+    Equal(false, DrawingIndexEntityTypes.IsHighValueLimited("unknown"),
+        "unrecognized category must remain unsupported rather than limited");
+
+    var selection = new CadContextSelectionV2
+    {
+        Entities = new[]
+        {
+            Unsupported("1", "SOLID"),
+            Unsupported("2", "FACE"),
+            Unsupported("3", "POLYFACEMESH"),
+            Unsupported("4", "WIPEOUT"),
+        },
+    };
+    var summary = CadReadTypeStatistics.FormatSummary(
+        CadReadTypeStatistics.FromSelection(selection),
+        8);
+    Contains(summary, "二维实体(SOLID) x1", "solid display name");
+    Contains(summary, "三维面(FACE) x1", "face display name");
+    Contains(summary, "网格(POLYFACEMESH) x1", "mesh display name");
+    Contains(summary, "遮罩(WIPEOUT) x1", "wipeout display name");
 }
 
 CadContextEntityV2 Line(string handle, double offset)

@@ -90,6 +90,7 @@ var specs = new[]
     new SpecCase("INDEX-V1-005 重复实体令牌在累积与响应层均fail-closed", DrawingIndexContractsSpecs.DuplicateObjectTokensFailClosed),
     new SpecCase("INDEX-M3-001 占位原因和实际类型统计有界且不混入实体数据", DrawingIndexContractsSpecs.ReadIssueStatisticsStayStructuredAndBounded),
     new SpecCase("INDEX-M3-002 块详情有界深拷贝且不定义Xref路径字段", DrawingIndexContractsSpecs.BlockDetailsAreBoundedDeepCopiedAndPathFree),
+    new SpecCase("INDEX-M3-003 高价值受限类别可查询但不会伪装为完整读取", DrawingIndexContractsSpecs.HighValueLimitedTypesStayQueryableAndExplicit),
 };
 
 var failed = 0;

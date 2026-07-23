@@ -45,6 +45,9 @@ public static class V2ApiSurfaceProbe
             typeof(Ray), typeof(Xline), typeof(Polyline2d), typeof(Vertex2d), typeof(Polyline3d),
             typeof(PolylineVertex3d), typeof(Dimension), typeof(Hatch), typeof(Leader),
             typeof(MLeader), typeof(Table), typeof(HatchLoop),
+            typeof(Region), typeof(Solid), typeof(Solid3d), typeof(SubDMesh),
+            typeof(PolyFaceMesh), typeof(PolygonMesh), typeof(Autodesk.AutoCAD.DatabaseServices.Surface), typeof(RasterImage),
+            typeof(UnderlayReference), typeof(ProxyEntity), typeof(Wipeout), typeof(Face),
             typeof(ObjectId), typeof(ObjectIdCollection), typeof(ResultBuffer),
             typeof(IExtensionApplication), typeof(CommandClassAttribute),
             typeof(ExtensionApplicationAttribute),
@@ -142,7 +145,7 @@ public static class V2ApiSurfaceProbe
         var failed = new List<string>();
 
         // Compile-time verification summary (types and properties compiled successfully)
-        int compileTimeTypes = 39;  // number of typeof() checks in CompileTimeVerify
+        int compileTimeTypes = 51;  // number of typeof() checks in CompileTimeVerify
         int compileTimeProperties = 87;  // number of property-access checks in CompileTimeVerify
 
         // Runtime method checks

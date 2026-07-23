@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "scope": "autocad2016-m3-read-semantics-candidate-build",
+  "candidateFrozenAtUtc": "2026-07-23T03:08:15.0980736+00:00",
+  "candidateId": "autocad2016-m3-read-semantics-v042-b5081c63-e3dbe955-0b06bcf7",
+  "candidateStage": "M3",
+  "hostVersion": "0.4.2.0",
+  "autoCadLiveEvidence": false,
+  "netLoadVerified": false,
+  "gates": {
+    "phase2Specs": "319/319",
+    "contractsNet45Net8": "87/87",
+    "r20_1ReleaseX64Build": true,
+    "hostABBitForBitEqual": true,
+    "hostReadOnlySourceScan": true,
+    "earlyReverseDrawingQueryRaceCovered": true,
+    "frozenEntityArrayOwnershipTransfer": true,
+    "benchmarkFixtures": "6/6",
+    "hostLocalPerformanceTelemetry": true,
+    "hostCompileSourceCount": 31,
+    "documentLockCount": 2,
+    "lockFileHashesPreserved": true,
+    "autoCadStartedOrRestarted": false,
+    "commandsSent": false,
+    "m3ReadSemantics": true,
+    "m3DualShellApiProbe": true,
+    "m3SupportedTypeCatalogCount": 19,
+    "m3ExternalXrefPathsExcluded": true,
+    "m3CoreReadFixture": "6/6"
+  },
+  "build": {
+    "hostDllSha256": "B5081C63DD11BD36706B529EC28C58BB1DEA22FEF6D50BA0E76C5E3E4CE67879",
+    "agentHostExeSha256": "E3DBE95546D193D9AF451A0420E648085F9E2AF9ECCC6E956BD85BC26ACDA615",
+    "manifestSha256": "2633642C2F993FC320A0662FD95D4BC900CD4A453ABCDD6B7BEB7C596EF30348"
+  },
+  "candidate": {
+    "root": "artifacts/autocad2016-m3-read-semantics-v042-b5081c63-e3dbe955-0b06bcf7",
+    "files": {
+      "AgentHost/Codex.AutoCAD.AgentHost.deps.json": {
+        "Length": 3194,
+        "Sha256": "E217B7EC0E23976EEF6DC3F3D4DD4CDBECD4F1230E07153ED24178508945AF38"
+      },
+      "AgentHost/Codex.AutoCAD.AgentHost.dll": {
+        "Length": 73216,
+        "Sha256": "28CA14CD66C62B26091BC7608E26674AF9CE63F2E6F337DE5BFA1A7238C04D2D"
+      },
+      "AgentHost/Codex.AutoCAD.AgentHost.exe": {
+        "Length": 152064,
+        "Sha256": "E3DBE95546D193D9AF451A0420E648085F9E2AF9ECCC6E956BD85BC26ACDA615"
+      },
+      "AgentHost/Codex.AutoCAD.AgentHost.exe.sha256": {
+        "Length": 94,
+        "Sha256": "4665C6C00DBFE4E9A420861516C4CE6F29B0ECA4FEBBB7E20FA3A1B70023F462"
+      },
+      "AgentHost/Codex.AutoCAD.AgentHost.pdb": {
+        "Length": 21788,
+        "Sha256": "33E402F6CE9C24C7DB9BF33E2A23210C7E30F84C3171EC3B4FF9B26CFD7E3868"
+      },
+      "AgentHost/Codex.AutoCAD.AgentHost.runtimeconfig.json": {
+        "Length": 340,
+        "Sha256": "28329CF08F6505E73806B17558B187C02F0C1C516FE47EBFB7A013D082AAA306"
+      },
+      "AgentHost/Codex.AutoCAD.AgentLauncher.dll": {
+        "Length": 78336,
+        "Sha256": "E6D9B3CF5513B2060A12800DC04E1994AF337080ED64C588158FACA5AB5C4E85"
+      },
+      "AgentHost/Codex.AutoCAD.AgentLauncher.pdb": {
+        "Length": 32044,
+        "Sha256": "BA28038728723F71DDBFC15CF66D13B08CBD3F15F82FC74964CC64A8C066DB64"
+      },
+      "AgentHost/Codex.AutoCAD.AgentRuntime.dll": {
+        "Length": 190464,
+        "Sha256": "B8505AFA3D6310801E870EFE0353A63F7D4FFF7A0B7AD09881145619DDFDDCBE"
+      },
+      "AgentHost/Codex.AutoCAD.AgentRuntime.pdb": {
+        "Length": 44488,
+        "Sha256": "E71C929E51AA1FAF444F62B4BE4CE40DA7CD1997E1DC37429175B38F2820B76D"
+      },
+      "AgentHost/Codex.AutoCAD.AppServer.dll": {
+        "Length": 132608,
+        "Sha256": "CA682A88BE3C6EBB412CB77AA1CFA56F123C61F3B18E0B65604CF5D1A510C263"
+      },
+      "AgentHost/Codex.AutoCAD.AppServer.pdb": {
+        "Length": 34436,
+        "Sha256": "606DF6530189DF5F9A5998BDCD7C53024602D6E697CB93118C7BCD56549FAB4C"
+      },
+      "AgentHost/Codex.AutoCAD.Bridge.dll": {
+        "Length": 52224,
+        "Sha256": "010426F7255E20AF065B912D5413D753A0605B0BB263D40AB4602EF1C6DB39FE"
+      },
+      "AgentHost/Codex.AutoCAD.Bridge.pdb": {
+        "Length": 21676,
+        "Sha256": "16C5A2B12BA70C94EA48B1553DC78BB999C4E83BBD799B91C3B8549839E92CFF"
+      },
+      "AgentHost/Codex.AutoCAD.Contracts.dll": {
+        "Length": 181248,
+        "Sha256": "A495684AA0CFB2427EBDBFA9BCA35579517DB13A2AC39E2B9921E4E51CB7CA1E"
+      },
+      "AgentHost/Codex.AutoCAD.Contracts.pdb": {
+        "Length": 63200,
+        "Sha256": "AF4318941AADBC2E3AC85440EDBF3FCB2050DBE5CC2F31EB21C6240BEBEFEA5D"
+      },
+      "AgentHost/Codex.AutoCAD.Contracts.xml": {
+        "Length": 8065,
+        "Sha256": "DDF213E5B92ADAA151DE7ED2A03F0226B95B6E1138D4059B0B76D8F6C70CDB3C"
+      },
+      "AgentHost/Codex.AutoCAD.Ipc.dll": {
+        "Length": 30208,
+        "Sha256": "21934D728146D0D94C0AA6DB5FAF20E005F617FA876CA4C63C19466BB16AAFD9"
+      },
+      "AgentHost/Codex.AutoCAD.Ipc.pdb": {
+        "Length": 19996,
+        "Sha256": "9804D1315ACBFD23350449BC930B04FF3BB60DB751B405ADBA9E1E7E76D40F18"
+      },
+      "AgentHost/Codex.AutoCAD.Security.dll": {
+        "Length": 75776,
+        "Sha256": "59B17BEFDEADB5FF642B880E87D8BACE39603034B337F3874DAEE24DC3C7113E"
+      },
+      "AgentHost/Codex.AutoCAD.Security.pdb": {
+        "Length": 25804,
+        "Sha256": "F1F586D89DEFCD076EBA3776295C29A7730D1FD448EC8474BBDEC1CFCE236789"
+      },
+      "Codex.AutoCAD.AgentLauncher.dll": {
+        "Length": 78848,
+        "Sha256": "1E6BCF549CE8ADC9F7D7B46504D16C0EC38D54369957CA756FF35431956CA298"
+      },
+      "Codex.AutoCAD.Bridge.Client.dll": {
+        "Length": 109056,
+        "Sha256": "8A96B32B655EF6FD03FC9ACCCCCA12396AEEC2679A671F34980EEF479BC00127"
+      },
+      "Codex.AutoCAD.Contracts.dll": {
+        "Length": 181760,
+        "Sha256": "8081FCC967675655E74BAB77418A8522DAC57D9790481511AEB1252073DE72B3"
+      },
+      "Codex.AutoCAD.Host.2016.dll": {
+        "Length": 216576,
+        "Sha256": "B5081C63DD11BD36706B529EC28C58BB1DEA22FEF6D50BA0E76C5E3E4CE67879"
+      },
+      "Codex.AutoCAD.Ipc.dll": {
+        "Length": 30208,
+        "Sha256": "5F232E11FBC2C4BB3839FA6CF49C775D2E38AA0C1B58C2E36AA90128D3C83EAF"
+      }
+    }
+  },
+  "limitations": [
+    "本证据未启动、重启或操作 AutoCAD；人工 NETLOAD 和图纸级运行时行为仍需实机验证。",
+    "CadContextJson v2 的 64 实体选择上限保持不变；M2 通过独立 DrawingIndex/CadQuery 处理大图。",
+    "Codex 动态 drawing-query 已接入认证反向 Bridge；仍需 AutoCAD 实机验证整图索引、无选择集提问和失效行为。",
+    "CAD 写入、插件保存、Provider 抽象、Direct API 和自研 Agent Loop 均不在本候选范围。",
+    "M3 块详情、19 类字段、高价值受限对象和复杂 Xref 仍需按精确候选进行 AutoCAD 实机核对。"
+  ],
+  "m3ApiProbe": {
+    "runtimeChecksPassed": 29,
+    "runtimeChecksFailed": 8,
+    "crossShellNormalizedIdentical": true,
+    "crossShellDllSha256Identical": true,
+    "dllSha256": "BE31312FC5C8AB530BE430C88903FB831BC1B6E1AB87F45127D02B5FDBFE62CE",
+    "aggregateEvidenceSha256": "A20C67A4EAF947A271A06D7AE3F57BE183C514B7C8DD367C2DFED1A9E9030924"
+  },
+  "m3CoreReadFixture": {
+    "checks": "6/6",
+    "fixtureId": "autocad2016-m3-core-read-fixture-v1",
+    "entityRecordCount": 14,
+    "dxfSha256": "b393ab1b7b5ca9a8731a08a22aabe0ae64db421821c2e8eaab7406fa68f97f0a",
+    "expectedManifestSha256": "18534250E5E4214BB6E9FF2E6E165FEC86522F08B49C56137631845753961563"
+  }
+}

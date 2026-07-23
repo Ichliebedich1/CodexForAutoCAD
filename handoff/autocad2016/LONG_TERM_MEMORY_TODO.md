@@ -229,33 +229,33 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 
 完成定义：不支持对象只降低完整性，不使整次捕获失败。
 
-当前 `0.4.1.0` M3 自动化候选已经冻结，但没有 AutoCAD `NETLOAD` 证据。精确候选为
-`autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de`；Host SHA-256 为
-`FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，AgentHost SHA-256 为
-`DEC4B65FE09EFEF6405E5761CAEB2490AB2E6AAC22AA21F71F20B3243189691E`，manifest SHA-256 为
-`76079F5889109B8D06B0E19E065D042435EB0A04E1B37B27BE246ABDD90E3FB8`。说明与人工字段核对
+当前 `0.4.2.0` M3 自动化候选已经冻结，但没有 AutoCAD `NETLOAD` 证据。精确候选为
+`autocad2016-m3-read-semantics-v042-b5081c63-e3dbe955-0b06bcf7`；Host SHA-256 为
+`B5081C63DD11BD36706B529EC28C58BB1DEA22FEF6D50BA0E76C5E3E4CE67879`，AgentHost SHA-256 为
+`E3DBE95546D193D9AF451A0420E648085F9E2AF9ECCC6E956BD85BC26ACDA615`，manifest SHA-256 为
+`2633642C2F993FC320A0662FD95D4BC900CD4A453ABCDD6B7BEB7C596EF30348`。说明与人工字段核对
 模板见 `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
 
-当前工作站在 2026-07-23 的离线 Phase 2 doctor 中观察到 Codex 凭据刷新失败。它不影响
-本候选的编译、规格或 doctor 握手结论，但不构成真实 Codex 回合认证成功的证据；下一次
-`CODEX16ASK` 若出现认证失败，应先在 Codex 客户端手工重新登录，再单独记录实机结果。
-不得把原始认证错误、令牌或环境变量写入 evidence。
+当前 `0.4.2.0` 离线 Phase 2 doctor 已完成本机 app-server 初始化握手。它只证明候选包在
+当前工作站可完成受限健康检查，不构成真实 Codex 回合认证、AutoCAD `NETLOAD` 或 CAD 查询
+成功的证据；下一次 `CODEX16ASK` 若出现认证失败，应先在 Codex 客户端手工重新登录，再单独
+记录实机结果。不得把原始认证错误、令牌或环境变量写入 evidence。
 
 - [x] 在选择快照、整图索引、Palette 和诊断中按实际类型/数量显示未支持、数据超限和
   读取失败对象；统计不包含图层、Handle、路径或对象内容，且类型桶有界。
 - [x] 新增 `CODEX16TYPEINFO`，为 19 类现有强类型对象列出中文名称和人工创建入口。
 - [x] 为选择统计、DrawingIndex 累积边界、中文目录和真实 mapper → 可读摘要调用链增加
-  源码级回归；当前自动门禁为 Contracts `86/86`、Bridge Client net45/net8 各 `29/29`、
-  Bridge `39/39`、AgentRuntime `33/33`、Host MVP `53/53`、完整 Phase 2 `310/310`。R20.1
+  源码级回归；当前自动门禁为 Contracts `87/87`、Bridge Client net45/net8 各 `29/29`、
+  Bridge `39/39`、AgentRuntime `33/33`、Host MVP `53/53`、完整 Phase 2 `319/319`。R20.1
   API 双 Shell Probe 为 `29 passed / 8 expected failed`；目标 R20.1/net45/x64 Host A/B
   输出逐字节一致，当前 Host SHA-256 为
-  `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，Autodesk DLL 复制数
+  `B5081C63DD11BD36706B529EC28C58BB1DEA22FEF6D50BA0E76C5E3E4CE67879`，Autodesk DLL 复制数
   为 `0`。
-- [x] 冻结 M3 精确候选及 manifest：完整 Phase 2 `310/310`、benchmark fixture/evidence
+- [x] 冻结 M3 精确候选及 manifest：完整 Phase 2 `319/319`、benchmark fixture/evidence
   `6/6`、M3 核心读取 DXF fixture `6/6`、R20.1 API 双 Shell Probe `29 passed / 8 expected failed`、Host A/B 位级一致和
   候选 AgentHost doctor 均通过。脱敏证据为
-  `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de.json`
-  （文件 SHA-256：`F481DD3D87EAD23971EC3D6AEE302F9BBB57C17B2696B07FC2F2682B9B02AC23`）。
+  `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v042-b5081c63-e3dbe955-0b06bcf7.json`
+  （文件 SHA-256：`EA27EC4E9E9CE95D8CB488AB42B39260AD5EA71766907FEF56C0F36C630DD2B4`）。
   该过程没有启动、重启或操作 AutoCAD，故仍为 `NetLoadVerified=false`、
   `AutoCadLiveEvidence=false`。
 - [x] 提供 M3 中文对象目录、首要字段和未来实机记录模板。
@@ -267,14 +267,18 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 - [x] 冻结可重复的 `AC1015` 核心 DXF fixture：14 个安全直接编码的实体变体、带属性和嵌套
   定义的 BlockReference、确定性 hash/文件集/实体顺序/多段线标志离线校验 `6/6`。生成器和
   校验器不启动或控制 AutoCAD，说明见 `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
+- [x] Region、Solid、Mesh、Surface、RasterImage、Underlay、Proxy 和 Wipeout 已进入
+  DrawingIndex/CadQuery 的受限类别映射；它们仅保留有界通用摘要，固定标记为
+  `Unsupported=true`、`data_limited`，不会扩张冻结的 CadContextJson v2 强类型 schema。
+  Contracts `INDEX-M3-003`、Host v2 `HOST2016-V2-016` 和 R20.1 编译期 Probe 覆盖该边界。
 - [ ] 为 Dimension、Hatch、Leader、MLeader、Table 和高价值受限对象冻结脱敏示例测试图；
   中文目录和创建入口不能替代这些剩余测试资产。
 - [ ] 逐类实机验证现有 19 种强类型对象。
 - [ ] 用精确 M3 候选实机核对块属性、动态块、嵌套块、布局和安全 Xref 降级；复杂块语义
   与异常图仍需扩展。
 - [ ] 完善 Dimension、Hatch、Leader、MLeader、Table 的 R20.1 字段语义。
-- [ ] 增加 Region、Solid、Mesh、Surface、Image/Underlay 等高价值受限读取。
-- [ ] 垂直产品代理对象至少提供类型、图层、范围和占位信息。
+- [ ] 用精确 `0.4.2.0` 候选实机验证上述高价值受限类别和垂直产品代理对象：类型、图层、
+  空间、范围、`data_limited` 降级及 DBMOD 不变；不得把此项记录为完整字段读取。
 - [ ] 长文字、复杂 Hatch、Table、Spline 受限但不拖垮整体。
 - [ ] 每类对象具有契约、边界、R20.1 API Probe 和实机字段证据。
 

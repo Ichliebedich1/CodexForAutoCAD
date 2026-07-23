@@ -4,27 +4,27 @@
 
 ## 当前状态与边界
 
-本文件是 M3 的中文对象目录和实机核对模板。`0.4.1.0` 自动化候选已经冻结，但尚未取得
+本文件是 M3 的中文对象目录和实机核对模板。`0.4.2.0` 自动化候选已经冻结，但尚未取得
 AutoCAD `NETLOAD` 证据；因此本文件不能把任何 M3 项目写成实机通过。
 
 精确候选身份：
 
 ```text
 Candidate directory:
-C:\tmp\CodexForAutoCAD-m3-read-semantics\artifacts\autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de
+C:\tmp\CodexForAutoCAD-m3-highvalue-limited\artifacts\autocad2016-m3-read-semantics-v042-b5081c63-e3dbe955-0b06bcf7
 
 NETLOAD target:
 Codex.AutoCAD.Host.2016.dll
 
-Host version: 0.4.1.0
-Host SHA-256: FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673
-AgentHost SHA-256: DEC4B65FE09EFEF6405E5761CAEB2490AB2E6AAC22AA21F71F20B3243189691E
-Manifest SHA-256: 76079F5889109B8D06B0E19E065D042435EB0A04E1B37B27BE246ABDD90E3FB8
-Evidence SHA-256: F481DD3D87EAD23971EC3D6AEE302F9BBB57C17B2696B07FC2F2682B9B02AC23
+Host version: 0.4.2.0
+Host SHA-256: B5081C63DD11BD36706B529EC28C58BB1DEA22FEF6D50BA0E76C5E3E4CE67879
+AgentHost SHA-256: E3DBE95546D193D9AF451A0420E648085F9E2AF9ECCC6E956BD85BC26ACDA615
+Manifest SHA-256: 2633642C2F993FC320A0662FD95D4BC900CD4A453ABCDD6B7BEB7C596EF30348
+Evidence SHA-256: EA27EC4E9E9CE95D8CB488AB42B39260AD5EA71766907FEF56C0F36C630DD2B4
 ```
 
 对应的脱敏冻结证据是
-`evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de.json`。
+`evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v042-b5081c63-e3dbe955-0b06bcf7.json`。
 它明确记录 `NetLoadVerified=false`、`AutoCadLiveEvidence=false`，并记录冻结过程没有启动、
 重启或操作 AutoCAD。
 
@@ -40,6 +40,9 @@ Evidence SHA-256: F481DD3D87EAD23971EC3D6AEE302F9BBB57C17B2696B07FC2F2682B9B02AC
 - `BlockReference` 的 `blockDetails` 仅走 DrawingIndex → CadQuery → 认证 Bridge → Agent
   工具，不修改冻结的 CadContextJson v2。它有界保留属性/动态属性、嵌套块计数与深度、布局
   标志和安全 Xref 布尔元数据；不读取外部 Xref 定义或真实路径，受限时标记 `limited`。
+- Region、Solid、Mesh、Surface、RasterImage、Underlay、Proxy 和 Wipeout 只在
+  DrawingIndex/CadQuery 中取得受限分类；它们使用既有通用摘要字段，始终标记
+  `Unsupported=true`、`data_limited`，不成为 CadContextJson v2 的新增强类型 payload。
 
 选择快照仍是兼容的 `CadContextJson v2`，最多 `64` 个实体和 `256 KiB` canonical JSON；
 整图或大数量级的测试应使用独立的 DrawingIndex/CadQuery 调用链，不应放大选择快照限制。
@@ -116,12 +119,13 @@ R20.1 语义依赖样式、关联或对象图结构。它们仍须在脱敏的�
 
 ## 未支持与高价值受限对象
 
-下列对象不是本纵切新增的完整强类型 payload。若出现在选择快照或整图索引中，应尽量以
-受限 placeholder 保留实际类型、图层和范围摘要，并降低完整性，而不是让整次捕获失败：
+下列对象不是本纵切新增的完整强类型 payload。选择快照继续将它们作为既有受限 placeholder
+处理；只有整图索引与 CadQuery 会将它们归入下列有界类别，并保留通用的类型、图层、空间和
+范围摘要。两条路径都会降低完整性，而不是让整次捕获失败：
 
-- 面域（Region）、三维实体（Solid）、网格（Mesh）、曲面（Surface）。
+- 面域（Region）、二维/三维实体（Solid）、三维面/旧式网格/细分网格（Mesh）、曲面（Surface）。
 - 光栅图像、PDF/DWF/DGN 参考底图（Image/Underlay）。
-- 垂直产品代理对象（Proxy Entity）。
+- 垂直产品代理对象（Proxy Entity）和遮罩（Wipeout）。
 
 Xref 的外部真实路径不允许进入可读摘要、Canonical JSON、日志或人工测试回报。长文字、
 复杂 Hatch、Table 和 Spline 发生限额时必须标记 `data_limited`，不能假装完整。
@@ -155,7 +159,7 @@ Xref 的外部真实路径不允许进入可读摘要、Canonical JSON、日志�
    动态属性、嵌套计数/深度、布局和 Xref 布尔值；外部 Xref 不应显示真实路径。不要把完整 JSON、真实图名、路径、
    Handle、选择哈希或上下文哈希贴入聊天或提交 Git；只记录“字段一致/不一致”和命令
    `status`。
-5. 若出现未支持或受限对象，确认捕获仍发布，`complete=false`，且信息区出现例如：
+5. 若选择快照中出现未支持或受限对象，确认捕获仍发布，`complete=false`，且信息区出现例如：
 
    ```text
    Placeholder reasons: 未支持类型 1，数据超限 0，读取失败 0
@@ -163,7 +167,8 @@ Xref 的外部真实路径不允许进入可读摘要、Canonical JSON、日志�
    ```
 
 6. 对整图或多于 64 个对象的样本，使用 M2 的 `CODEX16INDEX` / `CODEX16INDEXINFO`，而不是
-   用选择快照规避上限。确认 `Placeholder actual types` 与实测对象类别相符。
+   用选择快照规避上限。对本节列出的高价值对象，确认索引/查询结果使用上述类别，且每项均为
+   `Unsupported=true` 与 `data_limited`；不要把这项核对记为完整字段读取。
 
 如果任何对象让整次捕获返回 `published=false`、抛出未处理异常、泄露路径/实体内容，或读取
 后让 `DBMOD` 改变，应保留脱敏的命令行 `status`、版本和精确候选 SHA-256，报告为失败。
@@ -180,25 +185,28 @@ Xref 的外部真实路径不允许进入可读摘要、Canonical JSON、日志�
   和 Agent 工具的真实 JSON 传输；深拷贝、内存预算、IPC 以及无 Xref 路径字段均有回归。
 - 核心示例图：14 个安全直接编码的实体变体通过确定性 DXF generator/validator 固定；它不
   取代 AutoCAD 内加载、字段读取或剩余 5 类复杂对象的实机证据。
+- 高价值受限类别：8 个 DrawingIndex/CadQuery 分类在 Contracts 和 Host v2 规格中验证可查询、
+  可按 `includeUnsupported=false` 排除，且不能伪装为完整读取；R20.1 Probe 还编译检查其
+  12 个关联实体类型。
 
 当前自动门禁结果：
 
-- Contracts `86/86`；Bridge Client net45/net8 各 `29/29`；Bridge `39/39`；AgentRuntime
-  `33/33`；Host MVP `53/53`；完整 Phase 2 `310/310`。
+- Contracts `87/87`；Bridge Client net45/net8 各 `29/29`；Bridge `39/39`；AgentRuntime
+  `33/33`；Host MVP `53/53`；完整 Phase 2 `319/319`。
 - R20.1 API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员集合和
   Probe DLL 哈希一致。脱敏聚合 evidence 为
   `evidence/v2-api-surface-probe-m3-cross-shell-20260723.json`。
 - 禁止 API、AgentHost doctor、敏感信息和 `git diff --check` 均通过；candidate manifest 与
   evidence 已冻结。
 - 当前 R20.1/net45/x64 Host A/B 输出逐字节一致，Autodesk DLL 复制数为 `0`。Host
-  `0.4.1.0` SHA-256 为
-  `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`。
+  `0.4.2.0` SHA-256 为
+  `B5081C63DD11BD36706B529EC28C58BB1DEA22FEF6D50BA0E76C5E3E4CE67879`。
 - 自动化候选目录为
-  `artifacts/autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de/`；manifest SHA-256
-  为 `76079F5889109B8D06B0E19E065D042435EB0A04E1B37B27BE246ABDD90E3FB8`，冻结 evidence 为
-  `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de.json`。
+  `artifacts/autocad2016-m3-read-semantics-v042-b5081c63-e3dbe955-0b06bcf7/`；manifest SHA-256
+  为 `2633642C2F993FC320A0662FD95D4BC900CD4A453ABCDD6B7BEB7C596EF30348`，冻结 evidence 为
+  `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v042-b5081c63-e3dbe955-0b06bcf7.json`。
   该自动化候选仍没有 AutoCAD `NETLOAD` 证据。
 
 仍未完成：全部 19 类对象与块详情的实机字段证据、5 类复杂对象及高价值受限对象的脱敏
-示例图资产、复杂对象语义、复杂块/Xref 边界，以及高价值对象的受限读取。M2 的
+示例图资产、复杂对象语义、复杂块/Xref 边界，以及高价值受限类别的实机读取证据。M2 的
 1k/10k/50k 实机性能和查询证据仍独立待办，不因本文件而完成。

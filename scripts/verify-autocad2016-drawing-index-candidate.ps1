@@ -34,11 +34,11 @@ else {
     [pscustomobject]@{
         Title = 'M3 CAD 读取语义'
         ArtifactPrefix = 'autocad2016-m3-read-semantics'
-        CandidatePrefix = 'autocad2016-m3-read-semantics-v041'
-        ExpectedHostVersion = '0.4.1.0'
+        CandidatePrefix = 'autocad2016-m3-read-semantics-v042'
+        ExpectedHostVersion = '0.4.2.0'
         EvidenceScope = 'autocad2016-m3-read-semantics-candidate-build'
         EvidencePrefix = 'm3-read-semantics-candidate-'
-        ContractsSpecs = '86/86'
+        ContractsSpecs = '87/87'
         UsesM3ApiProbe = $true
         UsesM3CoreFixture = $true
     }
@@ -360,6 +360,20 @@ function Assert-M3ReadSemantics([string[]] $SourceFiles) {
             throw "DrawingIndexEntityReader 缺少 M3 块详情要素：$required"
         }
     }
+    foreach ($required in @(
+        'DrawingIndexEntityTypes.IsHighValueLimited',
+        'Wipeout',
+        'RasterImage',
+        'UnderlayReference',
+        'ProxyEntity',
+        'Region',
+        'Solid3d',
+        'SubDMesh',
+        'CadSurface')) {
+        if ($readerText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
+            throw "DrawingIndexEntityReader 缺少高价值受限读取分类：$required"
+        }
+    }
     if ($readerText -match '(?i)\b(?:PathName|XrefPath|ExternalReferencePath)\b') {
         throw 'M3 块详情读取禁止引用外部 Xref 路径字段。'
     }
@@ -373,9 +387,16 @@ function Assert-M3ReadSemantics([string[]] $SourceFiles) {
     $contractsText = Get-Content -LiteralPath (Join-Path $repoRoot 'src\Codex.AutoCAD.Contracts\DrawingIndexContracts.cs') -Raw -Encoding UTF8
     $bridgeCodecText = Get-Content -LiteralPath (Join-Path $repoRoot 'src\Codex.AutoCAD.Bridge.Client\BridgeClientJsonCodec.cs') -Raw -Encoding UTF8
     $agentToolText = Get-Content -LiteralPath (Join-Path $repoRoot 'src\Codex.AutoCAD.AgentRuntime\IAgentCadDrawingQueryBroker.cs') -Raw -Encoding UTF8
-    foreach ($required in @('CadQueryBlockDetails', 'CadQueryBlockDetailsCloner', 'public static CadQueryBlockDetails? Clone(', 'MaximumBlockAttributes')) {
+    foreach ($required in @(
+        'CadQueryBlockDetails',
+        'CadQueryBlockDetailsCloner',
+        'public static CadQueryBlockDetails? Clone(',
+        'MaximumBlockAttributes',
+        'public static class DrawingIndexEntityTypes',
+        'public const string Region = "region"',
+        'public const string Wipeout = "wipeout"')) {
         if ($contractsText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
-            throw "M3 Contracts 缺少 blockDetails 边界：$required"
+            throw "M3 Contracts 缺少受审边界：$required"
         }
     }
     foreach ($required in @('BlockDetails = ToWire', 'DataMember(Name = "blockDetails"')) {

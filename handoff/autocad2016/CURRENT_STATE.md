@@ -128,26 +128,30 @@ NETLOAD 证据的能力一律视为未支持。
   它没有启动或操作 AutoCAD，不能证明跨 Idle 枚举器生命周期、动态查询实机行为或真实性能。
   旧 `597A7A3D...` 候选只保留为历史 M2-B 冻结点。Provider-neutral 抽象、Direct API 和
   自研 Agent Loop 继续冻结。
-- M3 的第一条读取语义纵切将 Host 版本推进到 `0.4.1.0`：选择快照、整图索引、
+- M3 的读取语义纵切将 Host 版本推进到 `0.4.2.0`：选择快照、整图索引、
   `CODEX16CTXINFO`、`CODEX16INDEXINFO` 和 Palette 均按实际类型统计未支持、数据超限和
   读取失败对象；`CODEX16TYPEINFO` 提供 19 类现有强类型对象的中文名称与人工创建入口。
   类型统计受 `4,096` 个桶限制，且不包含图层、Handle、路径或对象内容。
 - M3 的块读取纵切已把受限 `blockDetails` 接入 DrawingIndex、CadQuery、认证 Bridge 和
   Agent 工具。它包含属性/动态属性、嵌套块计数与深度、布局标志及安全 Xref 布尔元数据；
   外部 Xref 定义和真实路径不会读取或传播，任何受限情况以 `limited` 降级。
+- M3 新增 Region、Solid、Mesh、Surface、RasterImage、Underlay、Proxy 和 Wipeout 的
+  DrawingIndex/CadQuery 受限分类。它们只保留有界的类型、图层、空间和范围摘要，恒为
+  `Unsupported=true`、`data_limited`；不扩张 CadContextJson v2 的选择快照 schema 或伪装
+  为完整字段读取。
 - M3 自动化候选已冻结为
-  `artifacts/autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de/`。Host SHA-256 为
-  `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，AgentHost EXE 为
-  `DEC4B65FE09EFEF6405E5761CAEB2490AB2E6AAC22AA21F71F20B3243189691E`，manifest 为
-  `76079F5889109B8D06B0E19E065D042435EB0A04E1B37B27BE246ABDD90E3FB8`。
-- 该 M3 候选通过 Contracts `86/86`、Bridge Client net45/net8 各 `29/29`、Bridge `39/39`、
-  AgentRuntime `33/33`、Host MVP `53/53` 和完整 Phase 2 `310/310`。R20.1 API 双 Shell
+  `artifacts/autocad2016-m3-read-semantics-v042-b5081c63-e3dbe955-0b06bcf7/`。Host SHA-256 为
+  `B5081C63DD11BD36706B529EC28C58BB1DEA22FEF6D50BA0E76C5E3E4CE67879`，AgentHost EXE 为
+  `E3DBE95546D193D9AF451A0420E648085F9E2AF9ECCC6E956BD85BC26ACDA615`，manifest 为
+  `2633642C2F993FC320A0662FD95D4BC900CD4A453ABCDD6B7BEB7C596EF30348`。
+- 该 M3 候选通过 Contracts `87/87`、Bridge Client net45/net8 各 `29/29`、Bridge `39/39`、
+  AgentRuntime `33/33`、Host MVP `53/53` 和完整 Phase 2 `319/319`。R20.1 API 双 Shell
   Probe 为 `29 passed / 8 expected failed`；目标 R20.1/net45/x64 Host A/B 输出逐字节一致，
-  `0.4.1.0` 当前 Host SHA-256 为
-  `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，Autodesk DLL 复制数
+  `0.4.2.0` Host SHA-256 为
+  `B5081C63DD11BD36706B529EC28C58BB1DEA22FEF6D50BA0E76C5E3E4CE67879`，Autodesk DLL 复制数
   为 `0`。冻结 evidence 为
-  `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de.json`，
-  SHA-256 为 `F481DD3D87EAD23971EC3D6AEE302F9BBB57C17B2696B07FC2F2682B9B02AC23`。
+  `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v042-b5081c63-e3dbe955-0b06bcf7.json`，
+  SHA-256 为 `EA27EC4E9E9CE95D8CB488AB42B39260AD5EA71766907FEF56C0F36C630DD2B4`。
 - M3 另冻结一个可重复的 AC1015 核心 DXF fixture：14 个可直接编码的基础/旧式实体变体、
   带属性和嵌套定义的 BlockReference，以及确定性文件集与实体顺序离线校验 `6/6`。它不代替
   AutoCAD 字段读取，也不覆盖 Dimension、Hatch、Leader、MLeader 和 Table 的专用实机样本。
@@ -155,10 +159,10 @@ NETLOAD 证据的能力一律视为未支持。
   `AutoCadLiveEvidence=false`；它不能继承 M2、M1 或 P1 的实机结论。中文对象目录、字段
   核对模板和边界见
   `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
-- M3 的构建诊断显示：在同一新鲜依赖闭包下，R20.1 Host A/B 输出一致；跨独立依赖构建时
-  当前工具链会改变 timestamp、MVID 与 TargetFramework metadata。归一化后的 Host IL
-  主体相同（923 个方法头、27,270 条指令），但“完整依赖闭包位级可重复”仍是 M9 的未完成
-  工程质量项，不能借此扩张 M2/M3 候选身份。
+- M3 `0.4.1.0` 的历史构建诊断曾显示跨独立依赖闭包时 timestamp、MVID 与
+  TargetFramework metadata 会改变；完整依赖闭包位级可重复仍是 M9 的未完成工程质量项。
+  `0.4.2.0` 只声明本次候选的同一新鲜依赖闭包 Host A/B 输出一致，不将历史归一化 IL
+  结论扩张为完整闭包可重复性证明。
 
 ## 已验证检查点
 
@@ -476,9 +480,9 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
 10. 修改/撤销/切图后的 stale 拒绝，以及查询、回合取消和断线 fail-closed。
 11. 使用已冻结 fixture 和 Host 遥测完成 M2 1k/10k/50k 扫描响应性、总时间、工作集、
     DBMOD 和 Agent 查询真实性能；自动化资产已完成，实机数值仍待采集。
-12. M3 中文对象目录、块详情自动化纵切、R20.1 API Probe 和精确 `0.4.1.0` 候选冻结已完成；
-    仍待按该候选 `NETLOAD` 后完成 19 类对象的逐类字段核对、脱敏示例图资产、复杂对象语义
-    和高价值受限读取。
+12. M3 中文对象目录、块详情、8 类高价值受限分类、R20.1 API Probe 和精确 `0.4.2.0` 候选
+    冻结已完成；仍待按该候选 `NETLOAD` 后完成 19 类对象的逐类字段核对、脱敏示例图资产、
+    复杂对象语义和高价值受限类别的实机证据。
 
 ## 下一步顺序
 

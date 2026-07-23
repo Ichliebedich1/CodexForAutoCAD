@@ -358,8 +358,9 @@ namespace Codex.AutoCAD.Host2016
             AppendCatalogEntry(builder, 17, "旧式引线", "Leader", "使用已有旧格式引线测试图");
             AppendCatalogEntry(builder, 18, "多重引线", "MLeader", "注释功能区 > 多重引线");
             AppendCatalogEntry(builder, 19, "表格", "Table", "注释功能区 > 表格");
-            builder.AppendLine("高价值受限读取候选：面域、三维实体、网格、曲面、光栅图像、PDF/DWF/DGN 参考底图和代理对象。");
-            builder.AppendLine("捕获后查看 Palette、CODEX16CTXINFO 或 CODEX16INDEXINFO；占位对象会显示实际类型与数量。");
+            builder.AppendLine("整图索引受限类别：面域、实体、网格、曲面、光栅图像、遮罩、PDF/DWF/DGN 参考底图和代理对象。");
+            builder.AppendLine("这些类别只在 DrawingIndex/CadQuery 中保留类型、图层、空间和范围摘要，并明确标为 data_limited；不会伪装为 CadContextJson v2 选择快照强类型。");
+            builder.AppendLine("捕获后查看 Palette、CODEX16CTXINFO 或 CODEX16INDEXINFO；占位或受限对象会显示实际类型与数量。");
             builder.AppendLine("此目录只说明人工测试入口，不创建、修改或保存图纸。");
             builder.Append("--- End 中文对象测试目录 ---");
             return builder.ToString();
@@ -398,12 +399,17 @@ namespace Codex.AutoCAD.Host2016
                 case "MLEADER": return "多重引线";
                 case "TABLE": return "表格";
                 case "REGION": return "面域";
+                case "SOLID": return "二维实体";
                 case "3DSOLID":
                 case "SOLID3D": return "三维实体";
+                case "FACE": return "三维面";
                 case "MESH":
-                case "SUBDMESH": return "网格";
+                case "SUBDMESH":
+                case "POLYFACEMESH":
+                case "POLYGONMESH": return "网格";
                 case "IMAGE":
                 case "RASTERIMAGE": return "光栅图像";
+                case "WIPEOUT": return "遮罩";
                 case "PDFUNDERLAY":
                 case "PDFREFERENCE": return "PDF 参考底图";
                 case "DWFUNDERLAY":
