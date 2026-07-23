@@ -9,7 +9,7 @@
 `NETLOAD` 证据；因此本文件不能把任何 M3 项目写成实机通过。
 
 这一纵切没有开启 CAD 写入、插件保存、命令字符串、LISP、脚本或反射式 CAD 调用。它只在
-既有只读调用链中增加受限对象统计：
+既有只读调用链中增加受限对象统计和块详情：
 
 - `CODEX16TYPEINFO` 输出 19 类现有强类型对象的中文名称和人工创建入口。
 - `CODEX16CTX` 的可读摘要、`CODEX16CTXINFO` 和 Palette 对选择快照显示未支持、数据超限、
@@ -17,6 +17,9 @@
 - `CODEX16INDEXINFO` 和整图索引 Palette 状态对索引占位显示同一类统计。
 - 类型名只保留受限的 DXF/CLR 类型标识；不拼接图层、Handle、图纸路径、对象文字或其他
   实体数据。最多保留 `4,096` 个类型桶，超过时只显示未记录的对象数量。
+- `BlockReference` 的 `blockDetails` 仅走 DrawingIndex → CadQuery → 认证 Bridge → Agent
+  工具，不修改冻结的 CadContextJson v2。它有界保留属性/动态属性、嵌套块计数与深度、布局
+  标志和安全 Xref 布尔元数据；不读取外部 Xref 定义或真实路径，受限时标记 `limited`。
 
 选择快照仍是兼容的 `CadContextJson v2`，最多 `64` 个实体和 `256 KiB` canonical JSON；
 整图或大数量级的测试应使用独立的 DrawingIndex/CadQuery 调用链，不应放大选择快照限制。
@@ -65,8 +68,9 @@ Idle 分片 DrawingIndex
 | 18 | 多重引线（MLeader） | 注释功能区 → 多重引线 | layer、leaderLines、text |
 | 19 | 表格（Table） | 注释功能区 → 表格 | layer、rows、columns、position、display text |
 
-块属性、动态块、嵌套块、布局/空间、Xref、复杂标注、复杂 Hatch、复杂 MLeader 与复杂
-Table 仍是 M3 后续语义工作，不能由“强类型名称出现”推断为完全支持。
+块属性、动态块、嵌套块、布局/空间和安全 Xref 元数据已经进入当前开发纵切的自动化调用链，
+但仍没有精确候选或实机字段证据。复杂块、复杂标注、复杂 Hatch、复杂 MLeader 与复杂 Table
+仍是 M3 后续语义工作，不能由“强类型名称出现”或 `blockDetails` 出现推断为完全支持。
 
 ## 未支持与高价值受限对象
 
@@ -96,7 +100,8 @@ Xref 的外部真实路径不允许进入可读摘要、Canonical JSON、日志�
    DBMOD
    ```
 
-3. 用 AutoCAD 属性面板或 `LIST` 本地核对表中字段。不要把完整 JSON、真实图名、路径、
+3. 用 AutoCAD 属性面板或 `LIST` 本地核对表中字段。对块参照另核对 `blockDetails` 的属性、
+   动态属性、嵌套计数/深度、布局和 Xref 布尔值；外部 Xref 不应显示真实路径。不要把完整 JSON、真实图名、路径、
    Handle、选择哈希或上下文哈希贴入聊天或提交 Git；只记录“字段一致/不一致”和命令
    `status`。
 4. 若出现未支持或受限对象，确认捕获仍发布，`complete=false`，且信息区出现例如：
@@ -120,21 +125,23 @@ Xref 的外部真实路径不允许进入可读摘要、Canonical JSON、日志�
 - DrawingIndex：实际类型统计有界，超过类型桶上限时保留总数而不扩大内存。
 - 真实 mapper 调用链：CanonicalSelectionHash v2 → CadContextJsonV2Mapper → 可读摘要。
 - 中文目录：恰好 19 个编号条目，且不包含本机路径。
+- 块详情：有界属性/动态属性、嵌套块、布局和安全 Xref 元数据通过 Contracts、Host、Bridge
+  和 Agent 工具的真实 JSON 传输；深拷贝、内存预算、IPC 以及无 Xref 路径字段均有回归。
 
 当前自动门禁结果：
 
-- Contracts `85/85`；Host v2 net45 与 net8 各 `15/15`；Host v2 冻结快照 SHA-256 仍为
-  `0ba4970c01da7877a41c9de960f1decd090d0f6646e9eff7a979c71db5bb8990`。
-- Host MVP `53/53`；完整 Phase 2 `309/309`；R20.1 Release 0 warning / 0 error。
+- Contracts `86/86`；Bridge Client net45/net8 各 `29/29`；Bridge `39/39`；AgentRuntime
+  `33/33`；Host MVP `53/53`；完整 Phase 2 `310/310`。
+- R20.1 API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员集合和
+  Probe DLL 哈希一致。脱敏聚合 evidence 为
+  `evidence/v2-api-surface-probe-m3-cross-shell-20260723.json`。
 - 禁止 API、AgentHost doctor、敏感信息和 `git diff --check` 均通过。
-- 同一新鲜依赖闭包下 R20.1/net45/x64 Host A/B 五文件逐字节一致，Autodesk DLL 复制数
-  为 `0`。Host `0.4.1.0` SHA-256 为
- `EC1C6174893DC47DABE5C55C28D020FD607881BE435DBBD1FE9079BC8C0DB51B`。
-- 编译门禁产物位于
- `artifacts/m3-r201-compile-only-d67432c0d40d4aed8710f24b30602955/`；其中
-  `compile-summary.json` 记录五文件哈希。它不是候选 manifest，不是冻结候选，也没有
-  AutoCAD `NETLOAD` 证据。
+- 当前 R20.1/net45/x64 Host A/B 输出逐字节一致，Autodesk DLL 复制数为 `0`。Host
+  `0.4.1.0` SHA-256 为
+  `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`。
+- 当前编译输出位于 `artifacts/m3-r201-current-compile-*/`；其中 `compile-summary.json`
+  不是候选 manifest，不是冻结候选，也没有 AutoCAD `NETLOAD` 证据。
 
-仍未完成：逐类 R20.1 API Probe 与实机字段证据、复杂对象语义、块/Xref 安全元数据、
-高价值对象的受限读取，以及实际示例测试图资产。M2 的 1k/10k/50k 实机性能和查询证据仍
-独立待办，不因本文件而完成。
+仍未完成：19 类对象与块详情的实机字段证据、脱敏示例测试图资产、复杂对象语义、复杂块/
+Xref 边界，以及高价值对象的受限读取。M2 的 1k/10k/50k 实机性能和查询证据仍独立待办，
+不因本文件而完成。

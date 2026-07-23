@@ -3,6 +3,12 @@ using System.Text.Json.Serialization;
 using Codex.AutoCAD.AgentRuntime;
 using Codex.AutoCAD.AppServer;
 using Codex.AutoCAD.AppServer.Protocol;
+using CadContextEntityTypesV2 = Codex.AutoCAD.Contracts.CadContextEntityTypesV2;
+using CadQueryBlockAttribute = Codex.AutoCAD.Contracts.CadQueryBlockAttribute;
+using CadQueryBlockDetailStatuses = Codex.AutoCAD.Contracts.CadQueryBlockDetailStatuses;
+using CadQueryBlockDetails = Codex.AutoCAD.Contracts.CadQueryBlockDetails;
+using CadQueryDynamicBlockProperty = Codex.AutoCAD.Contracts.CadQueryDynamicBlockProperty;
+using CadQueryDynamicValueKinds = Codex.AutoCAD.Contracts.CadQueryDynamicValueKinds;
 using CadQueryEntity = Codex.AutoCAD.Contracts.CadQueryEntity;
 using CadQueryReadStatuses = Codex.AutoCAD.Contracts.CadQueryReadStatuses;
 using CadQueryResponse = Codex.AutoCAD.Contracts.CadQueryResponse;
@@ -216,10 +222,39 @@ static async Task CadDrawingQueryUsesBrokerAndHidesBindingIdentity()
                     new CadQueryEntity
                     {
                         ObjectId = "obj-00000026",
-                        EntityType = "line",
-                        ActualType = "AcDbLine",
-                        Layer = "AI",
+                        EntityType = CadContextEntityTypesV2.BlockReference,
+                        ActualType = "AcDbBlockReference",
+                        Layer = "A-BLOCK",
                         Space = "model",
+                        BlockName = "Door",
+                        BlockDetails = new CadQueryBlockDetails
+                        {
+                            DetailStatus = CadQueryBlockDetailStatuses.Complete,
+                            IsDynamic = true,
+                            HasAttributeDefinitions = true,
+                            AttributeCount = 1,
+                            Attributes =
+                            [
+                                new CadQueryBlockAttribute
+                                {
+                                    Tag = "DOOR_ID",
+                                    Value = "D-01",
+                                },
+                            ],
+                            DynamicPropertyCount = 1,
+                            DynamicProperties =
+                            [
+                                new CadQueryDynamicBlockProperty
+                                {
+                                    Name = "Width",
+                                    ValueKind = CadQueryDynamicValueKinds.Number,
+                                    Value = "900",
+                                    IsVisible = true,
+                                },
+                            ],
+                            NestedBlockReferenceCount = 2,
+                            MaximumNestedBlockDepth = 1,
+                        },
                         ReadStatus = CadQueryReadStatuses.Parsed,
                     },
                 ],
@@ -246,6 +281,13 @@ static async Task CadDrawingQueryUsesBrokerAndHidesBindingIdentity()
     Equal(2, result.GetProperty("totalMatches").GetInt32());
     Equal("dq1-safe-cursor", String(result, "nextCursor"));
     Equal("obj-00000026", String(result.GetProperty("entities")[0], "objectId"));
+    var blockDetails = result.GetProperty("entities")[0].GetProperty("blockDetails");
+    Equal(CadQueryBlockDetailStatuses.Complete, String(blockDetails, "detailStatus"));
+    Equal(true, blockDetails.GetProperty("isDynamic").GetBoolean());
+    Equal("DOOR_ID", String(blockDetails.GetProperty("attributes")[0], "tag"));
+    Equal("900", String(blockDetails.GetProperty("dynamicProperties")[0], "value"));
+    Equal(false, blockDetails.TryGetProperty("xrefPath", out _));
+    Equal(false, blockDetails.TryGetProperty("sourcePath", out _));
     Equal(false, result.TryGetProperty("indexId", out _));
     Equal(false, result.TryGetProperty("documentId", out _));
     Equal(false, result.TryGetProperty("documentRevision", out _));

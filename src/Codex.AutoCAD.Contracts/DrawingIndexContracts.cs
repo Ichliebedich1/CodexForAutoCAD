@@ -25,6 +25,15 @@ public static class DrawingIndexContractConstants
     public const int MaximumTypeCharacters = 128;
     public const int MaximumTextQueryCharacters = 512;
     public const int MaximumTextExcerptCharacters = 256;
+    public const int MaximumBlockAttributes = 8;
+    public const int MaximumBlockAttributeTagCharacters = 48;
+    public const int MaximumBlockAttributeValueCharacters = 48;
+    public const int MaximumDynamicBlockProperties = 8;
+    public const int MaximumDynamicBlockPropertyNameCharacters = 48;
+    public const int MaximumDynamicBlockPropertyValueCharacters = 48;
+    public const int MaximumNestedBlockReferences = 64;
+    public const int MaximumNestedBlockDepth = 4;
+    public const int MaximumNestedBlockDefinitionEntities = 512;
     public const int MaximumCursorCharacters = 512;
     public const int MaximumIdentifierCharacters = 128;
     public const string EntityTokenPrefix = "obj-";
@@ -116,6 +125,30 @@ public static class CadQueryReadStatuses
     public const string Unsupported = "unsupported";
     public const string DataLimited = "data_limited";
     public const string ReadFailed = "read_failed";
+}
+
+public static class CadQueryBlockDetailStatuses
+{
+    public const string Complete = "complete";
+    public const string Limited = "limited";
+}
+
+public static class CadQueryLayoutKinds
+{
+    public const string None = "none";
+    public const string Model = "model";
+    public const string Paper = "paper";
+    public const string Unavailable = "unavailable";
+}
+
+public static class CadQueryDynamicValueKinds
+{
+    public const string Text = "text";
+    public const string Number = "number";
+    public const string Boolean = "boolean";
+    public const string Point = "point";
+    public const string Enum = "enum";
+    public const string Unavailable = "unavailable";
 }
 
 public sealed class DrawingIndexCountBucket
@@ -238,6 +271,12 @@ public sealed class CadQueryEntity
 
     public string BlockName { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Optional bounded block-specific detail. Existing non-block entity records leave this null.
+    /// No Xref source path is represented by this contract.
+    /// </summary>
+    public CadQueryBlockDetails? BlockDetails { get; set; }
+
     public string TextExcerpt { get; set; } = string.Empty;
 
     public CadExtents3? Bounds { get; set; }
@@ -245,6 +284,124 @@ public sealed class CadQueryEntity
     public bool Unsupported { get; set; }
 
     public string ReadStatus { get; set; } = CadQueryReadStatuses.Parsed;
+}
+
+public sealed class CadQueryBlockDetails
+{
+    public string DetailStatus { get; set; } = CadQueryBlockDetailStatuses.Complete;
+
+    public bool IsDynamic { get; set; }
+
+    public bool IsExternalReference { get; set; }
+
+    public bool IsOverlayReference { get; set; }
+
+    public bool IsAnonymousDefinition { get; set; }
+
+    public bool IsLayoutDefinition { get; set; }
+
+    public bool HasAttributeDefinitions { get; set; }
+
+    public string LayoutName { get; set; } = string.Empty;
+
+    public string LayoutKind { get; set; } = CadQueryLayoutKinds.None;
+
+    public int AttributeCount { get; set; }
+
+    public CadQueryBlockAttribute[] Attributes { get; set; } = new CadQueryBlockAttribute[0];
+
+    public int DynamicPropertyCount { get; set; }
+
+    public CadQueryDynamicBlockProperty[] DynamicProperties { get; set; } =
+        new CadQueryDynamicBlockProperty[0];
+
+    public int NestedBlockReferenceCount { get; set; }
+
+    public int MaximumNestedBlockDepth { get; set; }
+}
+
+public sealed class CadQueryBlockAttribute
+{
+    public string Tag { get; set; } = string.Empty;
+
+    public string Value { get; set; } = string.Empty;
+
+    public bool IsInvisible { get; set; }
+
+    public bool IsMText { get; set; }
+}
+
+public sealed class CadQueryDynamicBlockProperty
+{
+    public string Name { get; set; } = string.Empty;
+
+    public string ValueKind { get; set; } = CadQueryDynamicValueKinds.Unavailable;
+
+    public string Value { get; set; } = string.Empty;
+
+    public bool IsReadOnly { get; set; }
+
+    public bool IsVisible { get; set; }
+}
+
+public static class CadQueryBlockDetailsCloner
+{
+    public static CadQueryBlockDetails? Clone(CadQueryBlockDetails? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        var attributes = value.Attributes ?? new CadQueryBlockAttribute[0];
+        var properties = value.DynamicProperties ?? new CadQueryDynamicBlockProperty[0];
+        var attributeCopies = new CadQueryBlockAttribute[attributes.Length];
+        var propertyCopies = new CadQueryDynamicBlockProperty[properties.Length];
+
+        for (var index = 0; index < attributes.Length; index++)
+        {
+            var attribute = attributes[index] ?? new CadQueryBlockAttribute();
+            attributeCopies[index] = new CadQueryBlockAttribute
+            {
+                Tag = attribute.Tag ?? string.Empty,
+                Value = attribute.Value ?? string.Empty,
+                IsInvisible = attribute.IsInvisible,
+                IsMText = attribute.IsMText,
+            };
+        }
+
+        for (var index = 0; index < properties.Length; index++)
+        {
+            var property = properties[index] ?? new CadQueryDynamicBlockProperty();
+            propertyCopies[index] = new CadQueryDynamicBlockProperty
+            {
+                Name = property.Name ?? string.Empty,
+                ValueKind = property.ValueKind ?? string.Empty,
+                Value = property.Value ?? string.Empty,
+                IsReadOnly = property.IsReadOnly,
+                IsVisible = property.IsVisible,
+            };
+        }
+
+        return new CadQueryBlockDetails
+        {
+            DetailStatus = value.DetailStatus ?? string.Empty,
+            IsDynamic = value.IsDynamic,
+            IsExternalReference = value.IsExternalReference,
+            IsOverlayReference = value.IsOverlayReference,
+            IsAnonymousDefinition = value.IsAnonymousDefinition,
+            IsLayoutDefinition = value.IsLayoutDefinition,
+            HasAttributeDefinitions = value.HasAttributeDefinitions,
+            LayoutName = value.LayoutName ?? string.Empty,
+            LayoutKind = value.LayoutKind ?? string.Empty,
+            AttributeCount = value.AttributeCount,
+            Attributes = attributeCopies,
+            DynamicPropertyCount = value.DynamicPropertyCount,
+            DynamicProperties = propertyCopies,
+            NestedBlockReferenceCount = value.NestedBlockReferenceCount,
+            MaximumNestedBlockDepth = value.MaximumNestedBlockDepth,
+        };
+    }
 }
 
 public sealed class CadQueryResponse
@@ -484,6 +641,16 @@ public static class DrawingIndexContractValidator
             "cad_query_space", path + ".space", failures);
         ValidateSafeOptionalString(entity.BlockName, DrawingIndexContractConstants.MaximumNameCharacters,
             "cad_query_block", path + ".blockName", failures);
+        if (entity.BlockDetails is not null)
+        {
+            Require(
+                entity.EntityType == CadContextEntityTypesV2.BlockReference,
+                failures,
+                "cad_query_block_details_type",
+                path + ".blockDetails",
+                "块详情只能附加在块参照实体上。");
+            ValidateBlockDetails(entity.BlockDetails, path + ".blockDetails", failures);
+        }
         ValidateSafeOptionalString(entity.TextExcerpt,
             DrawingIndexContractConstants.MaximumTextExcerptCharacters,
             "cad_query_text_excerpt", path + ".textExcerpt", failures);
@@ -494,6 +661,139 @@ public static class DrawingIndexContractValidator
         if (entity.Bounds is not null)
         {
             ValidateBounds(entity.Bounds.Minimum, entity.Bounds.Maximum, path + ".bounds", failures);
+        }
+    }
+
+    private static void ValidateBlockDetails(
+        CadQueryBlockDetails details,
+        string path,
+        List<CadValidationFailure> failures)
+    {
+        Require(IsKnownBlockDetailStatus(details.DetailStatus), failures,
+            "cad_query_block_detail_status", path + ".detailStatus", "块详情状态不受支持。");
+        Require(details.AttributeCount >= 0
+                && details.AttributeCount <= DrawingIndexContractConstants.MaximumReportedEntities,
+            failures, "cad_query_block_attribute_count", path + ".attributeCount",
+            "块属性总数必须处于安全范围内。");
+        Require(details.DynamicPropertyCount >= 0
+                && details.DynamicPropertyCount <= DrawingIndexContractConstants.MaximumReportedEntities,
+            failures, "cad_query_block_dynamic_property_count", path + ".dynamicPropertyCount",
+            "动态属性总数必须处于安全范围内。");
+        Require(details.NestedBlockReferenceCount >= 0
+                && details.NestedBlockReferenceCount
+                <= DrawingIndexContractConstants.MaximumNestedBlockReferences,
+            failures, "cad_query_block_nested_count", path + ".nestedBlockReferenceCount",
+            "嵌套块参照数量超出安全范围。");
+        Require(details.MaximumNestedBlockDepth >= 0
+                && details.MaximumNestedBlockDepth
+                <= DrawingIndexContractConstants.MaximumNestedBlockDepth,
+            failures, "cad_query_block_nested_depth", path + ".maximumNestedBlockDepth",
+            "嵌套块深度超出安全范围。");
+
+        var attributes = details.Attributes ?? new CadQueryBlockAttribute[0];
+        var properties = details.DynamicProperties ?? new CadQueryDynamicBlockProperty[0];
+        Require(attributes.Length <= DrawingIndexContractConstants.MaximumBlockAttributes,
+            failures, "cad_query_block_attributes_limit", path + ".attributes",
+            "块属性摘要数量超出安全上限。");
+        Require(properties.Length <= DrawingIndexContractConstants.MaximumDynamicBlockProperties,
+            failures, "cad_query_block_dynamic_properties_limit", path + ".dynamicProperties",
+            "动态块属性摘要数量超出安全上限。");
+        Require(details.AttributeCount >= attributes.Length,
+            failures, "cad_query_block_attribute_count_consistency", path + ".attributeCount",
+            "块属性总数不能小于已返回的属性数量。");
+        Require(details.DynamicPropertyCount >= properties.Length,
+            failures, "cad_query_block_dynamic_property_count_consistency", path + ".dynamicPropertyCount",
+            "动态属性总数不能小于已返回的属性数量。");
+
+        if (details.DetailStatus == CadQueryBlockDetailStatuses.Complete)
+        {
+            Require(details.AttributeCount == attributes.Length,
+                failures, "cad_query_block_attributes_complete", path + ".attributes",
+                "完整块详情必须返回全部受限属性。");
+            Require(details.DynamicPropertyCount == properties.Length,
+                failures, "cad_query_block_dynamic_properties_complete", path + ".dynamicProperties",
+                "完整块详情必须返回全部受限动态属性。");
+        }
+
+        ValidateLayoutDetails(details, path, failures);
+        for (var index = 0; index < attributes.Length; index++)
+        {
+            var attribute = attributes[index];
+            var itemPath = path + ".attributes[" + index.ToString(CultureInfo.InvariantCulture) + "]";
+            if (attribute is null)
+            {
+                failures.Add(new CadValidationFailure(
+                    "cad_query_block_attribute_required", itemPath, "块属性摘要不能为空。"));
+                continue;
+            }
+            ValidateSafeRequiredString(attribute.Tag,
+                DrawingIndexContractConstants.MaximumBlockAttributeTagCharacters,
+                "cad_query_block_attribute_tag", itemPath + ".tag", failures);
+            ValidateSafeOptionalString(attribute.Value,
+                DrawingIndexContractConstants.MaximumBlockAttributeValueCharacters,
+                "cad_query_block_attribute_value", itemPath + ".value", failures);
+        }
+
+        for (var index = 0; index < properties.Length; index++)
+        {
+            var property = properties[index];
+            var itemPath = path + ".dynamicProperties["
+                + index.ToString(CultureInfo.InvariantCulture) + "]";
+            if (property is null)
+            {
+                failures.Add(new CadValidationFailure(
+                    "cad_query_block_dynamic_property_required", itemPath,
+                    "动态块属性摘要不能为空。"));
+                continue;
+            }
+            ValidateSafeRequiredString(property.Name,
+                DrawingIndexContractConstants.MaximumDynamicBlockPropertyNameCharacters,
+                "cad_query_block_dynamic_property_name", itemPath + ".name", failures);
+            Require(IsKnownDynamicValueKind(property.ValueKind), failures,
+                "cad_query_block_dynamic_property_value_kind", itemPath + ".valueKind",
+                "动态块属性值类型不受支持。");
+            ValidateSafeOptionalString(property.Value,
+                DrawingIndexContractConstants.MaximumDynamicBlockPropertyValueCharacters,
+                "cad_query_block_dynamic_property_value", itemPath + ".value", failures);
+            if (property.ValueKind == CadQueryDynamicValueKinds.Unavailable)
+            {
+                Require(string.IsNullOrEmpty(property.Value), failures,
+                    "cad_query_block_dynamic_property_unavailable_value", itemPath + ".value",
+                    "不可用动态属性不得携带未分类值。");
+            }
+        }
+    }
+
+    private static void ValidateLayoutDetails(
+        CadQueryBlockDetails details,
+        string path,
+        List<CadValidationFailure> failures)
+    {
+        Require(IsKnownLayoutKind(details.LayoutKind), failures,
+            "cad_query_block_layout_kind", path + ".layoutKind", "布局类型不受支持。");
+        ValidateSafeOptionalString(details.LayoutName,
+            DrawingIndexContractConstants.MaximumNameCharacters,
+            "cad_query_block_layout_name", path + ".layoutName", failures);
+
+        if (!details.IsLayoutDefinition)
+        {
+            Require(details.LayoutKind == CadQueryLayoutKinds.None,
+                failures, "cad_query_block_layout_non_layout_kind", path + ".layoutKind",
+                "非布局块定义只能使用none布局类型。");
+            Require(string.IsNullOrEmpty(details.LayoutName),
+                failures, "cad_query_block_layout_non_layout_name", path + ".layoutName",
+                "非布局块定义不能携带布局名称。");
+            return;
+        }
+
+        Require(details.LayoutKind != CadQueryLayoutKinds.None,
+            failures, "cad_query_block_layout_kind_required", path + ".layoutKind",
+            "布局块定义必须标记模型、图纸或不可用布局类型。");
+        if (details.LayoutKind != CadQueryLayoutKinds.Unavailable)
+        {
+            ValidateSafeRequiredString(details.LayoutName,
+                DrawingIndexContractConstants.MaximumNameCharacters,
+                "cad_query_block_layout_name_required", path + ".layoutName", failures);
         }
     }
 
@@ -760,6 +1060,24 @@ public static class DrawingIndexContractValidator
            || value == CadQueryReadStatuses.Unsupported
            || value == CadQueryReadStatuses.DataLimited
            || value == CadQueryReadStatuses.ReadFailed;
+
+    private static bool IsKnownBlockDetailStatus(string value)
+        => value == CadQueryBlockDetailStatuses.Complete
+           || value == CadQueryBlockDetailStatuses.Limited;
+
+    private static bool IsKnownLayoutKind(string value)
+        => value == CadQueryLayoutKinds.None
+           || value == CadQueryLayoutKinds.Model
+           || value == CadQueryLayoutKinds.Paper
+           || value == CadQueryLayoutKinds.Unavailable;
+
+    private static bool IsKnownDynamicValueKind(string value)
+        => value == CadQueryDynamicValueKinds.Text
+           || value == CadQueryDynamicValueKinds.Number
+           || value == CadQueryDynamicValueKinds.Boolean
+           || value == CadQueryDynamicValueKinds.Point
+           || value == CadQueryDynamicValueKinds.Enum
+           || value == CadQueryDynamicValueKinds.Unavailable;
 
     private static void Require(
         bool condition,

@@ -141,8 +141,12 @@ NETLOAD 证据的能力一律视为未支持。
   `CODEX16CTXINFO`、`CODEX16INDEXINFO` 和 Palette 均按实际类型统计未支持、数据超限和
   读取失败对象；`CODEX16TYPEINFO` 提供 19 类现有强类型对象的中文名称与人工创建入口。
   类型统计受 `4,096` 个桶限制，且不包含图层、Handle、路径或对象内容。
-- 该 M3 纵切正在 `codex/m3-integration` 上移植到修正后的 M2 基线；当前尚未形成新的
-  source-bound 候选，也没有 AutoCAD `NETLOAD` 证据。中文对象目录、字段核对模板和边界见
+- M3 的块读取纵切已把受限 `blockDetails` 接入 DrawingIndex、CadQuery、认证 Bridge 和
+  Agent 工具。它包含属性/动态属性、嵌套块计数与深度、布局标志及安全 Xref 布尔元数据；
+  外部 Xref 定义和真实路径不会读取或传播，任何受限情况以 `limited` 降级。
+- 该 M3 纵切正在 `codex/m3-integration` 上接入修正后的 M2 基线并修复审核问题；当前尚未
+  形成新的 source-bound 候选，也没有 AutoCAD `NETLOAD` 证据。中文对象目录、字段核对模板
+  和边界见
   `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
 
 ## 已验证检查点
@@ -445,8 +449,8 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
 10. 修改/撤销/切图后的 stale 拒绝，以及查询、回合取消和断线 fail-closed。
 11. 使用已冻结 fixture 和 Host 遥测完成 M2 1k/10k/50k 扫描响应性、总时间、工作集、
     DBMOD 和 Agent 查询真实性能；自动化资产已完成，实机数值仍待采集。
-12. M3 中文对象目录已提供；19 类对象的逐类字段核对、R20.1 API Probe、示例图资产和
-    高价值受限读取仍待精确 M3 候选后执行。
+12. M3 中文对象目录、块详情自动化纵切和 R20.1 API Probe 已完成；19 类对象的逐类实机
+    字段核对、脱敏示例图资产、复杂对象语义和高价值受限读取仍待精确 M3 候选后执行。
 
 ## 下一步顺序
 

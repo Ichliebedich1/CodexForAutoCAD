@@ -700,6 +700,7 @@ internal static class BridgeClientJsonCodec
             Layer = entity.Layer,
             Space = entity.Space,
             BlockName = entity.BlockName,
+            BlockDetails = ToWire(entity.BlockDetails),
             TextExcerpt = entity.TextExcerpt,
             Bounds = entity.Bounds is null
                 ? null
@@ -710,6 +711,50 @@ internal static class BridgeClientJsonCodec
                 },
             Unsupported = entity.Unsupported,
             ReadStatus = entity.ReadStatus,
+        };
+    }
+
+    private static CadQueryBlockDetailsWire? ToWire(CadQueryBlockDetails? details)
+    {
+        if (details is null)
+        {
+            return null;
+        }
+
+        return new CadQueryBlockDetailsWire
+        {
+            DetailStatus = details.DetailStatus,
+            IsDynamic = details.IsDynamic,
+            IsExternalReference = details.IsExternalReference,
+            IsOverlayReference = details.IsOverlayReference,
+            IsAnonymousDefinition = details.IsAnonymousDefinition,
+            IsLayoutDefinition = details.IsLayoutDefinition,
+            HasAttributeDefinitions = details.HasAttributeDefinitions,
+            LayoutName = details.LayoutName,
+            LayoutKind = details.LayoutKind,
+            AttributeCount = details.AttributeCount,
+            Attributes = (details.Attributes ?? new CadQueryBlockAttribute[0])
+                .Select(attribute => new CadQueryBlockAttributeWire
+                {
+                    Tag = attribute == null ? string.Empty : attribute.Tag,
+                    Value = attribute == null ? string.Empty : attribute.Value,
+                    IsInvisible = attribute != null && attribute.IsInvisible,
+                    IsMText = attribute != null && attribute.IsMText,
+                })
+                .ToArray(),
+            DynamicPropertyCount = details.DynamicPropertyCount,
+            DynamicProperties = (details.DynamicProperties ?? new CadQueryDynamicBlockProperty[0])
+                .Select(property => new CadQueryDynamicBlockPropertyWire
+                {
+                    Name = property == null ? string.Empty : property.Name,
+                    ValueKind = property == null ? string.Empty : property.ValueKind,
+                    Value = property == null ? string.Empty : property.Value,
+                    IsReadOnly = property != null && property.IsReadOnly,
+                    IsVisible = property != null && property.IsVisible,
+                })
+                .ToArray(),
+            NestedBlockReferenceCount = details.NestedBlockReferenceCount,
+            MaximumNestedBlockDepth = details.MaximumNestedBlockDepth,
         };
     }
 
@@ -1367,17 +1412,105 @@ internal static class BridgeClientJsonCodec
         [DataMember(Name = "blockName", Order = 6, IsRequired = true)]
         public string BlockName { get; set; } = string.Empty;
 
-        [DataMember(Name = "textExcerpt", Order = 7, IsRequired = true)]
+        [DataMember(Name = "blockDetails", Order = 7, IsRequired = true)]
+        public CadQueryBlockDetailsWire? BlockDetails { get; set; }
+
+        [DataMember(Name = "textExcerpt", Order = 8, IsRequired = true)]
         public string TextExcerpt { get; set; } = string.Empty;
 
-        [DataMember(Name = "bounds", Order = 8, IsRequired = true)]
+        [DataMember(Name = "bounds", Order = 9, IsRequired = true)]
         public CadQueryExtentsWire? Bounds { get; set; }
 
-        [DataMember(Name = "unsupported", Order = 9, IsRequired = true)]
+        [DataMember(Name = "unsupported", Order = 10, IsRequired = true)]
         public bool Unsupported { get; set; }
 
-        [DataMember(Name = "readStatus", Order = 10, IsRequired = true)]
+        [DataMember(Name = "readStatus", Order = 11, IsRequired = true)]
         public string ReadStatus { get; set; } = string.Empty;
+    }
+
+    [DataContract]
+    private sealed class CadQueryBlockDetailsWire
+    {
+        [DataMember(Name = "detailStatus", Order = 1, IsRequired = true)]
+        public string DetailStatus { get; set; } = string.Empty;
+
+        [DataMember(Name = "isDynamic", Order = 2, IsRequired = true)]
+        public bool IsDynamic { get; set; }
+
+        [DataMember(Name = "isExternalReference", Order = 3, IsRequired = true)]
+        public bool IsExternalReference { get; set; }
+
+        [DataMember(Name = "isOverlayReference", Order = 4, IsRequired = true)]
+        public bool IsOverlayReference { get; set; }
+
+        [DataMember(Name = "isAnonymousDefinition", Order = 5, IsRequired = true)]
+        public bool IsAnonymousDefinition { get; set; }
+
+        [DataMember(Name = "isLayoutDefinition", Order = 6, IsRequired = true)]
+        public bool IsLayoutDefinition { get; set; }
+
+        [DataMember(Name = "hasAttributeDefinitions", Order = 7, IsRequired = true)]
+        public bool HasAttributeDefinitions { get; set; }
+
+        [DataMember(Name = "layoutName", Order = 8, IsRequired = true)]
+        public string LayoutName { get; set; } = string.Empty;
+
+        [DataMember(Name = "layoutKind", Order = 9, IsRequired = true)]
+        public string LayoutKind { get; set; } = string.Empty;
+
+        [DataMember(Name = "attributeCount", Order = 10, IsRequired = true)]
+        public int AttributeCount { get; set; }
+
+        [DataMember(Name = "attributes", Order = 11, IsRequired = true)]
+        public CadQueryBlockAttributeWire[] Attributes { get; set; } = new CadQueryBlockAttributeWire[0];
+
+        [DataMember(Name = "dynamicPropertyCount", Order = 12, IsRequired = true)]
+        public int DynamicPropertyCount { get; set; }
+
+        [DataMember(Name = "dynamicProperties", Order = 13, IsRequired = true)]
+        public CadQueryDynamicBlockPropertyWire[] DynamicProperties { get; set; } =
+            new CadQueryDynamicBlockPropertyWire[0];
+
+        [DataMember(Name = "nestedBlockReferenceCount", Order = 14, IsRequired = true)]
+        public int NestedBlockReferenceCount { get; set; }
+
+        [DataMember(Name = "maximumNestedBlockDepth", Order = 15, IsRequired = true)]
+        public int MaximumNestedBlockDepth { get; set; }
+    }
+
+    [DataContract]
+    private sealed class CadQueryBlockAttributeWire
+    {
+        [DataMember(Name = "tag", Order = 1, IsRequired = true)]
+        public string Tag { get; set; } = string.Empty;
+
+        [DataMember(Name = "value", Order = 2, IsRequired = true)]
+        public string Value { get; set; } = string.Empty;
+
+        [DataMember(Name = "isInvisible", Order = 3, IsRequired = true)]
+        public bool IsInvisible { get; set; }
+
+        [DataMember(Name = "isMText", Order = 4, IsRequired = true)]
+        public bool IsMText { get; set; }
+    }
+
+    [DataContract]
+    private sealed class CadQueryDynamicBlockPropertyWire
+    {
+        [DataMember(Name = "name", Order = 1, IsRequired = true)]
+        public string Name { get; set; } = string.Empty;
+
+        [DataMember(Name = "valueKind", Order = 2, IsRequired = true)]
+        public string ValueKind { get; set; } = string.Empty;
+
+        [DataMember(Name = "value", Order = 3, IsRequired = true)]
+        public string Value { get; set; } = string.Empty;
+
+        [DataMember(Name = "isReadOnly", Order = 4, IsRequired = true)]
+        public bool IsReadOnly { get; set; }
+
+        [DataMember(Name = "isVisible", Order = 5, IsRequired = true)]
+        public bool IsVisible { get; set; }
     }
 
     [DataContract]

@@ -153,6 +153,7 @@ internal static class CadDrawingQueryCloner
             Layer = value.Layer ?? string.Empty,
             Space = value.Space ?? string.Empty,
             BlockName = value.BlockName ?? string.Empty,
+            BlockDetails = CadQueryBlockDetailsCloner.Clone(value.BlockDetails),
             TextExcerpt = value.TextExcerpt ?? string.Empty,
             Bounds = value.Bounds is null
                 ? null
@@ -187,6 +188,7 @@ internal static class CadDrawingQueryToolResultCodec
                 value.Layer ?? string.Empty,
                 value.Space ?? string.Empty,
                 value.BlockName ?? string.Empty,
+                ToToolWire(value.BlockDetails),
                 value.TextExcerpt ?? string.Empty,
                 value.Bounds is null
                     ? null
@@ -215,6 +217,44 @@ internal static class CadDrawingQueryToolResultCodec
             response.NextCursor ?? string.Empty,
             response.Message ?? string.Empty));
     }
+
+    private static CadDrawingQueryToolBlockDetailsWire? ToToolWire(CadQueryBlockDetails? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        return new CadDrawingQueryToolBlockDetailsWire(
+            value.DetailStatus ?? string.Empty,
+            value.IsDynamic,
+            value.IsExternalReference,
+            value.IsOverlayReference,
+            value.IsAnonymousDefinition,
+            value.IsLayoutDefinition,
+            value.HasAttributeDefinitions,
+            value.LayoutName ?? string.Empty,
+            value.LayoutKind ?? string.Empty,
+            value.AttributeCount,
+            (value.Attributes ?? Array.Empty<CadQueryBlockAttribute>())
+                .Select(attribute => new CadDrawingQueryToolBlockAttributeWire(
+                    attribute?.Tag ?? string.Empty,
+                    attribute?.Value ?? string.Empty,
+                    attribute?.IsInvisible ?? false,
+                    attribute?.IsMText ?? false))
+                .ToArray(),
+            value.DynamicPropertyCount,
+            (value.DynamicProperties ?? Array.Empty<CadQueryDynamicBlockProperty>())
+                .Select(property => new CadDrawingQueryToolDynamicBlockPropertyWire(
+                    property?.Name ?? string.Empty,
+                    property?.ValueKind ?? string.Empty,
+                    property?.Value ?? string.Empty,
+                    property?.IsReadOnly ?? false,
+                    property?.IsVisible ?? false))
+                .ToArray(),
+            value.NestedBlockReferenceCount,
+            value.MaximumNestedBlockDepth);
+    }
 }
 
 internal sealed record CadDrawingQueryToolResponseWire(
@@ -237,10 +277,41 @@ internal sealed record CadDrawingQueryToolEntityWire(
     [property: JsonPropertyName("layer")] string Layer,
     [property: JsonPropertyName("space")] string Space,
     [property: JsonPropertyName("blockName")] string BlockName,
+    [property: JsonPropertyName("blockDetails")] CadDrawingQueryToolBlockDetailsWire? BlockDetails,
     [property: JsonPropertyName("textExcerpt")] string TextExcerpt,
     [property: JsonPropertyName("bounds")] CadDrawingQueryToolBoundsWire? Bounds,
     [property: JsonPropertyName("unsupported")] bool Unsupported,
     [property: JsonPropertyName("readStatus")] string ReadStatus);
+
+internal sealed record CadDrawingQueryToolBlockDetailsWire(
+    [property: JsonPropertyName("detailStatus")] string DetailStatus,
+    [property: JsonPropertyName("isDynamic")] bool IsDynamic,
+    [property: JsonPropertyName("isExternalReference")] bool IsExternalReference,
+    [property: JsonPropertyName("isOverlayReference")] bool IsOverlayReference,
+    [property: JsonPropertyName("isAnonymousDefinition")] bool IsAnonymousDefinition,
+    [property: JsonPropertyName("isLayoutDefinition")] bool IsLayoutDefinition,
+    [property: JsonPropertyName("hasAttributeDefinitions")] bool HasAttributeDefinitions,
+    [property: JsonPropertyName("layoutName")] string LayoutName,
+    [property: JsonPropertyName("layoutKind")] string LayoutKind,
+    [property: JsonPropertyName("attributeCount")] int AttributeCount,
+    [property: JsonPropertyName("attributes")] IReadOnlyList<CadDrawingQueryToolBlockAttributeWire> Attributes,
+    [property: JsonPropertyName("dynamicPropertyCount")] int DynamicPropertyCount,
+    [property: JsonPropertyName("dynamicProperties")] IReadOnlyList<CadDrawingQueryToolDynamicBlockPropertyWire> DynamicProperties,
+    [property: JsonPropertyName("nestedBlockReferenceCount")] int NestedBlockReferenceCount,
+    [property: JsonPropertyName("maximumNestedBlockDepth")] int MaximumNestedBlockDepth);
+
+internal sealed record CadDrawingQueryToolBlockAttributeWire(
+    [property: JsonPropertyName("tag")] string Tag,
+    [property: JsonPropertyName("value")] string Value,
+    [property: JsonPropertyName("isInvisible")] bool IsInvisible,
+    [property: JsonPropertyName("isMText")] bool IsMText);
+
+internal sealed record CadDrawingQueryToolDynamicBlockPropertyWire(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("valueKind")] string ValueKind,
+    [property: JsonPropertyName("value")] string Value,
+    [property: JsonPropertyName("isReadOnly")] bool IsReadOnly,
+    [property: JsonPropertyName("isVisible")] bool IsVisible);
 
 internal sealed record CadDrawingQueryToolBoundsWire(
     [property: JsonPropertyName("minimum")] CadDrawingQueryToolPointWire Minimum,

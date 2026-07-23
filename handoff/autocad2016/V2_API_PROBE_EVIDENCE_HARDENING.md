@@ -1,26 +1,32 @@
 # V2 API Surface Probe Evidence Hardening
 
-日期：2026-07-21
+日期：2026-07-23
 
 ## 变更摘要
 
-本次硬化为 V2 API Surface Probe 验证脚本增加双 Shell（PowerShell 7 + Windows PowerShell 5.1）隔离构建和交叉验证能力，不修改生产代码或探针语义。
+本次记录保留原有的双 Shell（PowerShell 7 + Windows PowerShell 5.1）隔离构建和交叉验证，
+并在 M3 新增块属性、动态块、布局和安全 Xref 元数据所需的 API 表面检查。它不修改
+AutoCAD 运行时代码，也不启动或操作 AutoCAD；但 Probe 的精确期望从 `19/8` 更新为 `29/8`。
 
 ## 修改文件
 
 | 文件 | 变更 |
 | --- | --- |
 | `scripts/verify-autocad2016-v2-api-surface.ps1` | 新增 `EvidencePath` 和 `ArtifactRoot` 参数；输出增加 `dllSha256` 字段；默认调用行为不变 |
-| `scripts/verify-autocad2016-v2-api-surface-stage.ps1` | 新增。双 Shell 编排器，分别在 PS7 和 PS5.1 下独立构建和运行探针，交叉验证后生成聚合 evidence；支持受限的 artifacts 复验输出目录 |
+| `scripts/verify-autocad2016-v2-api-surface-stage.ps1` | 双 Shell 编排器；M3 使用独立 2026-07-23 evidence 名称，避免覆盖 2026-07-21 历史基线 |
+| `tests/Codex.AutoCAD.Host.2016.V2ApiProbe/V2ApiSurfaceProbe.cs` | M3 新增块属性、动态属性、布局和安全 Xref 元数据的编译/反射检查 |
 | `tests/Codex.AutoCAD.Host.2016.V2ApiProbe/README.md` | 修正"双 Shell 已一致"表述，改为由 stage 脚本门禁验证；新增 stage 脚本用法 |
 
 ## Evidence 文件
 
 | 文件 | 来源 |
 | --- | --- |
-| `evidence/v2-api-surface-probe-pwsh7-20260721.json` | stage 脚本自动生成，PS7 worker 产出 |
-| `evidence/v2-api-surface-probe-powershell51-20260721.json` | stage 脚本自动生成，PS5.1 worker 产出 |
-| `evidence/v2-api-surface-probe-cross-shell-20260721.json` | stage 脚本自动生成，双 Shell 聚合比较 |
+| `evidence/v2-api-surface-probe-pwsh7-20260721.json` | 历史 v2 基线，保持不变 |
+| `evidence/v2-api-surface-probe-powershell51-20260721.json` | 历史 v2 基线，保持不变 |
+| `evidence/v2-api-surface-probe-cross-shell-20260721.json` | 历史 v2 基线，保持不变 |
+| `evidence/v2-api-surface-probe-m3-pwsh7-20260723.json` | M3 stage 脚本自动生成，PS7 worker 产出 |
+| `evidence/v2-api-surface-probe-m3-powershell51-20260723.json` | M3 stage 脚本自动生成，PS5.1 worker 产出 |
+| `evidence/v2-api-surface-probe-m3-cross-shell-20260723.json` | M3 stage 脚本自动生成，双 Shell 聚合比较 |
 | `evidence/v2-api-surface-probe-verification.json` | 历史文件，逐字节不变 |
 
 ## 门禁规则
@@ -33,7 +39,7 @@
 
 ### 运行时检查
 
-- 精确 `passed=19`、`failed=8`
+- 精确 `passed=29`、`failed=8`；新增通过成员覆盖块属性、动态块属性、动态块定义、布局和安全 Xref 元数据的 R20.1 API 表面。
 - 八个失败成员集合不变：
   - `MLeader.TextString [any]`
   - `Table.GetTextStyle [method]`
@@ -56,7 +62,7 @@
 
 - PS7 或 PS5.1 缺失
 - 构建失败（非零退出码）
-- 结果计数漂移（passed ≠ 19 或 failed ≠ 8）
+- 结果计数漂移（passed ≠ 29 或 failed ≠ 8）
 - 成员集合漂移
 - DLL SHA-256 不一致
 - 规范化 evidence 不一致
