@@ -26,7 +26,9 @@ try
         new SpecCase("SESSION_RUNTIME_TERMINATES_TREE", "会话墙钟截止会终止AgentHost进程树", () => SessionRuntimeTerminatesTree(fixture)),
         new SpecCase("SESSION_RUNTIME_RETRIES_CLEANUP", "会话墙钟截止首次清理失败后自动重试", SessionRuntimeRetriesCleanup),
         new SpecCase("SESSION_STOP_PREVENTS_RUNTIME_EXPIRY", "显式停止完成后会话墙钟状态不得反转", SessionStopPreventsRuntimeExpiry),
+        new SpecCase("SERVICE_STOP_ALLOWS_GRACEFUL_EXIT", "service停止在强制终止前允许一次自然退出", ServiceStopAllowsGracefulExit),
         new SpecCase("SERVICE_STOP_KILLS_PROCESS_TREE", "停止服务会回收AgentHost及其受监管后代进程", () => ServiceStopKillsProcessTree(fixture)),
+        new SpecCase("AGENTHOST_UNEXPECTED_EXIT_KILLS_PROCESS_TREE", "AgentHost异常退出时启动器仍存活也会回收受监管后代进程", () => AgentHostUnexpectedExitKillsProcessTree(fixture)),
         new SpecCase("OWNER_EXIT_KILLS_PROCESS_TREE", "拥有Job的启动器退出会回收AgentHost及其受监管后代进程", () => JobOwnerExitKillsProcessTree(fixture)),
         new SpecCase("INVALID_EXECUTABLE_PATHS", "相对路径、真实非EXE与缺失文件均失败关闭", () => InvalidExecutablePathsFailClosed(fixture)),
         new SpecCase("EXECUTABLE_SHA256_MISMATCH", "批准SHA-256不匹配时拒绝启动", () => ExecutableSha256MismatchFails(fixture.CreateMode("success"))),
@@ -397,6 +399,40 @@ static void SessionRuntimeCleanupFailurePoisonsStart(FakeAgentHostFixture fixtur
     ProcessNameMustBeGone(fakePath);
 }
 
+static void ServiceStopAllowsGracefulExit()
+{
+    var waitCount = 0;
+    var terminateCount = 0;
+    var abortIoCount = 0;
+    var disposeCount = 0;
+    var session = new AgentHostServiceSession(
+        _ =>
+        {
+            Interlocked.Increment(ref waitCount);
+            return true;
+        },
+        _ =>
+        {
+            Interlocked.Increment(ref terminateCount);
+            return false;
+        },
+        () =>
+        {
+            Interlocked.Increment(ref abortIoCount);
+            return null;
+        },
+        () => Interlocked.Increment(ref disposeCount),
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateServiceResult());
+    session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+    session.Dispose();
+
+    Equal(1, Volatile.Read(ref waitCount));
+    Equal(0, Volatile.Read(ref terminateCount));
+    Equal(1, Volatile.Read(ref abortIoCount));
+    Equal(1, Volatile.Read(ref disposeCount));
+}
+
 static void ServiceStopKillsProcessTree(FakeAgentHostFixture fixture)
 {
     const string descendantExecutableVariable = "CODEX_AUTOCAD_TEST_DESCENDANT_EXECUTABLE";
@@ -456,6 +492,78 @@ static void ServiceStopKillsProcessTree(FakeAgentHostFixture fixture)
             catch (UnauthorizedAccessException)
             {
             }
+        }
+    }
+}
+
+static void AgentHostUnexpectedExitKillsProcessTree(FakeAgentHostFixture fixture)
+{
+    const string descendantExecutableVariable = "CODEX_AUTOCAD_TEST_DESCENDANT_EXECUTABLE";
+    const string descendantProcessIdPathVariable = "CODEX_AUTOCAD_TEST_DESCENDANT_PROCESS_ID_PATH";
+    const string exitEventNameVariable = "CODEX_AUTOCAD_TEST_AGENTHOST_EXIT_EVENT";
+    var descendantExecutable = fixture.CreateMode("hang");
+    var processIdPath = Path.Combine(
+        Path.GetTempPath(),
+        "CodexAgentLauncherUnexpectedExitDescendant-" + Guid.NewGuid().ToString("N") + ".txt");
+    var eventName = "CodexAgentLauncherUnexpectedExit-" + Guid.NewGuid().ToString("N");
+    var previousDescendantExecutable = Environment.GetEnvironmentVariable(descendantExecutableVariable);
+    var previousProcessIdPath = Environment.GetEnvironmentVariable(descendantProcessIdPathVariable);
+    var previousExitEventName = Environment.GetEnvironmentVariable(exitEventNameVariable);
+    AgentHostServiceSession? session = null;
+    var descendantProcessId = 0;
+    try
+    {
+        // The integration suite is Windows-only. The named event makes AgentHost exit only after
+        // the authenticated service session and its retained Job handle are fully established.
+#pragma warning disable CA1416
+        using (var exitSignal = new EventWaitHandle(
+                   false,
+                   EventResetMode.ManualReset,
+                   eventName))
+#pragma warning restore CA1416
+        {
+            Environment.SetEnvironmentVariable(descendantExecutableVariable, descendantExecutable);
+            Environment.SetEnvironmentVariable(descendantProcessIdPathVariable, processIdPath);
+            Environment.SetEnvironmentVariable(exitEventNameVariable, eventName);
+            session = AgentHostBootstrapService.StartAsync(
+                    CreateOptions(fixture.CreateMode("servechildexit")),
+                    CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+            descendantProcessId = ReadProcessIdFile(processIdPath);
+            True(descendantProcessId > 0, "The unexpected-exit descendant id is invalid.");
+
+            exitSignal.Set();
+            WaitForProcessToExit(session.ProcessId, TimeSpan.FromSeconds(3));
+            // The watcher, rather than an explicit STOP, must close the retained Job handle.
+            WaitForProcessToExit(descendantProcessId, TimeSpan.FromSeconds(3));
+
+            session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+            session.Dispose();
+            session = null;
+        }
+    }
+    finally
+    {
+        try
+        {
+            session?.Dispose();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                descendantExecutableVariable,
+                previousDescendantExecutable);
+            Environment.SetEnvironmentVariable(
+                descendantProcessIdPathVariable,
+                previousProcessIdPath);
+            Environment.SetEnvironmentVariable(exitEventNameVariable, previousExitEventName);
+            if (descendantProcessId > 0)
+            {
+                KillFixtureProcessIfStillRunning(descendantProcessId, descendantExecutable);
+            }
+
+            DeleteFileIfPresent(processIdPath);
         }
     }
 }

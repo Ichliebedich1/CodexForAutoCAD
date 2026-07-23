@@ -110,6 +110,18 @@ internal static class FakeAgentHostProgram
                 Thread.Sleep(Timeout.Infinite);
                 return 99;
             }
+            if (mode == "servechildexit")
+            {
+                if (!serve)
+                {
+                    throw new ArgumentException("servechildexit fake mode requires bootstrap-serve.");
+                }
+
+                StartDescendantAndWriteProcessId();
+                confirmationOutput.Dispose();
+                WaitForExitSignal();
+                return 42;
+            }
             if (mode == "serveburn")
             {
                 if (!serve)
@@ -197,6 +209,25 @@ internal static class FakeAgentHostProgram
             processIdPath,
             descendant.Id.ToString(CultureInfo.InvariantCulture),
             new UTF8Encoding(false));
+    }
+
+    private static void WaitForExitSignal()
+    {
+        const string exitEventNameVariable = "CODEX_AUTOCAD_TEST_AGENTHOST_EXIT_EVENT";
+        var eventName = Environment.GetEnvironmentVariable(exitEventNameVariable);
+        if (string.IsNullOrWhiteSpace(eventName))
+        {
+            throw new InvalidOperationException("Process-tree exit-signal test configuration is invalid.");
+        }
+
+        // This mode runs only under the Windows-only inherited-handle integration gate.
+#pragma warning disable CA1416
+        using var exitSignal = EventWaitHandle.OpenExisting(eventName);
+#pragma warning restore CA1416
+        if (!exitSignal.WaitOne(TimeSpan.FromSeconds(10)))
+        {
+            throw new TimeoutException("Process-tree exit-signal test did not receive its exit request.");
+        }
     }
 
     private static bool IsInheritable(Microsoft.Win32.SafeHandles.SafeFileHandle handle)
