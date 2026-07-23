@@ -22,19 +22,16 @@ internal static class AgentHostProgram
                     ? RunBootstrapDoctor(args)
                     : await RunBootstrapServeAsync(args).ConfigureAwait(false);
             }
-            catch (Exception exception)
+            catch (Exception)
             {
-                Console.Error.WriteLine(
-                    command
-                    + ": "
-                    + exception.GetType().Name);
+                Console.Error.WriteLine(command + ": failed");
                 return 1;
             }
         }
 
         if (command is not ("doctor" or "run"))
         {
-            return WriteUsageError(command);
+            return WriteUsageError();
         }
 
         var workspacePath = GetOption(args, "--workspace")
@@ -62,7 +59,7 @@ internal static class AgentHostProgram
                 ok = false,
                 command,
                 error = "codex_configuration",
-                errorCode = exception.Failure.ToString()
+                errorCode = exception.ErrorCode
             });
             return 1;
         }
@@ -77,13 +74,14 @@ internal static class AgentHostProgram
             });
             return 1;
         }
-        catch (Exception exception)
+        catch (Exception)
         {
             WriteJson(new
             {
                 ok = false,
                 command,
-                error = exception.GetType().Name
+                error = "agenthost_internal_error",
+                errorCode = "unexpected_failure"
             });
             return 1;
         }
@@ -367,13 +365,13 @@ internal static class AgentHostProgram
         return null;
     }
 
-    private static int WriteUsageError(string command)
+    private static int WriteUsageError()
     {
         WriteJson(new
         {
             ok = false,
             error = "unknown_command",
-            command,
+            command = "unknown",
             usage = "Codex.AutoCAD.AgentHost [doctor|run|bootstrap-doctor|bootstrap-serve]"
         });
         return 2;

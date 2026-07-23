@@ -327,7 +327,13 @@ NETLOAD 证据的能力一律视为未支持。
   均已覆盖；双 Shell、Host A/B 构建和完整 Phase 2 均通过。详见
   `M4_DIAGNOSTIC_SANITIZATION_20260723.md` 与
   `artifacts/m4-diagnostic-sanitization/bridge-client-stage-verification-20260723.json`。
-- 当前 Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 动态汇总 `350/350`、
+- M4 第十三本地 Codex 配置/AgentHost CLI 错误边界已接入 `CodexLocalConfigurationFailurePolicy`：
+  配置失败仅公开闭合的稳定码和固定安全说明，未知枚举降级为 `invalid_configuration`；CLI 不再
+  回显未知命令、原始异常类型或无效 `--codex` 配置中的路径形态 sentinel。AppServer `30/30`、
+  AgentHost Release、直接 CLI sentinel 检查和完整 Phase 2 均通过。详见
+  `M4_CONFIGURATION_ERROR_SANITIZATION_20260723.md` 与
+  `evidence/m4-configuration-error-sanitization-20260723.json`。
+- 当前 Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 动态汇总 `351/351`、
   AgentHost doctor、Host 禁止 API、秘密扫描和 diff 通过；认证固定向量与现有 Bridge/IPC
   回归保持通过。
 - 本检查点未启动、重启或操作 AutoCAD。它不证明长运行 `IAgentBridgeClient`、Host.2016

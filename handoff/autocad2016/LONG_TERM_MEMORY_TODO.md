@@ -344,10 +344,16 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 - [x] Bridge、Bridge Client、AgentHost、AgentRuntime 与 Host.2016 的已发布失败出口已纳入
   `AgentBridgeErrorSanitizer`：错误码必须属于闭合白名单，错误说明必须精确匹配固定安全文本；
   未受信错误码统一降级为 `internal_error`。契约、Bridge、运行时和 client 规格使用路径形态
-  `M4-SENTINEL` 验证异常正文不会跨越 IPC 或 UI 失败面，双 Shell 及完整 Phase 2 为 `350/350`。
+  `M4-SENTINEL` 验证异常正文不会跨越 IPC 或 UI 失败面；该检查点的双 Shell 及完整 Phase 2 为
+  `350/350`。
   详见 `M4_DIAGNOSTIC_SANITIZATION_20260723.md`。
-- [ ] 将配置读取失败、日志导出和未来新增错误出口逐项纳入同一固定代码/说明策略；不能把本次
-  已覆盖的 Bridge/运行时/Host 失败边界误写成完整配置或审计脱敏完成。
+- [x] 本地 Codex 配置读取与 AgentHost CLI 的错误面现由
+  `CodexLocalConfigurationFailurePolicy` 收敛：配置异常只携带固定安全说明和闭合 error code，
+  未知失败值归一化为 `invalid_configuration`；CLI 不回显未知命令、异常类型或路径形态 sentinel。
+  AppServer 为 `30/30`、完整 Phase 2 为 `351/351`。详见
+  `M4_CONFIGURATION_ERROR_SANITIZATION_20260723.md`。
+- [ ] 将安全日志导出和未来新增错误出口逐项纳入同一固定代码/说明策略；不能把已覆盖的
+  Bridge/运行时/Host/本地配置边界误写成完整审计脱敏完成。
 - [x] AgentHost 只读运行审计基线：`bootstrap-serve` 每会话在当前用户本地固定盘的独占 JSONL
   文件中记录启动/停止/失败、Bridge 连接、请求、thread/turn、取消、审批请求和 turn 终态；
   `/2` 每条为固定字段白名单、单调 sequence 和 canonical SHA-256 前序哈希链，默认限制

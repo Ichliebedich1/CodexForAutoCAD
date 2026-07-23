@@ -25,19 +25,91 @@ public enum CodexLocalConfigurationFailure
     InvalidSessionIsolationToken,
     InvalidStartupTimeout,
     InvalidShutdownTimeout,
+    InvalidConfiguration,
+}
+
+/// <summary>
+/// Converts local Codex configuration failures into the only codes and messages that may be
+/// surfaced outside configuration resolution. The resolver must never preserve a path, token,
+/// environment value, or arbitrary exception text in an exception message.
+/// </summary>
+public static class CodexLocalConfigurationFailurePolicy
+{
+    public static CodexLocalConfigurationFailure Normalize(CodexLocalConfigurationFailure failure)
+        => failure switch
+        {
+            CodexLocalConfigurationFailure.UnsupportedPlatform
+                or CodexLocalConfigurationFailure.InvalidConfiguredExecutable
+                or CodexLocalConfigurationFailure.CodexExecutableNotFound
+                or CodexLocalConfigurationFailure.InvalidWorkingDirectory
+                or CodexLocalConfigurationFailure.InvalidTemporaryDirectory
+                or CodexLocalConfigurationFailure.InvalidChildEnvironment
+                or CodexLocalConfigurationFailure.IncompleteSessionIsolation
+                or CodexLocalConfigurationFailure.InvalidSessionIsolationDirectory
+                or CodexLocalConfigurationFailure.InvalidSessionIsolationToken
+                or CodexLocalConfigurationFailure.InvalidStartupTimeout
+                or CodexLocalConfigurationFailure.InvalidShutdownTimeout
+                or CodexLocalConfigurationFailure.InvalidConfiguration => failure,
+            _ => CodexLocalConfigurationFailure.InvalidConfiguration,
+        };
+
+    public static string GetErrorCode(CodexLocalConfigurationFailure failure)
+        => Normalize(failure) switch
+        {
+            CodexLocalConfigurationFailure.UnsupportedPlatform => "unsupported_platform",
+            CodexLocalConfigurationFailure.InvalidConfiguredExecutable => "invalid_configured_executable",
+            CodexLocalConfigurationFailure.CodexExecutableNotFound => "codex_executable_not_found",
+            CodexLocalConfigurationFailure.InvalidWorkingDirectory => "invalid_working_directory",
+            CodexLocalConfigurationFailure.InvalidTemporaryDirectory => "invalid_temporary_directory",
+            CodexLocalConfigurationFailure.InvalidChildEnvironment => "invalid_child_environment",
+            CodexLocalConfigurationFailure.IncompleteSessionIsolation => "incomplete_session_isolation",
+            CodexLocalConfigurationFailure.InvalidSessionIsolationDirectory => "invalid_session_isolation_directory",
+            CodexLocalConfigurationFailure.InvalidSessionIsolationToken => "invalid_session_isolation_token",
+            CodexLocalConfigurationFailure.InvalidStartupTimeout => "invalid_startup_timeout",
+            CodexLocalConfigurationFailure.InvalidShutdownTimeout => "invalid_shutdown_timeout",
+            _ => "invalid_configuration",
+        };
+
+    public static string GetSafeMessage(CodexLocalConfigurationFailure failure)
+        => Normalize(failure) switch
+        {
+            CodexLocalConfigurationFailure.UnsupportedPlatform =>
+                "The local Codex configuration is not supported on this platform.",
+            CodexLocalConfigurationFailure.InvalidConfiguredExecutable =>
+                "The local Codex executable configuration is invalid.",
+            CodexLocalConfigurationFailure.CodexExecutableNotFound =>
+                "No approved local Codex executable is available.",
+            CodexLocalConfigurationFailure.InvalidWorkingDirectory =>
+                "The local Codex workspace configuration is invalid.",
+            CodexLocalConfigurationFailure.InvalidTemporaryDirectory =>
+                "The local Codex temporary-directory configuration is invalid.",
+            CodexLocalConfigurationFailure.InvalidChildEnvironment =>
+                "The local Codex child-process environment configuration is invalid.",
+            CodexLocalConfigurationFailure.IncompleteSessionIsolation =>
+                "The private Codex session configuration is incomplete.",
+            CodexLocalConfigurationFailure.InvalidSessionIsolationDirectory =>
+                "The private Codex session directory configuration is invalid.",
+            CodexLocalConfigurationFailure.InvalidSessionIsolationToken =>
+                "The private Codex session credential configuration is invalid.",
+            CodexLocalConfigurationFailure.InvalidStartupTimeout =>
+                "The local Codex startup-timeout configuration is invalid.",
+            CodexLocalConfigurationFailure.InvalidShutdownTimeout =>
+                "The local Codex shutdown-timeout configuration is invalid.",
+            _ => "The local Codex configuration is invalid.",
+        };
 }
 
 public sealed class CodexLocalConfigurationException : AppServerException
 {
-    public CodexLocalConfigurationException(
-        CodexLocalConfigurationFailure failure,
-        string message)
-        : base(message)
+    public CodexLocalConfigurationException(CodexLocalConfigurationFailure failure)
+        : base(CodexLocalConfigurationFailurePolicy.GetSafeMessage(failure))
     {
-        Failure = failure;
+        Failure = CodexLocalConfigurationFailurePolicy.Normalize(failure);
     }
 
     public CodexLocalConfigurationFailure Failure { get; }
+
+    public string ErrorCode => CodexLocalConfigurationFailurePolicy.GetErrorCode(Failure);
 }
 
 /// <summary>
@@ -210,9 +282,7 @@ public static class CodexLocalAppServerConfigurationResolver
         ArgumentNullException.ThrowIfNull(request);
         if (!OperatingSystem.IsWindows())
         {
-            throw Failure(
-                CodexLocalConfigurationFailure.UnsupportedPlatform,
-                "Local Codex executable resolution currently requires Windows.");
+            throw Failure(CodexLocalConfigurationFailure.UnsupportedPlatform);
         }
 
         var workingDirectory = ValidateWorkingDirectory(request.WorkingDirectory);
@@ -231,18 +301,14 @@ public static class CodexLocalAppServerConfigurationResolver
                                           or NotSupportedException
                                           or UnauthorizedAccessException)
         {
-            throw Failure(
-                CodexLocalConfigurationFailure.InvalidChildEnvironment,
-                "The approved Codex child environment could not be created.");
+            throw Failure(CodexLocalConfigurationFailure.InvalidChildEnvironment);
         }
         var startupTimeout = ValidateTimeout(
             request.StartupTimeout,
-            CodexLocalConfigurationFailure.InvalidStartupTimeout,
-            "Codex startup timeout must be positive and no greater than 60 seconds.");
+            CodexLocalConfigurationFailure.InvalidStartupTimeout);
         var shutdownTimeout = ValidateTimeout(
             request.ShutdownTimeout,
-            CodexLocalConfigurationFailure.InvalidShutdownTimeout,
-            "Codex shutdown timeout must be positive and no greater than 60 seconds.");
+            CodexLocalConfigurationFailure.InvalidShutdownTimeout);
         var versionCompatibility = request.VersionCompatibility ?? CodexVersionCompatibility.Default;
 
         var configuredCommandLine = NormalizeOptionalPath(request.CommandLineExecutablePath);
@@ -301,9 +367,7 @@ public static class CodexLocalAppServerConfigurationResolver
             }
         }
 
-        throw Failure(
-            CodexLocalConfigurationFailure.CodexExecutableNotFound,
-            "No approved local Codex executable was found.");
+        throw Failure(CodexLocalConfigurationFailure.CodexExecutableNotFound);
     }
 
     private static CodexLocalAppServerConfiguration Create(
@@ -420,9 +484,7 @@ public static class CodexLocalAppServerConfigurationResolver
         {
         }
 
-        throw Failure(
-            CodexLocalConfigurationFailure.InvalidConfiguredExecutable,
-            "Configured Codex executable must be an existing .exe on a fixed local drive.");
+        throw Failure(CodexLocalConfigurationFailure.InvalidConfiguredExecutable);
     }
 
     private static bool TryValidateDiscoveredExecutable(string candidate, out string executablePath)
@@ -466,9 +528,7 @@ public static class CodexLocalAppServerConfigurationResolver
         var normalized = NormalizeOptionalPath(value);
         if (normalized is null || !LooksLikeAbsoluteLocalWindowsPath(normalized))
         {
-            throw Failure(
-                CodexLocalConfigurationFailure.InvalidWorkingDirectory,
-                "Codex working directory must be an existing directory on a fixed local drive.");
+            throw Failure(CodexLocalConfigurationFailure.InvalidWorkingDirectory);
         }
 
         try
@@ -479,9 +539,7 @@ public static class CodexLocalAppServerConfigurationResolver
                 || ContainsReparsePoint(fullPath)
                 || !IsFixedLocalDrive(fullPath))
             {
-                throw Failure(
-                    CodexLocalConfigurationFailure.InvalidWorkingDirectory,
-                    "Codex working directory must be an existing directory on a fixed local drive.");
+                throw Failure(CodexLocalConfigurationFailure.InvalidWorkingDirectory);
             }
 
             return fullPath;
@@ -492,9 +550,7 @@ public static class CodexLocalAppServerConfigurationResolver
         }
         catch (Exception exception) when (IsPathOrFileSystemException(exception))
         {
-            throw Failure(
-                CodexLocalConfigurationFailure.InvalidWorkingDirectory,
-                "Codex working directory must be an existing directory on a fixed local drive.");
+            throw Failure(CodexLocalConfigurationFailure.InvalidWorkingDirectory);
         }
     }
 
@@ -503,9 +559,7 @@ public static class CodexLocalAppServerConfigurationResolver
         var normalized = NormalizeOptionalPath(value);
         if (normalized is null || !LooksLikeAbsoluteLocalWindowsPath(normalized))
         {
-            throw Failure(
-                CodexLocalConfigurationFailure.InvalidTemporaryDirectory,
-                "Codex temporary directory must be an existing directory on a fixed local drive.");
+            throw Failure(CodexLocalConfigurationFailure.InvalidTemporaryDirectory);
         }
 
         try
@@ -516,9 +570,7 @@ public static class CodexLocalAppServerConfigurationResolver
                 || ContainsReparsePoint(fullPath)
                 || !IsFixedLocalDrive(fullPath))
             {
-                throw Failure(
-                    CodexLocalConfigurationFailure.InvalidTemporaryDirectory,
-                    "Codex temporary directory must be an existing directory on a fixed local drive.");
+                throw Failure(CodexLocalConfigurationFailure.InvalidTemporaryDirectory);
             }
 
             return fullPath;
@@ -529,20 +581,17 @@ public static class CodexLocalAppServerConfigurationResolver
         }
         catch (Exception exception) when (IsPathOrFileSystemException(exception))
         {
-            throw Failure(
-                CodexLocalConfigurationFailure.InvalidTemporaryDirectory,
-                "Codex temporary directory must be an existing directory on a fixed local drive.");
+            throw Failure(CodexLocalConfigurationFailure.InvalidTemporaryDirectory);
         }
     }
 
     private static TimeSpan ValidateTimeout(
         TimeSpan timeout,
-        CodexLocalConfigurationFailure failure,
-        string message)
+        CodexLocalConfigurationFailure failure)
     {
         if (timeout <= TimeSpan.Zero || timeout > CodexLocalAppServerConfiguration.MaximumTimeout)
         {
-            throw Failure(failure, message);
+            throw Failure(failure);
         }
 
         return timeout;
@@ -561,26 +610,20 @@ public static class CodexLocalAppServerConfigurationResolver
 
         if (!hasHome || !hasSqliteHome || !hasAccessToken)
         {
-            throw Failure(
-                CodexLocalConfigurationFailure.IncompleteSessionIsolation,
-                "Codex session isolation requires private home, SQLite, and credential inputs together.");
+            throw Failure(CodexLocalConfigurationFailure.IncompleteSessionIsolation);
         }
 
         var codexHome = ValidateSessionIsolationDirectory(request.CodexHomeDirectory);
         var codexSqliteHome = ValidateSessionIsolationDirectory(request.CodexSqliteHomeDirectory);
         if (string.Equals(codexHome, codexSqliteHome, StringComparison.OrdinalIgnoreCase))
         {
-            throw Failure(
-                CodexLocalConfigurationFailure.InvalidSessionIsolationDirectory,
-                "Codex session isolation requires distinct private state directories.");
+            throw Failure(CodexLocalConfigurationFailure.InvalidSessionIsolationDirectory);
         }
 
         var accessToken = request.CodexAccessToken!;
         if (!IsValidSessionAccessToken(accessToken))
         {
-            throw Failure(
-                CodexLocalConfigurationFailure.InvalidSessionIsolationToken,
-                "Codex session isolation credential input is invalid.");
+            throw Failure(CodexLocalConfigurationFailure.InvalidSessionIsolationToken);
         }
 
         return new CodexSessionIsolation(codexHome, codexSqliteHome, accessToken);
@@ -591,9 +634,7 @@ public static class CodexLocalAppServerConfigurationResolver
         var normalized = NormalizeOptionalPath(value);
         if (normalized is null || !LooksLikeAbsoluteLocalWindowsPath(normalized))
         {
-            throw Failure(
-                CodexLocalConfigurationFailure.InvalidSessionIsolationDirectory,
-                "Codex session isolation requires existing private state directories on a fixed local drive.");
+            throw Failure(CodexLocalConfigurationFailure.InvalidSessionIsolationDirectory);
         }
 
         try
@@ -604,9 +645,7 @@ public static class CodexLocalAppServerConfigurationResolver
                 || ContainsReparsePoint(fullPath)
                 || !IsFixedLocalDrive(fullPath))
             {
-                throw Failure(
-                    CodexLocalConfigurationFailure.InvalidSessionIsolationDirectory,
-                    "Codex session isolation requires existing private state directories on a fixed local drive.");
+                throw Failure(CodexLocalConfigurationFailure.InvalidSessionIsolationDirectory);
             }
 
             return fullPath;
@@ -617,9 +656,7 @@ public static class CodexLocalAppServerConfigurationResolver
         }
         catch (Exception exception) when (IsPathOrFileSystemException(exception))
         {
-            throw Failure(
-                CodexLocalConfigurationFailure.InvalidSessionIsolationDirectory,
-                "Codex session isolation requires existing private state directories on a fixed local drive.");
+            throw Failure(CodexLocalConfigurationFailure.InvalidSessionIsolationDirectory);
         }
     }
 
@@ -717,8 +754,6 @@ public static class CodexLocalAppServerConfigurationResolver
             or System.Security.SecurityException;
     }
 
-    private static CodexLocalConfigurationException Failure(
-        CodexLocalConfigurationFailure failure,
-        string message)
-        => new(failure, message);
+    private static CodexLocalConfigurationException Failure(CodexLocalConfigurationFailure failure)
+        => new(failure);
 }

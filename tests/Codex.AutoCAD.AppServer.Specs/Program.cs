@@ -22,6 +22,7 @@ var specs = new (string Name, Func<Task> Run)[]
     ("本地Codex隔离配置只向运行时注入私有状态和令牌", LocalCodexConfigurationUsesSessionIsolation),
     ("本地Codex隔离配置错误不泄露目录或令牌", LocalCodexConfigurationRejectsInvalidSessionIsolation),
     ("本地Codex配置错误不泄露路径", LocalCodexConfigurationFailsClosedWithoutPath),
+    ("本地Codex配置错误码和说明固定", LocalCodexConfigurationFailuresUseFixedSafeErrors),
     ("无效环境Codex路径不会回退", LocalCodexConfigurationDoesNotFallbackFromInvalidEnvironment),
     ("缺失本地Codex配置返回稳定错误", LocalCodexConfigurationReportsMissingExecutable),
     ("本地Codex可从绝对PATH发现", LocalCodexConfigurationDiscoversAbsolutePath),
@@ -438,6 +439,31 @@ static Task LocalCodexConfigurationFailsClosedWithoutPath()
     True(
         !exception.Message.Contains(fixture.DirectoryPath, StringComparison.OrdinalIgnoreCase),
         "Configuration error exposed the configured local path.");
+    return Task.CompletedTask;
+}
+
+static Task LocalCodexConfigurationFailuresUseFixedSafeErrors()
+{
+    const string marker = "M4-SENTINEL-C:\\private\\configuration-token";
+    foreach (var failure in Enum.GetValues<CodexLocalConfigurationFailure>())
+    {
+        var exception = new CodexLocalConfigurationException(failure);
+        Equal(failure, exception.Failure);
+        Equal(
+            CodexLocalConfigurationFailurePolicy.GetErrorCode(failure),
+            exception.ErrorCode);
+        Equal(
+            CodexLocalConfigurationFailurePolicy.GetSafeMessage(failure),
+            exception.Message);
+        True(
+            !exception.Message.Contains(marker, StringComparison.Ordinal),
+            "Configuration failure message exposed a sentinel value.");
+    }
+
+    var unknown = new CodexLocalConfigurationException((CodexLocalConfigurationFailure)999);
+    Equal(CodexLocalConfigurationFailure.InvalidConfiguration, unknown.Failure);
+    Equal("invalid_configuration", unknown.ErrorCode);
+    Equal("The local Codex configuration is invalid.", unknown.Message);
     return Task.CompletedTask;
 }
 

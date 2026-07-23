@@ -1,0 +1,53 @@
+{
+  "schema": "codex.autocad.m4-configuration-error-sanitization-evidence/1",
+  "capturedAt": "2026-07-23T13:02:03.1910920Z",
+  "sourceBranch": "codex/m4-diagnostic-sanitization",
+  "sourceBaselineCommit": "880e1d6",
+  "scope": "local-codex-configuration-and-agenthost-cli-diagnostic-sanitization",
+  "policy": {
+    "configurationFailurePolicyIsClosed": true,
+    "unknownFailureNormalizesTo": "invalid_configuration",
+    "configurationExceptionCarriesPathTokenOrEnvironmentValue": false,
+    "agentHostUnknownCommandEchoesCallerText": false,
+    "agentHostUnexpectedFailureExposesExceptionType": false,
+    "bootstrapFailureExposesExceptionType": false
+  },
+  "verification": {
+    "appServerSpecs": "30/30",
+    "agentHostReleaseWarnings": 0,
+    "agentHostReleaseErrors": 0,
+    "unknownCommandExitCode": 2,
+    "unknownCommandSentinelEchoed": false,
+    "invalidCodexConfigurationError": "codex_configuration",
+    "invalidCodexConfigurationErrorCode": "invalid_configured_executable",
+    "invalidCodexConfigurationSentinelEchoed": false,
+    "phase2ReleaseDynamicSpecs": "351/351",
+    "phase2HostDisabledApiScan": "passed",
+    "phase2SensitiveInformationScan": "passed",
+    "phase2AgentHostDoctorHandshake": "passed",
+    "autoCadStartedOrControlled": false,
+    "netLoadAttempted": false,
+    "cadWriteEnabled": false,
+    "pluginSaveEnabled": false
+  },
+  "sourceHashes": {
+    "codexLocalAppServerConfiguration": "44DC88B7B6C852FB13F43041DC1B7EA0158B50E4B911FA21FF609C8C4369426E",
+    "agentHostProgram": "2127996B6681346B479C30788F9B2B5F055A37FDB907C87924B407EF81F90C85",
+    "appServerConfigurationSpecs": "98D2E44CAC1FF550F5F19EC5A5E689516E21B3760C96C06A4B8E3142BCD7677B"
+  },
+  "notProven": [
+    "workspace-disk-hard-quota",
+    "real-credential-manager-session-isolation",
+    "plugin-configuration-isolation",
+    "safe-log-export",
+    "protected-audit-anchor",
+    "restricted-token-or-appcontainer",
+    "autocad-or-agenthost-crash-and-zombie-matrix",
+    "cad-write-terminal-audit"
+  ],
+  "notes": [
+    "No executable path, workspace path, token, raw environment value, raw exception text, raw stderr, prompt or CAD context is retained in this evidence.",
+    "The Phase 2 doctor handshake is an AgentHost and local Codex health check only; it does not start or validate AutoCAD.",
+    "This checkpoint closes only the local configuration and CLI error-text boundary; it does not complete M4 or authorize CAD writes."
+  ]
+}
