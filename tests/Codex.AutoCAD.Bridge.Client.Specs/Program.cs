@@ -251,29 +251,7 @@ try
                 TurnId = request.TurnId,
                 ToolCallId = request.ToolCallId,
                 QueryId = request.QueryId,
-                Query = new CadQueryResponse
-                {
-                    IndexId = "index-host-1",
-                    DocumentId = "document-host-1",
-                    DocumentRevision = 7,
-                    QueryId = request.QueryId,
-                    Status = CadQueryStatuses.Ok,
-                    Complete = true,
-                    TotalMatches = 1,
-                    ReturnedCount = 1,
-                    Entities = new[]
-                    {
-                        new CadQueryEntity
-                        {
-                            ObjectId = "1A",
-                            EntityType = "line",
-                            ActualType = "AcDbLine",
-                            Layer = "AI",
-                            Space = "model",
-                            ReadStatus = CadQueryReadStatuses.Parsed,
-                        },
-                    },
-                },
+                Query = CreateBlockQueryResponse(request),
             });
         },
     }))
@@ -349,29 +327,7 @@ try
                 TurnId = request.TurnId,
                 ToolCallId = request.ToolCallId,
                 QueryId = request.QueryId,
-                Query = new CadQueryResponse
-                {
-                    IndexId = "index-host-1",
-                    DocumentId = "document-host-1",
-                    DocumentRevision = 7,
-                    QueryId = request.QueryId,
-                    Status = CadQueryStatuses.Ok,
-                    Complete = true,
-                    TotalMatches = 1,
-                    ReturnedCount = 1,
-                    Entities = new[]
-                    {
-                        new CadQueryEntity
-                        {
-                            ObjectId = "1A",
-                            EntityType = "line",
-                            ActualType = "AcDbLine",
-                            Layer = "AI",
-                            Space = "model",
-                            ReadStatus = CadQueryReadStatuses.Parsed,
-                        },
-                    },
-                },
+                Query = CreateBlockQueryResponse(request),
             });
         },
     }))
@@ -1217,6 +1173,62 @@ static void RunProtocolFaultSpec(
     {
         DisposeTestServer(process);
     }
+}
+
+static CadQueryResponse CreateBlockQueryResponse(AgentDrawingQueryRequest request)
+{
+    return new CadQueryResponse
+    {
+        IndexId = "index-host-1",
+        DocumentId = "document-host-1",
+        DocumentRevision = 7,
+        QueryId = request.QueryId,
+        Status = CadQueryStatuses.Ok,
+        Complete = true,
+        TotalMatches = 1,
+        ReturnedCount = 1,
+        Entities = new[]
+        {
+            new CadQueryEntity
+            {
+                ObjectId = "1A",
+                EntityType = CadContextEntityTypesV2.BlockReference,
+                ActualType = "AcDbBlockReference",
+                Layer = "A-BLOCK",
+                Space = "model",
+                BlockName = "Door",
+                BlockDetails = new CadQueryBlockDetails
+                {
+                    DetailStatus = CadQueryBlockDetailStatuses.Complete,
+                    IsDynamic = true,
+                    HasAttributeDefinitions = true,
+                    AttributeCount = 1,
+                    Attributes = new[]
+                    {
+                        new CadQueryBlockAttribute
+                        {
+                            Tag = "DOOR_ID",
+                            Value = "D-01",
+                        },
+                    },
+                    DynamicPropertyCount = 1,
+                    DynamicProperties = new[]
+                    {
+                        new CadQueryDynamicBlockProperty
+                        {
+                            Name = "Width",
+                            ValueKind = CadQueryDynamicValueKinds.Number,
+                            Value = "900",
+                            IsVisible = true,
+                        },
+                    },
+                    NestedBlockReferenceCount = 2,
+                    MaximumNestedBlockDepth = 1,
+                },
+                ReadStatus = CadQueryReadStatuses.Parsed,
+            },
+        },
+    };
 }
 
 static CadContextJsonV1 CreateCadContext()

@@ -295,8 +295,46 @@ namespace Codex.AutoCAD.Host2016
                              + (entity.Space ?? string.Empty).Length
                              + (entity.BlockName ?? string.Empty).Length
                              + (entity.TextExcerpt ?? string.Empty).Length
-                             + (entity.ReadStatus ?? string.Empty).Length;
+                             + (entity.ReadStatus ?? string.Empty).Length
+                             + EstimateBlockDetailCharacters(entity.BlockDetails);
             return fixedOverhead + (characters * 2L) + (entity.Bounds == null ? 0L : 64L);
+        }
+
+        private static long EstimateBlockDetailCharacters(CadQueryBlockDetails? details)
+        {
+            if (details == null)
+            {
+                return 0L;
+            }
+
+            long characters = 96L
+                              + (details.DetailStatus ?? string.Empty).Length
+                              + (details.LayoutName ?? string.Empty).Length
+                              + (details.LayoutKind ?? string.Empty).Length;
+            var attributes = details.Attributes ?? new CadQueryBlockAttribute[0];
+            var properties = details.DynamicProperties ?? new CadQueryDynamicBlockProperty[0];
+            for (var index = 0; index < attributes.Length; index++)
+            {
+                var attribute = attributes[index];
+                if (attribute != null)
+                {
+                    characters += (attribute.Tag ?? string.Empty).Length
+                                  + (attribute.Value ?? string.Empty).Length
+                                  + 24L;
+                }
+            }
+            for (var index = 0; index < properties.Length; index++)
+            {
+                var property = properties[index];
+                if (property != null)
+                {
+                    characters += (property.Name ?? string.Empty).Length
+                                  + (property.ValueKind ?? string.Empty).Length
+                                  + (property.Value ?? string.Empty).Length
+                                  + 24L;
+                }
+            }
+            return characters;
         }
     }
 
@@ -456,6 +494,7 @@ namespace Codex.AutoCAD.Host2016
                 Layer = entity.Layer ?? string.Empty,
                 Space = entity.Space ?? string.Empty,
                 BlockName = entity.BlockName ?? string.Empty,
+                BlockDetails = CadQueryBlockDetailsCloner.Clone(entity.BlockDetails),
                 TextExcerpt = entity.TextExcerpt ?? string.Empty,
                 Bounds = entity.Bounds == null
                     ? null

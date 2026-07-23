@@ -18,6 +18,7 @@ $doctorWorkspace = Join-Path $repoRoot "artifacts\phase2-doctor-workspace"
 $dotnetHome = Join-Path $repoRoot "artifacts\dotnet-cli-home"
 $nugetPackages = Join-Path $repoRoot "packages"
 $nugetHttpCache = Join-Path $repoRoot "artifacts\nuget-http-cache"
+$conditionalLockPath = Join-Path $repoRoot "src\Codex.AutoCAD.Bridge.Client\packages.lock.json"
 
 $env:DOTNET_CLI_HOME = $dotnetHome
 $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
@@ -25,6 +26,13 @@ $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
 $env:NUGET_PACKAGES = $nugetPackages
 $env:NUGET_HTTP_CACHE_PATH = $nugetHttpCache
 $dotnetCommand = (Get-Command dotnet -ErrorAction Stop).Source
+
+# The default core build restores Bridge.Client as net8 only. Preserve its dual-target lock
+# file so this verification does not erase the net45 graph required by the AutoCAD host gate.
+if (-not (Test-Path -LiteralPath $conditionalLockPath -PathType Leaf)) {
+    throw "缺少 Bridge.Client 条件化锁文件：$conditionalLockPath"
+}
+$conditionalLockBytes = [IO.File]::ReadAllBytes($conditionalLockPath)
 
 $specProjects = @(
     "tests\Codex.AutoCAD.Contracts.Specs\Codex.AutoCAD.Contracts.Specs.csproj",
@@ -600,5 +608,6 @@ try {
     Write-Warning "该门禁不验证 AutoCAD 2016/2025 Host 实机能力，也不表示每会话 Agent 隔离已经完成。"
 }
 finally {
+    [IO.File]::WriteAllBytes($conditionalLockPath, $conditionalLockBytes)
     Pop-Location
 }

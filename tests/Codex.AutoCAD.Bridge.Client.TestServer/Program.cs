@@ -236,7 +236,8 @@ try
                         || drawingResponse!.Query.IndexId != "index-host-1"
                         || drawingResponse.Query.DocumentId != "document-host-1"
                         || drawingResponse.Query.DocumentRevision != 7
-                        || drawingResponse.Query.ReturnedCount != 1)
+                        || drawingResponse.Query.ReturnedCount != 1
+                        || !HasExpectedBlockQueryDetails(drawingResponse))
                     {
                         throw new InvalidOperationException("invalid reverse drawing query response");
                     }
@@ -346,7 +347,8 @@ try
                     || drawingResponse!.Query.IndexId != "index-host-1"
                     || drawingResponse.Query.DocumentId != "document-host-1"
                     || drawingResponse.Query.DocumentRevision != 7
-                    || drawingResponse.Query.ReturnedCount != 1)
+                    || drawingResponse.Query.ReturnedCount != 1
+                    || !HasExpectedBlockQueryDetails(drawingResponse))
                 {
                     throw new InvalidOperationException(
                         "invalid early reverse drawing query response");
@@ -499,6 +501,37 @@ static async Task<int> RunRawFaultServerAsync(
     }
 
     return 0;
+}
+
+static bool HasExpectedBlockQueryDetails(AgentDrawingQueryResponse? response)
+{
+    var entities = response?.Query.Entities;
+    if (entities is null || entities.Length != 1)
+    {
+        return false;
+    }
+
+    var entity = entities[0];
+    var details = entity.BlockDetails;
+    return entity.EntityType == CadContextEntityTypesV2.BlockReference
+           && entity.ActualType == "AcDbBlockReference"
+           && entity.Layer == "A-BLOCK"
+           && entity.BlockName == "Door"
+           && details is not null
+           && details.DetailStatus == CadQueryBlockDetailStatuses.Complete
+           && details.IsDynamic
+           && details.HasAttributeDefinitions
+           && details.AttributeCount == 1
+           && details.Attributes.Length == 1
+           && details.Attributes[0].Tag == "DOOR_ID"
+           && details.Attributes[0].Value == "D-01"
+           && details.DynamicPropertyCount == 1
+           && details.DynamicProperties.Length == 1
+           && details.DynamicProperties[0].Name == "Width"
+           && details.DynamicProperties[0].ValueKind == CadQueryDynamicValueKinds.Number
+           && details.DynamicProperties[0].Value == "900"
+           && details.NestedBlockReferenceCount == 2
+           && details.MaximumNestedBlockDepth == 1;
 }
 
 static byte[] MutateEnvelopePayload(byte[] payload, string mode)

@@ -311,6 +311,117 @@ internal static class DrawingIndexContractsSpecs
             boundedStatistics.TotalCount);
     }
 
+    internal static void BlockDetailsAreBoundedDeepCopiedAndPathFree()
+    {
+        var details = new CadQueryBlockDetails
+        {
+            DetailStatus = CadQueryBlockDetailStatuses.Complete,
+            IsDynamic = true,
+            IsExternalReference = false,
+            IsOverlayReference = false,
+            IsAnonymousDefinition = false,
+            IsLayoutDefinition = false,
+            HasAttributeDefinitions = true,
+            AttributeCount = 1,
+            Attributes = new[]
+            {
+                new CadQueryBlockAttribute
+                {
+                    Tag = "DOOR_ID",
+                    Value = "D-01",
+                    IsInvisible = false,
+                    IsMText = false,
+                },
+            },
+            DynamicPropertyCount = 1,
+            DynamicProperties = new[]
+            {
+                new CadQueryDynamicBlockProperty
+                {
+                    Name = "Width",
+                    ValueKind = CadQueryDynamicValueKinds.Number,
+                    Value = "900",
+                    IsReadOnly = false,
+                    IsVisible = true,
+                },
+            },
+            NestedBlockReferenceCount = 2,
+            MaximumNestedBlockDepth = 1,
+        };
+        var response = new CadQueryResponse
+        {
+            IndexId = "index-0123456789abcdef",
+            DocumentId = "document-0123456789abcdef",
+            DocumentRevision = 7,
+            QueryId = "query-block-details",
+            Status = CadQueryStatuses.Ok,
+            Complete = true,
+            TotalMatches = 1,
+            ReturnedCount = 1,
+            Entities = new[]
+            {
+                new CadQueryEntity
+                {
+                    ObjectId = "B1",
+                    EntityType = CadContextEntityTypesV2.BlockReference,
+                    ActualType = "AcDbBlockReference",
+                    Layer = "A-BLOCK",
+                    Space = "model",
+                    BlockName = "Door",
+                    BlockDetails = details,
+                    ReadStatus = CadQueryReadStatuses.Parsed,
+                },
+            },
+        };
+
+        Equal(0, DrawingIndexContractValidator.Validate(response).Length);
+        var clone = CadQueryBlockDetailsCloner.Clone(details);
+        True(clone is not null);
+        details.Attributes[0].Value = "changed";
+        details.DynamicProperties[0].Value = "changed";
+        Equal("D-01", clone!.Attributes[0].Value);
+        Equal("900", clone.DynamicProperties[0].Value);
+
+        var propertyNames = typeof(CadQueryBlockDetails)
+            .GetProperties()
+            .Select(property => property.Name);
+        True(!propertyNames.Any(name =>
+            name.IndexOf("path", StringComparison.OrdinalIgnoreCase) >= 0
+            || name.IndexOf("source", StringComparison.OrdinalIgnoreCase) >= 0));
+
+        details.Attributes = Enumerable.Range(
+                0,
+                DrawingIndexContractConstants.MaximumBlockAttributes + 1)
+            .Select(index => new CadQueryBlockAttribute
+            {
+                Tag = "TAG" + index,
+                Value = "value",
+            })
+            .ToArray();
+        details.AttributeCount = details.Attributes.Length;
+        Contains(
+            DrawingIndexContractValidator.Validate(response),
+            "cad_query_block_attributes_limit");
+
+        details.Attributes = new CadQueryBlockAttribute[0];
+        details.AttributeCount = 0;
+        details.DynamicPropertyCount = 1;
+        details.DynamicProperties = new[]
+        {
+            new CadQueryDynamicBlockProperty
+            {
+                Name = "Position",
+                ValueKind = CadQueryDynamicValueKinds.Point,
+                Value = new string(
+                    '1',
+                    DrawingIndexContractConstants.MaximumDynamicBlockPropertyValueCharacters + 1),
+            },
+        };
+        Contains(
+            DrawingIndexContractValidator.Validate(response),
+            "cad_query_block_dynamic_property_value");
+    }
+
     private static DrawingIndexDescriptor CreateDescriptor(
         int count,
         string status,

@@ -36,7 +36,7 @@ if ($evidenceDir -cne $defaultEvidenceDir -and
     throw "EvidenceDirectory must be the repository evidence directory or a child of artifacts."
 }
 
-$expectedPassed = 19
+$expectedPassed = 29
 $expectedFailed = 8
 $expectedPassedMembers = @(
     "Spline.GetControlPointAt [method]",
@@ -48,6 +48,8 @@ $expectedPassedMembers = @(
     "MLeader.VerticesCount [method]",
     "MLeader.GetVertex [method]",
     "Hatch.GetLoopAt [method]",
+    "AttributeCollection.GetEnumerator [method]",
+    "DynamicBlockReferencePropertyCollection.GetEnumerator [method]",
     "MLeader.MText [property]",
     "MLeader.ContentType [property]",
     "Hatch.NumberOfLoops [property]",
@@ -57,7 +59,15 @@ $expectedPassedMembers = @(
     "Table.Columns [property]",
     "Leader.NumVertices [property]",
     "DBPoint.EcsRotation [property]",
-    "Spline.NurbsData [property]"
+    "Spline.NurbsData [property]",
+    "BlockReference.AttributeCollection [property]",
+    "BlockReference.DynamicBlockReferencePropertyCollection [property]",
+    "BlockReference.DynamicBlockTableRecord [property]",
+    "BlockTableRecord.IsFromOverlayReference [property]",
+    "BlockTableRecord.HasAttributeDefinitions [property]",
+    "BlockTableRecord.LayoutId [property]",
+    "AttributeReference.IsMTextAttribute [property]",
+    "DynamicBlockReferenceProperty.VisibleInCurrentVisibilityState [property]"
 )
 $expectedFailedMembers = @(
     "MLeader.TextString [any]",
@@ -200,9 +210,9 @@ if (-not (Test-Path (Join-Path $AutoCad2016Dir 'acad.exe'))) {
     throw "acad.exe not found in $AutoCad2016Dir"
 }
 
-$ps7FinalPath = Join-Path $evidenceDir "v2-api-surface-probe-pwsh7-20260721.json"
-$ps51FinalPath = Join-Path $evidenceDir "v2-api-surface-probe-powershell51-20260721.json"
-$crossShellEvidencePath = Join-Path $evidenceDir "v2-api-surface-probe-cross-shell-20260721.json"
+$ps7FinalPath = Join-Path $evidenceDir "v2-api-surface-probe-m3-pwsh7-20260723.json"
+$ps51FinalPath = Join-Path $evidenceDir "v2-api-surface-probe-m3-powershell51-20260723.json"
+$crossShellEvidencePath = Join-Path $evidenceDir "v2-api-surface-probe-m3-cross-shell-20260723.json"
 foreach ($finalPath in @($ps7FinalPath, $ps51FinalPath, $crossShellEvidencePath)) {
     if (Test-Path -LiteralPath $finalPath) {
         throw "Evidence file already exists (would overwrite): $finalPath"
@@ -347,13 +357,13 @@ $crossShellEvidence = [ordered]@{
     autoCad2016Dir = "REDACTED"
     powerShell7 = [ordered]@{
         version = $ps7Evidence.powerShellVersion
-        evidenceFile = "v2-api-surface-probe-pwsh7-20260721.json"
+        evidenceFile = "v2-api-surface-probe-m3-pwsh7-20260723.json"
         evidenceFileSha256 = Get-Sha256 -Path $ps7EvidencePath
         logSha256 = Get-Sha256 -Path $ps7LogPath
     }
     windowsPowerShell51 = [ordered]@{
         version = $ps51Evidence.powerShellVersion
-        evidenceFile = "v2-api-surface-probe-powershell51-20260721.json"
+        evidenceFile = "v2-api-surface-probe-m3-powershell51-20260723.json"
         evidenceFileSha256 = Get-Sha256 -Path $ps51EvidencePath
         logSha256 = Get-Sha256 -Path $ps51LogPath
     }
@@ -382,7 +392,7 @@ $crossShellEvidence = [ordered]@{
     historicalEvidencePath = "v2-api-surface-probe-verification.json"
     historicalEvidenceSha256 = $historicalEvidenceSha256Before
     historicalEvidenceNote = "Historical single-shell evidence SHA-256 matched before and after the stage run."
-    evidenceBoundary = "Both PowerShell 7 and Windows PowerShell 5.1 independently built the V2 API Surface Probe in Release net45/x64 with 0 warnings, 0 errors, and 0 Autodesk DLLs in output. Runtime reflection checks produced identical results: 19 passed, 8 failed, with identical member sets. Both shells produced identical DLL SHA-256. The AutoCAD PID set was equal before and after the gate, but this observation cannot exclude a transient process between samples. This probe verifies API surface existence only; it does NOT start or operate AutoCAD and is NOT equivalent to AutoCAD runtime verification."
+    evidenceBoundary = "Both PowerShell 7 and Windows PowerShell 5.1 independently built the V2 API Surface Probe in Release net45/x64 with 0 warnings, 0 errors, and 0 Autodesk DLLs in output. Runtime reflection checks produced identical results: 29 passed, 8 failed, with identical member sets. Both shells produced identical DLL SHA-256. The AutoCAD PID set was equal before and after the gate, but this observation cannot exclude a transient process between samples. This probe verifies API surface existence only; it does NOT start or operate AutoCAD and is NOT equivalent to AutoCAD runtime verification."
 }
 
 $crossShellStagedPath = Join-Path $stageRoot "cross-shell-evidence.json"

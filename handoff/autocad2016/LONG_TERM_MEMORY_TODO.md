@@ -1,6 +1,6 @@
 # AutoCAD 2016 项目长期记忆与完整待办
 
-最后更新：2026-07-22（北京时间）
+最后更新：2026-07-23（北京时间）
 
 本文件是项目长期“固定目标、已验证基线、M0-M12 未完成队列和阶段纪律”的权威入口。
 运行状态细节见 `CURRENT_STATE.md`，人工测试入口见 `README_FIRST.md`，脱敏证据见
@@ -236,18 +236,22 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   读取失败对象；统计不包含图层、Handle、路径或对象内容，且类型桶有界。
 - [x] 新增 `CODEX16TYPEINFO`，为 19 类现有强类型对象列出中文名称和人工创建入口。
 - [x] 为选择统计、DrawingIndex 累积边界、中文目录和真实 mapper → 可读摘要调用链增加
-  源码级回归；当前自动门禁为 Contracts `85/85`、Host v2 net45/net8 各 `15/15`、Host
-  MVP `53/53`、完整 Phase 2 `309/309`、R20.1 Release 0 warning / 0 error，并通过禁止
-  API、AgentHost doctor、敏感信息和 diff 检查。同一依赖闭包下 Host A/B 逐字节一致，
-  编译门禁 SHA-256 为
-   `EC1C6174893DC47DABE5C55C28D020FD607881BE435DBBD1FE9079BC8C0DB51B`；compile-only
-   目录为 `artifacts/m3-r201-compile-only-d67432c0d40d4aed8710f24b30602955/`，这不是冻结候选
-   或实机证据。
+  源码级回归；当前自动门禁为 Contracts `86/86`、Bridge Client net45/net8 各 `29/29`、
+  Bridge `39/39`、AgentRuntime `33/33`、Host MVP `53/53`、完整 Phase 2 `310/310`。R20.1
+  API 双 Shell Probe 为 `29 passed / 8 expected failed`；目标 R20.1/net45/x64 Host A/B
+  输出逐字节一致，当前 Host SHA-256 为
+  `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，Autodesk DLL 复制数
+  为 `0`。这不是冻结候选或实机证据。
 - [x] 提供 M3 中文对象目录、首要字段和未来实机记录模板。
+- [x] `BlockReference` 的受限 `blockDetails` 已贯通 DrawingIndex → CadQuery → 认证 Bridge →
+  Agent 工具；属性/动态属性、嵌套块、布局和安全 Xref 元数据均受契约、深拷贝、内存预算和
+  IPC 测试保护。外部 Xref 定义及真实路径不会读取或传播，详情降级为 `limited`。
+- [x] M3 块读取所需 R20.1 API 已由双 Shell Probe 固定为 `29 passed / 8 expected failed`；
+  脱敏 evidence 为 `evidence/v2-api-surface-probe-m3-cross-shell-20260723.json`。
 - [ ] 为 19 类对象提供或冻结脱敏示例测试图；目录和创建入口不能替代测试资产。
 - [ ] 逐类实机验证现有 19 种强类型对象。
-- [ ] 完善块属性、动态块、嵌套块、布局和空间信息。
-- [ ] Xref 只公开安全元数据，不公开外部真实路径。
+- [ ] 用精确 M3 候选实机核对块属性、动态块、嵌套块、布局和安全 Xref 降级；复杂块语义
+  与异常图仍需扩展。
 - [ ] 完善 Dimension、Hatch、Leader、MLeader、Table 的 R20.1 字段语义。
 - [ ] 增加 Region、Solid、Mesh、Surface、Image/Underlay 等高价值受限读取。
 - [ ] 垂直产品代理对象至少提供类型、图层、范围和占位信息。

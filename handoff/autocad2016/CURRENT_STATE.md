@@ -132,15 +132,16 @@ NETLOAD 证据的能力一律视为未支持。
   `CODEX16CTXINFO`、`CODEX16INDEXINFO` 和 Palette 均按实际类型统计未支持、数据超限和
   读取失败对象；`CODEX16TYPEINFO` 提供 19 类现有强类型对象的中文名称与人工创建入口。
   类型统计受 `4,096` 个桶限制，且不包含图层、Handle、路径或对象内容。
-- 该 M3 纵切已通过 Contracts `85/85`、Host v2 net45/net8 各 `15/15`、Host MVP
-  `53/53` 和完整 Phase 2 `309/309`；R20.1 Release 为 0 warning / 0 error，禁止 API、
-  AgentHost doctor、敏感信息和 diff 门禁均通过。同一依赖闭包下 Host A/B 逐字节一致，
-  `0.4.1.0` 编译门禁 Host SHA-256 为
-   `EC1C6174893DC47DABE5C55C28D020FD607881BE435DBBD1FE9079BC8C0DB51B`，Autodesk DLL
-  复制数为 `0`。产物目录
-   `artifacts/m3-r201-compile-only-d67432c0d40d4aed8710f24b30602955/` 只用于编译门禁；其
-   `compile-summary.json` 不是候选 manifest，尚未冻结候选或实机 `NETLOAD`，不能把它表述为已验证的 AutoCAD 2016
-  能力。中文对象目录、字段核对模板和边界见
+- M3 的块读取纵切已把受限 `blockDetails` 接入 DrawingIndex、CadQuery、认证 Bridge 和
+  Agent 工具。它包含属性/动态属性、嵌套块计数与深度、布局标志及安全 Xref 布尔元数据；
+  外部 Xref 定义和真实路径不会读取或传播，任何受限情况以 `limited` 降级。
+- 该 M3 纵切已通过 Contracts `86/86`、Bridge Client net45/net8 各 `29/29`、Bridge `39/39`、
+  AgentRuntime `33/33`、Host MVP `53/53` 和完整 Phase 2 `310/310`。R20.1 API 双 Shell
+  Probe 为 `29 passed / 8 expected failed`；目标 R20.1/net45/x64 Host A/B 输出逐字节一致，
+  `0.4.1.0` 当前 Host SHA-256 为
+  `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，Autodesk DLL 复制数
+  为 `0`。这些是编译门禁和 Probe 证据，不是候选 manifest，尚未冻结候选或实机 `NETLOAD`，
+  不能把它表述为已验证的 AutoCAD 2016 能力。中文对象目录、字段核对模板和边界见
   `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
 - M3 的构建诊断显示：在同一新鲜依赖闭包下，R20.1 Host A/B 输出一致；跨独立依赖构建时
   当前工具链会改变 timestamp、MVID 与 TargetFramework metadata。归一化后的 Host IL
@@ -447,8 +448,8 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
 10. 修改/撤销/切图后的 stale 拒绝，以及查询、回合取消和断线 fail-closed。
 11. 使用已冻结 fixture 和 Host 遥测完成 M2 1k/10k/50k 扫描响应性、总时间、工作集、
     DBMOD 和 Agent 查询真实性能；自动化资产已完成，实机数值仍待采集。
-12. M3 中文对象目录已提供；19 类对象的逐类字段核对、R20.1 API Probe、示例图资产和
-    高价值受限读取仍待精确 M3 候选后执行。
+12. M3 中文对象目录、块详情自动化纵切和 R20.1 API Probe 已完成；19 类对象的逐类实机
+    字段核对、脱敏示例图资产、复杂对象语义和高价值受限读取仍待精确 M3 候选后执行。
 
 ## 下一步顺序
 
