@@ -27,8 +27,8 @@ $phase2Verifier = Join-Path $repoRoot "scripts\verify-phase2.ps1"
 $nugetConfig = Join-Path $repoRoot "src\Codex.AutoCAD.Host.2016\NuGet.Config"
 $expectedSdk = "8.0.319"
 $expectedClientSpecs = 30
-$expectedBridgeSpecs = 39
-$expectedPhase2Specs = 323
+$expectedBridgeSpecs = 44
+$expectedPhase2Specs = 336
 
 function Get-Sha256 {
     param([Parameter(Mandatory = $true)][string] $Path)

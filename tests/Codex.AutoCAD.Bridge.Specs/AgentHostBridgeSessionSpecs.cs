@@ -12,6 +12,402 @@ using Codex.AutoCAD.Ipc;
 
 internal static class AgentHostBridgeSessionSpecs
 {
+    public static Task AuditLogIsBoundedContentFreeJsonl()
+    {
+        const string sessionId = "0123456789abcdef0123456789abcdef";
+        using var stream = new MemoryStream();
+        using (var audit = new AgentHostAuditLog(
+            stream,
+            sessionId,
+            leaveOpen: true,
+            maximumRecords: 4,
+            maximumBytes: 4096))
+        {
+            audit.Record(new AgentHostAuditEvent
+            {
+                EventType = AgentHostAuditEventTypes.RequestReceived,
+                SystemConversationId = "conversation-1",
+                SystemTurnId = "turn-1",
+                SystemRequestId = "request-1",
+                BridgeRequestId = "bridge-request-1",
+                Method = "agent.capabilities.get",
+            });
+            audit.Record(new AgentHostAuditEvent
+            {
+                EventType = AgentHostAuditEventTypes.RequestCompleted,
+                BridgeRequestId = "bridge-request-1",
+                Method = "agent.capabilities.get",
+                OutcomeCode = AgentHostAuditOutcomeCodes.Completed,
+            });
+            audit.Complete();
+        }
+
+        var jsonl = System.Text.Encoding.UTF8.GetString(stream.ToArray());
+        var lines = jsonl.Split(
+            '\n',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Equal(4, lines.Length);
+        var allowedFields = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "schema",
+            "sequence",
+            "timestampUtc",
+            "systemSessionId",
+            "eventType",
+            "systemConversationId",
+            "systemTurnId",
+            "systemRequestId",
+            "bridgeRequestId",
+            "providerThreadId",
+            "providerTurnId",
+            "method",
+            "approvalKind",
+            "resolution",
+            "outcomeCode",
+            "errorCode",
+        };
+        for (var index = 0; index < lines.Length; index++)
+        {
+            using var document = JsonDocument.Parse(lines[index]);
+            var root = document.RootElement;
+            Equal("codex.autocad.agenthost.audit/1", root.GetProperty("schema").GetString());
+            Equal(index + 1L, root.GetProperty("sequence").GetInt64());
+            Equal(sessionId, root.GetProperty("systemSessionId").GetString());
+            if (!DateTimeOffset.TryParse(
+                    root.GetProperty("timestampUtc").GetString(),
+                    out var timestamp)
+                || timestamp.Offset != TimeSpan.Zero)
+            {
+                throw new InvalidOperationException("审计时间戳不是UTC。");
+            }
+
+            foreach (var property in root.EnumerateObject())
+            {
+                if (!allowedFields.Contains(property.Name))
+                {
+                    throw new InvalidOperationException(
+                        "审计记录包含非白名单字段：" + property.Name);
+                }
+            }
+        }
+
+        Equal(AgentHostAuditEventTypes.SessionStarted,
+            JsonDocument.Parse(lines[0]).RootElement.GetProperty("eventType").GetString());
+        using (var requestDocument = JsonDocument.Parse(lines[1]))
+        {
+            Equal("conversation-1",
+                requestDocument.RootElement.GetProperty("systemConversationId").GetString());
+            Equal("turn-1",
+                requestDocument.RootElement.GetProperty("systemTurnId").GetString());
+            Equal("request-1",
+                requestDocument.RootElement.GetProperty("systemRequestId").GetString());
+        }
+
+        Equal(AgentHostAuditEventTypes.SessionStopped,
+            JsonDocument.Parse(lines[3]).RootElement.GetProperty("eventType").GetString());
+
+        using var boundedStream = new FlushCountingStream();
+        using (var boundedAudit = new AgentHostAuditLog(
+                   boundedStream,
+                   sessionId,
+                   leaveOpen: true,
+                   maximumRecords: 2,
+                   maximumBytes: 4096))
+        {
+            boundedAudit.Record(new AgentHostAuditEvent
+            {
+                EventType = AgentHostAuditEventTypes.BridgeConnected,
+            });
+            try
+            {
+                boundedAudit.Record(new AgentHostAuditEvent
+                {
+                    EventType = AgentHostAuditEventTypes.BridgeDisconnected,
+                });
+                throw new InvalidOperationException("审计记录上限未触发失败闭合。");
+            }
+            catch (AgentHostAuditException)
+            {
+            }
+        }
+
+        Equal(2, boundedStream.FlushCount);
+
+        return Task.CompletedTask;
+    }
+
+    public static async Task AuditFailureTerminatesBridgeSession()
+    {
+        var keyPair = CreateBootstrapDirectionKeyPair();
+        try
+        {
+            await using var appServer = new ScriptedAgentAppServer();
+            await using var runtime = new CodexAgentRuntime(
+                appServer,
+                new AgentRuntimeOptions
+                {
+                    Sandbox = AgentSandboxMode.ReadOnly,
+                    ApprovalPolicy = AgentApprovalPolicy.OnRequest,
+                    ApprovalsReviewer = AgentApprovalsReviewer.User,
+                });
+            using var auditStream = new MemoryStream();
+            using var audit = new AgentHostAuditLog(
+                auditStream,
+                keyPair.AgentKeys.SessionId,
+                leaveOpen: true,
+                maximumRecords: 3,
+                maximumBytes: 4096);
+            var service = new AgentHostBridgeSession(
+                runtime,
+                "agenthost-audit-failure-spec",
+                audit);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var serviceTask = service.RunAsync(keyPair.AgentKeys, timeout.Token);
+            using var client = new AgentBridgeClient(
+                keyPair.HostKeys,
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromSeconds(5));
+            await client.StartAsync(timeout.Token);
+
+            var requestFailed = false;
+            try
+            {
+                _ = await client.GetCapabilitiesAsync(
+                    new AgentCapabilitiesRequest
+                    {
+                        ClientName = "Codex.AutoCAD.Host.2016",
+                        ClientVersion = "0.3.2.0",
+                        HostTarget = "autocad-r20.1-net45-x64",
+                    },
+                    timeout.Token);
+            }
+            catch (Exception)
+            {
+                requestFailed = true;
+            }
+
+            Equal(true, requestFailed);
+            var sessionFailed = false;
+            try
+            {
+                await serviceTask.WaitAsync(TimeSpan.FromSeconds(7));
+            }
+            catch (Exception)
+            {
+                sessionFailed = true;
+            }
+
+            Equal(true, sessionFailed);
+            try
+            {
+                await client.StopAsync(CancellationToken.None);
+            }
+            catch (AgentBridgeClientException)
+            {
+                await client.StopAsync(CancellationToken.None);
+            }
+
+            var eventTypes = System.Text.Encoding.UTF8.GetString(auditStream.ToArray())
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(static line => JsonDocument.Parse(line).RootElement
+                    .GetProperty("eventType").GetString())
+                .ToArray();
+            Equal(3, eventTypes.Length);
+            Equal(AgentHostAuditEventTypes.SessionStarted, eventTypes[0]);
+            Equal(AgentHostAuditEventTypes.BridgeConnected, eventTypes[1]);
+            Equal(AgentHostAuditEventTypes.RequestReceived, eventTypes[2]);
+        }
+        finally
+        {
+            keyPair.HostKeys.Dispose();
+            keyPair.AgentKeys.Dispose();
+        }
+    }
+
+    public static async Task FailedRequestAuditUsesStableErrorCode()
+    {
+        var keyPair = CreateBootstrapDirectionKeyPair();
+        try
+        {
+            await using var appServer = new ScriptedAgentAppServer();
+            await using var runtime = new CodexAgentRuntime(
+                appServer,
+                new AgentRuntimeOptions
+                {
+                    Sandbox = AgentSandboxMode.ReadOnly,
+                    ApprovalPolicy = AgentApprovalPolicy.OnRequest,
+                    ApprovalsReviewer = AgentApprovalsReviewer.User,
+                });
+            using var auditStream = new MemoryStream();
+            using var audit = new AgentHostAuditLog(
+                auditStream,
+                keyPair.AgentKeys.SessionId,
+                leaveOpen: true,
+                maximumRecords: 32,
+                maximumBytes: 16 * 1024);
+            var service = new AgentHostBridgeSession(
+                runtime,
+                "agenthost-failed-request-audit-spec",
+                audit);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var serviceTask = service.RunAsync(keyPair.AgentKeys, timeout.Token);
+            using var client = new AgentBridgeClient(
+                keyPair.HostKeys,
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromSeconds(5));
+            await client.StartAsync(timeout.Token);
+
+            var rejected = false;
+            try
+            {
+                _ = await client.StartThreadAsync(
+                    new AgentThreadStartRequest
+                    {
+                        ConversationId = "conversation-request-failure-1",
+                    },
+                    timeout.Token);
+            }
+            catch (AgentBridgeRemoteException)
+            {
+                rejected = true;
+            }
+
+            Equal(true, rejected);
+            await client.StopAsync(CancellationToken.None);
+            await serviceTask.WaitAsync(TimeSpan.FromSeconds(5));
+            audit.Complete();
+            var auditJsonl = System.Text.Encoding.UTF8.GetString(auditStream.ToArray());
+            False(auditJsonl.Contains("Unexpected App Server request", StringComparison.Ordinal));
+            False(auditJsonl.Contains("conversation-request-failure-1", StringComparison.Ordinal));
+            var failed = auditJsonl
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(static line => JsonDocument.Parse(line).RootElement.Clone())
+                .Single(item => string.Equals(
+                    item.GetProperty("eventType").GetString(),
+                    AgentHostAuditEventTypes.RequestFailed,
+                    StringComparison.Ordinal));
+            Equal(AgentBridgeMethods.StartThread, failed.GetProperty("method").GetString());
+            Equal(AgentHostAuditOutcomeCodes.Failed,
+                failed.GetProperty("outcomeCode").GetString());
+            Equal(AgentHostAuditErrorCodes.InvalidState,
+                failed.GetProperty("errorCode").GetString());
+            Equal(false, string.IsNullOrWhiteSpace(
+                failed.GetProperty("bridgeRequestId").GetString()));
+        }
+        finally
+        {
+            keyPair.HostKeys.Dispose();
+            keyPair.AgentKeys.Dispose();
+        }
+    }
+
+    public static async Task ApprovalRequestAuditOmitsCommandAndPath()
+    {
+        var keyPair = CreateBootstrapDirectionKeyPair();
+        try
+        {
+            await using var appServer = new ScriptedAgentAppServer();
+            appServer.QueueResponse("thread/start", """
+                {"thread":{"id":"thread-approval-audit-1"}}
+                """);
+            appServer.QueueResponse("turn/start", """
+                {"turn":{"id":"turn-approval-audit-1","status":"inProgress","items":[]}}
+                """);
+            await using var runtime = new CodexAgentRuntime(
+                appServer,
+                new AgentRuntimeOptions
+                {
+                    Sandbox = AgentSandboxMode.ReadOnly,
+                    ApprovalPolicy = AgentApprovalPolicy.OnRequest,
+                    ApprovalsReviewer = AgentApprovalsReviewer.User,
+                });
+            using var auditStream = new MemoryStream();
+            using var audit = new AgentHostAuditLog(
+                auditStream,
+                keyPair.AgentKeys.SessionId,
+                leaveOpen: true,
+                maximumRecords: 32,
+                maximumBytes: 16 * 1024);
+            var service = new AgentHostBridgeSession(
+                runtime,
+                "agenthost-approval-audit-spec",
+                audit);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var serviceTask = service.RunAsync(keyPair.AgentKeys, timeout.Token);
+            using var client = new AgentBridgeClient(
+                keyPair.HostKeys,
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromSeconds(5));
+            var events = Channel.CreateUnbounded<AgentBridgeEvent>();
+            client.EventReceived += (_, args) => events.Writer.TryWrite(args.BridgeEvent);
+            await client.StartAsync(timeout.Token);
+            var thread = await client.StartThreadAsync(
+                new AgentThreadStartRequest
+                {
+                    ConversationId = "conversation-approval-audit-1",
+                },
+                timeout.Token);
+            var turn = await client.StartTurnAsync(
+                new AgentTurnStartRequest
+                {
+                    ThreadId = thread.ThreadId,
+                    ClientTurnId = "client-turn-approval-audit-1",
+                    Prompt = "只读审批审计测试。",
+                },
+                timeout.Token);
+            _ = await ReadKindAsync(
+                events.Reader,
+                AgentBridgeEventKinds.TurnStarted,
+                timeout.Token);
+
+            _ = await appServer.EmitCommandApprovalAsync(
+                new CommandApprovalRequest(
+                    "item-approval-audit-1",
+                    100,
+                    thread.ThreadId,
+                    turn.TurnId,
+                    Command: "AUDIT_SECRET_COMMAND_731",
+                    WorkingDirectory: "C:\\AUDIT_SECRET_PATH_732"),
+                timeout.Token);
+            appServer.EmitNotification("turn/completed", """
+                {
+                  "threadId":"thread-approval-audit-1",
+                  "turn":{"id":"turn-approval-audit-1","status":"completed","items":[]}
+                }
+                """);
+            _ = await ReadKindAsync(
+                events.Reader,
+                AgentBridgeEventKinds.TurnCompleted,
+                timeout.Token);
+            await client.StopAsync(CancellationToken.None);
+            await serviceTask.WaitAsync(TimeSpan.FromSeconds(5));
+            audit.Complete();
+
+            var auditJsonl = System.Text.Encoding.UTF8.GetString(auditStream.ToArray());
+            False(auditJsonl.Contains("AUDIT_SECRET_COMMAND_731", StringComparison.Ordinal));
+            False(auditJsonl.Contains("AUDIT_SECRET_PATH_732", StringComparison.Ordinal));
+            var approval = auditJsonl
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(static line => JsonDocument.Parse(line).RootElement.Clone())
+                .Single(item => string.Equals(
+                    item.GetProperty("eventType").GetString(),
+                    AgentHostAuditEventTypes.ApprovalRequested,
+                    StringComparison.Ordinal));
+            Equal("command", approval.GetProperty("approvalKind").GetString());
+            Equal("client-turn-approval-audit-1",
+                approval.GetProperty("systemRequestId").GetString());
+            Equal("thread-approval-audit-1",
+                approval.GetProperty("providerThreadId").GetString());
+            Equal("turn-approval-audit-1",
+                approval.GetProperty("providerTurnId").GetString());
+        }
+        finally
+        {
+            keyPair.HostKeys.Dispose();
+            keyPair.AgentKeys.Dispose();
+        }
+    }
+
     public static async Task V2ContextTurnUsesV2MethodAndEchoesHash()
     {
         var keyPair = CreateBootstrapDirectionKeyPair();
@@ -38,7 +434,13 @@ internal static class AgentHostBridgeSessionSpecs
                     ApprovalPolicy = AgentApprovalPolicy.OnRequest,
                     ApprovalsReviewer = AgentApprovalsReviewer.User,
                 });
-            var service = new AgentHostBridgeSession(runtime, "agenthost-v2-turn-spec");
+            using var audit = new AgentHostAuditLog(
+                new MemoryStream(),
+                keyPair.AgentKeys.SessionId);
+            var service = new AgentHostBridgeSession(
+                runtime,
+                "agenthost-v2-turn-spec",
+                audit);
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var serviceTask = service.RunAsync(keyPair.AgentKeys, timeout.Token);
             using var client = new AgentBridgeClient(
@@ -103,6 +505,154 @@ internal static class AgentHostBridgeSessionSpecs
 
             await client.StopAsync(CancellationToken.None);
             await serviceTask.WaitAsync(TimeSpan.FromSeconds(5));
+            audit.Complete();
+        }
+        finally
+        {
+            keyPair.HostKeys.Dispose();
+            keyPair.AgentKeys.Dispose();
+        }
+    }
+
+    public static async Task CancellationAuditCorrelatesSystemAndProviderIds()
+    {
+        var keyPair = CreateBootstrapDirectionKeyPair();
+        try
+        {
+            await using var appServer = new ScriptedAgentAppServer();
+            appServer.QueueResponse("thread/start", """
+                {"thread":{"id":"thread-cancel-1"}}
+                """);
+            appServer.QueueResponse("turn/start", """
+                {"turn":{"id":"turn-cancel-1","status":"inProgress","items":[]}}
+                """);
+            appServer.QueueResponse("turn/interrupt", "{}", () =>
+            {
+                appServer.EmitNotification("turn/completed", """
+                    {
+                      "threadId":"thread-cancel-1",
+                      "turn":{"id":"turn-cancel-1","status":"interrupted","items":[]}
+                    }
+                    """);
+            });
+
+            await using var runtime = new CodexAgentRuntime(
+                appServer,
+                new AgentRuntimeOptions
+                {
+                    Sandbox = AgentSandboxMode.ReadOnly,
+                    ApprovalPolicy = AgentApprovalPolicy.OnRequest,
+                    ApprovalsReviewer = AgentApprovalsReviewer.User,
+                });
+            using var auditStream = new MemoryStream();
+            using var audit = new AgentHostAuditLog(
+                auditStream,
+                keyPair.AgentKeys.SessionId,
+                leaveOpen: true,
+                maximumRecords: 64,
+                maximumBytes: 32 * 1024);
+            var service = new AgentHostBridgeSession(
+                runtime,
+                "agenthost-cancel-audit-spec",
+                audit);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var serviceTask = service.RunAsync(keyPair.AgentKeys, timeout.Token);
+            using var client = new AgentBridgeClient(
+                keyPair.HostKeys,
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromSeconds(5));
+            var events = Channel.CreateUnbounded<AgentBridgeEvent>();
+            client.EventReceived += (_, args) => events.Writer.TryWrite(args.BridgeEvent);
+            await client.StartAsync(timeout.Token);
+            _ = await client.GetCapabilitiesAsync(
+                new AgentCapabilitiesRequest
+                {
+                    ClientName = "Codex.AutoCAD.Host.2016",
+                    ClientVersion = "0.3.2.0",
+                    HostTarget = "autocad-r20.1-net45-x64",
+                },
+                timeout.Token);
+            var thread = await client.StartThreadAsync(
+                new AgentThreadStartRequest { ConversationId = "conversation-cancel-1" },
+                timeout.Token);
+            var turn = await client.StartTurnAsync(
+                new AgentTurnStartRequest
+                {
+                    ThreadId = thread.ThreadId,
+                    ClientTurnId = "client-turn-cancel-1",
+                    Prompt = "等待取消。",
+                },
+                timeout.Token);
+            _ = await ReadKindAsync(
+                events.Reader,
+                AgentBridgeEventKinds.TurnStarted,
+                timeout.Token);
+
+            await client.InterruptTurnAsync(
+                new AgentTurnInterruptRequest
+                {
+                    ThreadId = thread.ThreadId,
+                    TurnId = turn.TurnId,
+                },
+                timeout.Token);
+            var cancelled = await ReadKindAsync(
+                events.Reader,
+                AgentBridgeEventKinds.TurnCancelled,
+                timeout.Token);
+            Equal(turn.ThreadId, cancelled.ThreadId);
+            Equal(turn.TurnId, cancelled.TurnId);
+
+            await client.StopAsync(CancellationToken.None);
+            await serviceTask.WaitAsync(TimeSpan.FromSeconds(5));
+            var beforeRuntimeOwnerCompletion =
+                System.Text.Encoding.UTF8.GetString(auditStream.ToArray());
+            False(beforeRuntimeOwnerCompletion.Contains(
+                "\"eventType\":\"session_stopped\"",
+                StringComparison.Ordinal));
+            audit.Complete();
+            var auditEvents = System.Text.Encoding.UTF8.GetString(auditStream.ToArray())
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(static line => JsonDocument.Parse(line).RootElement.Clone())
+                .ToArray();
+            var requestedIndex = Array.FindIndex(auditEvents, item => string.Equals(
+                item.GetProperty("eventType").GetString(),
+                AgentHostAuditEventTypes.CancelRequested,
+                StringComparison.Ordinal));
+            var dispatchedIndex = Array.FindIndex(auditEvents, item => string.Equals(
+                item.GetProperty("eventType").GetString(),
+                AgentHostAuditEventTypes.CancelDispatched,
+                StringComparison.Ordinal));
+            var terminalIndex = Array.FindIndex(auditEvents, item => string.Equals(
+                item.GetProperty("eventType").GetString(),
+                AgentHostAuditEventTypes.TurnCancelled,
+                StringComparison.Ordinal));
+            Equal(true, requestedIndex >= 0
+                && dispatchedIndex > requestedIndex
+                && terminalIndex > dispatchedIndex);
+            var requested = auditEvents.Single(item => string.Equals(
+                item.GetProperty("eventType").GetString(),
+                AgentHostAuditEventTypes.CancelRequested,
+                StringComparison.Ordinal));
+            var dispatched = auditEvents.Single(item => string.Equals(
+                item.GetProperty("eventType").GetString(),
+                AgentHostAuditEventTypes.CancelDispatched,
+                StringComparison.Ordinal));
+            var terminal = auditEvents.Single(item => string.Equals(
+                item.GetProperty("eventType").GetString(),
+                AgentHostAuditEventTypes.TurnCancelled,
+                StringComparison.Ordinal));
+            Equal("conversation-cancel-1",
+                requested.GetProperty("systemConversationId").GetString());
+            Equal("client-turn-cancel-1", requested.GetProperty("systemRequestId").GetString());
+            Equal("thread-cancel-1", requested.GetProperty("providerThreadId").GetString());
+            Equal("turn-cancel-1", requested.GetProperty("providerTurnId").GetString());
+            Equal(requested.GetProperty("bridgeRequestId").GetString(),
+                dispatched.GetProperty("bridgeRequestId").GetString());
+            Equal("client-turn-cancel-1", terminal.GetProperty("systemRequestId").GetString());
+            Equal("conversation-cancel-1",
+                terminal.GetProperty("systemConversationId").GetString());
+            Equal(AgentHostAuditOutcomeCodes.Cancelled,
+                terminal.GetProperty("outcomeCode").GetString());
         }
         finally
         {
@@ -134,9 +684,13 @@ internal static class AgentHostBridgeSessionSpecs
                     ApprovalsReviewer = AgentApprovalsReviewer.User,
                 },
                 cadDrawingQueryBroker: queryBroker);
+            using var audit = new AgentHostAuditLog(
+                new MemoryStream(),
+                keyPair.AgentKeys.SessionId);
             var service = new AgentHostBridgeSession(
                 runtime,
                 "agenthost-query-e2e",
+                audit,
                 queryBroker);
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var serviceTask = service.RunAsync(keyPair.AgentKeys, timeout.Token);
@@ -274,6 +828,7 @@ internal static class AgentHostBridgeSessionSpecs
 
             await client.StopAsync(CancellationToken.None);
             await serviceTask.WaitAsync(TimeSpan.FromSeconds(5));
+            audit.Complete();
         }
         finally
         {
@@ -327,7 +882,17 @@ internal static class AgentHostBridgeSessionSpecs
                     ApprovalsReviewer = AgentApprovalsReviewer.User,
                     MaximumPromptCharacters = 320 * 1024,
                 });
-            var service = new AgentHostBridgeSession(runtime, "agenthost-two-turn-spec");
+            using var auditStream = new MemoryStream();
+            using var audit = new AgentHostAuditLog(
+                auditStream,
+                keyPair.AgentKeys.SessionId,
+                leaveOpen: true,
+                maximumRecords: 128,
+                maximumBytes: 64 * 1024);
+            var service = new AgentHostBridgeSession(
+                runtime,
+                "agenthost-two-turn-spec",
+                audit);
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var serviceTask = service.RunAsync(keyPair.AgentKeys, timeout.Token);
             using var client = new AgentBridgeClient(
@@ -368,7 +933,7 @@ internal static class AgentHostBridgeSessionSpecs
                 {
                     ThreadId = thread.ThreadId,
                     ClientTurnId = "client-turn-live-1",
-                    Prompt = "分析所选直线。",
+                    Prompt = "分析所选直线。AUDIT_PRIVATE_PROMPT_731",
                     Context = firstContext,
                     ContextSha256 = firstHash,
                 },
@@ -448,6 +1013,60 @@ internal static class AgentHostBridgeSessionSpecs
 
             await client.StopAsync(CancellationToken.None);
             await serviceTask.WaitAsync(TimeSpan.FromSeconds(5));
+            audit.Complete();
+
+            var auditJsonl = System.Text.Encoding.UTF8.GetString(auditStream.ToArray());
+            False(auditJsonl.Contains("AUDIT_PRIVATE_PROMPT_731", StringComparison.Ordinal));
+            False(auditJsonl.Contains("doc-live-1", StringComparison.Ordinal));
+            False(auditJsonl.Contains("canonicalJson", StringComparison.Ordinal));
+            False(auditJsonl.Contains("第一轮完成", StringComparison.Ordinal));
+            var auditEvents = auditJsonl.Split(
+                    '\n',
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(static line => JsonDocument.Parse(line).RootElement.Clone())
+                .ToArray();
+            Equal(AgentHostAuditEventTypes.SessionStarted,
+                auditEvents[0].GetProperty("eventType").GetString());
+            Equal(AgentHostAuditEventTypes.SessionStopped,
+                auditEvents[^1].GetProperty("eventType").GetString());
+            Equal(true, auditEvents.Any(item =>
+                string.Equals(
+                    item.GetProperty("eventType").GetString(),
+                    AgentHostAuditEventTypes.BridgeConnected,
+                    StringComparison.Ordinal)));
+            Equal(true, auditEvents.Any(item =>
+                string.Equals(
+                    item.GetProperty("eventType").GetString(),
+                    AgentHostAuditEventTypes.BridgeDisconnected,
+                    StringComparison.Ordinal)));
+            var threadAudit = auditEvents.Single(item =>
+                string.Equals(
+                    item.GetProperty("eventType").GetString(),
+                    AgentHostAuditEventTypes.ThreadStarted,
+                    StringComparison.Ordinal));
+            Equal("conversation-live-1",
+                threadAudit.GetProperty("systemConversationId").GetString());
+            Equal("thread-live-1", threadAudit.GetProperty("providerThreadId").GetString());
+            var firstTurnAudit = auditEvents.Single(item =>
+                string.Equals(
+                    item.GetProperty("eventType").GetString(),
+                    AgentHostAuditEventTypes.TurnStarted,
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    item.GetProperty("systemRequestId").GetString(),
+                    "client-turn-live-1",
+                    StringComparison.Ordinal));
+            Equal("thread-live-1",
+                firstTurnAudit.GetProperty("providerThreadId").GetString());
+            Equal("turn-live-1",
+                firstTurnAudit.GetProperty("providerTurnId").GetString());
+            Equal(false, string.IsNullOrWhiteSpace(
+                firstTurnAudit.GetProperty("bridgeRequestId").GetString()));
+            Equal(2, auditEvents.Count(item =>
+                string.Equals(
+                    item.GetProperty("eventType").GetString(),
+                    AgentHostAuditEventTypes.TurnCompleted,
+                    StringComparison.Ordinal)));
         }
         finally
         {
@@ -679,6 +1298,25 @@ internal static class AgentHostBridgeSessionSpecs
             throw new InvalidOperationException($"Expected '{expected}', actual '{actual}'.");
         }
     }
+
+    private static void False(bool value)
+    {
+        if (value)
+        {
+            throw new InvalidOperationException("Expected false.");
+        }
+    }
+}
+
+internal sealed class FlushCountingStream : MemoryStream
+{
+    public int FlushCount { get; private set; }
+
+    public override void Flush()
+    {
+        FlushCount++;
+        base.Flush();
+    }
 }
 
 internal sealed record SentAppServerRequest(string Method, JsonElement Params);
@@ -692,11 +1330,7 @@ internal sealed class ScriptedAgentAppServer : IAgentAppServer
     private long _serverRequestId;
 
     public event EventHandler<AppServerNotification>? NotificationReceived;
-    public event CommandApprovalRequestedHandler? CommandApprovalRequested
-    {
-        add { }
-        remove { }
-    }
+    public event CommandApprovalRequestedHandler? CommandApprovalRequested;
 
     public event FileChangeApprovalRequestedHandler? FileChangeApprovalRequested
     {
@@ -766,6 +1400,31 @@ internal sealed class ScriptedAgentAppServer : IAgentAppServer
         NotificationReceived?.Invoke(
             this,
             new AppServerNotification(method, document.RootElement.Clone()));
+    }
+
+    public async ValueTask<CommandApprovalResponse?> EmitCommandApprovalAsync(
+        CommandApprovalRequest request,
+        CancellationToken cancellationToken)
+    {
+        var handlers = CommandApprovalRequested;
+        if (handlers is null)
+        {
+            return null;
+        }
+
+        var approval = new RpcApprovalEvent<CommandApprovalRequest>(
+            new JsonRpcId(Interlocked.Increment(ref _serverRequestId)),
+            request);
+        foreach (CommandApprovalRequestedHandler handler in handlers.GetInvocationList())
+        {
+            var response = await handler(approval, cancellationToken).ConfigureAwait(false);
+            if (response is not null)
+            {
+                return response;
+            }
+        }
+
+        return null;
     }
 
     public async ValueTask<ServerRequestResolution?> RequestServerAsync(

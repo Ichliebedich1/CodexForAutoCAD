@@ -166,6 +166,8 @@ internal static class AgentHostProgram
                 shutdown.Cancel();
             };
             Console.CancelKeyPress += cancelHandler;
+            await using var audit = AgentHostAuditLog.CreateForCurrentUser(
+                directionKeys!.SessionId);
             try
             {
                 var workspaceRoot = Path.Combine(
@@ -178,7 +180,7 @@ internal static class AgentHostProgram
                 var workspace = AgentWorkspace.Create(workspaceRoot);
                 var codexConfiguration = CreateCodexConfiguration(null, workspace);
                 var cadQueryBroker = new AgentHostCadQueryBroker();
-                await using var runtime = new CodexAgentRuntime(
+                await using (var runtime = new CodexAgentRuntime(
                     codexConfiguration.CreateClientOptions(),
                     new AgentRuntimeOptions
                     {
@@ -189,13 +191,30 @@ internal static class AgentHostProgram
                         ManagedWorkspaceRoot = workspace.Root,
                         MaximumPromptCharacters = 320 * 1024,
                     },
-                    cadDrawingQueryBroker: cadQueryBroker);
-                var session = new AgentHostBridgeSession(
-                    runtime,
-                    "agenthost-" + directionKeys.SessionId,
-                    cadQueryBroker);
-                await session.RunAsync(directionKeys, shutdown.Token).ConfigureAwait(false);
+                    cadDrawingQueryBroker: cadQueryBroker))
+                {
+                    var session = new AgentHostBridgeSession(
+                        runtime,
+                        "agenthost-" + directionKeys.SessionId,
+                        audit,
+                        cadQueryBroker);
+                    await session.RunAsync(directionKeys, shutdown.Token).ConfigureAwait(false);
+                }
+
+                audit.Complete();
                 return 0;
+            }
+            catch (Exception exception)
+            {
+                try
+                {
+                    audit.Fail(AgentHostAuditErrorCodes.FromException(exception));
+                }
+                catch
+                {
+                }
+
+                throw;
             }
             finally
             {
