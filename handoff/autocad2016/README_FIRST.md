@@ -95,7 +95,13 @@ M4 进程隔离已完成一个不依赖 AutoCAD 实机的小阶段：
   锚定或 WORM 存储。当前 Bridge 为 `50/50`。
 - Codex 子进程现先清空父环境，再使用固定 `16` 个变量名；`TEMP`/`TMP` 指向每会话 workspace，
   不自动传入 token/API key、代理、父 `PATH`、`CODEX_HOME` 或自定义变量。AppServer 为 `29/29`，
-  当前完整 Phase 2 为 `349/349`，真实 doctor 和两轮 Codex live `2/2` 继续通过。
+  当前完整 Phase 2 为 `350/350`，真实 doctor 和两轮 Codex live `2/2` 继续通过。
+- Bridge、Bridge Client、AgentHost、AgentRuntime 与 Host.2016 的失败说明现通过
+  `AgentBridgeErrorSanitizer` 收敛到固定错误码/安全说明。未知码会降级为 `internal_error`；
+  异常、Provider/处理器文本、stderr、伪路径和令牌不能再作为 IPC、运行时或 Palette 失败说明传播。
+  Contracts、Bridge、Bridge Client 和运行时的路径形态 sentinel 回归已通过；Bridge 为 `56/56`、
+  完整 Phase 2 为 `350/350`。该检查点未启动 AutoCAD，详情见
+  `M4_DIAGNOSTIC_SANITIZATION_20260723.md`。
 - 每次生产 app-server 调用都固定附加 `-c mcp_servers={}`，以 Codex 结构化配置覆盖默认用户
   profile 的 MCP server 表。此变更的 AppServer `29/29`、AgentHost Release `0` warning / `0` error
   和真实两轮 live `2/2` 已通过；它不隔离默认用户 `CODEX_HOME`、凭据、技能或插件配置。
@@ -110,8 +116,8 @@ M4 进程隔离已完成一个不依赖 AutoCAD 实机的小阶段：
   的次版本、非 UTF-8、超限和超时输出 fail-closed，不公开路径、版本原文或 stderr。版本细节和
   升级规则见 `M4_CODEX_VERSION_PREFLIGHT_20260723.md`。
 - 这没有故意耗尽真实 Codex 的进程槽或内存、测量 CPU 节流性能，也没有启动或控制 AutoCAD；
-  工作目录磁盘硬配额、每会话 `CODEX_HOME`、凭据与插件配置隔离、受保护审计锚点、审批解决和
-  CAD 写入终态仍未完成。
+  工作目录磁盘硬配额、真实隔离登录与插件配置审查、受保护审计锚点、审批解决和 CAD 写入终态
+  仍未完成。
 
 脱敏实机范围证据：
 `evidence/cad-context-v2-live-observation-20260722.json`。

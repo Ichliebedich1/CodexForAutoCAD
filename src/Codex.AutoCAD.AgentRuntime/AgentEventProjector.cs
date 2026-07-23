@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Codex.AutoCAD.AppServer.Protocol;
+using Codex.AutoCAD.Contracts;
 
 namespace Codex.AutoCAD.AgentRuntime;
 
@@ -43,7 +44,9 @@ internal static class AgentEventProjector
         }
         catch (Exception exception) when (exception is JsonException or InvalidOperationException or FormatException)
         {
-            throw new AgentEventProjectionException(notification.Method, exception.Message, exception);
+            throw new AgentEventProjectionException(
+                notification.Method,
+                "notification payload could not be projected.");
         }
     }
 
@@ -143,20 +146,36 @@ internal static class AgentEventProjector
         var turn = RequiredObject(parameters, "turn", notification.Method);
         var turnId = RequiredString(turn, "id", notification.Method);
         var status = ToTurnStatus(RequiredString(turn, "status", notification.Method));
-        string? errorMessage = null;
-        if (turn.TryGetProperty("error", out var error)
-            && error.ValueKind == JsonValueKind.Object)
-        {
-            errorMessage = OptionalString(error, "message");
-        }
+        var errorMessage = status == AgentTurnStatus.Failed
+            ? AgentBridgeErrorSanitizer.GetSafeMessage(AgentBridgeErrorCodes.AgentUnavailable)
+            : null;
 
         return new AgentTurnStateChangedEvent(
             threadId,
             turnId,
             status,
             errorMessage,
-            turn.Clone());
+            CreateTurnSnapshot(turnId, ToWireTurnStatus(status)));
     }
+
+    private static JsonElement CreateTurnSnapshot(string turnId, string status)
+    {
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            id = turnId,
+            status = status.ToString(),
+        }));
+        return document.RootElement.Clone();
+    }
+
+    private static string ToWireTurnStatus(AgentTurnStatus status) => status switch
+    {
+        AgentTurnStatus.InProgress => "inProgress",
+        AgentTurnStatus.Completed => "completed",
+        AgentTurnStatus.Interrupted => "interrupted",
+        AgentTurnStatus.Failed => "failed",
+        _ => "unknown",
+    };
 
     private static JsonElement RequiredParams(AppServerNotification notification)
     {

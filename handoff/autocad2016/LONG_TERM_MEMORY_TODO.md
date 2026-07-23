@@ -341,8 +341,13 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   不跟随目录链接并限制单次 `50,000` 项；真实 Codex 并发 Bridge/AgentHost STOP 后当前
   workspace 消失。见 `M4_PRIVATE_STORAGE_RETENTION_20260723.md` 和
   `evidence/m4-agenthost-private-storage-retention-20260723.json`。
-- [ ] 将 AgentRuntime、Bridge、Host、配置和日志导出纳入同一脱敏策略；当前仅完成 Codex
-  子进程 stderr 与 AgentHost 控制台诊断边界。
+- [x] Bridge、Bridge Client、AgentHost、AgentRuntime 与 Host.2016 的已发布失败出口已纳入
+  `AgentBridgeErrorSanitizer`：错误码必须属于闭合白名单，错误说明必须精确匹配固定安全文本；
+  未受信错误码统一降级为 `internal_error`。契约、Bridge、运行时和 client 规格使用路径形态
+  `M4-SENTINEL` 验证异常正文不会跨越 IPC 或 UI 失败面，双 Shell 及完整 Phase 2 为 `350/350`。
+  详见 `M4_DIAGNOSTIC_SANITIZATION_20260723.md`。
+- [ ] 将配置读取失败、日志导出和未来新增错误出口逐项纳入同一固定代码/说明策略；不能把本次
+  已覆盖的 Bridge/运行时/Host 失败边界误写成完整配置或审计脱敏完成。
 - [x] AgentHost 只读运行审计基线：`bootstrap-serve` 每会话在当前用户本地固定盘的独占 JSONL
   文件中记录启动/停止/失败、Bridge 连接、请求、thread/turn、取消、审批请求和 turn 终态；
   `/2` 每条为固定字段白名单、单调 sequence 和 canonical SHA-256 前序哈希链，默认限制

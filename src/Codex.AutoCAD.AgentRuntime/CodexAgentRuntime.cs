@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json;
 using Codex.AutoCAD.AppServer;
 using Codex.AutoCAD.AppServer.Protocol;
+using AgentBridgeErrorCodes = Codex.AutoCAD.Contracts.AgentBridgeErrorCodes;
+using AgentBridgeErrorSanitizer = Codex.AutoCAD.Contracts.AgentBridgeErrorSanitizer;
 using DrawingIndexContractValidator = Codex.AutoCAD.Contracts.DrawingIndexContractValidator;
 
 namespace Codex.AutoCAD.AgentRuntime;
@@ -571,16 +573,18 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
 
             return await execution.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (CadProposalValidationException exception)
+        catch (CadProposalValidationException)
         {
+            var reason = AgentBridgeErrorSanitizer.GetSafeMessage(
+                AgentBridgeErrorCodes.RequestInvalid);
             PublishDynamicToolRejection(
                 threadId,
                 turnId,
                 callId,
                 toolNamespace,
                 tool,
-                exception.Message);
-            return DynamicToolResult(success: false, exception.Message);
+                reason);
+            return DynamicToolResult(success: false, reason);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -724,7 +728,7 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
                 return DynamicToolResult(success: false, reason);
             }
 
-            var message = NormalizeBrokerMessage(result.Message);
+            var message = GetSafeBrokerOutcomeMessage(result.Outcome);
             if (result.Outcome == AgentCadProposalOutcome.Applied)
             {
                 var content = JsonSerializer.Serialize(new
@@ -807,14 +811,16 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
             exception is CadDrawingQueryValidationException
             or CadProposalValidationException)
         {
+            var reason = AgentBridgeErrorSanitizer.GetSafeMessage(
+                AgentBridgeErrorCodes.RequestInvalid);
             PublishDynamicToolRejection(
                 threadId,
                 turnId,
                 callId,
                 toolNamespace,
                 tool,
-                exception.Message);
-            return DynamicToolResult(success: false, exception.Message);
+                reason);
+            return DynamicToolResult(success: false, reason);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1706,21 +1712,19 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
             tool,
             reason));
 
-    private static string NormalizeBrokerMessage(string? message)
+    private static string GetSafeBrokerOutcomeMessage(AgentCadProposalOutcome outcome)
     {
-        if (string.IsNullOrWhiteSpace(message))
+        if (outcome == AgentCadProposalOutcome.Applied)
         {
-            return "The trusted AutoCAD broker returned no details.";
+            return "The trusted AutoCAD broker applied the proposal.";
         }
 
-        var sanitized = new string(message
-            .Take(2_048)
-            .Select(static character => char.IsControl(character) ? ' ' : character)
-            .ToArray())
-            .Trim();
-        return sanitized.Length == 0
-            ? "The trusted AutoCAD broker returned no details."
-            : sanitized;
+        if (outcome == AgentCadProposalOutcome.Rejected)
+        {
+            return "The trusted AutoCAD broker rejected the proposal.";
+        }
+
+        return "The trusted AutoCAD broker failed to apply the proposal.";
     }
 
     private static bool BrokerResultMatchesProposal(

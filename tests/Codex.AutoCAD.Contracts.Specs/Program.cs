@@ -596,7 +596,11 @@ static void BridgeEventsFailClosed()
         bridgeEvent, "thread-1", "turn-1", new string('0', 64)), "event_context_mismatch");
 
     bridgeEvent.Kind = AgentBridgeEventKinds.TurnFailed;
-    bridgeEvent.Error = "连接中断";
+    bridgeEvent.Error = "M4-SENTINEL-C:\\private\\event-token";
+    bridgeEvent.ErrorCode = AgentBridgeErrorCodes.InternalError;
+    Contains(AgentBridgeContractValidator.Validate(bridgeEvent), "event_error");
+
+    bridgeEvent.Error = AgentBridgeErrorSanitizer.GetSafeMessage(AgentBridgeErrorCodes.InternalError);
     bridgeEvent.ErrorCode = "unknown_failure";
     Contains(AgentBridgeContractValidator.Validate(bridgeEvent), "event_error_code");
 
@@ -618,7 +622,7 @@ static void BridgeFailuresUseClosedErrorCodes()
         var failure = new AgentBridgeFailure
         {
             Code = code,
-            Message = "Agent当前不可用。",
+            Message = AgentBridgeErrorSanitizer.GetSafeMessage(code),
             Retryable = true,
             ThreadId = "thread-1",
             TurnId = "turn-1",
@@ -635,6 +639,28 @@ static void BridgeFailuresUseClosedErrorCodes()
         OccurredAtUtc = "2026-07-19T08:31:00.000Z",
     };
     Contains(AgentBridgeContractValidator.Validate(unknown), "bridge_error_code");
+
+    const string marker = "M4-SENTINEL-C:\\private\\token-123";
+    Equal(AgentBridgeErrorCodes.Timeout,
+        AgentBridgeErrorSanitizer.NormalizeCode(AgentBridgeErrorCodes.Timeout),
+        "已知错误码必须保持稳定。");
+    Equal(AgentBridgeErrorCodes.InternalError,
+        AgentBridgeErrorSanitizer.NormalizeCode(marker),
+        "未受信错误码必须归一化为内部错误。");
+    var message = AgentBridgeErrorSanitizer.GetSafeMessage(marker);
+    Equal("The request failed. Sensitive diagnostics are hidden.", message,
+        "未知错误只允许固定脱敏文本。");
+    DoesNotContainText(message, marker);
+    if (AgentBridgeErrorSanitizer.MatchesSafeMessage(
+            AgentBridgeErrorCodes.InternalError,
+            marker))
+    {
+        throw new InvalidOperationException("任意错误文本不得通过固定脱敏消息校验。");
+    }
+    if (!AgentBridgeErrorSanitizer.IsKnownCode(AgentBridgeErrorCodes.DrawingQueryUnavailable))
+    {
+        throw new InvalidOperationException("已发布的图纸查询错误码必须属于固定白名单。");
+    }
 }
 
 static void BridgeV2TurnBindsExactContextIdentity()

@@ -221,16 +221,14 @@ namespace Codex.AutoCAD.Host2016
         internal static string NormalizeBridgeErrorCode(AgentBridgeClientException exception)
         {
             var code = exception == null ? null : exception.Code;
-            return IsKnownBridgeErrorCode(code)
+            return AgentBridgeErrorSanitizer.IsKnownCode(code)
                 ? code
                 : AgentBridgeErrorCodes.ConnectionLost;
         }
 
         internal static string NormalizeBridgeErrorCode(string errorCode)
         {
-            return IsKnownBridgeErrorCode(errorCode)
-                ? errorCode
-                : AgentBridgeErrorCodes.InternalError;
+            return AgentBridgeErrorSanitizer.NormalizeCode(errorCode);
         }
 
         private static MvpAgentFailure FromBootstrapFailure(
@@ -300,25 +298,5 @@ namespace Codex.AutoCAD.Host2016
                 : errorStage;
         }
 
-        private static bool IsKnownBridgeErrorCode(string code)
-        {
-            return string.Equals(code, AgentBridgeErrorCodes.Offline, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ContractMismatch, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.AuthenticationFailed, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ReplayRejected, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.RequestInvalid, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ContextInvalid, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ContextHashMismatch, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.AgentUnavailable, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ConnectionLost, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.Timeout, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.Busy, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.TurnNotFound, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ApprovalInvalid, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ApprovalExpired, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ApprovalAlreadyConsumed, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.ResultIdentityMismatch, StringComparison.Ordinal)
-                || string.Equals(code, AgentBridgeErrorCodes.InternalError, StringComparison.Ordinal);
-        }
     }
 }

@@ -564,8 +564,9 @@ public sealed class AuthenticatedPipeConnection : IAsyncDisposable
                 {
                     response = new ResponsePayload
                     {
-                        ErrorCode = "method_not_supported",
-                        ErrorMessage = "此连接未注册请求处理器。"
+                        ErrorCode = AgentBridgeErrorCodes.RequestInvalid,
+                        ErrorMessage = AgentBridgeErrorSanitizer.GetSafeMessage(
+                            AgentBridgeErrorCodes.RequestInvalid)
                     };
                 }
                 else
@@ -580,16 +581,18 @@ public sealed class AuthenticatedPipeConnection : IAsyncDisposable
             {
                 response = new ResponsePayload
                 {
-                    ErrorCode = "request_cancelled",
-                    ErrorMessage = "请求已取消。"
+                    ErrorCode = AgentBridgeErrorCodes.RequestCancelled,
+                    ErrorMessage = AgentBridgeErrorSanitizer.GetSafeMessage(
+                        AgentBridgeErrorCodes.RequestCancelled)
                 };
             }
             catch (Exception)
             {
                 response = new ResponsePayload
                 {
-                    ErrorCode = "handler_error",
-                    ErrorMessage = "远端请求处理失败。"
+                    ErrorCode = AgentBridgeErrorCodes.InternalError,
+                    ErrorMessage = AgentBridgeErrorSanitizer.GetSafeMessage(
+                        AgentBridgeErrorCodes.InternalError)
                 };
             }
             finally

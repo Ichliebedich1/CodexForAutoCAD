@@ -286,9 +286,8 @@ namespace Codex.AutoCAD.Host2016
             catch (DrawingIndexQueryException exception)
             {
                 editor.WriteMessage(
-                    "\nCadQuery 被拒绝：code={0}, message={1}\n",
-                    exception.Code,
-                    exception.Message);
+                    "\nCadQuery 被拒绝：code={0}, message=查询请求被拒绝；原始详情已隐藏。\n",
+                    NormalizeDrawingIndexQueryCode(exception.Code));
             }
             catch (System.Exception exception)
             {
@@ -315,9 +314,8 @@ namespace Codex.AutoCAD.Host2016
             catch (DrawingIndexQueryException exception)
             {
                 editor.WriteMessage(
-                    "\nCadQuery 下一页被拒绝：code={0}, message={1}\n",
-                    exception.Code,
-                    exception.Message);
+                    "\nCadQuery 下一页被拒绝：code={0}, message=查询请求被拒绝；原始详情已隐藏。\n",
+                    NormalizeDrawingIndexQueryCode(exception.Code));
             }
             catch (System.Exception exception)
             {
@@ -489,6 +487,27 @@ namespace Codex.AutoCAD.Host2016
             return value.HasValue
                 ? value.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 : "unavailable";
+        }
+
+        private static string NormalizeDrawingIndexQueryCode(string code)
+        {
+            if (string.IsNullOrEmpty(code) || code.Length > 64)
+            {
+                return "cad_query_failed";
+            }
+
+            for (var index = 0; index < code.Length; index++)
+            {
+                var character = code[index];
+                if (!((character >= 'a' && character <= 'z')
+                    || (character >= '0' && character <= '9')
+                    || character == '_'))
+                {
+                    return "cad_query_failed";
+                }
+            }
+
+            return code;
         }
 
         private static string MapIndexScope(string keyword)

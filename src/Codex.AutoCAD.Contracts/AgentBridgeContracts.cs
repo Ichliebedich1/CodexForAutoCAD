@@ -79,6 +79,127 @@ public static class AgentBridgeErrorCodes
     public const string InternalError = "internal_error";
 }
 
+/// <summary>
+/// Keeps provider and IPC diagnostic text out of user-visible and cross-process error surfaces.
+/// Only the fixed bridge error-code allowlist may cross the boundary; display text is derived from
+/// that normalized code and never from an exception, stderr line, configuration value, or token.
+/// </summary>
+public static class AgentBridgeErrorSanitizer
+{
+    public static bool IsKnownCode(string? code)
+    {
+        return string.Equals(code, AgentBridgeErrorCodes.Offline, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.ContractMismatch, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.AuthenticationFailed, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.ReplayRejected, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.RequestInvalid, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.ContextInvalid, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.ContextHashMismatch, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.AgentUnavailable, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.ConnectionLost, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.Timeout, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.Busy, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.RequestCancelled, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.TurnNotFound, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.ApprovalInvalid, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.ApprovalExpired, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.ApprovalAlreadyConsumed, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.DrawingQueryUnavailable, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.ResultIdentityMismatch, StringComparison.Ordinal)
+            || string.Equals(code, AgentBridgeErrorCodes.InternalError, StringComparison.Ordinal);
+    }
+
+    public static string NormalizeCode(string? code)
+        => IsKnownCode(code) ? code! : AgentBridgeErrorCodes.InternalError;
+
+    public static bool MatchesSafeMessage(string? code, string? message)
+        => IsKnownCode(code)
+            && string.Equals(
+                message,
+                GetSafeMessage(code),
+                StringComparison.Ordinal);
+
+    public static string GetSafeMessage(string? code)
+    {
+        var normalized = NormalizeCode(code);
+        if (string.Equals(normalized, AgentBridgeErrorCodes.Offline, StringComparison.Ordinal))
+        {
+            return "The Agent Bridge is offline.";
+        }
+
+        if (string.Equals(normalized, AgentBridgeErrorCodes.ContractMismatch, StringComparison.Ordinal))
+        {
+            return "The Agent Bridge rejected an incompatible contract.";
+        }
+
+        if (string.Equals(normalized, AgentBridgeErrorCodes.AuthenticationFailed, StringComparison.Ordinal)
+            || string.Equals(normalized, AgentBridgeErrorCodes.ReplayRejected, StringComparison.Ordinal))
+        {
+            return "The Agent Bridge rejected the authenticated request.";
+        }
+
+        if (string.Equals(normalized, AgentBridgeErrorCodes.RequestInvalid, StringComparison.Ordinal))
+        {
+            return "The request was rejected by the Agent Bridge.";
+        }
+
+        if (string.Equals(normalized, AgentBridgeErrorCodes.ContextInvalid, StringComparison.Ordinal)
+            || string.Equals(normalized, AgentBridgeErrorCodes.ContextHashMismatch, StringComparison.Ordinal))
+        {
+            return "The CAD context is no longer valid for this request.";
+        }
+
+        if (string.Equals(normalized, AgentBridgeErrorCodes.AgentUnavailable, StringComparison.Ordinal))
+        {
+            return "The Agent service is unavailable.";
+        }
+
+        if (string.Equals(normalized, AgentBridgeErrorCodes.ConnectionLost, StringComparison.Ordinal))
+        {
+            return "The Agent Bridge connection was lost.";
+        }
+
+        if (string.Equals(normalized, AgentBridgeErrorCodes.Timeout, StringComparison.Ordinal))
+        {
+            return "The Agent Bridge request timed out.";
+        }
+
+        if (string.Equals(normalized, AgentBridgeErrorCodes.Busy, StringComparison.Ordinal))
+        {
+            return "The Agent Bridge is busy.";
+        }
+
+        if (string.Equals(normalized, AgentBridgeErrorCodes.RequestCancelled, StringComparison.Ordinal))
+        {
+            return "The request was cancelled.";
+        }
+
+        if (string.Equals(normalized, AgentBridgeErrorCodes.TurnNotFound, StringComparison.Ordinal))
+        {
+            return "The requested Agent turn is not available.";
+        }
+
+        if (string.Equals(normalized, AgentBridgeErrorCodes.ApprovalInvalid, StringComparison.Ordinal)
+            || string.Equals(normalized, AgentBridgeErrorCodes.ApprovalExpired, StringComparison.Ordinal)
+            || string.Equals(normalized, AgentBridgeErrorCodes.ApprovalAlreadyConsumed, StringComparison.Ordinal))
+        {
+            return "The approval request is no longer valid.";
+        }
+
+        if (string.Equals(normalized, AgentBridgeErrorCodes.DrawingQueryUnavailable, StringComparison.Ordinal))
+        {
+            return "The trusted drawing-query service is unavailable.";
+        }
+
+        if (string.Equals(normalized, AgentBridgeErrorCodes.ResultIdentityMismatch, StringComparison.Ordinal))
+        {
+            return "The Agent Bridge rejected a mismatched result identity.";
+        }
+
+        return "The request failed. Sensitive diagnostics are hidden.";
+    }
+}
+
 public sealed class AgentCapabilitiesRequest
 {
     public int ContractVersion { get; set; } = AgentBridgeContractConstants.CurrentVersion;
@@ -445,29 +566,6 @@ public static class AgentBridgeContractValidator
         AgentBridgeConnectionStates.Closed,
     ];
 
-    private static readonly string[] KnownErrorCodes =
-    [
-        AgentBridgeErrorCodes.Offline,
-        AgentBridgeErrorCodes.ContractMismatch,
-        AgentBridgeErrorCodes.AuthenticationFailed,
-        AgentBridgeErrorCodes.ReplayRejected,
-        AgentBridgeErrorCodes.RequestInvalid,
-        AgentBridgeErrorCodes.ContextInvalid,
-        AgentBridgeErrorCodes.ContextHashMismatch,
-        AgentBridgeErrorCodes.AgentUnavailable,
-        AgentBridgeErrorCodes.ConnectionLost,
-        AgentBridgeErrorCodes.Timeout,
-        AgentBridgeErrorCodes.Busy,
-        AgentBridgeErrorCodes.RequestCancelled,
-        AgentBridgeErrorCodes.TurnNotFound,
-        AgentBridgeErrorCodes.ApprovalInvalid,
-        AgentBridgeErrorCodes.ApprovalExpired,
-        AgentBridgeErrorCodes.ApprovalAlreadyConsumed,
-        AgentBridgeErrorCodes.DrawingQueryUnavailable,
-        AgentBridgeErrorCodes.ResultIdentityMismatch,
-        AgentBridgeErrorCodes.InternalError,
-    ];
-
     public static CadValidationFailure[] Validate(AgentCapabilitiesRequest? request)
     {
         var failures = new List<CadValidationFailure>();
@@ -782,11 +880,12 @@ public static class AgentBridgeContractValidator
 
         if (IsFailureEvent(bridgeEvent.Kind))
         {
-            Require(IsKnown(bridgeEvent.ErrorCode, KnownErrorCodes), failures,
+            Require(AgentBridgeErrorSanitizer.IsKnownCode(bridgeEvent.ErrorCode), failures,
                 "event_error_code", "$.errorCode", "失败事件必须携带白名单错误码。" );
-            Require(IsSafeDisplayText(bridgeEvent.Error, MaximumErrorLength)
-                    && !string.IsNullOrWhiteSpace(bridgeEvent.Error),
-                failures, "event_error", "$.error", "失败事件必须携带受限错误说明。" );
+            Require(AgentBridgeErrorSanitizer.MatchesSafeMessage(
+                    bridgeEvent.ErrorCode,
+                    bridgeEvent.Error),
+                failures, "event_error", "$.error", "失败事件必须使用错误码对应的固定脱敏说明。" );
         }
 
         return failures.ToArray();
@@ -802,11 +901,10 @@ public static class AgentBridgeContractValidator
         }
 
         ValidateContractVersion(failure.ContractVersion, "$.contractVersion", failures);
-        Require(IsKnown(failure.Code, KnownErrorCodes), failures,
+        Require(AgentBridgeErrorSanitizer.IsKnownCode(failure.Code), failures,
             "bridge_error_code", "$.code", "Bridge错误码不在白名单中。" );
-        Require(!string.IsNullOrWhiteSpace(failure.Message)
-                && IsSafeDisplayText(failure.Message, MaximumErrorLength),
-            failures, "bridge_error_message", "$.message", "Bridge错误说明无效。" );
+        Require(AgentBridgeErrorSanitizer.MatchesSafeMessage(failure.Code, failure.Message),
+            failures, "bridge_error_message", "$.message", "Bridge错误说明必须是固定脱敏文本。" );
         Require(IsUtcTimestamp(failure.OccurredAtUtc), failures,
             "bridge_error_time", "$.occurredAtUtc", "Bridge错误时间必须是规范UTC时间。" );
         return failures.ToArray();

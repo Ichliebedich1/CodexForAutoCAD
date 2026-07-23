@@ -700,6 +700,16 @@ try
             "offline terminal fail-closed code");
     }
 
+    const string remoteMarker = "M4-SENTINEL-C:\\private\\remote-token";
+    var remoteFailure = new AgentBridgeRemoteException("provider_private_error", remoteMarker);
+    Require(remoteFailure.Code == AgentBridgeErrorCodes.InternalError,
+        "untrusted remote error code is normalized");
+    Require(remoteFailure.Message == AgentBridgeErrorSanitizer.GetSafeMessage(
+            AgentBridgeErrorCodes.InternalError),
+        "untrusted remote error message is fixed");
+    Require(remoteFailure.Message.IndexOf(remoteMarker, StringComparison.Ordinal) < 0,
+        "untrusted remote error message does not leak its source text");
+
     Console.WriteLine("[PASS] " + offlineSpecId);
 
     currentSpecId = disconnectSpecId;

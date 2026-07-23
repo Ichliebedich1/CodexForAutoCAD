@@ -60,6 +60,7 @@ var specs = new (string Name, Func<Task> Run)[]
     ("通知可单向投递", NotificationWorks),
     ("取消消息会取消远端请求", CancellationPropagates),
     ("远端错误被结构化返回", RemoteErrorPropagates),
+    ("未注册请求处理器使用固定脱敏错误", MissingRequestHandlerIsSanitized),
     ("坏MAC被拒绝", BadMacIsRejected),
     ("重复序号被拒绝", ReplayedSequenceIsRejected),
     ("重复nonce被拒绝", ReplayedNonceIsRejected),
@@ -371,14 +372,30 @@ static async Task RemoteErrorPropagates()
     await using var server = pair.Server;
     await using var client = pair.Client;
 
-    server.Start((_, _) => throw new InvalidOperationException("模拟处理失败"));
+    const string marker = "M4-SENTINEL-C:\\private\\bridge-token";
+    server.Start((_, _) => throw new InvalidOperationException(marker));
     client.Start();
 
     var exception = await ThrowsAsync<BridgeRemoteException>(
         () => client.RequestAsync("cad.fail", "{}"));
-    Equal("handler_error", exception.Code);
-    Equal("远端请求处理失败。", exception.Message);
-    False(exception.Message.Contains("模拟处理失败", StringComparison.Ordinal));
+    Equal(AgentBridgeErrorCodes.InternalError, exception.Code);
+    Equal(AgentBridgeErrorSanitizer.GetSafeMessage(AgentBridgeErrorCodes.InternalError), exception.Message);
+    False(exception.Message.Contains(marker, StringComparison.Ordinal));
+}
+
+static async Task MissingRequestHandlerIsSanitized()
+{
+    var pair = await CreatePairAsync();
+    await using var server = pair.Server;
+    await using var client = pair.Client;
+
+    server.Start();
+    client.Start();
+
+    var exception = await ThrowsAsync<BridgeRemoteException>(
+        () => client.RequestAsync("cad.unhandled", "{}"));
+    Equal(AgentBridgeErrorCodes.RequestInvalid, exception.Code);
+    Equal(AgentBridgeErrorSanitizer.GetSafeMessage(AgentBridgeErrorCodes.RequestInvalid), exception.Message);
 }
 
 static Task BadMacIsRejected()

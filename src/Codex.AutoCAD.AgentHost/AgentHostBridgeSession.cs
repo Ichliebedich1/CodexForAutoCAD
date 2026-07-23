@@ -849,8 +849,7 @@ public sealed class AgentHostBridgeSession
                     AgentTurnStatus.Failed => CreateTerminalTurnEventLocked(
                         binding,
                         AgentBridgeEventKinds.TurnFailed,
-                        AgentBridgeErrorCodes.AgentUnavailable,
-                        "Codex turn failed."),
+                        AgentBridgeErrorCodes.AgentUnavailable),
                     _ => throw new InvalidDataException("Runtime emitted an unknown turn status."),
                 };
             default:
@@ -861,9 +860,14 @@ public sealed class AgentHostBridgeSession
     private AgentBridgeEvent CreateTerminalTurnEventLocked(
         TurnBinding binding,
         string kind,
-        string errorCode = "",
-        string error = "")
+        string errorCode = "")
     {
+        var safeErrorCode = string.IsNullOrEmpty(errorCode)
+            ? string.Empty
+            : AgentBridgeErrorSanitizer.NormalizeCode(errorCode);
+        var safeError = string.IsNullOrEmpty(safeErrorCode)
+            ? string.Empty
+            : AgentBridgeErrorSanitizer.GetSafeMessage(safeErrorCode);
         var auditEventType = kind switch
         {
             AgentBridgeEventKinds.TurnCompleted => AgentHostAuditEventTypes.TurnCompleted,
@@ -885,7 +889,7 @@ public sealed class AgentHostBridgeSession
             ProviderThreadId = binding.ThreadId,
             ProviderTurnId = binding.TurnId,
             OutcomeCode = outcomeCode,
-            ErrorCode = string.IsNullOrEmpty(errorCode) ? null : errorCode,
+            ErrorCode = string.IsNullOrEmpty(safeErrorCode) ? null : safeErrorCode,
         });
         binding.TerminalEventQueued = true;
         return new AgentBridgeEvent
@@ -894,8 +898,8 @@ public sealed class AgentHostBridgeSession
             ThreadId = binding.ThreadId,
             TurnId = binding.TurnId,
             ContextSha256 = binding.ContextSha256,
-            ErrorCode = errorCode,
-            Error = error,
+            ErrorCode = safeErrorCode,
+            Error = safeError,
             Retryable = false,
         };
     }

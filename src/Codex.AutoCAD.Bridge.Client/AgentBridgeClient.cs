@@ -1172,7 +1172,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
                     bridgeRequestId,
                     "null",
                     AgentBridgeErrorCodes.Busy,
-                    "AutoCAD只读图纸查询当前繁忙。",
+                    AgentBridgeErrorSanitizer.GetSafeMessage(AgentBridgeErrorCodes.Busy),
                     connectionCancellation)
                 .ConfigureAwait(false);
             return;
@@ -1232,17 +1232,17 @@ public sealed class AgentBridgeClient : IAgentBridgeClient
         catch (OperationCanceledException) when (activeQuery.Cancellation.IsCancellationRequested)
         {
             errorCode = AgentBridgeErrorCodes.RequestCancelled;
-            errorMessage = "AutoCAD只读图纸查询已取消。";
+            errorMessage = AgentBridgeErrorSanitizer.GetSafeMessage(errorCode);
         }
         catch (AgentBridgeClientException exception)
         {
-            errorCode = exception.Code;
-            errorMessage = exception.Message;
+            errorCode = AgentBridgeErrorSanitizer.NormalizeCode(exception.Code);
+            errorMessage = AgentBridgeErrorSanitizer.GetSafeMessage(errorCode);
         }
         catch
         {
             errorCode = AgentBridgeErrorCodes.InternalError;
-            errorMessage = "AutoCAD只读图纸查询处理失败。";
+            errorMessage = AgentBridgeErrorSanitizer.GetSafeMessage(errorCode);
         }
 
         try

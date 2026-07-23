@@ -319,7 +319,15 @@ NETLOAD 证据的能力一律视为未支持。
   面；`doctor` 与独立 `run` 刻意仍为旧兼容路径。见
   `M4_CODEX_SESSION_ISOLATION_20260723.md` 和
   `evidence/m4-codex-session-isolation-20260723.json`。
-- 当前 Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 动态汇总 `349/349`、
+- M4 第十二诊断脱敏边界已将 Bridge、Bridge Client、AgentHost、AgentRuntime 与 Host.2016 的已发布
+  失败出口收敛至 `AgentBridgeErrorSanitizer`：只允许闭合错误码白名单及其固定安全说明；未知码
+  归一化为 `internal_error`，异常、Provider/处理器文本、stderr、伪路径和令牌不会再作为失败文本
+  跨 IPC、运行时投影或 Palette/命令说明传播。`AgentBridgeFailure` 与失败型 `AgentBridgeEvent`
+  现在要求错误码与固定说明精确匹配。路径形态 `M4-SENTINEL` 回归、Bridge 未注册处理器和远端异常
+  均已覆盖；双 Shell、Host A/B 构建和完整 Phase 2 均通过。详见
+  `M4_DIAGNOSTIC_SANITIZATION_20260723.md` 与
+  `artifacts/m4-diagnostic-sanitization/bridge-client-stage-verification-20260723.json`。
+- 当前 Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 动态汇总 `350/350`、
   AgentHost doctor、Host 禁止 API、秘密扫描和 diff 通过；认证固定向量与现有 Bridge/IPC
   回归保持通过。
 - 本检查点未启动、重启或操作 AutoCAD。它不证明长运行 `IAgentBridgeClient`、Host.2016
@@ -566,8 +574,9 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
 6. M2 实机/性能 evidence 仍是 M2 完成前提；M3 的只读对象语义候选已冻结但仍待实机字段
    evidence，不替代 M2 验收，也不启用 CAD 写入。实机测试暂缓期间继续收口不依赖 AutoCAD
    的 M4 沙箱与审计；父环境白名单、版本/App Server 健康预检、CPU/运行时间限制和工作区/
-  审计 ACL/有界保留、默认空 MCP、本地哈希链及可选每会话 `CODEX_HOME`/Windows Generic Credential
-  已完成自动化覆盖；下一步是真实隔离登录验证、插件配置隔离审查、磁盘硬配额、受限
+  审计 ACL/有界保留、默认空 MCP、本地哈希链、可选每会话 `CODEX_HOME`/Windows Generic Credential
+  及 Bridge/Runtime/Host 固定诊断脱敏边界已完成自动化覆盖；下一步是真实隔离登录验证、插件配置
+  隔离审查、磁盘硬配额、受限
   令牌/AppContainer 与受保护审计锚点。M4 完成前不启用
   M5 CAD 写入。
 

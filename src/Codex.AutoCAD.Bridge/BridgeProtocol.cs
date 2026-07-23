@@ -1,3 +1,4 @@
+using Codex.AutoCAD.Contracts;
 using Codex.AutoCAD.Ipc;
 
 namespace Codex.AutoCAD.Bridge;
@@ -63,9 +64,9 @@ public sealed class BridgeAuthenticationException : BridgeProtocolException
 public sealed class BridgeRemoteException : Exception
 {
     public BridgeRemoteException(string code, string message)
-        : base(message)
+        : base(AgentBridgeErrorSanitizer.GetSafeMessage(code))
     {
-        Code = code;
+        Code = AgentBridgeErrorSanitizer.NormalizeCode(code);
     }
 
     public string Code { get; }

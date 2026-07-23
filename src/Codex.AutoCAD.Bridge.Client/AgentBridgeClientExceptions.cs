@@ -41,7 +41,9 @@ public sealed class AgentBridgeAuthenticationException : AgentBridgeClientExcept
 public sealed class AgentBridgeRemoteException : AgentBridgeClientException
 {
     public AgentBridgeRemoteException(string code, string message)
-        : base(code, string.IsNullOrWhiteSpace(message) ? "Agent Bridge远端请求失败。" : message)
+        : base(
+            AgentBridgeErrorSanitizer.NormalizeCode(code),
+            AgentBridgeErrorSanitizer.GetSafeMessage(code))
     {
     }
 }

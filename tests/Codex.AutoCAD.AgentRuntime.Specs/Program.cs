@@ -13,6 +13,8 @@ using CadQueryEntity = Codex.AutoCAD.Contracts.CadQueryEntity;
 using CadQueryReadStatuses = Codex.AutoCAD.Contracts.CadQueryReadStatuses;
 using CadQueryResponse = Codex.AutoCAD.Contracts.CadQueryResponse;
 using CadQueryStatuses = Codex.AutoCAD.Contracts.CadQueryStatuses;
+using AgentBridgeErrorCodes = Codex.AutoCAD.Contracts.AgentBridgeErrorCodes;
+using AgentBridgeErrorSanitizer = Codex.AutoCAD.Contracts.AgentBridgeErrorSanitizer;
 
 var specs = new (string Name, Func<Task> Run)[]
 {
@@ -28,7 +30,7 @@ var specs = new (string Name, Func<Task> Run)[]
     ("cad动态工具拒绝未绑定活动轮次的调用", CadDynamicToolRejectsInactiveTurn),
     ("cad动态工具拒绝伪造turn started通知授权", CadDynamicToolRejectsForgedTurnStartedNotification),
     ("cad动态工具终态撤销授权且started通知不可恢复", CadDynamicToolTerminalNotificationRevokesAuthorization),
-    ("cad动态工具拒绝与失败终态均返回失败", CadDynamicToolRejectsNonAppliedOutcomes),
+    ("cad动态工具拒绝与失败终态隐藏Broker原始诊断", CadDynamicToolRejectsNonAppliedOutcomes),
     ("cad动态工具拒绝Broker所有终态的身份错配", CadDynamicToolRejectsMismatchedBrokerIdentity),
     ("cad动态工具Broker超时返回失败", CadDynamicToolTimeoutFailsClosed),
     ("cad动态工具Broker忽略取消时仍硬超时且晚到结果无效", CadDynamicToolHardTimeoutIgnoresLateBrokerResult),
@@ -38,14 +40,14 @@ var specs = new (string Name, Func<Task> Run)[]
     ("cad动态工具按thread-turn-call幂等", CadDynamicToolIsIdempotent),
     ("cad动态工具注册表满时保留旧call tombstone并fail closed", CadCallRegistryFullPreservesReplayTombstone),
     ("cad动态工具终态清理注册表并拒绝旧callId重放", CadCallRegistryClearsOnlyAtTurnTerminal),
-    ("cad动态工具拒绝文档绑定字段", CadDynamicToolRejectsDocumentBinding),
+    ("cad动态工具拒绝文档绑定字段且隐藏原始校验详情", CadDynamicToolRejectsDocumentBinding),
     ("cad动态工具畸形参数被隔离", MalformedCadDynamicToolIsIsolated),
     ("工作区写权限必须绑定受信根", WorkspaceWriteRequiresManagedRoot),
     ("受信工作区拒绝越界和ADS路径", ManagedWorkspaceRejectsEscapeAndAds),
     ("本地文件输入默认关闭", LocalFileInputsAreDisabledByDefault),
     ("消息与item通知投影为强类型事件", MessageAndItemNotificationsAreProjected),
     ("工具进度通知投影为强类型事件", ToolProgressNotificationsAreProjected),
-    ("轮次状态通知投影完整终态", TurnStateNotificationsAreProjected),
+    ("轮次失败投影隐藏Codex原始诊断", TurnStateNotificationsAreProjected),
     ("审批请求投影并转发决定", ApprovalRequestsAreProjectedAndForwarded),
     ("畸形通知被隔离", MalformedNotificationIsIsolated),
     ("事件观察者故障被隔离", EventObserverFailureIsIsolated),
@@ -495,6 +497,7 @@ static async Task CadDynamicToolTerminalNotificationRevokesAuthorization()
 
 static async Task CadDynamicToolRejectsNonAppliedOutcomes()
 {
+    const string marker = "M4-SENTINEL-C:\\private\\broker-token";
     foreach (var outcome in new[]
              {
                  AgentCadProposalOutcome.Rejected,
@@ -505,18 +508,26 @@ static async Task CadDynamicToolRejectsNonAppliedOutcomes()
         var broker = new FunctionalCadProposalBroker(proposal => outcome switch
         {
             AgentCadProposalOutcome.Rejected =>
-                AgentCadProposalResult.Rejected(proposal, "user declined"),
+                AgentCadProposalResult.Rejected(proposal, marker),
             AgentCadProposalOutcome.Failed =>
-                AgentCadProposalResult.Failed(proposal, "transaction rolled back"),
+                AgentCadProposalResult.Failed(proposal, marker),
             _ => throw new InvalidOperationException("Unexpected test outcome."),
         });
         await using var runtime = new CodexAgentRuntime(server, cadProposalBroker: broker);
+        var events = new List<AgentEvent>();
+        runtime.EventReceived += (_, agentEvent) => events.Add(agentEvent);
         await PrepareActiveTurnAsync(server, runtime);
 
         var resolution = await server.RequestServerAsync("item/tool/call", ValidCadToolRequest("call-terminal"));
         var response = ResolutionResult(resolution!);
         Equal(false, response.GetProperty("success").GetBoolean());
         Equal(1, broker.CallCount);
+        var text = String(response.GetProperty("contentItems")[0], "text");
+        True(!text.Contains(marker, StringComparison.Ordinal),
+            "动态工具结果不得转发Broker原始文本。");
+        var rejection = Single(events.OfType<AgentDynamicToolRejectedEvent>().ToArray());
+        True(!rejection.Reason.Contains(marker, StringComparison.Ordinal),
+            "动态工具拒绝事件不得转发Broker原始文本。");
     }
 }
 
@@ -914,7 +925,7 @@ static async Task CadDynamicToolRejectsDocumentBinding()
           "threadId":"thread-1","turnId":"turn-1","callId":"call-2",
           "namespace":"cad","tool":"propose_operations",
           "arguments":{
-            "documentFingerprint":"model-supplied",
+            "documentFingerprint":"M4-SENTINEL-C:\\private\\validation-token",
             "operations":[{"type":"create_line","start":{"x":0,"y":0},"end":{"x":1,"y":1}}]
           }
         }
@@ -924,8 +935,11 @@ static async Task CadDynamicToolRejectsDocumentBinding()
     Equal(false, response.GetProperty("success").GetBoolean());
     Equal(0, events.OfType<AgentCadProposalCreatedEvent>().Count());
     var rejected = Single(events.OfType<AgentDynamicToolRejectedEvent>().ToArray());
-    True(rejected.Reason.Contains("documentFingerprint", StringComparison.Ordinal),
-        "拒绝原因必须指出模型提交的文档绑定字段。");
+    Equal(AgentBridgeErrorSanitizer.GetSafeMessage(AgentBridgeErrorCodes.RequestInvalid),
+        rejected.Reason);
+    True(!rejected.Reason.Contains("documentFingerprint", StringComparison.Ordinal)
+        && !rejected.Reason.Contains("M4-SENTINEL", StringComparison.Ordinal),
+        "动态工具校验详情不得跨越运行时边界。");
 }
 
 static async Task MalformedCadDynamicToolIsIsolated()
@@ -1156,14 +1170,17 @@ static Task TurnStateNotificationsAreProjected()
         {"threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress","items":[]}}
         """);
     server.EmitNotification("turn/completed", """
-        {"threadId":"thread-1","turn":{"id":"turn-1","status":"failed","items":[],"error":{"message":"boom"}}}
+        {"threadId":"thread-1","turn":{"id":"turn-1","status":"failed","items":[],"error":{"message":"M4-SENTINEL-C:\\private\\codex-token"}}}
         """);
 
     var started = IsType<AgentTurnStateChangedEvent>(events[0]);
     Equal(AgentTurnStatus.InProgress, started.Status);
     var completed = IsType<AgentTurnStateChangedEvent>(events[1]);
     Equal(AgentTurnStatus.Failed, completed.Status);
-    Equal("boom", completed.ErrorMessage);
+    Equal(AgentBridgeErrorSanitizer.GetSafeMessage(AgentBridgeErrorCodes.AgentUnavailable),
+        completed.ErrorMessage);
+    True(!completed.Turn.GetRawText().Contains("M4-SENTINEL", StringComparison.Ordinal),
+        "投影的回合快照不得保留原始Codex错误。 ");
 
     return DisposeAsync(runtime, server);
 }
