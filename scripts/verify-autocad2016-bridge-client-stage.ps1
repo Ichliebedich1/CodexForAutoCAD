@@ -28,7 +28,7 @@ $nugetConfig = Join-Path $repoRoot "src\Codex.AutoCAD.Host.2016\NuGet.Config"
 $expectedSdk = "8.0.319"
 $expectedClientSpecs = 30
 $expectedBridgeSpecs = 39
-$expectedPhase2Specs = 322
+$expectedPhase2Specs = 323
 
 function Get-Sha256 {
     param([Parameter(Mandatory = $true)][string] $Path)

@@ -99,6 +99,7 @@ var specs = new[]
     new SpecCase("INDEX-M3-005 动态属性保留前八项但统计真实总数", DrawingIndexContractsSpecs.DynamicPropertyCountContinuesPastRetainedLimit),
     new SpecCase("INDEX-M3-006 单实体读取遵守Idle切片预算", DrawingIndexContractsSpecs.BlockReadBudgetExpiresAtSliceBoundary),
     new SpecCase("INDEX-M3-007 预算过期的块定义摘要不会污染会话缓存", DrawingIndexContractsSpecs.BudgetExpiredBlockDefinitionSummaryIsNotCached),
+    new SpecCase("INDEX-M3-008 高价值对象保持可查询且明确受限", DrawingIndexContractsSpecs.HighValueLimitedTypesStayQueryableAndExplicit),
 };
 
 var failed = 0;

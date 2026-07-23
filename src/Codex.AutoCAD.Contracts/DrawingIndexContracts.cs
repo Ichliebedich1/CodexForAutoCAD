@@ -127,6 +127,34 @@ public static class CadQueryReadStatuses
     public const string ReadFailed = "read_failed";
 }
 
+/// <summary>
+/// Bounded DrawingIndex categories for high-value entities whose detailed semantics are not
+/// exported by the frozen CadContextJson v2 selection snapshot.
+/// </summary>
+public static class DrawingIndexEntityTypes
+{
+    public const string Region = "region";
+    public const string Solid = "solid";
+    public const string Mesh = "mesh";
+    public const string Surface = "surface";
+    public const string RasterImage = "rasterImage";
+    public const string Underlay = "underlay";
+    public const string Proxy = "proxy";
+    public const string Wipeout = "wipeout";
+
+    public static bool IsHighValueLimited(string entityType)
+    {
+        return string.Equals(entityType, Region, StringComparison.Ordinal)
+               || string.Equals(entityType, Solid, StringComparison.Ordinal)
+               || string.Equals(entityType, Mesh, StringComparison.Ordinal)
+               || string.Equals(entityType, Surface, StringComparison.Ordinal)
+               || string.Equals(entityType, RasterImage, StringComparison.Ordinal)
+               || string.Equals(entityType, Underlay, StringComparison.Ordinal)
+               || string.Equals(entityType, Proxy, StringComparison.Ordinal)
+               || string.Equals(entityType, Wipeout, StringComparison.Ordinal);
+    }
+}
+
 public static class CadQueryBlockDetailStatuses
 {
     public const string Complete = "complete";

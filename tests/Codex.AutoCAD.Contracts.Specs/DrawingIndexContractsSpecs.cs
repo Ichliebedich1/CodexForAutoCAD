@@ -61,6 +61,45 @@ internal static class DrawingIndexContractsSpecs
         Equal(0, DrawingIndexContractValidator.Validate(response).Length);
     }
 
+    internal static void HighValueLimitedTypesStayQueryableAndExplicit()
+    {
+        var descriptor = CreateDescriptor(2, DrawingIndexStatuses.Partial, complete: false);
+        descriptor.IndexedEntityCount = 2;
+        descriptor.UnsupportedEntityCount = 2;
+        descriptor.ProgressPercent = 100;
+        var region = Entity("1", DrawingIndexEntityTypes.Region);
+        region.ActualType = "Region";
+        region.Unsupported = true;
+        region.ReadStatus = CadQueryReadStatuses.DataLimited;
+        var underlay = Entity("2", DrawingIndexEntityTypes.Underlay);
+        underlay.ActualType = "UnderlayReference";
+        underlay.Unsupported = true;
+        underlay.ReadStatus = CadQueryReadStatuses.DataLimited;
+
+        var request = CreateRequest(descriptor, 10);
+        request.Filter.EntityTypes = new[] { DrawingIndexEntityTypes.Region };
+        var included = DrawingIndexQueryEngine.Execute(
+            descriptor,
+            new[] { region, underlay },
+            request,
+            new DrawingIndexCursorRegistry());
+        Equal(CadQueryStatuses.Partial, included.Status);
+        Equal(1, included.ReturnedCount);
+        Equal(DrawingIndexEntityTypes.Region, included.Entities[0].EntityType);
+        Equal(true, included.Entities[0].Unsupported);
+        Equal(CadQueryReadStatuses.DataLimited, included.Entities[0].ReadStatus);
+        Equal(0, DrawingIndexContractValidator.Validate(included).Length);
+
+        request.Filter.IncludeUnsupported = false;
+        var excluded = DrawingIndexQueryEngine.Execute(
+            descriptor,
+            new[] { region, underlay },
+            request,
+            new DrawingIndexCursorRegistry());
+        Equal(0, excluded.ReturnedCount);
+        Equal(0, DrawingIndexContractValidator.Validate(excluded).Length);
+    }
+
     internal static void CursorPaginationIsStable()
     {
         var descriptor = CreateDescriptor(5, DrawingIndexStatuses.Ready, complete: true);
