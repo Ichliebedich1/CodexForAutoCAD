@@ -63,11 +63,13 @@ M3 `0.4.1.0` 的第一条读取语义纵切已冻结自动化候选，但尚未�
 - 中文字段核对目录见 `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`；它不替代脱敏
   示例测试图、R20.1 Probe 或实机逐类字段证据。
 - M3 精确候选为
-  `artifacts/autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b/`；AgentHost
-  SHA-256 为 `A63EFAE71CE95FAC5F764235B11C7F84E1A47CDE7BF4A0984185DADFF793C6C7`，manifest
-  SHA-256 为 `2264787CC219B864E516AFC4AD0E1E1593C314BF9A0106D6B78BCB49CC66B1EF`，冻结 evidence
-  为 `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`。
+  `artifacts/autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de/`；AgentHost
+  SHA-256 为 `DEC4B65FE09EFEF6405E5761CAEB2490AB2E6AAC22AA21F71F20B3243189691E`，manifest
+  SHA-256 为 `76079F5889109B8D06B0E19E065D042435EB0A04E1B37B27BE246ABDD90E3FB8`，冻结 evidence
+  为 `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de.json`。
   它保持 `NetLoadVerified=false`、`AutoCadLiveEvidence=false`，不能继承 M2 或 P1 的实机结论。
+- M3 另有离线验证 `6/6` 的 AC1015 核心 DXF fixture，涵盖 14 个可直接编码的基础/旧式实体变体。
+  它不是 AutoCAD 实机通过证据，Dimension、Hatch、Leader、MLeader 和 Table 仍需专用脱敏测试图。
 
 脱敏实机范围证据：
 `evidence/cad-context-v2-live-observation-20260722.json`。
@@ -92,7 +94,7 @@ CadContext schema: codex.autocad.cad-context/2
 DrawingIndex schema: codex.autocad.drawing-index/1
 CadQuery schema: codex.autocad.cad-query/1
 Candidate directory:
-C:\tmp\CodexForAutoCAD-m3-read-semantics\artifacts\autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b
+C:\tmp\CodexForAutoCAD-m3-read-semantics\artifacts\autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de
 
 Host:
 Codex.AutoCAD.Host.2016.dll
@@ -102,17 +104,17 @@ FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673
 AgentHost:
 AgentHost\Codex.AutoCAD.AgentHost.exe
 SHA-256:
-A63EFAE71CE95FAC5F764235B11C7F84E1A47CDE7BF4A0984185DADFF793C6C7
+DEC4B65FE09EFEF6405E5761CAEB2490AB2E6AAC22AA21F71F20B3243189691E
 
 Manifest SHA-256:
-2264787CC219B864E516AFC4AD0E1E1593C314BF9A0106D6B78BCB49CC66B1EF
+76079F5889109B8D06B0E19E065D042435EB0A04E1B37B27BE246ABDD90E3FB8
 ```
 
 该候选通过 Contracts net8/net45 `86/86`、Bridge Client net45/net8 各 `29/29`、
 Bridge/AgentHost `39/39`、AgentRuntime `33/33`、Host MVP `53/53`、完整 Phase 2
-`310/310`、benchmark `6/6`、R20.1 API 双 Shell Probe `29 passed / 8 expected failed`、
+`310/310`、benchmark `6/6`、M3 核心读取 DXF fixture `6/6`、R20.1 API 双 Shell Probe `29 passed / 8 expected failed`、
 R20.1/net45/x64 Host A/B 位级一致、敏感信息扫描和候选包自身 AgentHost doctor。构建证据为
-`evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`。
+`evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de.json`。
 
 它没有启动、重启或操作 AutoCAD，尚未按精确哈希在 AutoCAD 内人工 `NETLOAD`，因此保持
 `NetLoadVerified=false`、`AutoCadLiveEvidence=false`。M2 `0.4.0.0` 候选仍是其独立
@@ -256,9 +258,9 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
 哈希一致；R20.1/net45/x64 Host A/B 输出也逐字节一致，Host SHA-256 为
 `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，Autodesk DLL 复制数
 为 `0`。精确候选目录为
-`artifacts/autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b/`，manifest SHA-256 为
-`2264787CC219B864E516AFC4AD0E1E1593C314BF9A0106D6B78BCB49CC66B1EF`；冻结记录为
-`evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`。
+`artifacts/autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de/`，manifest SHA-256 为
+`76079F5889109B8D06B0E19E065D042435EB0A04E1B37B27BE246ABDD90E3FB8`；冻结记录为
+`evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de.json`。
 它没有启动或操作 AutoCAD，也尚未按精确哈希 `NETLOAD`；实机测试仍须由用户单独执行。
 
 ## 9. 安全与隐私
@@ -294,7 +296,7 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
   双 Shell 脱敏 Probe 结果，不等于 AutoCAD 实机验证。
 - `evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2.json`：
   M2 自动化冻结、候选身份和未实机边界。
-- `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`：
+- `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de.json`：
   M3 自动化冻结、候选身份和未实机边界。
 
 ## 11. 支持声明

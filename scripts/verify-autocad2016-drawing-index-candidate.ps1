@@ -27,6 +27,7 @@ $candidateProfile = if ($CandidateStage -ceq 'M2') {
         EvidencePrefix = 'm2-drawing-index-candidate-'
         ContractsSpecs = '84/84'
         UsesM3ApiProbe = $false
+        UsesM3CoreFixture = $false
     }
 }
 else {
@@ -39,6 +40,7 @@ else {
         EvidencePrefix = 'm3-read-semantics-candidate-'
         ContractsSpecs = '86/86'
         UsesM3ApiProbe = $true
+        UsesM3CoreFixture = $true
     }
 }
 $stageRoot = Join-Path $repoRoot ('artifacts\' + $candidateProfile.ArtifactPrefix + '-' + $runId)
@@ -48,7 +50,9 @@ $net45ReferencePath = Join-Path $packageRoot 'microsoft.netframework.referenceas
 $phase2Script = Join-Path $repoRoot 'scripts\verify-phase2.ps1'
 $benchmarkScript = Join-Path $repoRoot 'scripts\verify-autocad2016-drawing-index-benchmarks.ps1'
 $m3ApiProbeStageScript = Join-Path $repoRoot 'scripts\verify-autocad2016-v2-api-surface-stage.ps1'
+$m3CoreFixtureScript = Join-Path $repoRoot 'scripts\verify-autocad2016-m3-core-read-fixture.ps1'
 $benchmarkManifestPath = Join-Path $repoRoot 'handoff\autocad2016\benchmark-fixtures\DRAWING_INDEX_BENCHMARKS_V1.expected.json'
+$m3CoreFixtureManifestPath = Join-Path $repoRoot 'handoff\autocad2016\m3-fixtures\M3_CORE_READ_FIXTURE_V1.expected.json'
 $hostProject = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\Codex.AutoCAD.Host.2016.csproj'
 $nugetConfig = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\NuGet.Config'
 $assemblyInfoPath = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\Properties\AssemblyInfo.cs'
@@ -399,6 +403,10 @@ $requiredPaths = @(
 if ($candidateProfile.UsesM3ApiProbe) {
     $requiredPaths += $m3ApiProbeStageScript
 }
+if ($candidateProfile.UsesM3CoreFixture) {
+    $requiredPaths += $m3CoreFixtureScript
+    $requiredPaths += $m3CoreFixtureManifestPath
+}
 foreach ($path in $requiredPaths) {
     if (-not (Test-Path -LiteralPath $path)) {
         throw "缺少必要路径：$path"
@@ -488,6 +496,7 @@ try {
     $benchmarkManifest = Get-Content -LiteralPath $benchmarkManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 
     $m3ApiProbeSummary = $null
+    $m3CoreFixtureSummary = $null
     if ($candidateProfile.UsesM3ApiProbe) {
         $m3ApiProbeEvidenceDirectory = Join-Path $stageRoot 'm3-api-probe-evidence'
         [void](Invoke-CapturedOutput $powerShell @(
@@ -520,6 +529,37 @@ try {
             crossShellDllSha256Identical = [bool] $m3ApiProbeEvidence.crossShellDllSha256Identical
             dllSha256 = [string] $m3ApiProbeEvidence.dllSha256
             aggregateEvidenceSha256 = Get-Sha256 $m3ApiProbeEvidencePath
+        }
+    }
+    if ($candidateProfile.UsesM3CoreFixture) {
+        $m3CoreFixtureOutput = Invoke-CapturedOutput $powerShell @(
+            '-NoProfile',
+            '-File', $m3CoreFixtureScript
+        ) ($candidateProfile.Title + ' 核心读取 DXF fixture 门禁')
+        $m3CoreFixtureCheckSummary = @(
+            foreach ($line in $m3CoreFixtureOutput) {
+                $match = [regex]::Match($line, 'M3 core read fixture checks passed: (?<Passed>\d+)/(?<Total>\d+)')
+                if ($match.Success -and $match.Groups['Passed'].Value -ceq $match.Groups['Total'].Value) {
+                    $match.Groups['Passed'].Value + '/' + $match.Groups['Total'].Value
+                }
+            }
+        ) | Select-Object -Last 1
+        if ([string]::IsNullOrWhiteSpace($m3CoreFixtureCheckSummary)) {
+            throw 'M3 核心读取 DXF fixture 输出缺少全部通过的动态门禁摘要。'
+        }
+        $m3CoreFixtureManifest =
+            Get-Content -LiteralPath $m3CoreFixtureManifestPath -Raw -Encoding UTF8 |
+            ConvertFrom-Json
+        if ([int] $m3CoreFixtureManifest.expectedEntityRecordCount -ne 14 -or
+            [string] $m3CoreFixtureManifest.expectedDxfSha256 -notmatch '^[0-9a-f]{64}$') {
+            throw 'M3 核心读取 DXF fixture manifest 未满足冻结边界。'
+        }
+        $m3CoreFixtureSummary = [ordered]@{
+            checks = $m3CoreFixtureCheckSummary
+            fixtureId = [string] $m3CoreFixtureManifest.fixtureId
+            entityRecordCount = [int] $m3CoreFixtureManifest.expectedEntityRecordCount
+            dxfSha256 = [string] $m3CoreFixtureManifest.expectedDxfSha256
+            expectedManifestSha256 = Get-Sha256 $m3CoreFixtureManifestPath
         }
     }
 
@@ -716,6 +756,7 @@ try {
             blockDetails = $true
             externalXrefPathsExcluded = $true
             apiProbe = $m3ApiProbeSummary
+            coreReadFixture = $m3CoreFixtureSummary
         }
     }
     $manifestPath = Join-Path $candidateRoot 'manifest.json'
@@ -745,6 +786,7 @@ try {
         $gates['m3DualShellApiProbe'] = $true
         $gates['m3SupportedTypeCatalogCount'] = 19
         $gates['m3ExternalXrefPathsExcluded'] = $true
+        $gates['m3CoreReadFixture'] = $m3CoreFixtureSummary.checks
     }
 
     $limitations = @(
@@ -780,6 +822,9 @@ try {
     }
     if ($candidateProfile.UsesM3ApiProbe) {
         $evidence['m3ApiProbe'] = $m3ApiProbeSummary
+    }
+    if ($candidateProfile.UsesM3CoreFixture) {
+        $evidence['m3CoreReadFixture'] = $m3CoreFixtureSummary
     }
     New-Item -ItemType Directory -Path $evidenceDirectory -Force | Out-Null
     $evidencePath = Join-Path $evidenceDirectory ($candidateProfile.EvidencePrefix + $candidateId + '.json')

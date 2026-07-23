@@ -78,17 +78,17 @@ AgentHost doctor；尚未在 AutoCAD 2016 中按精确哈希 `NETLOAD`。旧 `59
 当前 M3 `0.4.1.0` 自动化候选为：
 
 ```text
-C:\tmp\CodexForAutoCAD-m3-read-semantics\artifacts\autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b
+C:\tmp\CodexForAutoCAD-m3-read-semantics\artifacts\autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de
 Host SHA-256: FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673
-AgentHost SHA-256: A63EFAE71CE95FAC5F764235B11C7F84E1A47CDE7BF4A0984185DADFF793C6C7
-Manifest SHA-256: 2264787CC219B864E516AFC4AD0E1E1593C314BF9A0106D6B78BCB49CC66B1EF
-Evidence SHA-256: 2FFD56D4CB138EF5EEBEF74BDF2D47350D0A32E53CC451624BC6D148B5DD6E8E
+AgentHost SHA-256: DEC4B65FE09EFEF6405E5761CAEB2490AB2E6AAC22AA21F71F20B3243189691E
+Manifest SHA-256: 76079F5889109B8D06B0E19E065D042435EB0A04E1B37B27BE246ABDD90E3FB8
+Evidence SHA-256: F481DD3D87EAD23971EC3D6AEE302F9BBB57C17B2696B07FC2F2682B9B02AC23
 ```
 
-该候选通过完整 Phase 2 `310/310`、benchmark fixture/evidence `6/6` 和 R20.1 API 双 Shell
-Probe `29 passed / 8 expected failed`；它没有启动或操作 AutoCAD，保持
+该候选通过完整 Phase 2 `310/310`、benchmark fixture/evidence `6/6`、M3 核心读取 DXF
+fixture `6/6` 和 R20.1 API 双 Shell Probe `29 passed / 8 expected failed`；它没有启动或操作 AutoCAD，保持
 `NetLoadVerified=false`、`AutoCadLiveEvidence=false`。精确冻结证据为
-`handoff/autocad2016/evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`。
+`handoff/autocad2016/evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de.json`。
 
 `0.3.2.0` 脱敏实机范围证据见
 `handoff/autocad2016/evidence/cad-context-v2-live-observation-20260722.json`；`0.3.3.0`

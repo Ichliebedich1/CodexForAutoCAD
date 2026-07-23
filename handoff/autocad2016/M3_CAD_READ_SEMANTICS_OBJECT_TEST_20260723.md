@@ -11,20 +11,20 @@ AutoCAD `NETLOAD` 证据；因此本文件不能把任何 M3 项目写成实机�
 
 ```text
 Candidate directory:
-C:\tmp\CodexForAutoCAD-m3-read-semantics\artifacts\autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b
+C:\tmp\CodexForAutoCAD-m3-read-semantics\artifacts\autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de
 
 NETLOAD target:
 Codex.AutoCAD.Host.2016.dll
 
 Host version: 0.4.1.0
 Host SHA-256: FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673
-AgentHost SHA-256: A63EFAE71CE95FAC5F764235B11C7F84E1A47CDE7BF4A0984185DADFF793C6C7
-Manifest SHA-256: 2264787CC219B864E516AFC4AD0E1E1593C314BF9A0106D6B78BCB49CC66B1EF
-Evidence SHA-256: 2FFD56D4CB138EF5EEBEF74BDF2D47350D0A32E53CC451624BC6D148B5DD6E8E
+AgentHost SHA-256: DEC4B65FE09EFEF6405E5761CAEB2490AB2E6AAC22AA21F71F20B3243189691E
+Manifest SHA-256: 76079F5889109B8D06B0E19E065D042435EB0A04E1B37B27BE246ABDD90E3FB8
+Evidence SHA-256: F481DD3D87EAD23971EC3D6AEE302F9BBB57C17B2696B07FC2F2682B9B02AC23
 ```
 
 对应的脱敏冻结证据是
-`evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`。
+`evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de.json`。
 它明确记录 `NetLoadVerified=false`、`AutoCadLiveEvidence=false`，并记录冻结过程没有启动、
 重启或操作 AutoCAD。
 
@@ -92,6 +92,28 @@ Idle 分片 DrawingIndex
 但仍没有实机字段证据。复杂块、复杂标注、复杂 Hatch、复杂 MLeader 与复杂 Table 仍是 M3
 后续语义工作，不能由“强类型名称出现”或 `blockDetails` 出现推断为完全支持。
 
+## 离线核心示例测试图
+
+仓库现在提供可重复生成的脱敏 `AC1015` DXF 核心 fixture，而不是提交真实 DWG 或要求测试人员
+从零手工创建每个基础对象：
+
+```text
+生成器：scripts/new-autocad2016-m3-core-read-fixture.ps1
+离线校验器：scripts/verify-autocad2016-m3-core-read-fixture.ps1
+冻结期望：handoff/autocad2016/m3-fixtures/M3_CORE_READ_FIXTURE_V1.expected.json
+输出：m3-core-read-fixture-v1.dxf + m3-core-read-fixture-v1.manifest.json
+```
+
+它固定覆盖以下 14 个实体变体：Line、Circle、Arc、Ellipse、Spline、DBPoint、Ray、Xline、
+Polyline、DBText、MText、带属性且含嵌套定义的 BlockReference、Polyline2d、Polyline3d。
+输出只使用 ASCII 测试文字和 `M3_CORE`/`M3_LEGACY`/`M3_BLOCKS` 图层；生成器不启动、控制
+或向 AutoCAD 发送命令。它的确定性、文件集、实体顺序、层和 2D/3D 多段线标志由离线校验器
+锁定为 `6/6`。
+
+Dimension、Hatch、Leader、MLeader 和 Table 没有被伪造为通用 DXF 样本，因为这些对象的
+R20.1 语义依赖样式、关联或对象图结构。它们仍须在脱敏的专用测试图中由测试人员通过正常
+界面创建；高价值受限对象和 Xref 也仍须单独实机核对。
+
 ## 未支持与高价值受限对象
 
 下列对象不是本纵切新增的完整强类型 payload。若出现在选择快照或整图索引中，应尽量以
@@ -110,9 +132,17 @@ Xref 的外部真实路径不允许进入可读摘要、Canonical JSON、日志�
 本项目不会启动、关闭或控制 AutoCAD，也不会保存图纸。先人工 `NETLOAD` 该候选根目录中的
 `Codex.AutoCAD.Host.2016.dll`，再执行下列测试。
 
-1. 人工准备一类或少量同类对象后，先执行 `DBMOD` 记下此时的值。对象创建本身可以改变
+1. 对上述 14 类基础对象，可在 AutoCAD 外先生成一个新目录：
+
+   ```powershell
+   .\scripts\new-autocad2016-m3-core-read-fixture.ps1 -OutputDirectory 'C:\tmp\CodexM3CoreFixture'
+   ```
+
+   然后由测试人员在 AutoCAD 正常界面打开生成的 `m3-core-read-fixture-v1.dxf`；不要保存或
+   覆盖该 fixture。其余 5 类复杂对象和受限对象仍在独立脱敏测试图中手工准备。
+2. 人工准备一类或少量同类对象后，先执行 `DBMOD` 记下此时的值。对象创建本身可以改变
    `DBMOD`；本步骤只验证随后插件只读捕获不再改变它。
-2. 鼠标预选不超过 64 个对象，预选完成后不要插入其他命令，立即执行：
+3. 鼠标预选不超过 64 个对象，预选完成后不要插入其他命令，立即执行：
 
    ```text
    CODEX16CTX
@@ -121,18 +151,18 @@ Xref 的外部真实路径不允许进入可读摘要、Canonical JSON、日志�
    DBMOD
    ```
 
-3. 用 AutoCAD 属性面板或 `LIST` 本地核对表中字段。对块参照另核对 `blockDetails` 的属性、
+4. 用 AutoCAD 属性面板或 `LIST` 本地核对表中字段。对块参照另核对 `blockDetails` 的属性、
    动态属性、嵌套计数/深度、布局和 Xref 布尔值；外部 Xref 不应显示真实路径。不要把完整 JSON、真实图名、路径、
    Handle、选择哈希或上下文哈希贴入聊天或提交 Git；只记录“字段一致/不一致”和命令
    `status`。
-4. 若出现未支持或受限对象，确认捕获仍发布，`complete=false`，且信息区出现例如：
+5. 若出现未支持或受限对象，确认捕获仍发布，`complete=false`，且信息区出现例如：
 
    ```text
    Placeholder reasons: 未支持类型 1，数据超限 0，读取失败 0
    Placeholder actual types: 代理对象(ACAD_PROXY_ENTITY) x1
    ```
 
-5. 对整图或多于 64 个对象的样本，使用 M2 的 `CODEX16INDEX` / `CODEX16INDEXINFO`，而不是
+6. 对整图或多于 64 个对象的样本，使用 M2 的 `CODEX16INDEX` / `CODEX16INDEXINFO`，而不是
    用选择快照规避上限。确认 `Placeholder actual types` 与实测对象类别相符。
 
 如果任何对象让整次捕获返回 `published=false`、抛出未处理异常、泄露路径/实体内容，或读取
@@ -148,6 +178,8 @@ Xref 的外部真实路径不允许进入可读摘要、Canonical JSON、日志�
 - 中文目录：恰好 19 个编号条目，且不包含本机路径。
 - 块详情：有界属性/动态属性、嵌套块、布局和安全 Xref 元数据通过 Contracts、Host、Bridge
   和 Agent 工具的真实 JSON 传输；深拷贝、内存预算、IPC 以及无 Xref 路径字段均有回归。
+- 核心示例图：14 个安全直接编码的实体变体通过确定性 DXF generator/validator 固定；它不
+  取代 AutoCAD 内加载、字段读取或剩余 5 类复杂对象的实机证据。
 
 当前自动门禁结果：
 
@@ -162,11 +194,11 @@ Xref 的外部真实路径不允许进入可读摘要、Canonical JSON、日志�
   `0.4.1.0` SHA-256 为
   `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`。
 - 自动化候选目录为
-  `artifacts/autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b/`；manifest SHA-256
-  为 `2264787CC219B864E516AFC4AD0E1E1593C314BF9A0106D6B78BCB49CC66B1EF`，冻结 evidence 为
-  `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`。
+  `artifacts/autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de/`；manifest SHA-256
+  为 `76079F5889109B8D06B0E19E065D042435EB0A04E1B37B27BE246ABDD90E3FB8`，冻结 evidence 为
+  `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de.json`。
   该自动化候选仍没有 AutoCAD `NETLOAD` 证据。
 
-仍未完成：19 类对象与块详情的实机字段证据、脱敏示例测试图资产、复杂对象语义、复杂块/
-Xref 边界，以及高价值对象的受限读取。M2 的 1k/10k/50k 实机性能和查询证据仍独立待办，
-不因本文件而完成。
+仍未完成：全部 19 类对象与块详情的实机字段证据、5 类复杂对象及高价值受限对象的脱敏
+示例图资产、复杂对象语义、复杂块/Xref 边界，以及高价值对象的受限读取。M2 的
+1k/10k/50k 实机性能和查询证据仍独立待办，不因本文件而完成。

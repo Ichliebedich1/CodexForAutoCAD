@@ -230,11 +230,16 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 完成定义：不支持对象只降低完整性，不使整次捕获失败。
 
 当前 `0.4.1.0` M3 自动化候选已经冻结，但没有 AutoCAD `NETLOAD` 证据。精确候选为
-`autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b`；Host SHA-256 为
+`autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de`；Host SHA-256 为
 `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，AgentHost SHA-256 为
-`A63EFAE71CE95FAC5F764235B11C7F84E1A47CDE7BF4A0984185DADFF793C6C7`，manifest SHA-256 为
-`2264787CC219B864E516AFC4AD0E1E1593C314BF9A0106D6B78BCB49CC66B1EF`。说明与人工字段核对
+`DEC4B65FE09EFEF6405E5761CAEB2490AB2E6AAC22AA21F71F20B3243189691E`，manifest SHA-256 为
+`76079F5889109B8D06B0E19E065D042435EB0A04E1B37B27BE246ABDD90E3FB8`。说明与人工字段核对
 模板见 `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
+
+当前工作站在 2026-07-23 的离线 Phase 2 doctor 中观察到 Codex 凭据刷新失败。它不影响
+本候选的编译、规格或 doctor 握手结论，但不构成真实 Codex 回合认证成功的证据；下一次
+`CODEX16ASK` 若出现认证失败，应先在 Codex 客户端手工重新登录，再单独记录实机结果。
+不得把原始认证错误、令牌或环境变量写入 evidence。
 
 - [x] 在选择快照、整图索引、Palette 和诊断中按实际类型/数量显示未支持、数据超限和
   读取失败对象；统计不包含图层、Handle、路径或对象内容，且类型桶有界。
@@ -247,10 +252,10 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，Autodesk DLL 复制数
   为 `0`。
 - [x] 冻结 M3 精确候选及 manifest：完整 Phase 2 `310/310`、benchmark fixture/evidence
-  `6/6`、R20.1 API 双 Shell Probe `29 passed / 8 expected failed`、Host A/B 位级一致和
+  `6/6`、M3 核心读取 DXF fixture `6/6`、R20.1 API 双 Shell Probe `29 passed / 8 expected failed`、Host A/B 位级一致和
   候选 AgentHost doctor 均通过。脱敏证据为
-  `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`
-  （文件 SHA-256：`2FFD56D4CB138EF5EEBEF74BDF2D47350D0A32E53CC451624BC6D148B5DD6E8E`）。
+  `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de.json`
+  （文件 SHA-256：`F481DD3D87EAD23971EC3D6AEE302F9BBB57C17B2696B07FC2F2682B9B02AC23`）。
   该过程没有启动、重启或操作 AutoCAD，故仍为 `NetLoadVerified=false`、
   `AutoCadLiveEvidence=false`。
 - [x] 提供 M3 中文对象目录、首要字段和未来实机记录模板。
@@ -259,7 +264,11 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   IPC 测试保护。外部 Xref 定义及真实路径不会读取或传播，详情降级为 `limited`。
 - [x] M3 块读取所需 R20.1 API 已由双 Shell Probe 固定为 `29 passed / 8 expected failed`；
   脱敏 evidence 为 `evidence/v2-api-surface-probe-m3-cross-shell-20260723.json`。
-- [ ] 为 19 类对象提供或冻结脱敏示例测试图；目录和创建入口不能替代测试资产。
+- [x] 冻结可重复的 `AC1015` 核心 DXF fixture：14 个安全直接编码的实体变体、带属性和嵌套
+  定义的 BlockReference、确定性 hash/文件集/实体顺序/多段线标志离线校验 `6/6`。生成器和
+  校验器不启动或控制 AutoCAD，说明见 `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
+- [ ] 为 Dimension、Hatch、Leader、MLeader、Table 和高价值受限对象冻结脱敏示例测试图；
+  中文目录和创建入口不能替代这些剩余测试资产。
 - [ ] 逐类实机验证现有 19 种强类型对象。
 - [ ] 用精确 M3 候选实机核对块属性、动态块、嵌套块、布局和安全 Xref 降级；复杂块语义
   与异常图仍需扩展。

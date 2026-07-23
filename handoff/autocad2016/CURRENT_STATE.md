@@ -136,18 +136,21 @@ NETLOAD 证据的能力一律视为未支持。
   Agent 工具。它包含属性/动态属性、嵌套块计数与深度、布局标志及安全 Xref 布尔元数据；
   外部 Xref 定义和真实路径不会读取或传播，任何受限情况以 `limited` 降级。
 - M3 自动化候选已冻结为
-  `artifacts/autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b/`。Host SHA-256 为
+  `artifacts/autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de/`。Host SHA-256 为
   `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，AgentHost EXE 为
-  `A63EFAE71CE95FAC5F764235B11C7F84E1A47CDE7BF4A0984185DADFF793C6C7`，manifest 为
-  `2264787CC219B864E516AFC4AD0E1E1593C314BF9A0106D6B78BCB49CC66B1EF`。
+  `DEC4B65FE09EFEF6405E5761CAEB2490AB2E6AAC22AA21F71F20B3243189691E`，manifest 为
+  `76079F5889109B8D06B0E19E065D042435EB0A04E1B37B27BE246ABDD90E3FB8`。
 - 该 M3 候选通过 Contracts `86/86`、Bridge Client net45/net8 各 `29/29`、Bridge `39/39`、
   AgentRuntime `33/33`、Host MVP `53/53` 和完整 Phase 2 `310/310`。R20.1 API 双 Shell
   Probe 为 `29 passed / 8 expected failed`；目标 R20.1/net45/x64 Host A/B 输出逐字节一致，
   `0.4.1.0` 当前 Host SHA-256 为
   `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，Autodesk DLL 复制数
   为 `0`。冻结 evidence 为
-  `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-a63efae7-e4097e2b.json`，
-  SHA-256 为 `2FFD56D4CB138EF5EEBEF74BDF2D47350D0A32E53CC451624BC6D148B5DD6E8E`。
+  `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-dec4b65f-420c48de.json`，
+  SHA-256 为 `F481DD3D87EAD23971EC3D6AEE302F9BBB57C17B2696B07FC2F2682B9B02AC23`。
+- M3 另冻结一个可重复的 AC1015 核心 DXF fixture：14 个可直接编码的基础/旧式实体变体、
+  带属性和嵌套定义的 BlockReference，以及确定性文件集与实体顺序离线校验 `6/6`。它不代替
+  AutoCAD 字段读取，也不覆盖 Dimension、Hatch、Leader、MLeader 和 Table 的专用实机样本。
 - 该候选没有启动、重启或操作 AutoCAD，保持 `NetLoadVerified=false`、
   `AutoCadLiveEvidence=false`；它不能继承 M2、M1 或 P1 的实机结论。中文对象目录、字段
   核对模板和边界见
