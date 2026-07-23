@@ -850,9 +850,12 @@ internal sealed class WindowsProcessTreeJob : IDisposable
             limits.BasicLimitInformation.LimitFlags =
                 WindowsNative.JobObjectLimitKillOnJobClose
                 | WindowsNative.JobObjectLimitActiveProcess
-                | WindowsNative.JobObjectLimitJobMemory;
+                | WindowsNative.JobObjectLimitJobMemory
+                | WindowsNative.JobObjectLimitJobTime;
             limits.BasicLimitInformation.ActiveProcessLimit =
                 checked((uint)processTreeLimits.MaximumActiveProcesses);
+            limits.BasicLimitInformation.PerJobUserTimeLimit =
+                processTreeLimits.MaximumJobUserTime.Ticks;
             limits.JobMemoryLimit = ToUIntPtr(processTreeLimits.MaximumJobMemoryBytes);
             if (!WindowsNative.SetInformationJobObject(
                     safeHandle,
@@ -863,6 +866,22 @@ internal sealed class WindowsProcessTreeJob : IDisposable
                 throw new Win32Exception(
                     Marshal.GetLastWin32Error(),
                     "Setting the AgentHost process-tree job limit failed.");
+            }
+
+            var cpuRate = new WindowsNative.JobObjectCpuRateControlInformation();
+            cpuRate.ControlFlags =
+                WindowsNative.JobObjectCpuRateControlEnable
+                | WindowsNative.JobObjectCpuRateControlHardCap;
+            cpuRate.CpuRate = checked((uint)processTreeLimits.MaximumCpuRatePercent * 100u);
+            if (!WindowsNative.SetInformationJobObject(
+                    safeHandle,
+                    WindowsNative.JobObjectCpuRateControlInformationClass,
+                    ref cpuRate,
+                    checked((uint)Marshal.SizeOf(typeof(WindowsNative.JobObjectCpuRateControlInformation)))))
+            {
+                throw new Win32Exception(
+                    Marshal.GetLastWin32Error(),
+                    "Setting the AgentHost process-tree CPU-rate limit failed.");
             }
 
             return new WindowsProcessTreeJob(safeHandle);
@@ -894,10 +913,26 @@ internal sealed class WindowsProcessTreeJob : IDisposable
                 "Querying the AgentHost process-tree job limits failed.");
         }
 
+        var cpuRate = new WindowsNative.JobObjectCpuRateControlInformation();
+        if (!WindowsNative.QueryInformationJobObject(
+                handle,
+                WindowsNative.JobObjectCpuRateControlInformationClass,
+                ref cpuRate,
+                checked((uint)Marshal.SizeOf(typeof(WindowsNative.JobObjectCpuRateControlInformation))),
+                out returnedLength))
+        {
+            throw new Win32Exception(
+                Marshal.GetLastWin32Error(),
+                "Querying the AgentHost process-tree CPU-rate limit failed.");
+        }
+
         return new AgentHostProcessTreeLimitSnapshot(
             limits.BasicLimitInformation.LimitFlags,
             checked((int)limits.BasicLimitInformation.ActiveProcessLimit),
-            checked((long)limits.JobMemoryLimit.ToUInt64()));
+            checked((long)limits.JobMemoryLimit.ToUInt64()),
+            TimeSpan.FromTicks(limits.BasicLimitInformation.PerJobUserTimeLimit),
+            cpuRate.ControlFlags,
+            checked((int)cpuRate.CpuRate));
     }
 
     internal void Assign(SafeKernelHandle process)
@@ -954,11 +989,17 @@ internal sealed class AgentHostProcessTreeLimitSnapshot
     internal AgentHostProcessTreeLimitSnapshot(
         uint limitFlags,
         int maximumActiveProcesses,
-        long maximumJobMemoryBytes)
+        long maximumJobMemoryBytes,
+        TimeSpan maximumJobUserTime,
+        uint cpuControlFlags,
+        int cpuRateBasisPoints)
     {
         LimitFlags = limitFlags;
         MaximumActiveProcesses = maximumActiveProcesses;
         MaximumJobMemoryBytes = maximumJobMemoryBytes;
+        MaximumJobUserTime = maximumJobUserTime;
+        CpuControlFlags = cpuControlFlags;
+        CpuRateBasisPoints = cpuRateBasisPoints;
     }
 
     internal uint LimitFlags { get; }
@@ -966,6 +1007,12 @@ internal sealed class AgentHostProcessTreeLimitSnapshot
     internal int MaximumActiveProcesses { get; }
 
     internal long MaximumJobMemoryBytes { get; }
+
+    internal TimeSpan MaximumJobUserTime { get; }
+
+    internal uint CpuControlFlags { get; }
+
+    internal int CpuRateBasisPoints { get; }
 }
 
 internal static class WindowsNative
@@ -979,8 +1026,12 @@ internal static class WindowsNative
     internal const uint JobObjectLimitKillOnJobClose = 0x00002000;
     internal const uint JobObjectLimitActiveProcess = 0x00000008;
     internal const uint JobObjectLimitJobMemory = 0x00000200;
+    internal const uint JobObjectLimitJobTime = 0x00000004;
+    internal const uint JobObjectCpuRateControlEnable = 0x00000001;
+    internal const uint JobObjectCpuRateControlHardCap = 0x00000004;
     internal const int ProcThreadAttributeHandleList = 0x00020002;
     internal const int JobObjectExtendedLimitInformationClass = 9;
+    internal const int JobObjectCpuRateControlInformationClass = 15;
     internal const int StandardInputHandle = -10;
     internal const int StandardOutputHandle = -11;
     internal const int StandardErrorHandle = -12;
@@ -1124,6 +1175,13 @@ internal static class WindowsNative
         internal UIntPtr PeakJobMemoryUsed;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct JobObjectCpuRateControlInformation
+    {
+        internal uint ControlFlags;
+        internal uint CpuRate;
+    }
+
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool CreatePipe(
@@ -1147,10 +1205,27 @@ internal static class WindowsNative
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetInformationJobObject(
+        SafeKernelHandle job,
+        int jobObjectInformationClass,
+        ref JobObjectCpuRateControlInformation jobObjectInformation,
+        uint jobObjectInformationLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool QueryInformationJobObject(
         SafeKernelHandle job,
         int jobObjectInformationClass,
         ref JobObjectExtendedLimitInformation jobObjectInformation,
+        uint jobObjectInformationLength,
+        out uint returnLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool QueryInformationJobObject(
+        SafeKernelHandle job,
+        int jobObjectInformationClass,
+        ref JobObjectCpuRateControlInformation jobObjectInformation,
         uint jobObjectInformationLength,
         out uint returnLength);
 

@@ -79,16 +79,18 @@ M4 进程隔离已完成一个不依赖 AutoCAD 实机的小阶段：
 - 校验后的 AgentHost 在恢复前进入未命名 Windows Job Object；正常 STOP 或 Job 拥有者退出
   会回收 AgentHost 及其普通后代。
 - 同一 Job 保留 `KILL_ON_JOB_CLOSE`，并默认限制进程树最多 `16` 个进程、Job 总提交内存
-  最多 `4 GiB`；非法配置在创建子进程前 fail-closed。
-- net45/net8 AgentLauncher Specs 各 `30/30`；Windows 已读回同一 Job 工厂设置的实际标志
-  与值，相关进程基线/终态为 `0 -> 0`。
+  最多 `4 GiB`、CPU hard cap `75%`、累计 Job user-time `8` 小时；认证后的 service session
+  另有 `24` 小时墙钟截止。非法配置在创建子进程前 fail-closed。
+- net45/net8 AgentLauncher Specs 各 `35/35`；Windows 已读回同一 Job 工厂设置的实际标志
+  与值，CPU-busy synthetic child user-time 耗尽、墙钟终止、显式 STOP 胜过已撤销截止、一次
+  清理重试及连续失败后阻断后续启动均通过，相关进程基线/终态为 `0 -> 0`。
 - AgentHost 只读会话现在强制写入每会话独立的有界 JSONL 审计，覆盖 session、Bridge、请求、
   thread/turn、取消、审批请求和 turn 终态；仅记录受限 ID/方法/稳定状态码，审计故障会关闭
   Bridge。当前 Bridge 为 `44/44`。
 - Codex 子进程现先清空父环境，再使用固定 `16` 个变量名；`TEMP`/`TMP` 指向每会话 workspace，
   不自动传入 token/API key、代理、父 `PATH`、`CODEX_HOME` 或自定义变量。AppServer 为 `20/20`，
   完整 Phase 2 为 `329/329`，真实 doctor 和两轮 Codex live 继续通过。
-- 这没有故意耗尽真实 Codex 的进程槽或内存，也没有启动或控制 AutoCAD；CPU、运行时、
+- 这没有故意耗尽真实 Codex 的进程槽或内存、测量 CPU 节流性能，也没有启动或控制 AutoCAD；
   工作目录磁盘、每会话 `CODEX_HOME`、凭据隔离、审计 ACL/保留、审批解决和 CAD
   写入终态仍未完成。
 

@@ -305,16 +305,24 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   每会话凭据隔离。见 `M4_CODEX_CHILD_ENVIRONMENT_ALLOWLIST_20260723.md`。
 - [x] AgentHost 启动链在恢复前创建 `KILL_ON_JOB_CLOSE` 的未命名 Windows Job Object 并分配
   已校验的 AgentHost；普通后代继承该边界。隔离 `bootstrap-serve` 规格已按 PID 验证
-  `StopAsync` 和拥有 Job 的启动器直接退出时均回收父/后代，net45/net8 各 `30/30`。真实
+  `StopAsync` 和拥有 Job 的启动器直接退出时均回收父/后代；当前完整 AgentLauncher 门禁
+  net45/net8 各 `35/35`。真实
   Codex/AutoCAD 异常退出和僵尸进程仍未验收，详见
   `M4_PROCESS_ISOLATION_BASELINE_20260723.md`。
 - [x] 同一 Job 默认限制 AgentHost/Codex 进程树最多 `16` 个进程、总提交内存最多 `4 GiB`；
   可接受范围分别为 `2..64` 与 `512 MiB..16 GiB`，非法值在进程创建前结构化失败。
   `QueryInformationJobObject` 已读回实际标志和值，但没有故意耗尽真实 Codex 的进程槽或内存。
   脱敏证据为 `evidence/m4-agenthost-job-resource-limits-20260723.json`。
+- [x] 同一 Job 增加 CPU hard cap 和累计 Job user-time：默认分别为 `75%` 和 `8` 小时；认证后的
+  service session 增加默认 `24` 小时墙钟截止。Windows 读回、非法边界、CPU-busy synthetic
+  child user-time 耗尽终止、墙钟终止、显式 STOP 胜过已撤销截止、一次自动清理重试及连续
+  失败后阻断后续启动在 net45/net8 均通过。Job user-time 明确不是墙钟时间，CPU 节流性能未
+  测量。见
+  `M4_CPU_RUNTIME_LIMITS_20260723.md` 和
+  `evidence/m4-agenthost-cpu-runtime-limits-20260723.json`。
 - [ ] 评估并实现受限令牌或 AppContainer。
-- [ ] 设置 CPU、运行时间和工作目录磁盘配额；为进程数/内存限制增加真实 Codex 耗尽与
-  用户可理解的失败诊断。
+- [ ] 设置可靠的工作目录磁盘硬配额；为进程数/内存/CPU 限制增加真实 Codex 耗尽或节流验证与
+  用户可理解的失败诊断。不要用轮询目录大小冒充硬配额。
 - [ ] 工作目录使用最小 ACL 并按策略清理。
 - [ ] 将 AgentRuntime、Bridge、Host、配置和日志导出纳入同一脱敏策略；当前仅完成 Codex
   子进程 stderr 与 AgentHost 控制台诊断边界。

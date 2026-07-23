@@ -244,13 +244,14 @@ NETLOAD 证据的能力一律视为未支持。
   `KILL_ON_JOB_CLOSE` 的未命名 Windows Job Object；普通后代由该 Job 统一回收。隔离
   bootstrap-serve 规格以真实 PID 验证 `StopAsync` 和拥有 Job 的启动器不调用停止逻辑直接
   退出后，父/后代均消失。
-- M4 第四资源限制边界在同一 Job 上增加 `ACTIVE_PROCESS` 与 `JOB_MEMORY`：默认最多 `16`
+- M4 第四资源限制边界当时在同一 Job 上增加 `ACTIVE_PROCESS` 与 `JOB_MEMORY`：默认最多 `16`
   个进程、Job 总提交内存最多 `4 GiB`，允许范围分别为 `2..64` 与 `512 MiB..16 GiB`。
   非法配置在创建子进程前 fail-closed；同一 Job 工厂通过 `QueryInformationJobObject`
-  读回 Windows 实际接受的标志和值。AgentLauncher net45/net8 均为 `30/30`，专用门禁
+  读回 Windows 实际接受的标志和值。该阶段 AgentLauncher net45/net8 均为 `30/30`，专用门禁
   双构建 `0/0`、相关进程 `0 -> 0`。脱敏证据为
   `evidence/m4-agenthost-job-resource-limits-20260723.json`。这不替代真实 Codex 配额耗尽、
-  AutoCAD 异常退出、CPU/运行时/磁盘配额或完整 M4 沙箱验收。
+  AutoCAD 异常退出或当时尚未实现的 CPU/运行时/磁盘配额，也不替代完整 M4 沙箱验收；其中
+  CPU/运行时间限制已由下述第七边界取代。
 - M4 第五运行审计边界已接入真实 `bootstrap-serve` 会话：每会话在当前用户本地固定盘的独立
   `CreateNew` JSONL 文件中记录 session、Bridge 连接、请求、thread/turn、取消、审批请求和
   回合终态。记录采用固定字段白名单、单调 sequence、`10,000` 条/`4 MiB` 默认硬上限；提示词、
@@ -266,10 +267,18 @@ NETLOAD 证据的能力一律视为未支持。
   继续通过，清理后 AgentHost/app-server 为 `0/0`。当前仍通过 `USERPROFILE`/`HOME` 使用默认
   用户 Codex home 兼容文件登录，所以每会话凭据、空 MCP/插件配置仍未完成。见
   `M4_CODEX_CHILD_ENVIRONMENT_ALLOWLIST_20260723.md`。
-- 当前资源限制证据的构建哈希：AgentHost EXE `B31015B2...233B8`，AgentHost DLL
-  `801C6BF0...60EA`，net45 Launcher `B88DDC8F...975B`，net8 Launcher
-  `6619D54F...9F69`；完整值保存在阶段 evidence，其文件 SHA-256 为
-  `A6E22226423B2339EFE46034500D491E46829B651BDA9885B6F55194498AD8DD`。
+- M4 第七 CPU/运行时间边界扩展同一 Job 与 service session：CPU hard cap 默认 `75%`
+  （允许 `1..100%`），累计 Job user-time 默认 `8` 小时（允许 `100 ms..7 d`），认证后的
+  service session 墙钟截止默认 `24` 小时（允许 `1 s..7 d`）。Job user-time 是整个进程树累计
+  的用户态 CPU 时间，不是墙钟时间。Windows 已读回 `JOB_TIME`、CPU enable/hard-cap 标志和
+  精确值；CPU-busy synthetic child 在 user-time 耗尽后被 OS 终止，挂起 service 在墙钟截止后
+  进入既有有界清理，首次终止失败会自动重试一次，连续失败会毒化后续启动。net45/net8 各
+  `35/35`，相关进程 `0 -> 0`。CPU 节流性能、真实 Codex 内存/进程槽耗尽和 AutoCAD 异常退出
+  未由此证明。见 `M4_CPU_RUNTIME_LIMITS_20260723.md`。
+- 当前 CPU/运行时间证据的构建哈希：AgentHost EXE `4D6D0DCC...83B9E`，AgentHost DLL
+  `17F8E846...0858E`，net45 Launcher `E1A3B4B1...BEBE9`，net8 Launcher
+  `08E4294C...1239`；完整值保存在阶段 evidence，其文件 SHA-256 为
+  `B6F8546CC9410D172E501BAF217B1C7B7FF0D52195E14AEC9322FB1709788207`。
 - Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 动态汇总 `329/329`、
   AgentHost doctor、Host 禁止 API、秘密扫描和 diff 通过；认证固定向量与现有 Bridge/IPC
   回归保持通过。

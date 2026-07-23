@@ -52,10 +52,14 @@
   SHA-256 为 `B5081C63DD11BD36706B529EC28C58BB1DEA22FEF6D50BA0E76C5E3E4CE67879`，Autodesk DLL
   复制数为 `0`。这些结果已写入候选 manifest 和脱敏 evidence，但仍不是 AutoCAD 实机证据。
 - M4 已在真实 AgentHost 启动链的未命名 Windows Job Object 上应用进程树硬限制：默认最多
-  `16` 个进程、Job 总提交内存最多 `4 GiB`，并保留 `KILL_ON_JOB_CLOSE`。非法值在进程创建
-  前 fail-closed；net45/net8 AgentLauncher Specs 各 `30/30`，Windows 已读回相同限制标志
-  与值。该结果没有故意耗尽真实 Codex 配额，也不代表 CPU、运行时、磁盘或凭据隔离
-  已完成。
+  `16` 个进程、Job 总提交内存 `4 GiB`、CPU hard cap `75%`、累计 Job user-time `8` 小时，
+  并保留 `KILL_ON_JOB_CLOSE`；认证后的 service session 另有 `24` 小时墙钟截止。非法值在进程
+  创建前 fail-closed；net45/net8 AgentLauncher Specs 各 `35/35`，Windows 已读回全部 Job 标志
+  与值，并用 CPU-busy synthetic child 验证 user-time 耗尽终止、用挂起 service 验证墙钟终止和
+  一次清理重试，并验证显式 STOP 不会被已撤销截止反转、连续两次清理失败会阻断后续启动。
+  该结果没有测量 CPU 节流性能、故意
+  耗尽真实 Codex 的内存/进程槽，也不代表
+  工作目录磁盘或凭据隔离已完成。
 - M4 AgentHost 只读运行审计已进入真实 `bootstrap-serve` 调用链：每会话独立有界 JSONL 记录
   session、Bridge、请求、thread/turn、取消、审批请求和 turn 终态；只允许脱敏 ID、方法和稳定
   状态码，审计故障会关闭 Bridge。当前 Bridge 为 `44/44`。

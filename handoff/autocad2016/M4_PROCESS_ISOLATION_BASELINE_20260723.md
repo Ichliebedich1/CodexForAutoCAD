@@ -4,11 +4,11 @@
 
 ## 状态
 
-本文件记录 M4 已完成的六个小切口：Codex 子进程 stderr/AgentHost 诊断脱敏、本机 Codex
+本文件记录 M4 已完成的七个小切口：Codex 子进程 stderr/AgentHost 诊断脱敏、本机 Codex
 启动配置、AgentHost 进程树的 Job Object 边界、该 Job 的进程数/总提交内存硬限制，以及
-AgentHost 只读会话的内容脱敏 JSONL 运行审计和 Codex 子进程父环境白名单；不是完整沙箱候选，
-不代表已完成每会话 `CODEX_HOME`、CPU/运行时/磁盘配额、凭据隔离、审计 ACL/保留策略或 CAD 写入
-终态审计。
+AgentHost 只读会话的内容脱敏 JSONL 运行审计、Codex 子进程父环境白名单和 CPU/累计用户时间/
+会话墙钟限制；不是完整沙箱候选，不代表已完成每会话 `CODEX_HOME`、磁盘配额、凭据隔离、
+审计 ACL/保留策略或 CAD 写入终态审计。
 本轮没有启动、关闭或控制 AutoCAD，也没有加载 DLL、保存或修改图纸。
 
 当前代码调用链仍为：
@@ -16,7 +16,7 @@ AgentHost 只读会话的内容脱敏 JSONL 运行审计和 Codex 子进程父�
 ```text
 AutoCAD Host.2016
   -> authenticated AgentHost bootstrap
-     (unnamed Windows Job Object; kill-on-close + process-count/job-memory limits)
+     (unnamed Windows Job Object; kill-on-close + process/memory/CPU/user-time limits)
   -> AgentHost Program
   -> CodexChildEnvironmentPolicy
   -> CodexProcessTransport (clear parent environment + fixed allowlist)
@@ -24,8 +24,9 @@ AutoCAD Host.2016
 ```
 
 现有受限 bootstrap、批准的 AgentHost EXE 哈希、受限继承句柄和有界直接子进程终止继续保留。
-启动器在恢复 AgentHost 前创建未命名 Job Object、设置 `KILL_ON_JOB_CLOSE`、`ACTIVE_PROCESS`
-和 `JOB_MEMORY` 并完成进程分配；该 Job handle 随受认证的 service session 保存。因此正常停止
+启动器在恢复 AgentHost 前创建未命名 Job Object、设置 `KILL_ON_JOB_CLOSE`、`ACTIVE_PROCESS`、
+`JOB_MEMORY`、`JOB_TIME` 和 CPU hard cap 并完成进程分配；该 Job handle 随受认证的 service
+session 保存。因此正常停止
 或拥有它的 Host 进程结束都会关闭该边界。普通后代会继承 Job membership；真实 Codex 的
 配额耗尽和异常退出矩阵仍需另做验证。
 
@@ -51,10 +52,17 @@ AutoCAD Host.2016
   fail-closed。当前 Host 使用这两个安全默认值，尚未提供面向用户的配置入口。
 - 同一 Job 工厂创建后会通过 `QueryInformationJobObject` 读回限制标志和值；该检查证明
   Windows 接受配置，不等于故意耗尽进程槽或内存后的行为测试。
-- AgentLauncher net45/net8 规格各 `30/30`：隔离的 `bootstrap-serve` 假 AgentHost 会启动一个
+- CPU hard cap 默认 `75%`，累计 Job user-time 默认 `8` 小时；允许范围分别为 `1..100%` 与
+  `100 ms..7 d`。Job user-time 是 AgentHost/Codex 全进程树累计用户态 CPU 时间，不是墙钟时间。
+  CPU-busy synthetic child 已验证 user-time 耗尽后由 Windows 终止整个 Job；CPU 节流性能未测量。
+- 认证完成后的 service session 另有默认 `24` 小时墙钟截止，允许 `1 s..7 d`；截止后调用既有
+  有界 Stop 清理，首次终止失败会在 `100 ms` 后重试一次，连续失败会记录 late failure 并阻止
+  后续启动。`RuntimeExpired` 保留终止原因状态。
+- AgentLauncher net45/net8 规格各 `35/35`：隔离的 `bootstrap-serve` 假 AgentHost 会启动一个
   已知挂起的后代；`StopAsync` 返回后，以及拥有 Job 的启动器不调用停止逻辑而直接退出后，
   父/后代 PID 都必须消失。规格还验证默认/自定义限额、Windows 读回值和非法配置。专用
-  引导门禁确认相关进程基线/终态均为 `0`，没有启动或操作 AutoCAD。
+  引导门禁还验证 Job user-time 真实终止、墙钟终止、显式 STOP 胜过已撤销截止、清理重试和
+  连续失败后阻断后续启动；相关进程基线/终态均为 `0`，没有启动或操作 AutoCAD。
 - `AgentHostAuditLog` 已成为 `bootstrap-serve` 真实会话的必需依赖。它在当前用户的本地固定
   磁盘目录 `%LOCALAPPDATA%\OpenAI\CodexForAutoCAD\audit\agenthost` 创建每会话独占
   `CreateNew` JSONL 文件；目录拒绝 UNC、设备路径、非固定盘和任一已发现的重解析点。
@@ -83,7 +91,7 @@ dotnet run --project tests\Codex.AutoCAD.AppServer.Specs\Codex.AutoCAD.AppServer
 Result: 20/20 specs passed
 
 scripts\verify-autocad2016-agent-bootstrap.ps1 -Configuration Release
-Result: isolated net45/net8 builds 0 warnings / 0 errors; net45 30/30; net8 30/30;
+Result: isolated net45/net8 builds 0 warnings / 0 errors; net45 35/35; net8 35/35;
 bit-for-bit runnable output match; relevant processes 0 -> 0.
 
 scripts\verify-phase2.ps1 -Configuration Release
@@ -96,14 +104,20 @@ sensitive-information scans passed; local AgentHost doctor handshake passed.
 `A6E22226423B2339EFE46034500D491E46829B651BDA9885B6F55194498AD8DD`。这些离线检查
 不证明真实 Codex 配额耗尽、AutoCAD 异常退出或 AutoCAD 实机行为。
 
+CPU/运行时间限制证据见
+`evidence/m4-agenthost-cpu-runtime-limits-20260723.json`，SHA-256 为
+`B6F8546CC9410D172E501BAF217B1C7B7FF0D52195E14AEC9322FB1709788207`。它证明 synthetic
+CPU user-time 与墙钟终止，不证明真实 Codex CPU 节流性能、内存/进程槽耗尽或 AutoCAD 行为。
+
 ## 明确未完成
 
 - Codex 路径、工作目录和启动/关闭超时的正式配置已在
   `M4_LOCAL_CODEX_CONFIGURATION_20260723.md` 完成；Codex 兼容版本硬门槛仍未冻结。
 - 每会话独立 `CODEX_HOME`，以及不复制/泄露用户凭据的登录和恢复方案。
 - 空 MCP/插件配置和独立凭据；父环境白名单已完成，但默认用户 Codex home 仍可被访问。
-- Windows Job Object 的进程数和 Job 总提交内存限制已应用；CPU、运行时和工作目录磁盘配额
-  仍未实现，内存/进程数的真实 Codex 耗尽行为也未验证。
+- Windows Job Object 的进程数、Job 总提交内存、CPU hard cap 和累计 user-time 已应用，service
+  session 墙钟截止也已实现；工作目录磁盘硬配额仍未实现，CPU 节流性能及内存/进程数的真实
+  Codex 耗尽行为也未验证。
 - 受限令牌或 AppContainer。
 - 已处于企业 Job/受限桌面环境时的嵌套 Job 兼容性与用户可理解的诊断。
 - 工作目录 ACL、审计目录的最小 ACL/保留清理策略，以及故障注入/僵尸进程实测。
@@ -116,7 +130,7 @@ sensitive-information scans passed; local AgentHost doctor handshake passed.
 1. 配置预检和 Codex 子进程显式环境白名单已完成，当前保留默认用户文件登录行为。
 2. 独立 `CODEX_HOME` 需先迁移到 OS keyring 或受信 token；不复制用户 profile 中的配置或
    `auth.json` 作为临时方案，并补空 MCP/插件配置。
-3. 已完成 Job Object 进程数/总提交内存限制；继续补 CPU、运行时和工作目录磁盘配额，并以
-   真实 Codex、异常退出和僵尸进程矩阵验证。
+3. 已完成 Job Object 进程数/总提交内存/CPU/user-time 和 session 墙钟限制；继续补可靠的工作
+   目录磁盘硬配额，并以真实 Codex、异常退出和僵尸进程矩阵验证现有限制。
 4. 将当前只读审计扩展到审批解决和 M5 强类型 CAD 写入终态，并完成审计 ACL、保留、凭据/环境
    边界和实机矩阵后，才允许开始 M5 CAD 写入。
