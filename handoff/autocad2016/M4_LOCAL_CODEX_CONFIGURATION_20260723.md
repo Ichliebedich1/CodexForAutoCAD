@@ -60,6 +60,6 @@ Result: stable codex_configuration / InvalidConfiguredExecutable; no path escape
 - 每会话独立 `CODEX_HOME`、插件配置隔离和独立凭据仍未完成；默认空 MCP 已由生产
   `-c mcp_servers={}` 覆盖完成，现有父环境白名单不等于其余边界。
   边界。
-- 工作目录磁盘硬配额、受限令牌/AppContainer、审计防篡改和真实 Codex/AutoCAD 异常退出、僵尸
-  进程矩阵也仍不属于本切口。现有 Job、ACL、保留和只读审计的已完成范围见
+- 工作目录磁盘硬配额、受限令牌/AppContainer、受保护审计锚点和真实 Codex/AutoCAD 异常退出、僵尸
+  进程矩阵也仍不属于本切口。现有 Job、ACL、保留和只读审计/本地哈希链的已完成范围见
   `M4_PROCESS_ISOLATION_BASELINE_20260723.md`。

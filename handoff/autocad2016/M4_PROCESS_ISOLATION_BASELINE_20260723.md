@@ -4,11 +4,12 @@
 
 ## 状态
 
-本文件记录 M4 已完成的十个小切口：Codex 子进程 stderr/AgentHost 诊断脱敏、本机 Codex
+本文件记录 M4 已完成的十一个小切口：Codex 子进程 stderr/AgentHost 诊断脱敏、本机 Codex
 启动配置、AgentHost 进程树的 Job Object 边界、该 Job 的进程数/总提交内存硬限制，以及
-AgentHost 只读会话的内容脱敏 JSONL 运行审计、Codex 子进程父环境白名单和 CPU/累计用户时间/
-会话墙钟限制、workspace/audit 私有 ACL 与有界保留、Codex 版本/App Server 健康预检、默认空 MCP；不是完整
-沙箱候选，不代表已完成每会话 `CODEX_HOME`、磁盘硬配额、凭据隔离、审计防篡改或 CAD 写入终态审计。
+AgentHost 只读会话的内容脱敏 JSONL 运行审计与本地 SHA-256 哈希链、Codex 子进程父环境白名单和
+CPU/累计用户时间/会话墙钟限制、workspace/audit 私有 ACL 与有界保留、Codex 版本/App Server 健康预检、
+默认空 MCP；不是完整沙箱候选，不代表已完成每会话 `CODEX_HOME`、磁盘硬配额、凭据隔离、外部不可篡改
+审计或 CAD 写入终态审计。
 本轮没有启动、关闭或控制 AutoCAD，也没有加载 DLL、保存或修改图纸。
 
 当前代码调用链仍为：
@@ -68,7 +69,9 @@ session 保存。因此正常停止
   磁盘目录 `%LOCALAPPDATA%\OpenAI\CodexForAutoCAD\audit\agenthost` 创建每会话独占
   `CreateNew` JSONL 文件；目录拒绝 UNC、设备路径、非固定盘和任一已发现的重解析点。
 - 每条记录按 UTF-8 单行 JSON 立即落盘，并有单调 sequence；默认上限为 `10,000` 条记录和
-  `4 MiB`。字段只允许 schema、UTC 时间、AgentHost session ID、系统 conversation/request ID、
+  `4 MiB`。`/2` 使用首行零哈希、逐行 `previousRecordHash`/`recordHash` 的 canonical SHA-256
+  链，并由有界内部验证器检查字段、删行、序号、前序哈希和终态。字段只允许 schema、UTC 时间、
+  AgentHost session ID、系统 conversation/request ID、
   Bridge request ID、Provider thread/turn ID、方法、审批种类、稳定 outcome/error code。提示词、
   canonical CAD JSON、图名/路径、实体内容、命令文本、工作目录、环境变量、异常正文、token 和
   Provider 原始 payload 没有可写字段。
@@ -110,7 +113,7 @@ Result: isolated net45/net8 builds 0 warnings / 0 errors; net45 36/36; net8 36/3
 bit-for-bit runnable output match; relevant processes 0 -> 0.
 
 scripts\verify-phase2.ps1 -Configuration Release
-Result: Release 0 warnings / 0 errors; dynamic specs 341/341 in PowerShell 5.1 and 7; Host disabled-API and basic
+Result: Release 0 warnings / 0 errors; dynamic specs 342/342 in PowerShell 5.1 and 7; Host disabled-API and basic
 sensitive-information scans passed; local AgentHost doctor handshake passed.
 
 tests\Codex.AutoCAD.AgentHost.Live.Specs
@@ -149,6 +152,8 @@ CPU user-time 与墙钟终止，不证明真实 Codex CPU 节流性能、内存/
   实测仍未完成。
 - 审批解决、CAD 写入提案/执行终态和未来日志导出尚未进入当前审计。当前 CAD 写入仍禁用，
   不得把只读 `approval_requested` 记录解释为 CAD 审批审计闭环。
+- 当前 SHA-256 链不是签名、HMAC、远端锚定或 WORM 存储；能够替换整个文件并重算链的主体仍可
+  生成自洽结果，因此外部不可篡改审计仍未完成。详见 `M4_AUDIT_HASH_CHAIN_20260723.md`。
 - 对 AgentRuntime、Bridge、Host 与导出日志的统一错误/配置脱敏。
 
 ## 下一顺序
@@ -159,5 +164,5 @@ CPU user-time 与墙钟终止，不证明真实 Codex CPU 节流性能、内存/
    `auth.json` 作为临时方案，并补插件配置隔离。
 3. 已完成 Job Object 进程数/总提交内存/CPU/user-time、session 墙钟限制和 workspace/audit
    私有 ACL/有界保留；继续补可靠磁盘硬配额，并以真实 Codex、异常退出和僵尸进程矩阵验证。
-4. 将当前只读审计扩展到审批解决和 M5 强类型 CAD 写入终态，并完成防篡改、凭据/环境边界和
+4. 将当前只读审计扩展到审批解决和 M5 强类型 CAD 写入终态，并完成受保护审计锚点、凭据/环境边界和
    实机矩阵后，才允许开始 M5 CAD 写入。

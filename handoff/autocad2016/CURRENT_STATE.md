@@ -256,9 +256,12 @@ NETLOAD 证据的能力一律视为未支持。
   `CreateNew` JSONL 文件中记录 session、Bridge 连接、请求、thread/turn、取消、审批请求和
   回合终态。记录采用固定字段白名单、单调 sequence、`10,000` 条/`4 MiB` 默认硬上限；提示词、
   CAD JSON、图纸/工作目录路径、命令、环境变量、异常正文、token 和原始 Provider payload 均无
-  写入字段。审计写入或容量失败会 fail-closed 释放 Bridge 会话。当前没有 CAD 写入终态、审批
-  解决记录或防篡改链，不能把它视为完整 M4 审计。内容契约脱敏证据为
-  `evidence/m4-agenthost-runtime-audit-20260723.json`。
+  写入字段。审计写入或容量失败会 fail-closed 释放 Bridge 会话。其 `/2` 记录现加入 canonical
+  SHA-256 链：首行零前序哈希、逐行前序绑定、有界内部验证及终态要求；字段/删行/序号/前序哈希
+  篡改和缺失终态均有规格覆盖。它不是签名、HMAC、远端锚定或 WORM 存储，能够重写全文件并重算
+  哈希的主体仍可构造自洽链；当前同样没有 CAD 写入终态或审批解决记录。见
+  `M4_AUDIT_HASH_CHAIN_20260723.md` 和
+  `evidence/m4-agenthost-audit-hash-chain-20260723.json`；v1 内容基线证据保留为历史记录。
 - M4 第六父环境边界已成为生产 Codex 默认路径：AgentHost 创建 client 时强制清空
   `ProcessStartInfo.Environment`，只注入 `16` 个固定变量名；`TEMP`/`TMP` 绑定每会话
   `AgentWorkspace.Temp`，`PATH` 只由批准的 Windows 系统目录构成。`CODEX_HOME`、token/API key、
@@ -283,7 +286,7 @@ NETLOAD 证据的能力一律视为未支持。
   audit 根和 JSONL 都关闭 ACL 继承，只允许当前用户、SYSTEM、内置 Administrators，并在设置后
   读回完整 owner/规则集。session 使用独占 lease，正常退出删除；残留默认按 `24` 小时/最多
   `64` 个清理，审计默认保留 `30` 天/最多 `512` 个文件，单次树清理最多 `50,000` 项且不跟随
-  重解析点。STOP 先等待 `1` 秒自然退出，仍存活才执行既有 `5` 秒强制回收。Bridge `49/49`、
+  重解析点。STOP 先等待 `1` 秒自然退出，仍存活才执行既有 `5` 秒强制回收。Bridge `50/50`、
   AgentLauncher net45/net8 各 `36/36`、真实 Codex live `2/2`；managed session 目录 `2 -> 2`，
   AgentHost 残留 `0`。见 `M4_PRIVATE_STORAGE_RETENTION_20260723.md` 和
   `evidence/m4-agenthost-private-storage-retention-20260723.json`。
@@ -300,7 +303,7 @@ NETLOAD 证据的能力一律视为未支持。
   `0` error 和真实两轮 v2 live `2/2` 均通过。它没有隔离 `CODEX_HOME`、文件登录、技能或插件
   配置，不能描述为完整用户配置隔离；见 `M4_EMPTY_MCP_BOUNDARY_20260723.md` 和
   `evidence/m4-codex-empty-mcp-boundary-20260723.json`。
-- 当前 Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 双 Shell 动态汇总 `341/341`、
+- 当前 Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 双 Shell 动态汇总 `342/342`、
   AgentHost doctor、Host 禁止 API、秘密扫描和 diff 通过；认证固定向量与现有 Bridge/IPC
   回归保持通过。
 - 本检查点未启动、重启或操作 AutoCAD。它不证明长运行 `IAgentBridgeClient`、Host.2016
@@ -547,8 +550,9 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
 6. M2 实机/性能 evidence 仍是 M2 完成前提；M3 的只读对象语义候选已冻结但仍待实机字段
    evidence，不替代 M2 验收，也不启用 CAD 写入。实机测试暂缓期间继续收口不依赖 AutoCAD
    的 M4 沙箱与审计；父环境白名单、版本/App Server 健康预检、CPU/运行时间限制和工作区/
-   审计 ACL/有界保留和默认空 MCP 已完成，下一步是磁盘硬配额、每会话 `CODEX_HOME`/凭据、插件配置隔离、
-   受限令牌/AppContainer 与审计防篡改。M4 完成前不启用 M5 CAD 写入。
+  审计 ACL/有界保留、默认空 MCP 和本地哈希链已完成，下一步是磁盘硬配额、每会话
+  `CODEX_HOME`/凭据、插件配置隔离、受限令牌/AppContainer 与受保护审计锚点。M4 完成前不启用
+  M5 CAD 写入。
 
 ## 更新纪律
 

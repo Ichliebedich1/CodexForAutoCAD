@@ -61,12 +61,14 @@ internal static class AgentHostBridgeSessionSpecs
             "resolution",
             "outcomeCode",
             "errorCode",
+            "previousRecordHash",
+            "recordHash",
         };
         for (var index = 0; index < lines.Length; index++)
         {
             using var document = JsonDocument.Parse(lines[index]);
             var root = document.RootElement;
-            Equal("codex.autocad.agenthost.audit/1", root.GetProperty("schema").GetString());
+            Equal(AgentHostAuditLog.Schema, root.GetProperty("schema").GetString());
             Equal(index + 1L, root.GetProperty("sequence").GetInt64());
             Equal(sessionId, root.GetProperty("sessionId").GetString());
             if (!DateTimeOffset.TryParse(
@@ -91,6 +93,30 @@ internal static class AgentHostBridgeSessionSpecs
             JsonDocument.Parse(lines[0]).RootElement.GetProperty("eventType").GetString());
         Equal(AgentHostAuditEventTypes.SessionStopped,
             JsonDocument.Parse(lines[3]).RootElement.GetProperty("eventType").GetString());
+        var records = lines.Select(static line =>
+        {
+            using var document = JsonDocument.Parse(line);
+            return document.RootElement.Clone();
+        }).ToArray();
+        Equal(new string('0', 64),
+            records[0].GetProperty("previousRecordHash").GetString());
+        for (var index = 1; index < records.Length; index++)
+        {
+            Equal(
+                records[index - 1].GetProperty("recordHash").GetString(),
+                records[index].GetProperty("previousRecordHash").GetString());
+        }
+
+        using (var source = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(jsonl)))
+        {
+            var integrity = AgentHostAuditLog.VerifyIntegrity(
+                source,
+                expectedSessionId: sessionId);
+            Equal(true, integrity.IsValid);
+            Equal(AgentHostAuditIntegrityFailure.None, integrity.Failure);
+            Equal(4L, integrity.RecordCount);
+            Equal(records[^1].GetProperty("recordHash").GetString(), integrity.TerminalRecordHash);
+        }
 
         using var boundedStream = new FlushCountingStream();
         using (var boundedAudit = new AgentHostAuditLog(
@@ -118,6 +144,97 @@ internal static class AgentHostBridgeSessionSpecs
         }
 
         Equal(2, boundedStream.FlushCount);
+
+        return Task.CompletedTask;
+    }
+
+    public static Task AuditHashChainDetectsTampering()
+    {
+        const string sessionId = "0123456789abcdef0123456789abcdef";
+        string jsonl;
+        using (var stream = new MemoryStream())
+        {
+            using (var audit = new AgentHostAuditLog(
+                       stream,
+                       sessionId,
+                       leaveOpen: true,
+                       maximumRecords: 4,
+                       maximumBytes: 4096,
+                       utcNow: static () => new DateTimeOffset(
+                           2026,
+                           7,
+                           23,
+                           12,
+                           34,
+                           56,
+                           TimeSpan.Zero)))
+            {
+                audit.Record(new AgentHostAuditEvent
+                {
+                    EventType = AgentHostAuditEventTypes.RequestReceived,
+                    BridgeRequestId = "bridge-request-1",
+                    Method = "agent.capabilities.get",
+                });
+                audit.Record(new AgentHostAuditEvent
+                {
+                    EventType = AgentHostAuditEventTypes.RequestCompleted,
+                    BridgeRequestId = "bridge-request-1",
+                    Method = "agent.capabilities.get",
+                    OutcomeCode = AgentHostAuditOutcomeCodes.Completed,
+                });
+                audit.Complete();
+            }
+
+            jsonl = System.Text.Encoding.UTF8.GetString(stream.ToArray());
+        }
+
+        var lines = jsonl.Split(
+            '\n',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Equal(4, lines.Length);
+
+        Equal(
+            AgentHostAuditIntegrityFailure.RecordHashMismatch,
+            VerifyAuditIntegrity(
+                jsonl.Replace(
+                    "agent.capabilities.get",
+                    "agent.capabilities.set",
+                    StringComparison.Ordinal)).Failure);
+
+        var sequenceTampered = (string[])lines.Clone();
+        sequenceTampered[1] = sequenceTampered[1].Replace(
+            "\"sequence\":2",
+            "\"sequence\":8",
+            StringComparison.Ordinal);
+        Equal(
+            AgentHostAuditIntegrityFailure.SequenceMismatch,
+            VerifyAuditIntegrity(string.Join("\n", sequenceTampered) + "\n").Failure);
+
+        var deletedMiddleRecord = new[] { lines[0], lines[2], lines[3] };
+        Equal(
+            AgentHostAuditIntegrityFailure.SequenceMismatch,
+            VerifyAuditIntegrity(string.Join("\n", deletedMiddleRecord) + "\n").Failure);
+
+        using (var document = JsonDocument.Parse(lines[2]))
+        {
+            var previousHash = document.RootElement
+                .GetProperty("previousRecordHash")
+                .GetString()
+                ?? throw new InvalidOperationException("缺少审计前序哈希。");
+            var previousHashTampered = (string[])lines.Clone();
+            previousHashTampered[2] = previousHashTampered[2].Replace(
+                "\"previousRecordHash\":\"" + previousHash + "\"",
+                "\"previousRecordHash\":\"" + new string('a', 64) + "\"",
+                StringComparison.Ordinal);
+            Equal(
+                AgentHostAuditIntegrityFailure.PreviousHashMismatch,
+                VerifyAuditIntegrity(string.Join("\n", previousHashTampered) + "\n").Failure);
+        }
+
+        var noTerminalRecord = new[] { lines[0], lines[1], lines[2] };
+        Equal(
+            AgentHostAuditIntegrityFailure.TerminalRecordMissing,
+            VerifyAuditIntegrity(string.Join("\n", noTerminalRecord) + "\n").Failure);
 
         return Task.CompletedTask;
     }
@@ -1230,6 +1347,12 @@ internal static class AgentHostBridgeSessionSpecs
 
     private static string CreateLowerHexIdentifier()
         => Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+
+    private static AgentHostAuditIntegrityResult VerifyAuditIntegrity(string jsonl)
+    {
+        using var source = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(jsonl));
+        return AgentHostAuditLog.VerifyIntegrity(source, maximumRecords: 4, maximumBytes: 4096);
+    }
 
     private static void Contains(IEnumerable<string> values, string expected)
     {

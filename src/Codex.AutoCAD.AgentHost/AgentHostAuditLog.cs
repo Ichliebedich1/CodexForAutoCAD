@@ -1,7 +1,7 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Codex.AutoCAD.AppServer;
 
 namespace Codex.AutoCAD.AgentHost;
@@ -139,9 +139,55 @@ public sealed class AgentHostAuditException : Exception
     }
 }
 
+internal enum AgentHostAuditIntegrityFailure
+{
+    None,
+    EmptyLog,
+    TooLarge,
+    TooManyRecords,
+    InvalidUtf8,
+    InvalidJson,
+    UnexpectedField,
+    DuplicateField,
+    MissingField,
+    InvalidField,
+    SchemaMismatch,
+    SessionMismatch,
+    SequenceMismatch,
+    PreviousHashMismatch,
+    RecordHashMismatch,
+    NonCanonicalRecord,
+    InitialRecordInvalid,
+    TerminalRecordMissing,
+    TerminalRecordNotLast,
+}
+
+internal sealed class AgentHostAuditIntegrityResult
+{
+    internal AgentHostAuditIntegrityResult(
+        bool isValid,
+        AgentHostAuditIntegrityFailure failure,
+        long recordCount,
+        string? terminalRecordHash)
+    {
+        IsValid = isValid;
+        Failure = failure;
+        RecordCount = recordCount;
+        TerminalRecordHash = terminalRecordHash;
+    }
+
+    internal bool IsValid { get; }
+
+    internal AgentHostAuditIntegrityFailure Failure { get; }
+
+    internal long RecordCount { get; }
+
+    internal string? TerminalRecordHash { get; }
+}
+
 public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
 {
-    public const string Schema = "codex.autocad.agenthost.audit/1";
+    public const string Schema = "codex.autocad.agenthost.audit/2";
     public const int DefaultMaximumRecords = 10_000;
     public const long DefaultMaximumBytes = 4L * 1024 * 1024;
     public const int DefaultMaximumRetainedFiles = 512;
@@ -152,11 +198,16 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
     private const int AbsoluteMaximumRecords = 1_000_000;
     private const long AbsoluteMaximumBytes = 64L * 1024 * 1024;
     private const int AbsoluteMaximumRetainedFiles = 4096;
-
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
+    private const int RecordHashCharacters = 64;
+    private const int MaximumAuditJsonDepth = 16;
+    private static readonly string InitialPreviousRecordHash = new('0', RecordHashCharacters);
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false,
+        throwOnInvalidBytes: true);
+    private static readonly JsonDocumentOptions IntegrityJsonDocumentOptions = new()
     {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        WriteIndented = false,
+        AllowTrailingCommas = false,
+        CommentHandling = JsonCommentHandling.Disallow,
+        MaxDepth = MaximumAuditJsonDepth,
     };
 
     private readonly Stream _destination;
@@ -164,9 +215,11 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
     private readonly string _sessionId;
     private readonly int _maximumRecords;
     private readonly long _maximumBytes;
+    private readonly Func<DateTimeOffset> _utcNow;
     private readonly object _sync = new();
     private long _sequence;
     private long _bytesWritten;
+    private string _previousRecordHash = InitialPreviousRecordHash;
     private int _terminal;
     private int _faulted;
     private int _disposed;
@@ -176,7 +229,8 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
         string sessionId,
         bool leaveOpen = false,
         int maximumRecords = DefaultMaximumRecords,
-        long maximumBytes = DefaultMaximumBytes)
+        long maximumBytes = DefaultMaximumBytes,
+        Func<DateTimeOffset>? utcNow = null)
     {
         ArgumentNullException.ThrowIfNull(destination);
         if (!destination.CanWrite)
@@ -200,6 +254,7 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
         _leaveOpen = leaveOpen;
         _maximumRecords = maximumRecords;
         _maximumBytes = maximumBytes;
+        _utcNow = utcNow ?? (static () => DateTimeOffset.UtcNow);
         WriteCore(new AgentHostAuditEvent
         {
             EventType = AgentHostAuditEventTypes.SessionStarted,
@@ -400,6 +455,155 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    /// Verifies the bounded, canonical SHA-256 record chain emitted by this process.
+    /// This detects accidental corruption and simple tampering; it is not a substitute for
+    /// externally protected, signed, or append-only storage.
+    /// </summary>
+    internal static AgentHostAuditIntegrityResult VerifyIntegrity(
+        Stream source,
+        int maximumRecords = DefaultMaximumRecords,
+        long maximumBytes = DefaultMaximumBytes,
+        string? expectedSessionId = null)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (!source.CanRead)
+        {
+            throw new ArgumentException("AgentHost audit source must be readable.", nameof(source));
+        }
+
+        ValidateIntegrityLimits(maximumRecords, maximumBytes);
+        if (expectedSessionId is not null)
+        {
+            ValidateIdentifier(expectedSessionId, nameof(expectedSessionId));
+        }
+
+        var bytes = ReadBounded(source, maximumBytes);
+        if (bytes is null)
+        {
+            return IntegrityFailure(AgentHostAuditIntegrityFailure.TooLarge, 0);
+        }
+
+        if (bytes.Length == 0)
+        {
+            return IntegrityFailure(AgentHostAuditIntegrityFailure.EmptyLog, 0);
+        }
+
+        string text;
+        try
+        {
+            text = StrictUtf8.GetString(bytes);
+        }
+        catch (DecoderFallbackException)
+        {
+            return IntegrityFailure(AgentHostAuditIntegrityFailure.InvalidUtf8, 0);
+        }
+
+        if (!text.EndsWith('\n'))
+        {
+            return IntegrityFailure(AgentHostAuditIntegrityFailure.InvalidJson, 0);
+        }
+
+        var lines = text[..^1].Split('\n');
+        if (lines.Length > maximumRecords)
+        {
+            return IntegrityFailure(AgentHostAuditIntegrityFailure.TooManyRecords, 0);
+        }
+
+        var expectedSequence = 1L;
+        var expectedPreviousRecordHash = InitialPreviousRecordHash;
+        var observedSessionId = expectedSessionId;
+        var terminalSeen = false;
+        string? terminalRecordHash = null;
+        for (var index = 0; index < lines.Length; index++)
+        {
+            var recordCount = index + 1L;
+            if (lines[index].Length == 0)
+            {
+                return IntegrityFailure(AgentHostAuditIntegrityFailure.InvalidJson, recordCount);
+            }
+
+            var lineBytes = StrictUtf8.GetBytes(lines[index]);
+            if (!TryParseEnvelope(lineBytes, out var envelope, out var parseFailure))
+            {
+                return IntegrityFailure(parseFailure, recordCount);
+            }
+
+            if (terminalSeen)
+            {
+                return IntegrityFailure(
+                    AgentHostAuditIntegrityFailure.TerminalRecordNotLast,
+                    recordCount);
+            }
+
+            if (index == 0 && envelope.EventType != AgentHostAuditEventTypes.SessionStarted)
+            {
+                return IntegrityFailure(
+                    AgentHostAuditIntegrityFailure.InitialRecordInvalid,
+                    recordCount);
+            }
+
+            if (envelope.Sequence != expectedSequence)
+            {
+                return IntegrityFailure(AgentHostAuditIntegrityFailure.SequenceMismatch, recordCount);
+            }
+
+            if (observedSessionId is null)
+            {
+                observedSessionId = envelope.SessionId;
+            }
+            else if (!string.Equals(
+                         observedSessionId,
+                         envelope.SessionId,
+                         StringComparison.Ordinal))
+            {
+                return IntegrityFailure(AgentHostAuditIntegrityFailure.SessionMismatch, recordCount);
+            }
+
+            if (!string.Equals(
+                    expectedPreviousRecordHash,
+                    envelope.PreviousRecordHash,
+                    StringComparison.Ordinal))
+            {
+                return IntegrityFailure(
+                    AgentHostAuditIntegrityFailure.PreviousHashMismatch,
+                    recordCount);
+            }
+
+            var expectedRecordHash = ComputeRecordHash(envelope);
+            if (!string.Equals(expectedRecordHash, envelope.RecordHash, StringComparison.Ordinal))
+            {
+                return IntegrityFailure(
+                    AgentHostAuditIntegrityFailure.RecordHashMismatch,
+                    recordCount);
+            }
+
+            var canonicalBytes = SerializeCanonicalEnvelope(envelope, includeRecordHash: true);
+            if (!lineBytes.AsSpan().SequenceEqual(canonicalBytes))
+            {
+                return IntegrityFailure(
+                    AgentHostAuditIntegrityFailure.NonCanonicalRecord,
+                    recordCount);
+            }
+
+            expectedSequence = checked(expectedSequence + 1);
+            expectedPreviousRecordHash = envelope.RecordHash;
+            if (IsTerminalEvent(envelope.EventType))
+            {
+                terminalSeen = true;
+                terminalRecordHash = envelope.RecordHash;
+            }
+        }
+
+        return terminalSeen
+            ? new AgentHostAuditIntegrityResult(
+                isValid: true,
+                AgentHostAuditIntegrityFailure.None,
+                lines.Length,
+                terminalRecordHash)
+            : IntegrityFailure(AgentHostAuditIntegrityFailure.TerminalRecordMissing, lines.Length);
+    }
+
     private void WriteCore(AgentHostAuditEvent auditEvent)
     {
         ValidateEvent(auditEvent);
@@ -408,7 +612,7 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
         {
             Schema = Schema,
             Sequence = nextSequence,
-            TimestampUtc = DateTimeOffset.UtcNow.ToString(
+            TimestampUtc = _utcNow().ToUniversalTime().ToString(
                 "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
                 CultureInfo.InvariantCulture),
             SessionId = _sessionId,
@@ -423,9 +627,13 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
             Resolution = auditEvent.Resolution,
             OutcomeCode = auditEvent.OutcomeCode,
             ErrorCode = auditEvent.ErrorCode,
+            PreviousRecordHash = _previousRecordHash,
         };
-        var json = JsonSerializer.Serialize(envelope, SerializerOptions);
-        var bytes = Encoding.UTF8.GetBytes(json + "\n");
+        envelope.RecordHash = ComputeRecordHash(envelope);
+        var recordBytes = SerializeCanonicalEnvelope(envelope, includeRecordHash: true);
+        var bytes = new byte[recordBytes.Length + 1];
+        Buffer.BlockCopy(recordBytes, 0, bytes, 0, recordBytes.Length);
+        bytes[^1] = (byte)'\n';
         if (nextSequence > _maximumRecords
             || _bytesWritten > _maximumBytes - bytes.Length)
         {
@@ -439,6 +647,7 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
             FlushDurably();
             _sequence = nextSequence;
             _bytesWritten += bytes.Length;
+            _previousRecordHash = envelope.RecordHash;
         }
         catch (Exception exception) when (exception is IOException
             or ObjectDisposedException
@@ -506,9 +715,7 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
 
     private static void ValidateIdentifier(string value, string parameterName)
     {
-        if (string.IsNullOrWhiteSpace(value)
-            || value.Length > MaximumIdentifierCharacters
-            || !value.All(IsSafeIdentifierCharacter))
+        if (!IsValidIdentifier(value))
         {
             throw new ArgumentException("Audit identifier is invalid.", parameterName);
         }
@@ -524,9 +731,7 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
 
     private static void ValidateCode(string value, string parameterName)
     {
-        if (string.IsNullOrWhiteSpace(value)
-            || value.Length > MaximumCodeCharacters
-            || !value.All(IsSafeIdentifierCharacter))
+        if (!IsValidCode(value))
         {
             throw new ArgumentException("Audit code is invalid.", parameterName);
         }
@@ -545,6 +750,429 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
             or >= 'A' and <= 'Z'
             or >= '0' and <= '9'
             or '-' or '_' or '.' or ':';
+
+    private static bool IsValidIdentifier(string? value)
+        => !string.IsNullOrWhiteSpace(value)
+            && value.Length <= MaximumIdentifierCharacters
+            && value.All(IsSafeIdentifierCharacter);
+
+    private static bool IsValidCode(string? value)
+        => !string.IsNullOrWhiteSpace(value)
+            && value.Length <= MaximumCodeCharacters
+            && value.All(IsSafeIdentifierCharacter);
+
+    private static bool IsValidRecordHash(string? value)
+        => value is { Length: RecordHashCharacters }
+            && value.All(static character => character is >= '0' and <= '9'
+                or >= 'a' and <= 'f');
+
+    private static bool IsTerminalEvent(string eventType)
+        => eventType is AgentHostAuditEventTypes.SessionStopped
+            or AgentHostAuditEventTypes.SessionFailed;
+
+    private static AgentHostAuditIntegrityResult IntegrityFailure(
+        AgentHostAuditIntegrityFailure failure,
+        long recordCount)
+        => new(isValid: false, failure, recordCount, terminalRecordHash: null);
+
+    private static void ValidateIntegrityLimits(int maximumRecords, long maximumBytes)
+    {
+        if (maximumRecords is < 2 or > AbsoluteMaximumRecords)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumRecords));
+        }
+
+        if (maximumBytes is < 1024 or > AbsoluteMaximumBytes)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumBytes));
+        }
+    }
+
+    private static byte[]? ReadBounded(Stream source, long maximumBytes)
+    {
+        using var buffer = new MemoryStream();
+        var readBuffer = new byte[8192];
+        while (true)
+        {
+            var read = source.Read(readBuffer, 0, readBuffer.Length);
+            if (read == 0)
+            {
+                return buffer.ToArray();
+            }
+
+            if (buffer.Length > maximumBytes - read)
+            {
+                return null;
+            }
+
+            buffer.Write(readBuffer, 0, read);
+        }
+    }
+
+    private static bool TryParseEnvelope(
+        byte[] lineBytes,
+        out AgentHostAuditEnvelope envelope,
+        out AgentHostAuditIntegrityFailure failure)
+    {
+        envelope = new AgentHostAuditEnvelope();
+        failure = AgentHostAuditIntegrityFailure.InvalidJson;
+        try
+        {
+            using var document = JsonDocument.Parse(lineBytes, IntegrityJsonDocumentOptions);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            string? schema = null;
+            long? sequence = null;
+            string? timestampUtc = null;
+            string? sessionId = null;
+            string? eventType = null;
+            string? systemConversationId = null;
+            string? systemRequestId = null;
+            string? bridgeRequestId = null;
+            string? providerThreadId = null;
+            string? providerTurnId = null;
+            string? method = null;
+            string? approvalKind = null;
+            string? resolution = null;
+            string? outcomeCode = null;
+            string? errorCode = null;
+            string? previousRecordHash = null;
+            string? recordHash = null;
+
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (!seen.Add(property.Name))
+                {
+                    failure = AgentHostAuditIntegrityFailure.DuplicateField;
+                    return false;
+                }
+
+                switch (property.Name)
+                {
+                    case "schema":
+                        if (!TryGetRequiredString(property.Value, out schema))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        break;
+                    case "sequence":
+                        if (property.Value.ValueKind != JsonValueKind.Number
+                            || !property.Value.TryGetInt64(out var parsedSequence))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        sequence = parsedSequence;
+                        break;
+                    case "timestampUtc":
+                        if (!TryGetRequiredString(property.Value, out timestampUtc))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        break;
+                    case "sessionId":
+                        if (!TryGetRequiredString(property.Value, out sessionId))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        break;
+                    case "eventType":
+                        if (!TryGetRequiredString(property.Value, out eventType))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        break;
+                    case "systemConversationId":
+                        if (!TryGetOptionalString(property.Value, out systemConversationId))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        break;
+                    case "systemRequestId":
+                        if (!TryGetOptionalString(property.Value, out systemRequestId))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        break;
+                    case "bridgeRequestId":
+                        if (!TryGetOptionalString(property.Value, out bridgeRequestId))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        break;
+                    case "providerThreadId":
+                        if (!TryGetOptionalString(property.Value, out providerThreadId))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        break;
+                    case "providerTurnId":
+                        if (!TryGetOptionalString(property.Value, out providerTurnId))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        break;
+                    case "method":
+                        if (!TryGetOptionalString(property.Value, out method))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        break;
+                    case "approvalKind":
+                        if (!TryGetOptionalString(property.Value, out approvalKind))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        break;
+                    case "resolution":
+                        if (!TryGetOptionalString(property.Value, out resolution))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        break;
+                    case "outcomeCode":
+                        if (!TryGetOptionalString(property.Value, out outcomeCode))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        break;
+                    case "errorCode":
+                        if (!TryGetOptionalString(property.Value, out errorCode))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        break;
+                    case "previousRecordHash":
+                        if (!TryGetRequiredString(property.Value, out previousRecordHash))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        break;
+                    case "recordHash":
+                        if (!TryGetRequiredString(property.Value, out recordHash))
+                        {
+                            failure = AgentHostAuditIntegrityFailure.InvalidField;
+                            return false;
+                        }
+
+                        break;
+                    default:
+                        failure = AgentHostAuditIntegrityFailure.UnexpectedField;
+                        return false;
+                }
+            }
+
+            if (schema is null
+                || sequence is null
+                || timestampUtc is null
+                || sessionId is null
+                || eventType is null
+                || previousRecordHash is null
+                || recordHash is null)
+            {
+                failure = AgentHostAuditIntegrityFailure.MissingField;
+                return false;
+            }
+
+            envelope = new AgentHostAuditEnvelope
+            {
+                Schema = schema,
+                Sequence = sequence.Value,
+                TimestampUtc = timestampUtc,
+                SessionId = sessionId,
+                EventType = eventType,
+                SystemConversationId = systemConversationId,
+                SystemRequestId = systemRequestId,
+                BridgeRequestId = bridgeRequestId,
+                ProviderThreadId = providerThreadId,
+                ProviderTurnId = providerTurnId,
+                Method = method,
+                ApprovalKind = approvalKind,
+                Resolution = resolution,
+                OutcomeCode = outcomeCode,
+                ErrorCode = errorCode,
+                PreviousRecordHash = previousRecordHash,
+                RecordHash = recordHash,
+            };
+        }
+        catch (JsonException)
+        {
+            failure = AgentHostAuditIntegrityFailure.InvalidJson;
+            return false;
+        }
+
+        return TryValidateEnvelope(envelope, out failure);
+    }
+
+    private static bool TryValidateEnvelope(
+        AgentHostAuditEnvelope envelope,
+        out AgentHostAuditIntegrityFailure failure)
+    {
+        if (!string.Equals(envelope.Schema, Schema, StringComparison.Ordinal))
+        {
+            failure = AgentHostAuditIntegrityFailure.SchemaMismatch;
+            return false;
+        }
+
+        if (envelope.Sequence <= 0
+            || !IsCanonicalUtcTimestamp(envelope.TimestampUtc)
+            || !IsValidIdentifier(envelope.SessionId)
+            || !AgentHostAuditEventTypes.IsKnown(envelope.EventType)
+            || !IsValidOptionalIdentifier(envelope.SystemConversationId)
+            || !IsValidOptionalIdentifier(envelope.SystemRequestId)
+            || !IsValidOptionalIdentifier(envelope.BridgeRequestId)
+            || !IsValidOptionalIdentifier(envelope.ProviderThreadId)
+            || !IsValidOptionalIdentifier(envelope.ProviderTurnId)
+            || !IsValidOptionalCode(envelope.Method)
+            || !IsValidOptionalCode(envelope.ApprovalKind)
+            || !IsValidOptionalCode(envelope.Resolution)
+            || !IsValidOptionalCode(envelope.OutcomeCode)
+            || !IsValidOptionalCode(envelope.ErrorCode)
+            || !IsValidRecordHash(envelope.PreviousRecordHash)
+            || !IsValidRecordHash(envelope.RecordHash))
+        {
+            failure = AgentHostAuditIntegrityFailure.InvalidField;
+            return false;
+        }
+
+        failure = AgentHostAuditIntegrityFailure.None;
+        return true;
+    }
+
+    private static bool TryGetRequiredString(JsonElement element, out string? value)
+    {
+        value = null;
+        if (element.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        value = element.GetString();
+        return value is not null;
+    }
+
+    private static bool TryGetOptionalString(JsonElement element, out string? value)
+    {
+        value = null;
+        if (element.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        value = element.GetString();
+        return value is not null;
+    }
+
+    private static bool IsCanonicalUtcTimestamp(string value)
+    {
+        if (!DateTimeOffset.TryParseExact(
+                value,
+                "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var timestamp))
+        {
+            return false;
+        }
+
+        return string.Equals(
+            value,
+            timestamp.ToUniversalTime().ToString(
+                "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
+                CultureInfo.InvariantCulture),
+            StringComparison.Ordinal);
+    }
+
+    private static bool IsValidOptionalIdentifier(string? value)
+        => value is null || IsValidIdentifier(value);
+
+    private static bool IsValidOptionalCode(string? value)
+        => value is null || IsValidCode(value);
+
+    private static string ComputeRecordHash(AgentHostAuditEnvelope envelope)
+    {
+        var canonicalBytes = SerializeCanonicalEnvelope(envelope, includeRecordHash: false);
+        return Convert.ToHexString(SHA256.HashData(canonicalBytes)).ToLowerInvariant();
+    }
+
+    private static byte[] SerializeCanonicalEnvelope(
+        AgentHostAuditEnvelope envelope,
+        bool includeRecordHash)
+    {
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("schema", envelope.Schema);
+            writer.WriteNumber("sequence", envelope.Sequence);
+            writer.WriteString("timestampUtc", envelope.TimestampUtc);
+            writer.WriteString("sessionId", envelope.SessionId);
+            writer.WriteString("eventType", envelope.EventType);
+            WriteOptionalString(writer, "systemConversationId", envelope.SystemConversationId);
+            WriteOptionalString(writer, "systemRequestId", envelope.SystemRequestId);
+            WriteOptionalString(writer, "bridgeRequestId", envelope.BridgeRequestId);
+            WriteOptionalString(writer, "providerThreadId", envelope.ProviderThreadId);
+            WriteOptionalString(writer, "providerTurnId", envelope.ProviderTurnId);
+            WriteOptionalString(writer, "method", envelope.Method);
+            WriteOptionalString(writer, "approvalKind", envelope.ApprovalKind);
+            WriteOptionalString(writer, "resolution", envelope.Resolution);
+            WriteOptionalString(writer, "outcomeCode", envelope.OutcomeCode);
+            WriteOptionalString(writer, "errorCode", envelope.ErrorCode);
+            writer.WriteString("previousRecordHash", envelope.PreviousRecordHash);
+            if (includeRecordHash)
+            {
+                writer.WriteString("recordHash", envelope.RecordHash);
+            }
+
+            writer.WriteEndObject();
+            writer.Flush();
+        }
+
+        return buffer.ToArray();
+    }
+
+    private static void WriteOptionalString(Utf8JsonWriter writer, string name, string? value)
+    {
+        if (value is not null)
+        {
+            writer.WriteString(name, value);
+        }
+    }
 
     private static void PruneAuditFiles(
         string auditDirectory,
@@ -688,5 +1316,9 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
         public string? OutcomeCode { get; init; }
 
         public string? ErrorCode { get; init; }
+
+        public string PreviousRecordHash { get; init; } = string.Empty;
+
+        public string RecordHash { get; set; } = string.Empty;
     }
 }

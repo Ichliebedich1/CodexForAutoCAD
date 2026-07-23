@@ -28,6 +28,8 @@ var specs = new (string Name, Func<Task> Run)[]
         AgentHostStorageSpecs.PrivateStorageRejectsReparseRoot),
     ("AgentHost审计日志为有界内容脱敏JSONL",
         AgentHostBridgeSessionSpecs.AuditLogIsBoundedContentFreeJsonl),
+    ("AgentHost审计哈希链可检测篡改和缺失终态",
+        AgentHostBridgeSessionSpecs.AuditHashChainDetectsTampering),
     ("AgentHost审计不可继续时会终止Bridge会话",
         AgentHostBridgeSessionSpecs.AuditFailureTerminatesBridgeSession),
     ("AgentHost失败请求只记录稳定错误码",

@@ -65,11 +65,13 @@
   session、Bridge、请求、thread/turn、取消、审批请求和 turn 终态；只允许脱敏 ID、方法和稳定
   状态码，审计故障会关闭 Bridge。workspace 与 audit 根、子目录及受管理文件现使用受保护的
   当前用户/SYSTEM/Administrators ACL；session 正常退出删除，残留默认按 `24` 小时/最多 `64`
-  个清理，审计按 `30` 天/最多 `512` 个清理，且不跟随重解析点。当前 Bridge 为 `49/49`。
-  审批解决、CAD 写入终态、审计防篡改和日志导出仍未完成。
+  个清理，审计按 `30` 天/最多 `512` 个清理，且不跟随重解析点。审计 `/2` 现使用 canonical
+  SHA-256 前序哈希链并验证字段、删行、序号、前序哈希和终态；当前 Bridge 为 `50/50`。该链没有
+  签名、远端锚定或 WORM 存储，不能表述为外部不可篡改审计。审批解决、CAD 写入终态、受保护审计
+  锚点和日志导出仍未完成。
 - M4 Codex 子进程生产路径已关闭父环境继承：启动前清空环境，只注入固定 `16` 个变量名；
   `TEMP`/`TMP` 绑定每会话 workspace，父 `PATH`、token/API key、代理、`CODEX_HOME`、
-  `PSModulePath` 和自定义变量均不自动传入。AppServer `27/27`、完整 Phase 2 `341/341`、真实
+  `PSModulePath` 和自定义变量均不自动传入。AppServer `27/27`、完整 Phase 2 `342/342`、真实
   doctor 和两轮 v2 live `2/2` 均通过，清理后 AgentHost/app-server 为 `0/0`。当前仍用默认用户
   Codex home 兼容文件登录，不代表每会话凭据或插件配置隔离。
 - M4 生产 app-server 现固定附加 `-c mcp_servers={}`，用 Codex 的结构化配置覆盖使默认用户
@@ -149,7 +151,7 @@ fixture `6/6` 和 R20.1 API 双 Shell Probe `29 passed / 8 expected failed`；�
 6. 实机测试暂缓期间继续收口不依赖 AutoCAD 的 M4 沙箱审计；进程树清理、进程数/内存/CPU/
    运行时限制、AgentHost 只读 JSONL 审计、工作区/审计 ACL 与有界保留、Codex 子进程父环境
    白名单和版本/App Server 健康预检已完成。工作目录磁盘硬配额、每会话 `CODEX_HOME`/凭据、
-   插件配置隔离、受限令牌/AppContainer、审计防篡改及 CAD 写入终态仍待完成。M4 完成前不启用
+   插件配置隔离、受限令牌/AppContainer、受保护审计锚点及 CAD 写入终态仍待完成。M4 完成前不启用
    AutoCAD 2016 强类型安全写入。
 7. 随后完成长期记忆、安装签名、企业部署和 AutoCAD 2025 适配。
 

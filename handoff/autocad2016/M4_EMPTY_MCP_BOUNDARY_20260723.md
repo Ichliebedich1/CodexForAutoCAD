@@ -41,7 +41,8 @@ Phase 2 Release gate: 341/341
 - 默认用户 `CODEX_HOME` 仍可被 Codex 使用，当前文件登录兼容路径仍存在。
 - 这不是每会话凭据、OS keyring、受信 token 或插件配置隔离。
 - 这不会禁止默认 profile 中除 MCP server 表以外的配置、技能、日志、会话或其他用户状态。
-- 它不替代工作目录硬配额、受限令牌/AppContainer、审计防篡改、故障注入或 AutoCAD 异常退出矩阵。
+- 它不替代工作目录硬配额、受限令牌/AppContainer、受保护审计锚点、故障注入或 AutoCAD 异常退出
+  矩阵。本地 SHA-256 审计链的范围见 `M4_AUDIT_HASH_CHAIN_20260723.md`。
 
 不得把此切口表述为“整个用户配置已隔离”“每会话凭据已隔离”或“完整 M4 沙箱已完成”。将来启用
 每会话 `CODEX_HOME` 前，用户必须明确完成受支持的 OS 凭据登录或等价安全认证恢复；不得复制、链接、

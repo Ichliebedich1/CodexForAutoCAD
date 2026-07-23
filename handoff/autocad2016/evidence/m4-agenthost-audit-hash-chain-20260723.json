@@ -1,0 +1,59 @@
+{
+  "schema": "codex.autocad.m4-audit-hash-chain-evidence/1",
+  "capturedAt": "2026-07-23T18:19:53.3528000+08:00",
+  "sourceBranch": "codex/m4-workspace-acl",
+  "baseCommit": "44f5f283f9dccc8b594a3434cbf02742a433ece3",
+  "scope": "AgentHost audit schema v2 canonical SHA-256 hash chain",
+  "implementation": {
+    "auditSchema": "codex.autocad.agenthost.audit/2",
+    "recordFormat": "canonical compact UTF-8 JSONL",
+    "firstPreviousRecordHash": "64 lowercase zero hexadecimal characters",
+    "recordHash": "lowercase SHA-256 over the canonical record excluding recordHash",
+    "chainBinding": "each record previousRecordHash equals the preceding recordHash",
+    "validator": [
+      "bounded bytes and records",
+      "strict UTF-8 and JSON object parsing",
+      "exact field allowlist with duplicate-field rejection",
+      "canonical byte-layout verification",
+      "schema session sequence and predecessor validation",
+      "terminal session_stopped or session_failed validation"
+    ]
+  },
+  "verification": {
+    "agentHostReleaseBuild": "0 warnings / 0 errors",
+    "focusedAuditSpecs": "6/6",
+    "bridgeSpecs": "50/50",
+    "phase2PowerShell7": "342/342; exit code 0",
+    "phase2WindowsPowerShell51": "342/342; exit code 0",
+    "hostProhibitedApiScan": true,
+    "sensitiveInformationScan": true,
+    "agentHostDoctor": true,
+    "autoCadStartedOrControlled": false
+  },
+  "testedTamperCases": [
+    "business-field modification without a matching record hash",
+    "sequence modification",
+    "middle-record deletion",
+    "predecessor hash modification",
+    "missing terminal record"
+  ],
+  "privacyBoundary": {
+    "promptContent": false,
+    "cadCanonicalJson": false,
+    "drawingPath": false,
+    "commandText": false,
+    "environmentVariables": false,
+    "exceptionText": false,
+    "apiKeysOrTokens": false,
+    "rawProviderPayload": false
+  },
+  "remainingBoundary": {
+    "signedAudit": false,
+    "hmacAudit": false,
+    "remoteAnchor": false,
+    "wormStorage": false,
+    "cadApprovalResolutionAudit": false,
+    "cadWriteTerminalAudit": false,
+    "autoCadRuntimeValidation": false
+  }
+}

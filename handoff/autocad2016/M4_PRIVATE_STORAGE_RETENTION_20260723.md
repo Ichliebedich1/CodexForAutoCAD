@@ -9,7 +9,8 @@ AgentHost 的真实 `bootstrap-serve` 会话现在使用独立 session workspace
 AgentHost 完成审计终态和 workspace 清理；只有仍未退出时才进入既有 `5` 秒强制进程树回收。
 
 这关闭了 M4 的“工作目录最小 ACL 与有界保留清理”切片，但不是磁盘硬配额、凭据隔离、
-AppContainer 或完整审计防篡改方案。CAD 写入与插件保存继续禁用。
+AppContainer 或受保护审计锚点/签名方案。CAD 写入与插件保存继续禁用；本地 SHA-256 链的范围
+见 `M4_AUDIT_HASH_CHAIN_20260723.md`。
 
 ## 私有 ACL
 

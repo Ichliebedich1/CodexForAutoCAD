@@ -89,10 +89,11 @@ M4 进程隔离已完成一个不依赖 AutoCAD 实机的小阶段：
   thread/turn、取消、审批请求和 turn 终态；仅记录受限 ID/方法/稳定状态码，审计故障会关闭
   Bridge。workspace 和 audit 使用受保护的当前用户/SYSTEM/Administrators ACL；session 正常
   退出删除，残留按 `24` 小时/最多 `64` 个清理，审计按 `30` 天/最多 `512` 个清理，清理不
-  跟随重解析点。当前 Bridge 为 `49/49`。
+  跟随重解析点。审计 `/2` 已加入 canonical SHA-256 前序链和有界完整性验证；它没有签名、远端
+  锚定或 WORM 存储。当前 Bridge 为 `50/50`。
 - Codex 子进程现先清空父环境，再使用固定 `16` 个变量名；`TEMP`/`TMP` 指向每会话 workspace，
   不自动传入 token/API key、代理、父 `PATH`、`CODEX_HOME` 或自定义变量。AppServer 为 `27/27`，
-  完整 Phase 2 双 Shell 均为 `341/341`，真实 doctor 和两轮 Codex live `2/2` 继续通过。
+  完整 Phase 2 双 Shell 均为 `342/342`，真实 doctor 和两轮 Codex live `2/2` 继续通过。
 - 每次生产 app-server 调用都固定附加 `-c mcp_servers={}`，以 Codex 结构化配置覆盖默认用户
   profile 的 MCP server 表。此变更的 AppServer `27/27`、AgentHost Release `0` warning / `0` error
   和真实两轮 live `2/2` 已通过；它不隔离默认用户 `CODEX_HOME`、凭据、技能或插件配置。
@@ -101,8 +102,8 @@ M4 进程隔离已完成一个不依赖 AutoCAD 实机的小阶段：
   的次版本、非 UTF-8、超限和超时输出 fail-closed，不公开路径、版本原文或 stderr。版本细节和
   升级规则见 `M4_CODEX_VERSION_PREFLIGHT_20260723.md`。
 - 这没有故意耗尽真实 Codex 的进程槽或内存、测量 CPU 节流性能，也没有启动或控制 AutoCAD；
-  工作目录磁盘硬配额、每会话 `CODEX_HOME`、凭据与插件配置隔离、审计防篡改、审批解决和 CAD 写入终态
-  仍未完成。
+  工作目录磁盘硬配额、每会话 `CODEX_HOME`、凭据与插件配置隔离、受保护审计锚点、审批解决和
+  CAD 写入终态仍未完成。
 
 脱敏实机范围证据：
 `evidence/cad-context-v2-live-observation-20260722.json`。
@@ -267,8 +268,9 @@ M1 仍使用 `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 和精确 `0.3.3.0
 4. M3：读取对象语义与覆盖的自动化候选已经冻结；中文目录、占位实际类型统计、8 类受限
    索引分类和 API Probe 不等于按精确 `0.4.2.0` 候选取得的实机逐类字段通过。
 5. M4：进程树清理、进程数/内存/CPU/运行时限制、AgentHost 只读 JSONL 审计、工作区/审计
-   ACL 与有界保留、Codex 子进程父环境白名单、版本/App Server 健康预检已完成；继续磁盘硬配额、
-   每会话 `CODEX_HOME`/凭据、插件配置隔离、受限令牌/AppContainer、审计防篡改和 CAD 写入终态。
+   ACL 与有界保留、Codex 子进程父环境白名单、版本/App Server 健康预检和本地审计哈希链已完成；
+   继续磁盘硬配额、每会话 `CODEX_HOME`/凭据、插件配置隔离、受限令牌/AppContainer、受保护
+   审计锚点和 CAD 写入终态。
 6. M5：AutoCAD 2016 `create_line` 安全写入最小闭环。
 7. 后续阶段见 `LONG_TERM_MEMORY_TODO.md`。
 
@@ -340,6 +342,9 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
   fail-closed 行为、自动化证据和未完成边界。
 - `evidence/m4-agenthost-runtime-audit-20260723.json`：M4 只读运行审计的脱敏结构、门禁结果和
   未实机/未写入边界。
+- `M4_AUDIT_HASH_CHAIN_20260723.md`：M4 审计 `/2` canonical SHA-256 链、验证范围与不能宣称的
+  外部不可篡改边界。
+- `evidence/m4-agenthost-audit-hash-chain-20260723.json`：哈希链切口的构建、规格和脱敏证据。
 - `M4_CODEX_CHILD_ENVIRONMENT_ALLOWLIST_20260723.md`：M4 Codex 子进程父环境白名单、变量用途和
   默认用户登录兼容边界。
 - `evidence/m4-codex-child-environment-allowlist-20260723.json`：M4 环境隔离规格、真实 doctor/live
@@ -371,7 +376,8 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
 > M4 已为 AgentHost/Codex Job 进程树应用清理与 CPU/内存/时间边界，将内容脱敏的只读运行
 > 审计接入真实 AgentHost 会话，并为 workspace/audit 启用受保护 ACL 与有界保留，为 Codex
 > 子进程启用固定父环境白名单、默认空 MCP 及 `>=0.144.4 <0.145.0` 的版本/App Server 健康预检；
-> 每会话 `CODEX_HOME`/凭据、插件配置隔离、磁盘硬配额、其余沙箱、审计防篡改和 CAD 写入终态仍未完成。
+> 审计 `/2` 已有本地 canonical SHA-256 链，但没有签名、远端锚定或 WORM 存储。每会话
+> `CODEX_HOME`/凭据、插件配置隔离、磁盘硬配额、其余沙箱、受保护审计锚点和 CAD 写入终态仍未完成。
 > 安全 CAD 写入、完整沙箱、长期记忆和发布安装
 > 尚未完成。
 
