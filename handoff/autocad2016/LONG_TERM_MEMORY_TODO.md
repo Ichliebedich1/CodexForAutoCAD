@@ -242,32 +242,37 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 
 完成定义：不支持对象只降低完整性，不使整次捕获失败。
 
-当前开发纵切为 `0.4.1.0`，不是冻结候选，也没有 AutoCAD `NETLOAD` 证据。说明与人工
-字段核对模板见 `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
+当前自动化冻结候选为 `0.4.2.0`，由源码提交
+`00fe879a0ac056fab48c955e71d63c51ef3577d9` 精确生成。候选 ID、哈希、自动门禁和人工
+边界见 `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`；尚无 AutoCAD `NETLOAD` 证据。
 
 - [x] 在选择快照、整图索引、Palette 和诊断中按实际类型/数量显示未支持、数据超限和
   读取失败对象；统计不包含图层、Handle、路径或对象内容，且类型桶有界。
 - [x] 新增 `CODEX16TYPEINFO`，为 19 类现有强类型对象列出中文名称和人工创建入口。
 - [x] 为选择统计、DrawingIndex 累积边界、中文目录和真实 mapper → 可读摘要调用链增加
-  源码级回归；当前自动门禁为 Contracts `86/86`、Bridge Client net45/net8 各 `29/29`、
-  Bridge `39/39`、AgentRuntime `33/33`、Host MVP `53/53`、完整 Phase 2 `310/310`。R20.1
+  源码级回归；当前自动门禁为 Contracts `96/96`、Bridge Client net45/net8 各 `30/30`、
+  Bridge `39/39`、AgentRuntime `34/34`、Host MVP `54/54`、完整 Phase 2 `323/323`。R20.1
   API 双 Shell Probe 为 `29 passed / 8 expected failed`；目标 R20.1/net45/x64 Host A/B
   输出逐字节一致，当前 Host SHA-256 为
-  `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，Autodesk DLL 复制数
-  为 `0`。这不是冻结候选或实机证据。
+  `467BC9711F6BD9598D7E788CB211A39D8DEE47428748CB0BDB3AF81F6322428D`，Autodesk DLL 复制数
+  为 `0`。这些是冻结候选自动化证据，不是实机证据。
 - [x] 提供 M3 中文对象目录、首要字段和未来实机记录模板。
 - [x] `BlockReference` 的受限 `blockDetails` 已贯通 DrawingIndex → CadQuery → 认证 Bridge →
   Agent 工具；属性/动态属性、嵌套块、布局和安全 Xref 元数据均受契约、深拷贝、内存预算和
   IPC 测试保护。外部 Xref 定义及真实路径不会读取或传播，详情降级为 `limited`。
 - [x] M3 块读取所需 R20.1 API 已由双 Shell Probe 固定为 `29 passed / 8 expected failed`；
   脱敏 evidence 为 `evidence/v2-api-surface-probe-m3-cross-shell-20260723.json`。
-- [ ] 为 19 类对象提供或冻结脱敏示例测试图；目录和创建入口不能替代测试资产。
+- [x] 冻结含 14 个实体记录的确定性脱敏核心 DXF fixture；双次生成、独立解析和 manifest
+  哈希门禁为 `6/6`。它是自动化核心资产，不替代 19 类 AutoCAD 实机字段矩阵。
+- [x] Region、Solid、Mesh、Surface、RasterImage、Underlay、Proxy、Wipeout 在
+  DrawingIndex 中作为可查询的 `data_limited` 类别安全降级，不伪装完整 payload。
+- [ ] 补齐无法由核心 DXF fixture 表达的 19 类对象/复杂块脱敏 AutoCAD 测试图。
 - [ ] 逐类实机验证现有 19 种强类型对象。
 - [ ] 用精确 M3 候选实机核对块属性、动态块、嵌套块、布局和安全 Xref 降级；复杂块语义
   与异常图仍需扩展。
 - [ ] 完善 Dimension、Hatch、Leader、MLeader、Table 的 R20.1 字段语义。
-- [ ] 增加 Region、Solid、Mesh、Surface、Image/Underlay 等高价值受限读取。
-- [ ] 垂直产品代理对象至少提供类型、图层、范围和占位信息。
+- [ ] 实机确认 Region、Solid、Mesh、Surface、Image/Underlay、Proxy、Wipeout 的
+  `data_limited` 查询结果、范围摘要和无路径泄露边界。
 - [ ] 长文字、复杂 Hatch、Table、Spline 受限但不拖垮整体。
 - [ ] 每类对象具有契约、边界、R20.1 API Probe 和实机字段证据。
 

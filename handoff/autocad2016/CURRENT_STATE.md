@@ -137,16 +137,29 @@ NETLOAD 证据的能力一律视为未支持。
   行为和真实性能；M2.3、M2.13、M2.14 保持未完成。
 - 旧 `E85D97EC...` 与 `597A7A3D...` 候选只保留为历史冻结点，均不可作为当前测试入口。
   Provider-neutral 抽象、Direct API 和自研 Agent Loop 继续冻结。
-- M3 的第一条开发纵切将 Host 版本推进到 `0.4.1.0`：选择快照、整图索引、
+- M3 当前自动化冻结候选将 Host 版本推进到 `0.4.2.0`：选择快照、整图索引、
   `CODEX16CTXINFO`、`CODEX16INDEXINFO` 和 Palette 均按实际类型统计未支持、数据超限和
   读取失败对象；`CODEX16TYPEINFO` 提供 19 类现有强类型对象的中文名称与人工创建入口。
   类型统计受 `4,096` 个桶限制，且不包含图层、Handle、路径或对象内容。
 - M3 的块读取纵切已把受限 `blockDetails` 接入 DrawingIndex、CadQuery、认证 Bridge 和
   Agent 工具。它包含属性/动态属性、嵌套块计数与深度、布局标志及安全 Xref 布尔元数据；
   外部 Xref 定义和真实路径不会读取或传播，任何受限情况以 `limited` 降级。
-- 该 M3 纵切正在 `codex/m3-integration` 上接入修正后的 M2 基线并修复审核问题；当前尚未
-  形成新的 source-bound 候选，也没有 AutoCAD `NETLOAD` 证据。中文对象目录、字段核对模板
-  和边界见
+- Region、Solid、Mesh、Surface、RasterImage、Underlay、Proxy 和 Wipeout 已成为
+  DrawingIndex 中可查询但明确 `data_limited` 的安全类别；它们没有被伪装为完整强类型
+  payload，也没有修改冻结的 CadContextJson v2。
+- 已加入含 14 个实体记录的确定性、脱敏 M3 核心 DXF fixture；双次生成、独立解析、哈希和
+  预期 manifest 门禁为 `6/6`。
+- source-bound M3 候选由提交 `00fe879a0ac056fab48c955e71d63c51ef3577d9` 生成，候选 ID
+  为 `autocad2016-m3-read-semantics-v042-467bc971-44cd5448-f5ab78bc`。Host SHA-256 为
+  `467BC9711F6BD9598D7E788CB211A39D8DEE47428748CB0BDB3AF81F6322428D`，AgentHost EXE 为
+  `44CD544883F7BA7B790044220FAE3C5DDD2515C589CE3CC6910260F6C6795EF5`，manifest 为
+  `02B5AE218CAFC19892F7CF086330D46EB237131A67BA61700D644E6A7E74D520`。
+- 该候选已通过完整 Phase 2 `323/323`、M3 fixture `6/6`、R20.1 双 Shell API Probe
+  `29 passed / 8 expected failed`、Host x64 A/B 位级一致、只读源码扫描和 AgentHost
+  发布门禁。证据为
+  `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v042-467bc971-44cd5448-f5ab78bc.json`。
+- 这些是自动化冻结证据，不是 AutoCAD 实机通过。M3 的 19 类字段、复杂块/Xref、受限对象
+  降级和 M2 的 1k/10k/50k 性能仍需使用精确候选人工验证；中文对象目录、字段矩阵和边界见
   `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`。
 
 ## 已验证检查点

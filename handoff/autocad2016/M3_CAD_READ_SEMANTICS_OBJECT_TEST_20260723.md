@@ -1,12 +1,26 @@
 # M3：CAD 读取语义与对象覆盖测试目录
 
-最后更新：2026-07-23（北京时间）
+最后更新：2026-07-24（北京时间）
 
 ## 当前状态与边界
 
-本文件是 M3 的中文对象目录和未来实机核对模板。当前实现是 `0.4.1.0` 开发纵切，已有当前
-源码的 R20.1 compile-only A/B 哈希证据，但尚未冻结候选目录/manifest 或取得 AutoCAD
-`NETLOAD` 证据；因此本文件不能把任何 M3 项目写成实机通过。
+本文件是 M3 的中文对象目录和实机核对模板。当前实现已冻结为 source-bound `0.4.2.0`
+自动化候选：
+
+- 候选 ID：
+  `autocad2016-m3-read-semantics-v042-467bc971-44cd5448-f5ab78bc`
+- 源码提交：`00fe879a0ac056fab48c955e71d63c51ef3577d9`
+- Host SHA-256：
+  `467BC9711F6BD9598D7E788CB211A39D8DEE47428748CB0BDB3AF81F6322428D`
+- AgentHost EXE SHA-256：
+  `44CD544883F7BA7B790044220FAE3C5DDD2515C589CE3CC6910260F6C6795EF5`
+- manifest SHA-256：
+  `02B5AE218CAFC19892F7CF086330D46EB237131A67BA61700D644E6A7E74D520`
+- 候选目录：
+  `artifacts/autocad2016-m3-read-semantics-v042-467bc971-44cd5448-f5ab78bc`
+
+它尚未取得 AutoCAD `NETLOAD`、19 类字段矩阵或复杂块/Xref 实机证据；因此本文件不能把
+任何 M3 实机项目预先写成通过。
 
 这一纵切没有开启 CAD 写入、插件保存、命令字符串、LISP、脚本或反射式 CAD 调用。它只在
 既有只读调用链中增加受限对象统计和块详情：
@@ -43,7 +57,7 @@ Idle 分片 DrawingIndex
 
 ## 19 类强类型对象目录
 
-在未来冻结的 M3 候选中，先执行 `CODEX16TYPEINFO` 核对此目录。下表的“首要核对字段”
+加载上述精确 M3 候选后，先执行 `CODEX16TYPEINFO` 核对此目录。下表的“首要核对字段”
 是当前可读摘要/Canonical JSON 应有的重点，不是对完整语义已完成的承诺。
 
 | # | 中文名称（强类型） | 人工创建或取得方式 | 首要核对字段 |
@@ -68,26 +82,28 @@ Idle 分片 DrawingIndex
 | 18 | 多重引线（MLeader） | 注释功能区 → 多重引线 | layer、leaderLines、text |
 | 19 | 表格（Table） | 注释功能区 → 表格 | layer、rows、columns、position、display text |
 
-块属性、动态块、嵌套块、布局/空间和安全 Xref 元数据已经进入当前开发纵切的自动化调用链，
-但仍没有精确候选或实机字段证据。复杂块、复杂标注、复杂 Hatch、复杂 MLeader 与复杂 Table
-仍是 M3 后续语义工作，不能由“强类型名称出现”或 `blockDetails` 出现推断为完全支持。
+块属性、动态块、嵌套块、布局/空间和安全 Xref 元数据已经进入精确候选的自动化调用链，
+但仍没有实机字段证据。复杂块、复杂标注、复杂 Hatch、复杂 MLeader 与复杂 Table 仍是
+M3 后续语义工作，不能由“强类型名称出现”或 `blockDetails` 出现推断为完全支持。
 
 ## 未支持与高价值受限对象
 
-下列对象不是本纵切新增的完整强类型 payload。若出现在选择快照或整图索引中，应尽量以
-受限 placeholder 保留实际类型、图层和范围摘要，并降低完整性，而不是让整次捕获失败：
+下列对象不是本候选新增的完整强类型 payload。若出现在整图索引中，应以可查询但明确
+`data_limited` 的安全类别保留受限类型和范围摘要，而不是伪装为完整读取：
 
 - 面域（Region）、三维实体（Solid）、网格（Mesh）、曲面（Surface）。
-- 光栅图像、PDF/DWF/DGN 参考底图（Image/Underlay）。
-- 垂直产品代理对象（Proxy Entity）。
+- 光栅图像（RasterImage）、PDF/DWF/DGN 参考底图（Underlay）。
+- 垂直产品代理对象（Proxy Entity）、区域覆盖（Wipeout）。
 
-Xref 的外部真实路径不允许进入可读摘要、Canonical JSON、日志或人工测试回报。长文字、
-复杂 Hatch、Table 和 Spline 发生限额时必须标记 `data_limited`，不能假装完整。
+这 8 类已经进入自动化分类和查询门禁，但仍需 AutoCAD 实机确认对象类型、范围摘要、降级
+状态和无路径泄露。Xref 的外部真实路径不允许进入可读摘要、Canonical JSON、日志或人工
+测试回报。长文字、复杂 Hatch、Table 和 Spline 发生限额时必须标记 `data_limited`，不能
+假装完整。
 
-## 未来实机核对模板（当前延期）
+## 精确候选实机核对模板（待执行）
 
-仅在存在精确 M3 候选、版本、SHA-256 和 manifest 后执行。请在脱敏副本或专用测试图中
-人工操作；本项目不会启动、关闭或控制 AutoCAD，也不会保存图纸。
+请只加载本文件顶部的精确 M3 候选，在脱敏副本或专用测试图中人工操作；本项目不会启动、
+关闭或控制 AutoCAD，也不会保存图纸。
 
 1. 人工准备一类或少量同类对象后，先执行 `DBMOD` 记下此时的值。对象创建本身可以改变
    `DBMOD`；本步骤只验证随后插件只读捕获不再改变它。
@@ -130,18 +146,19 @@ Xref 的外部真实路径不允许进入可读摘要、Canonical JSON、日志�
 
 当前自动门禁结果：
 
-- Contracts `86/86`；Bridge Client net45/net8 各 `29/29`；Bridge `39/39`；AgentRuntime
-  `33/33`；Host MVP `53/53`；完整 Phase 2 `310/310`。
+- Contracts `96/96`；Bridge Client net45/net8 各 `30/30`；Bridge `39/39`；AgentRuntime
+  `34/34`；Host MVP `54/54`；完整 Phase 2 `323/323`。
 - R20.1 API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员集合和
   Probe DLL 哈希一致。脱敏聚合 evidence 为
   `evidence/v2-api-surface-probe-m3-cross-shell-20260723.json`。
 - 禁止 API、AgentHost doctor、敏感信息和 `git diff --check` 均通过。
 - 当前 R20.1/net45/x64 Host A/B 输出逐字节一致，Autodesk DLL 复制数为 `0`。Host
-  `0.4.1.0` SHA-256 为
-  `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`。
-- 当前编译输出位于 `artifacts/m3-r201-current-compile-*/`；其中 `compile-summary.json`
-  不是候选 manifest，不是冻结候选，也没有 AutoCAD `NETLOAD` 证据。
+  `0.4.2.0` SHA-256 为
+  `467BC9711F6BD9598D7E788CB211A39D8DEE47428748CB0BDB3AF81F6322428D`。
+- 14 实体记录的确定性脱敏核心 DXF fixture 已通过双次生成、独立解析和哈希门禁 `6/6`。
+- source-bound 候选 evidence 为
+  `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v042-467bc971-44cd5448-f5ab78bc.json`。
 
-仍未完成：19 类对象与块详情的实机字段证据、脱敏示例测试图资产、复杂对象语义、复杂块/
-Xref 边界，以及高价值对象的受限读取。M2 的 1k/10k/50k 实机性能和查询证据仍独立待办，
-不因本文件而完成。
+仍未完成：19 类对象与块详情的实机字段证据、无法由核心 DXF 表达的脱敏 AutoCAD 测试图、
+复杂对象语义、复杂块/Xref 边界，以及 8 类高价值对象的实机受限读取证据。M2 的
+1k/10k/50k 实机性能和查询证据仍独立待办，不因本文件而完成。

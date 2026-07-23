@@ -46,7 +46,7 @@ M2 `0.4.0.0` 已把独立只读整图索引和 Codex 按需查询接成一条调
 - 查询页硬上限为 `200` 个实体，IPC 单帧硬上限为 `8,388,608` 字节；两项均写入候选
   manifest 并由 `CODEX16INDEXINFO` 显示，不依赖人工记忆常量。
 
-M3 `0.4.1.0` 正在开发第一条读取语义纵切，不是冻结候选：
+M3 `0.4.2.0` 已形成 source-bound 自动化冻结候选：
 
 - 选择快照、整图索引、Palette 和 `CODEX16CTXINFO` / `CODEX16INDEXINFO` 会按实际类型
   显示未支持、数据超限和读取失败对象的数量；统计不带图层、Handle、路径或对象内容。
@@ -54,14 +54,17 @@ M3 `0.4.1.0` 正在开发第一条读取语义纵切，不是冻结候选：
 - `BlockReference` 的受限 `blockDetails` 已贯通 DrawingIndex、CadQuery、认证 Bridge 和
   Agent 工具：属性/动态属性、嵌套块计数与深度、布局标志和安全 Xref 布尔元数据均有上限。
   外部 Xref 定义和真实路径不会读取或传播，详情会降级为 `limited`。
-- 自动门禁已通过 Contracts `86/86`、Bridge Client net45/net8 各 `29/29`、Bridge `39/39`、
-  AgentRuntime `33/33`、Host MVP `53/53`、完整 Phase 2 `310/310`；R20.1 API 双 Shell
+- Region、Solid、Mesh、Surface、RasterImage、Underlay、Proxy 和 Wipeout 在
+  DrawingIndex 中作为可查询的 `data_limited` 安全类别，不修改 CadContextJson v2。
+- 自动门禁已通过 Contracts `96/96`、Bridge Client net45/net8 各 `30/30`、Bridge `39/39`、
+  AgentRuntime `34/34`、Host MVP `54/54`、完整 Phase 2 `323/323`；R20.1 API 双 Shell
   Probe 为 `29 passed / 8 expected failed`，目标 R20.1/net45/x64 Host A/B 输出逐字节一致，
   当前 Host SHA-256 为
-  `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，且 Autodesk DLL
+  `467BC9711F6BD9598D7E788CB211A39D8DEE47428748CB0BDB3AF81F6322428D`，且 Autodesk DLL
   复制数为 `0`。
+- 核心读取 DXF fixture 双次生成、独立解析和哈希门禁为 `6/6`。
 - 中文字段核对目录见 `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`；它不替代脱敏
-  示例测试图、R20.1 Probe 或实机逐类字段证据。
+  AutoCAD 测试图、R20.1 Probe 或实机逐类字段证据。当前候选尚未 `NETLOAD`。
 
 脱敏实机范围证据：
 `evidence/cad-context-v2-live-observation-20260722.json`。
@@ -248,15 +251,16 @@ M2 `0.4.0.0` 候选已重跑以下门禁：
 这些门禁不替代 AutoCAD 2016 人工 `NETLOAD`。历史 `0.3.2.0` 实机结果也不能自动证明
 新的 `0.4.0.0` 候选，更不能证明 50k 运行时性能。
 
-M3 当前自动门禁已完整运行：Contracts `86/86`、Bridge Client net45/net8 各 `29/29`、
-Bridge `39/39`、AgentRuntime `33/33`、Host MVP `53/53`、完整 Phase 2 `310/310`。R20.1
+M3 当前自动门禁已完整运行：Contracts `96/96`、Bridge Client net45/net8 各 `30/30`、
+Bridge `39/39`、AgentRuntime `34/34`、Host MVP `54/54`、完整 Phase 2 `323/323`。R20.1
 API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员集合和 Probe DLL
 哈希一致；R20.1/net45/x64 Host A/B 输出也逐字节一致，Host SHA-256 为
-`FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，Autodesk DLL 复制数
-为 `0`。这些记录分别见
-`evidence/v2-api-surface-probe-m3-cross-shell-20260723.json` 和当前 `artifacts` 编译输出。
-它们不是候选 manifest，不是冻结候选，也尚未 AutoCAD `NETLOAD`；候选冻结和实机测试仍须
-在对应纵切完成后单独执行。
+`467BC9711F6BD9598D7E788CB211A39D8DEE47428748CB0BDB3AF81F6322428D`，Autodesk DLL 复制数
+为 `0`。核心读取 DXF fixture 门禁为 `6/6`。source-bound 候选 ID 为
+`autocad2016-m3-read-semantics-v042-467bc971-44cd5448-f5ab78bc`，源码提交为
+`00fe879a0ac056fab48c955e71d63c51ef3577d9`；候选 evidence 见
+`evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v042-467bc971-44cd5448-f5ab78bc.json`。
+这些自动化记录尚未由 AutoCAD `NETLOAD`、19 类字段矩阵或复杂块/Xref 实机证据补全。
 
 ## 9. 安全与隐私
 
@@ -291,6 +295,8 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
 - `M3_CAD_READ_SEMANTICS_OBJECT_TEST_20260723.md`：M3 中文对象目录、字段核对模板和边界。
 - `evidence/v2-api-surface-probe-m3-cross-shell-20260723.json`：M3 块读取所需 R20.1 API 的
   双 Shell 脱敏 Probe 结果，不等于 AutoCAD 实机验证。
+- `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v042-467bc971-44cd5448-f5ab78bc.json`：
+  M3 `0.4.2.0` source-bound 自动化冻结、哈希、门禁和未实机边界。
 
 ## 11. 支持声明
 
@@ -303,8 +309,9 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
 > fixture、性能遥测和脱敏记录器已经通过自动化。Autodesk 枚举器生命周期已收口到单个
 > transaction，但 50k preparation 最大 Idle 分片和 AutoCAD 实机性能仍未验证，因此
 > M2.3、M2.13、M2.14 尚未完成。
-> M3 `0.4.1.0` 的 placeholder 类型统计、中文对象目录和有界块详情正在接入修正后的 M2
-> 基线并接受缺陷修复；尚未冻结新候选或取得逐类实机字段证据。
+> M3 `0.4.2.0` 已冻结 source-bound 自动化候选：placeholder 类型统计、中文对象目录、
+> 有界块详情、8 类高价值 `data_limited` 降级和核心 DXF fixture 均进入真实门禁；尚未
+> 取得 AutoCAD `NETLOAD`、19 类逐类字段及复杂块/Xref 实机证据。
 > 安全 CAD 写入、完整沙箱、长期记忆和发布安装
 > 尚未完成。
 
