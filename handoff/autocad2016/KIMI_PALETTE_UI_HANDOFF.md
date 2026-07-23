@@ -164,6 +164,7 @@ git diff --check 与 git diff --cached --check 通过；敏感信息基础扫描
 
 ## 8. 提交
 
-待填：提交 ID。
-
+提交 ID：`2efd40b98b2aa731d8d95ac56a08d5f414c30edf`
 提交信息：`feat(host2016): redesign readonly palette workflow`
+分支：`codex/kimi-palette-ui`（未 merge、未 push；交接文档在提交后回填本提交 ID，
+工作树中该文件与提交内容仅差本节文字）
