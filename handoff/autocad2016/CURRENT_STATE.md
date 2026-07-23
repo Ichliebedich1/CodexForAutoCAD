@@ -115,8 +115,8 @@ NETLOAD 证据的能力一律视为未支持。
 - 已建立确定性 AC1009 脱敏 DXF：模型空间精确 1,000、10,000、50,000 个实体，覆盖
   Line/Circle/Arc/Text/Insert 和 8 个图层。生成器拒绝覆盖已有目录，不启动 AutoCAD；
   独立流式解析、双次哈希、脱敏 evidence 和 fail-closed 测试为 `6/6`。
-- 当前 M2 `0.4.0.0` 自动化候选为
-  `C:\tmp\CodexForAutoCAD-m2-benchmark\artifacts\autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2`。
+- 当前 M2 `0.4.0.0` 自动化候选 ID 为
+  `autocad2016-m2-drawing-index-v040-e85d97ec-fa16355c-898671e2`。
   Host SHA-256 为 `E85D97EC02505EF69C67F710EAD5D35D18481B7D2DBB4C3D87195FCDE4156B7E`，
   AgentHost EXE 为 `FA16355C185F61CD7E85446E884C2FF9D7C745E5E2EB0CC40747C916C215371B`，
   manifest 为 `95427BD85E70870C483512CD4401228B70F63608802512119F5ECB6486844356`。
@@ -234,7 +234,8 @@ NETLOAD 证据的能力一律视为未支持。
   绝对 PATH 候选会被归一化为固定本地磁盘的绝对 `codex.exe`；显式无效配置 fail-closed，且
   doctor 仅显示来源标签、不显示路径。启动/关闭超时和工作目录同样进入该配置。版本兼容硬门槛、
   每会话 `CODEX_HOME`、环境白名单、Job Object 与审计仍未完成，详见
-  `M4_LOCAL_CODEX_CONFIGURATION_20260723.md`。
+  `M4_LOCAL_CODEX_CONFIGURATION_20260723.md` 与
+  `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
 - 冻结构建哈希：AgentHost EXE `002BBA9D...49706`，AgentHost DLL
   `852BD92C...86033`，net45 Launcher `597D99E8...F849`，net8 Launcher
   `84E0E2A7...1FE9`；完整值保存在阶段 evidence。

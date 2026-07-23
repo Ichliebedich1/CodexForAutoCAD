@@ -292,9 +292,11 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   doctor 只记录来源标签。说明见 `M4_LOCAL_CODEX_CONFIGURATION_20260723.md`。
 - [ ] 冻结官方支持的 Codex 版本范围和稳定非交互版本协议，并在启动前执行版本兼容预检；当前
   app-server initialize doctor 仅是可用性/健康检查，不能替代版本兼容证明。
-- [ ] 每会话独立 CODEX_HOME。
-- [ ] 默认空 MCP、空插件配置和独立凭据边界。
-- [ ] 子进程仅继承白名单环境变量。
+- [ ] 每会话独立 CODEX_HOME；不得复制、链接或记录全局 Codex profile，需先采用经用户确认且
+  经审计的认证恢复方式。见 `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
+- [ ] 默认空 MCP、空插件配置和独立凭据边界；当前未知 Codex 配置布局不能作为假定的复制来源。
+- [ ] 子进程仅继承白名单环境变量；当前仅是父环境覆写，尚非白名单。实施门槛见
+  `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
 - [ ] 使用 Windows Job Object 管理 AgentHost 与 Codex 整个进程树。
 - [ ] 评估并实现受限令牌或 AppContainer。
 - [ ] 设置 CPU、内存、进程数、运行时间和工作目录配额。

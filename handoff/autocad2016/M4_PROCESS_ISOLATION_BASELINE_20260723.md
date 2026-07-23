@@ -52,7 +52,8 @@ sensitive-information scans passed; local AgentHost doctor handshake passed.
 
 ## 明确未完成
 
-- Codex 路径、兼容版本、超时和工作目录的正式配置与迁移。
+- Codex 路径、工作目录和启动/关闭超时的正式配置已在
+  `M4_LOCAL_CODEX_CONFIGURATION_20260723.md` 完成；Codex 兼容版本硬门槛仍未冻结。
 - 每会话独立 `CODEX_HOME`，以及不复制/泄露用户凭据的登录和恢复方案。
 - 空 MCP/插件配置、子进程环境白名单和最小继承策略。
 - Windows Job Object、CPU/内存/进程数/运行时配额、受限令牌或 AppContainer。
@@ -61,7 +62,7 @@ sensitive-information scans passed; local AgentHost doctor handshake passed.
 
 ## 下一顺序
 
-1. 先建立正式的 M4 配置模型与只允许本地绝对 Codex 可执行文件的预检，保留当前默认行为。
+1. 配置模型与只允许本地绝对 Codex 可执行文件的预检已完成，保留当前默认登录行为。
 2. 将 Codex 子进程的环境构建为显式白名单；独立 `CODEX_HOME` 需先确定安全登录和凭据边界，
    不复制用户 profile 中的配置文件作为临时方案。
 3. 加入 Job Object 和资源限制，再以故障注入验证整棵进程树清理。
