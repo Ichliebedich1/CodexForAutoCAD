@@ -66,6 +66,17 @@ internal static class AgentHostProgram
             });
             return 1;
         }
+        catch (CodexVersionPreflightException exception)
+        {
+            WriteJson(new
+            {
+                ok = false,
+                command,
+                error = "codex_version_preflight",
+                errorCode = exception.Failure.ToString()
+            });
+            return 1;
+        }
         catch (Exception exception)
         {
             WriteJson(new
@@ -180,6 +191,8 @@ internal static class AgentHostProgram
                     sessionsRoot,
                     directionKeys!.SessionId);
                 var codexConfiguration = CreateCodexConfiguration(null, workspace);
+                _ = await VerifyCodexVersionAsync(codexConfiguration, shutdown.Token)
+                    .ConfigureAwait(false);
                 var cadQueryBroker = new AgentHostCadQueryBroker();
                 await using var runtime = new CodexAgentRuntime(
                     codexConfiguration.CreateClientOptions(),
@@ -193,6 +206,9 @@ internal static class AgentHostProgram
                         MaximumPromptCharacters = 320 * 1024,
                     },
                     cadDrawingQueryBroker: cadQueryBroker);
+                await runtime.StartAsync(shutdown.Token)
+                    .WaitAsync(codexConfiguration.StartupTimeout, shutdown.Token)
+                    .ConfigureAwait(false);
                 var session = new AgentHostBridgeSession(
                     runtime,
                     "agenthost-" + directionKeys.SessionId,
@@ -222,6 +238,7 @@ internal static class AgentHostProgram
 
     private static async Task<int> RunDoctorAsync(CodexLocalAppServerConfiguration codexConfiguration)
     {
+        var version = await VerifyCodexVersionAsync(codexConfiguration).ConfigureAwait(false);
         await using var client = CreateClient(codexConfiguration);
         var initialized = await client.StartAsync().WaitAsync(codexConfiguration.StartupTimeout);
         WriteJson(new
@@ -230,6 +247,8 @@ internal static class AgentHostProgram
             state = client.State.ToString(),
             workspaceReady = true,
             codexExecutableSource = codexConfiguration.ExecutableSource.ToString(),
+            codexVersion = version.Version.ToString(),
+            codexVersionCompatibility = version.Compatibility.ToString(),
             codexHomeConfigured = !string.IsNullOrWhiteSpace(initialized.CodexHome),
             platformFamily = initialized.PlatformFamily,
             platformOs = initialized.PlatformOs,
@@ -254,6 +273,8 @@ internal static class AgentHostProgram
             shutdown.Cancel();
         };
 
+        var version = await VerifyCodexVersionAsync(codexConfiguration, shutdown.Token)
+            .ConfigureAwait(false);
         await using var client = CreateClient(codexConfiguration);
         var initialized = await client.StartAsync(shutdown.Token)
             .WaitAsync(codexConfiguration.StartupTimeout, shutdown.Token);
@@ -263,6 +284,8 @@ internal static class AgentHostProgram
             state = "ready",
             workspaceReady = true,
             codexExecutableSource = codexConfiguration.ExecutableSource.ToString(),
+            codexVersion = version.Version.ToString(),
+            codexVersionCompatibility = version.Compatibility.ToString(),
             platformFamily = initialized.PlatformFamily,
             userAgent = initialized.UserAgent
         });
@@ -291,6 +314,18 @@ internal static class AgentHostProgram
         client.ProtocolFaulted += (_, fault) =>
             Console.Error.WriteLine("protocol: " + fault.Exception.GetType().Name);
         return client;
+    }
+
+    private static Task<CodexVersionPreflightResult> VerifyCodexVersionAsync(
+        CodexLocalAppServerConfiguration codexConfiguration,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(codexConfiguration);
+        return CodexVersionPreflight.VerifyAsync(
+            codexConfiguration.CreateClientOptions(),
+            codexConfiguration.VersionCompatibility,
+            codexConfiguration.StartupTimeout,
+            cancellationToken);
     }
 
     private static CodexLocalAppServerConfiguration CreateCodexConfiguration(

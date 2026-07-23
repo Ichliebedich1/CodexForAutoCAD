@@ -24,7 +24,14 @@ var specs = new (string Name, Func<Task> Run)[]
     ("缺失本地Codex配置返回稳定错误", LocalCodexConfigurationReportsMissingExecutable),
     ("本地Codex可从绝对PATH发现", LocalCodexConfigurationDiscoversAbsolutePath),
     ("无效临时目录返回稳定错误", LocalCodexConfigurationRejectsInvalidTemporaryDirectory),
-    ("stderr限额无效时被拒绝", StandardErrorLimitIsValidated)
+    ("stderr限额无效时被拒绝", StandardErrorLimitIsValidated),
+    ("Codex版本格式与兼容范围固定", CodexVersionFormatAndCompatibilityAreFrozen),
+    ("Codex版本预检使用隔离环境", CodexVersionPreflightUsesIsolatedEnvironment),
+    ("不支持Codex版本fail-closed", UnsupportedCodexVersionFailsClosed),
+    ("Codex版本子进程退出错误fail-closed", CodexVersionProcessExitFailsClosed),
+    ("超限Codex版本输出fail-closed", OversizedCodexVersionOutputFailsClosed),
+    ("非UTF8 Codex版本输出fail-closed", NonUtf8CodexVersionOutputFailsClosed),
+    ("Codex版本预检超时fail-closed", CodexVersionPreflightTimeoutFailsClosed)
 };
 
 var failed = 0;
@@ -295,6 +302,7 @@ static Task LocalCodexConfigurationAcceptsConfiguredExecutable()
     Equal(TimeSpan.FromSeconds(9), configuration.StartupTimeout);
     Equal(TimeSpan.FromSeconds(4), configuration.ShutdownTimeout);
     Equal(fixture.ExecutablePath, configuration.CreateClientOptions().CodexExecutablePath);
+    Equal(">=0.144.4 <0.145.0", configuration.VersionCompatibility.ToString());
     return Task.CompletedTask;
 }
 
@@ -415,6 +423,219 @@ static Task StandardErrorLimitIsValidated()
     return Task.CompletedTask;
 }
 
+static Task CodexVersionFormatAndCompatibilityAreFrozen()
+{
+    True(
+        CodexVersionPreflight.TryParseVersion("codex-cli 0.144.4\r\n", out var observed),
+        "The documented local Codex version format was not parsed.");
+    Equal(new CodexSemanticVersion(0, 144, 4), observed);
+    True(
+        CodexVersionCompatibility.Default.IsSupported(observed),
+        "The locally verified Codex version is outside the frozen compatibility range.");
+    True(
+        CodexVersionCompatibility.Default.IsSupported(new CodexSemanticVersion(0, 144, 99)),
+        "A compatible patch release was rejected.");
+    True(
+        !CodexVersionCompatibility.Default.IsSupported(new CodexSemanticVersion(0, 145, 0)),
+        "An unreviewed Codex minor release was accepted.");
+    True(
+        !CodexVersionPreflight.TryParseVersion("codex-cli 0.144.4-preview", out _),
+        "An unreviewed prerelease version was accepted.");
+    True(
+        !CodexVersionPreflight.TryParseVersion("codex-cli 0.144.4\nother", out _),
+        "Ambiguous multi-line version output was accepted.");
+    return Task.CompletedTask;
+}
+
+static async Task CodexVersionPreflightUsesIsolatedEnvironment()
+{
+    const string parentVariable = "CODEX_AUTOCAD_VERSION_PREFLIGHT_PARENT";
+    var previousParentValue = Environment.GetEnvironmentVariable(parentVariable);
+    var directory = CreateTemporaryDirectory("version-preflight-isolation");
+    try
+    {
+        Environment.SetEnvironmentVariable(parentVariable, "parent-marker");
+        var scriptPath = Path.Combine(directory, "codex-version.cmd");
+        File.WriteAllLines(
+            scriptPath,
+            new[]
+            {
+                "@echo off",
+                "if defined " + parentVariable + " (exit /b 17)",
+                "echo codex-cli 0.144.4",
+                "exit /b 0",
+            },
+            Encoding.ASCII);
+        var options = new AppServerClientOptions
+        {
+            CodexExecutablePath = scriptPath,
+            WorkingDirectory = directory,
+            Environment = CodexChildEnvironmentPolicy.CreateForCurrentProcess(directory),
+            InheritParentEnvironment = false,
+        };
+
+        var result = await CodexVersionPreflight.VerifyAsync(
+            options,
+            CodexVersionCompatibility.Default,
+            TimeSpan.FromSeconds(5));
+
+        Equal(new CodexSemanticVersion(0, 144, 4), result.Version);
+        Equal(">=0.144.4 <0.145.0", result.Compatibility.ToString());
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable(parentVariable, previousParentValue);
+        Directory.Delete(directory, recursive: true);
+    }
+}
+
+static async Task UnsupportedCodexVersionFailsClosed()
+{
+    var directory = CreateTemporaryDirectory("version-preflight-unsupported");
+    try
+    {
+        var scriptPath = WriteVersionProbe(directory, "echo codex-cli 0.145.0", "exit /b 0");
+        var exception = await CaptureAsync<CodexVersionPreflightException>(() =>
+            CodexVersionPreflight.VerifyAsync(
+                CreateVersionPreflightOptions(scriptPath, directory),
+                CodexVersionCompatibility.Default,
+                TimeSpan.FromSeconds(5)));
+
+        Equal(CodexVersionPreflightFailure.UnsupportedVersion, exception.Failure);
+        True(
+            !exception.Message.Contains(directory, StringComparison.OrdinalIgnoreCase),
+            "Version preflight error exposed a local path.");
+    }
+    finally
+    {
+        Directory.Delete(directory, recursive: true);
+    }
+}
+
+static async Task CodexVersionProcessExitFailsClosed()
+{
+    var directory = CreateTemporaryDirectory("version-preflight-process-exit");
+    try
+    {
+        const string stderrMarker = "version-preflight-private-stderr-marker";
+        var scriptPath = WriteVersionProbe(
+            directory,
+            "echo " + stderrMarker + " 1>&2",
+            "exit /b 23");
+        var exception = await CaptureAsync<CodexVersionPreflightException>(() =>
+            CodexVersionPreflight.VerifyAsync(
+                CreateVersionPreflightOptions(scriptPath, directory),
+                CodexVersionCompatibility.Default,
+                TimeSpan.FromSeconds(5)));
+
+        Equal(CodexVersionPreflightFailure.ProcessExitedWithError, exception.Failure);
+        True(
+            !exception.Message.Contains(directory, StringComparison.OrdinalIgnoreCase)
+            && !exception.Message.Contains(stderrMarker, StringComparison.Ordinal),
+            "Version preflight process-exit error exposed a path or stderr text.");
+    }
+    finally
+    {
+        Directory.Delete(directory, recursive: true);
+    }
+}
+
+static async Task OversizedCodexVersionOutputFailsClosed()
+{
+    var directory = CreateTemporaryDirectory("version-preflight-output-limit");
+    try
+    {
+        File.WriteAllText(
+            Path.Combine(directory, "payload.txt"),
+            new string('x', CodexVersionPreflight.MaximumVersionOutputBytes + 1),
+            Encoding.ASCII);
+        var scriptPath = WriteVersionProbe(
+            directory,
+            "type \"%~dp0payload.txt\"",
+            "exit /b 0");
+        var exception = await CaptureAsync<CodexVersionPreflightException>(() =>
+            CodexVersionPreflight.VerifyAsync(
+                CreateVersionPreflightOptions(scriptPath, directory),
+                CodexVersionCompatibility.Default,
+                TimeSpan.FromSeconds(5)));
+
+        Equal(CodexVersionPreflightFailure.VersionOutputTooLarge, exception.Failure);
+    }
+    finally
+    {
+        Directory.Delete(directory, recursive: true);
+    }
+}
+
+static async Task NonUtf8CodexVersionOutputFailsClosed()
+{
+    var directory = CreateTemporaryDirectory("version-preflight-non-utf8");
+    try
+    {
+        File.WriteAllBytes(Path.Combine(directory, "payload.bin"), new byte[] { 0xff, 0xfe, 0xfd });
+        var scriptPath = WriteVersionProbe(
+            directory,
+            "type \"%~dp0payload.bin\"",
+            "exit /b 0");
+        var exception = await CaptureAsync<CodexVersionPreflightException>(() =>
+            CodexVersionPreflight.VerifyAsync(
+                CreateVersionPreflightOptions(scriptPath, directory),
+                CodexVersionCompatibility.Default,
+                TimeSpan.FromSeconds(5)));
+
+        Equal(CodexVersionPreflightFailure.InvalidVersionOutput, exception.Failure);
+    }
+    finally
+    {
+        Directory.Delete(directory, recursive: true);
+    }
+}
+
+static async Task CodexVersionPreflightTimeoutFailsClosed()
+{
+    var directory = CreateTemporaryDirectory("version-preflight-timeout");
+    try
+    {
+        var scriptPath = WriteVersionProbe(
+            directory,
+            "ping 127.0.0.1 -n 8 > nul",
+            "echo codex-cli 0.144.4",
+            "exit /b 0");
+        var exception = await CaptureAsync<CodexVersionPreflightException>(() =>
+            CodexVersionPreflight.VerifyAsync(
+                CreateVersionPreflightOptions(scriptPath, directory),
+                CodexVersionCompatibility.Default,
+                TimeSpan.FromMilliseconds(200)));
+
+        Equal(CodexVersionPreflightFailure.TimedOut, exception.Failure);
+    }
+    finally
+    {
+        Directory.Delete(directory, recursive: true);
+    }
+}
+
+static string WriteVersionProbe(string directory, params string[] commands)
+{
+    var scriptPath = Path.Combine(directory, "codex-version.cmd");
+    File.WriteAllLines(
+        scriptPath,
+        new[] { "@echo off" }.Concat(commands),
+        Encoding.ASCII);
+    return scriptPath;
+}
+
+static AppServerClientOptions CreateVersionPreflightOptions(string scriptPath, string directory)
+{
+    return new AppServerClientOptions
+    {
+        CodexExecutablePath = scriptPath,
+        WorkingDirectory = directory,
+        Environment = CodexChildEnvironmentPolicy.CreateForCurrentProcess(directory),
+        InheritParentEnvironment = false,
+    };
+}
+
 static string CreateTemporaryDirectory(string purpose)
 {
     var directory = Path.Combine(
@@ -478,6 +699,21 @@ static async Task ThrowsAsync<TException>(Func<Task> action)
     catch (TException)
     {
         return;
+    }
+
+    throw new InvalidOperationException("Expected " + typeof(TException).Name);
+}
+
+static async Task<TException> CaptureAsync<TException>(Func<Task> action)
+    where TException : Exception
+{
+    try
+    {
+        await action();
+    }
+    catch (TException exception)
+    {
+        return exception;
     }
 
     throw new InvalidOperationException("Expected " + typeof(TException).Name);

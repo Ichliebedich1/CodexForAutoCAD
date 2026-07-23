@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Codex.AutoCAD.AppServer;
 
 namespace Codex.AutoCAD.AgentHost;
 
@@ -57,6 +58,10 @@ public static class AgentHostAuditErrorCodes
 {
     public const string AccessDenied = "access_denied";
     public const string AuditUnavailable = "audit_unavailable";
+    public const string CodexVersionInvalidOutput = "codex_version_invalid_output";
+    public const string CodexVersionProcessFailed = "codex_version_process_failed";
+    public const string CodexVersionTimedOut = "codex_version_timeout";
+    public const string CodexVersionUnsupported = "codex_version_unsupported";
     public const string InvalidRequest = "invalid_request";
     public const string InvalidState = "invalid_state";
     public const string IoFailure = "io_failure";
@@ -71,6 +76,20 @@ public static class AgentHostAuditErrorCodes
         return exception switch
         {
             AgentHostAuditException => AuditUnavailable,
+            CodexVersionPreflightException
+            {
+                Failure: CodexVersionPreflightFailure.UnsupportedVersion
+            } => CodexVersionUnsupported,
+            CodexVersionPreflightException
+            {
+                Failure: CodexVersionPreflightFailure.TimedOut
+            } => CodexVersionTimedOut,
+            CodexVersionPreflightException
+            {
+                Failure: CodexVersionPreflightFailure.InvalidVersionOutput
+                    or CodexVersionPreflightFailure.VersionOutputTooLarge
+            } => CodexVersionInvalidOutput,
+            CodexVersionPreflightException => CodexVersionProcessFailed,
             OperationCanceledException => RequestCancelled,
             TimeoutException => Timeout,
             InvalidDataException or JsonException or ArgumentException => InvalidRequest,

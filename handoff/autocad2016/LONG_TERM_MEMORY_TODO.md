@@ -294,8 +294,11 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 - [x] M4 本机 Codex 启动配置：`--codex`、`CODEX_EXECUTABLE`、npm 和绝对 PATH 发现会收敛为
   固定本地磁盘的绝对 `codex.exe`；显式无效配置不回退，工作目录和启动/关闭超时同样受检。
   doctor 只记录来源标签。说明见 `M4_LOCAL_CODEX_CONFIGURATION_20260723.md`。
-- [ ] 冻结官方支持的 Codex 版本范围和稳定非交互版本协议，并在启动前执行版本兼容预检；当前
-  app-server initialize doctor 仅是可用性/健康检查，不能替代版本兼容证明。
+- [x] M4 Codex 版本/App Server 健康预检：`doctor`、`run` 和认证 `bootstrap-serve` 先在同一
+  受控 child allowlist 中运行严格、最多 `4 KiB` 的 `codex --version`；当前产品范围为
+  `>=0.144.4 <0.145.0`，本机 `0.144.4`、其后的 `initialize`、真实两轮 live 和双 Shell
+  `341/341` 均通过。未审查次版本、非 UTF-8、超限和超时输出 fail-closed；详情见
+  `M4_CODEX_VERSION_PREFLIGHT_20260723.md`。这不覆盖每会话凭据、MCP/插件或未来版本协议。
 - [ ] 每会话独立 CODEX_HOME；不得复制、链接或记录全局 Codex profile，需先采用经用户确认且
   经审计的认证恢复方式。见 `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
 - [ ] 默认空 MCP、空插件配置和独立凭据边界；当前未知 Codex 配置布局不能作为假定的复制来源。

@@ -1,0 +1,67 @@
+{
+  "evidenceType": "m4-codex-version-preflight",
+  "recordedAtUtc": "2026-07-23T09:05:26.8132342Z",
+  "sourceBaselineCommit": "2bb5dd6680872bb65e092242bae82e842272767e",
+  "platform": "windows-x64",
+  "scope": "agenthost-local-codex-version-and-app-server-health-preflight",
+  "implementation": {
+    "documentedCommand": "codex --version",
+    "observedLocalVersion": "0.144.4",
+    "supportedMinimumInclusive": "0.144.4",
+    "supportedMaximumExclusive": "0.145.0",
+    "versionOutputMaximumBytes": 4096,
+    "versionOutputRequiresStrictUtf8": true,
+    "versionOutputRequiresSingleLine": true,
+    "preflightUsesSameChildEnvironmentAsAppServer": true,
+    "parentEnvironmentInheritance": false,
+    "preflightRunsBeforeAppServerInitialize": true,
+    "bootstrapServeRequiresRuntimeStartBeforeBridgeAvailability": true,
+    "rawVersionOutputLogged": false,
+    "rawStandardErrorLogged": false
+  },
+  "verification": {
+    "appServerSpecs": "27/27",
+    "agentHostReleaseWarnings": 0,
+    "agentHostReleaseErrors": 0,
+    "unsupportedMinorVersionFailsClosed": true,
+    "oversizedVersionOutputFailsClosed": true,
+    "nonUtf8VersionOutputFailsClosed": true,
+    "versionPreflightTimeoutFailsClosed": true,
+    "isolatedChildEnvironmentVerified": true,
+    "realDoctorVersionAndInitializePassed": true,
+    "realCodexV2Live": "2/2",
+    "agentLauncherBootstrapNet45Specs": "36/36",
+    "agentLauncherBootstrapNet8Specs": "36/36",
+    "relevantAgentProcessBaselineCount": 0,
+    "relevantAgentProcessFinalCount": 0,
+    "phase2WindowsPowerShell51": "341/341",
+    "phase2PowerShell7": "341/341",
+    "hostDisabledApiScan": "passed",
+    "sensitiveInformationScan": "passed",
+    "autoCadStartedOrControlled": false,
+    "netLoadAttempted": false,
+    "cadWriteEnabled": false,
+    "pluginSaveEnabled": false
+  },
+  "sourceHashes": {
+    "codexVersionPreflight": "E64F3EEB6984335832BF2A08957B4B11764B180BA8B52964C6E9B691F8F01A38",
+    "codexLocalAppServerConfiguration": "66256012715BB720D69BBB59C74E816170FD2B9BE5F05BE57A2BE2B6E0B4D4DE",
+    "agentHostProgram": "31E85EBA1331541F4E6D4C978A15405EBA21564E80645B98BA1281501D3E9F55",
+    "agentHostAuditLog": "4C47EF136C7556CCCBC1C08FD84846A92E52C08B43627C885B9BD06F9A485893"
+  },
+  "notProven": [
+    "per-session-codex-home-and-credential-isolation",
+    "empty-mcp-and-plugin-configuration",
+    "workspace-disk-hard-quota",
+    "restricted-token-or-appcontainer",
+    "real-codex-resource-exhaustion",
+    "autocad-or-agenthost-crash-and-zombie-matrix",
+    "tamper-evident-audit-chain",
+    "cad-write-terminal-audit"
+  ],
+  "notes": [
+    "Version is retained only as normalized semantic version data; paths, raw output, prompts, CAD context, user identity, tokens and full environment values are absent.",
+    "The App Server protocol remains version-sensitive; accepting a later minor version requires a separate protocol review and evidence refresh.",
+    "This evidence closes only the version-preflight slice of M4 and does not complete M4 or authorize CAD writes."
+  ]
+}

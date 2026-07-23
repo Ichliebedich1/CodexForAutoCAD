@@ -91,8 +91,12 @@ M4 进程隔离已完成一个不依赖 AutoCAD 实机的小阶段：
   退出删除，残留按 `24` 小时/最多 `64` 个清理，审计按 `30` 天/最多 `512` 个清理，清理不
   跟随重解析点。当前 Bridge 为 `49/49`。
 - Codex 子进程现先清空父环境，再使用固定 `16` 个变量名；`TEMP`/`TMP` 指向每会话 workspace，
-  不自动传入 token/API key、代理、父 `PATH`、`CODEX_HOME` 或自定义变量。AppServer 为 `20/20`，
-  完整 Phase 2 双 Shell 均为 `334/334`，真实 doctor 和两轮 Codex live `2/2` 继续通过。
+  不自动传入 token/API key、代理、父 `PATH`、`CODEX_HOME` 或自定义变量。AppServer 为 `27/27`，
+  完整 Phase 2 双 Shell 均为 `341/341`，真实 doctor 和两轮 Codex live `2/2` 继续通过。
+- `doctor`、`run` 和认证 `bootstrap-serve` 会先在同一受控子进程环境中运行 `codex --version`；当前
+  仅接受 `>=0.144.4 <0.145.0`，本机 `0.144.4` 与其后的 app-server `initialize` 已通过。未审查
+  的次版本、非 UTF-8、超限和超时输出 fail-closed，不公开路径、版本原文或 stderr。版本细节和
+  升级规则见 `M4_CODEX_VERSION_PREFLIGHT_20260723.md`。
 - 这没有故意耗尽真实 Codex 的进程槽或内存、测量 CPU 节流性能，也没有启动或控制 AutoCAD；
   工作目录磁盘硬配额、每会话 `CODEX_HOME`、凭据隔离、审计防篡改、审批解决和 CAD 写入终态
   仍未完成。
@@ -260,8 +264,8 @@ M1 仍使用 `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 和精确 `0.3.3.0
 4. M3：读取对象语义与覆盖的自动化候选已经冻结；中文目录、占位实际类型统计、8 类受限
    索引分类和 API Probe 不等于按精确 `0.4.2.0` 候选取得的实机逐类字段通过。
 5. M4：进程树清理、进程数/内存/CPU/运行时限制、AgentHost 只读 JSONL 审计、工作区/审计
-   ACL 与有界保留、Codex 子进程父环境白名单已完成；继续磁盘硬配额、每会话 `CODEX_HOME`/
-   凭据、受限令牌/AppContainer、审计防篡改和 CAD 写入终态。
+   ACL 与有界保留、Codex 子进程父环境白名单、版本/App Server 健康预检已完成；继续磁盘硬配额、
+   每会话 `CODEX_HOME`/凭据、空 MCP/插件、受限令牌/AppContainer、审计防篡改和 CAD 写入终态。
 6. M5：AutoCAD 2016 `create_line` 安全写入最小闭环。
 7. 后续阶段见 `LONG_TERM_MEMORY_TODO.md`。
 
@@ -341,6 +345,10 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
   不跟随重解析点的清理策略。
 - `evidence/m4-agenthost-private-storage-retention-20260723.json`：双 Shell 门禁、真实 Codex live、
   ACL 观察和工作区删除的脱敏证据。
+- `M4_CODEX_VERSION_PREFLIGHT_20260723.md`：M4 Codex 版本范围、严格预检、App Server 健康顺序和
+  升级规则。
+- `evidence/m4-codex-version-preflight-20260723.json`：版本预检、真实 doctor/live、双 Shell 门禁和
+  未完成安全边界的脱敏证据。
 
 ## 11. 支持声明
 
@@ -356,8 +364,8 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
 > 或取得逐类实机字段/降级证据。
 > M4 已为 AgentHost/Codex Job 进程树应用清理与 CPU/内存/时间边界，将内容脱敏的只读运行
 > 审计接入真实 AgentHost 会话，并为 workspace/audit 启用受保护 ACL 与有界保留，为 Codex
-> 子进程启用固定父环境白名单；每会话 `CODEX_HOME`/凭据、磁盘硬配额、其余沙箱、审计
-> 防篡改和 CAD 写入终态仍未完成。
+> 子进程启用固定父环境白名单及 `>=0.144.4 <0.145.0` 的版本/App Server 健康预检；每会话
+> `CODEX_HOME`/凭据、空 MCP/插件、磁盘硬配额、其余沙箱、审计防篡改和 CAD 写入终态仍未完成。
 > 安全 CAD 写入、完整沙箱、长期记忆和发布安装
 > 尚未完成。
 

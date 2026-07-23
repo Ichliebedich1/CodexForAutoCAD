@@ -236,7 +236,7 @@ NETLOAD 证据的能力一律视为未支持。
   据此宣称完整 OS 沙箱。
 - M4 第二启动配置边界已接入 AgentHost：`--codex`、`CODEX_EXECUTABLE`、已知 npm 安装布局和
   绝对 PATH 候选会被归一化为固定本地磁盘的绝对 `codex.exe`；显式无效配置 fail-closed，且
-  doctor 仅显示来源标签、不显示路径。启动/关闭超时和工作目录同样进入该配置。版本兼容硬门槛、
+  doctor 仅显示来源标签、不显示路径。启动/关闭超时和工作目录同样进入该配置。当前版本硬门槛、
   每会话 `CODEX_HOME` 与独立凭据仍未完成；环境白名单和只读运行审计已由后续切口补齐，详见
   `M4_LOCAL_CODEX_CONFIGURATION_20260723.md` 与
   `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
@@ -287,7 +287,14 @@ NETLOAD 证据的能力一律视为未支持。
   AgentLauncher net45/net8 各 `36/36`、真实 Codex live `2/2`；managed session 目录 `2 -> 2`，
   AgentHost 残留 `0`。见 `M4_PRIVATE_STORAGE_RETENTION_20260723.md` 和
   `evidence/m4-agenthost-private-storage-retention-20260723.json`。
-- 当前 Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 双 Shell 动态汇总 `334/334`、
+- M4 第九版本/App Server 健康边界已进入 `doctor`、`run` 与认证 `bootstrap-serve`：它们均先在
+  同一清空父环境的 child allowlist 中运行严格的 `codex --version`，当前产品仅接受
+  `>=0.144.4 <0.145.0`。本机 `0.144.4`、其后的 `initialize` 与真实两轮 v2 live 已通过；
+  未审查次版本、非 UTF-8、超限、启动失败、退出错误和超时均以路径无关稳定代码 fail-closed，
+  Bridge 在 runtime start 前不会可用。见 `M4_CODEX_VERSION_PREFLIGHT_20260723.md` 和
+  `evidence/m4-codex-version-preflight-20260723.json`。这不代表每会话凭据、空 MCP/插件或未来
+  Codex 版本兼容。
+- 当前 Phase 2 回归为 Release `0` warning / `0` error、九个 Specs 双 Shell 动态汇总 `341/341`、
   AgentHost doctor、Host 禁止 API、秘密扫描和 diff 通过；认证固定向量与现有 Bridge/IPC
   回归保持通过。
 - 本检查点未启动、重启或操作 AutoCAD。它不证明长运行 `IAgentBridgeClient`、Host.2016
@@ -533,9 +540,9 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
    冻结 `0.4.0.0` 候选；等待实机/性能 evidence 后冻结验收预算。
 6. M2 实机/性能 evidence 仍是 M2 完成前提；M3 的只读对象语义候选已冻结但仍待实机字段
    evidence，不替代 M2 验收，也不启用 CAD 写入。实机测试暂缓期间继续收口不依赖 AutoCAD
-   的 M4 沙箱与审计；父环境白名单、CPU/运行时间限制和工作区/审计 ACL/有界保留已完成，
-   下一步是磁盘硬配额、每会话 `CODEX_HOME`/凭据、受限令牌/AppContainer 与审计防篡改。
-   M4 完成前不启用 M5 CAD 写入。
+   的 M4 沙箱与审计；父环境白名单、版本/App Server 健康预检、CPU/运行时间限制和工作区/
+   审计 ACL/有界保留已完成，下一步是磁盘硬配额、每会话 `CODEX_HOME`/凭据、空 MCP/插件、
+   受限令牌/AppContainer 与审计防篡改。M4 完成前不启用 M5 CAD 写入。
 
 ## 更新纪律
 
