@@ -14,6 +14,11 @@ var specs = new (string Name, Func<Task> Run)[]
     ("通知被分发", NotificationIsDispatched),
     ("stderr只保留有界无内容摘要", StandardErrorIsDrainedWithoutText),
     ("进程退出等待完整stderr摘要", ProcessExitPublishesCompletedStandardErrorSummary),
+    ("本地Codex配置只接受固定盘绝对exe", LocalCodexConfigurationAcceptsConfiguredExecutable),
+    ("本地Codex配置错误不泄露路径", LocalCodexConfigurationFailsClosedWithoutPath),
+    ("无效环境Codex路径不会回退", LocalCodexConfigurationDoesNotFallbackFromInvalidEnvironment),
+    ("缺失本地Codex配置返回稳定错误", LocalCodexConfigurationReportsMissingExecutable),
+    ("本地Codex可从绝对PATH发现", LocalCodexConfigurationDiscoversAbsolutePath),
     ("stderr限额无效时被拒绝", StandardErrorLimitIsValidated)
 };
 
@@ -183,6 +188,74 @@ static async Task ProcessExitPublishesCompletedStandardErrorSummary()
     }
 }
 
+static Task LocalCodexConfigurationAcceptsConfiguredExecutable()
+{
+    using var fixture = new LocalCodexConfigurationFixture();
+    var configuration = CodexLocalAppServerConfigurationResolver.Resolve(
+        fixture.CreateRequest(commandLineExecutablePath: fixture.ExecutablePath));
+
+    Equal(CodexExecutableSource.CommandLine, configuration.ExecutableSource);
+    Equal(fixture.ExecutablePath, configuration.CodexExecutablePath);
+    Equal(fixture.DirectoryPath, configuration.WorkingDirectory);
+    Equal(TimeSpan.FromSeconds(9), configuration.StartupTimeout);
+    Equal(TimeSpan.FromSeconds(4), configuration.ShutdownTimeout);
+    Equal(fixture.ExecutablePath, configuration.CreateClientOptions().CodexExecutablePath);
+    return Task.CompletedTask;
+}
+
+static Task LocalCodexConfigurationFailsClosedWithoutPath()
+{
+    using var fixture = new LocalCodexConfigurationFixture();
+    var exception = Capture<CodexLocalConfigurationException>(() =>
+        CodexLocalAppServerConfigurationResolver.Resolve(
+            fixture.CreateRequest(commandLineExecutablePath: "relative-codex.exe")));
+
+    Equal(
+        CodexLocalConfigurationFailure.InvalidConfiguredExecutable,
+        exception.Failure);
+    True(
+        !exception.Message.Contains(fixture.DirectoryPath, StringComparison.OrdinalIgnoreCase),
+        "Configuration error exposed the configured local path.");
+    return Task.CompletedTask;
+}
+
+static Task LocalCodexConfigurationDoesNotFallbackFromInvalidEnvironment()
+{
+    using var fixture = new LocalCodexConfigurationFixture();
+    var exception = Capture<CodexLocalConfigurationException>(() =>
+        CodexLocalAppServerConfigurationResolver.Resolve(
+            fixture.CreateRequest(
+                environmentExecutablePath: "relative-codex.exe",
+                pathValue: fixture.DirectoryPath)));
+
+    Equal(
+        CodexLocalConfigurationFailure.InvalidConfiguredExecutable,
+        exception.Failure);
+    return Task.CompletedTask;
+}
+
+static Task LocalCodexConfigurationReportsMissingExecutable()
+{
+    using var fixture = new LocalCodexConfigurationFixture();
+    File.Delete(fixture.ExecutablePath);
+    var exception = Capture<CodexLocalConfigurationException>(() =>
+        CodexLocalAppServerConfigurationResolver.Resolve(fixture.CreateRequest()));
+
+    Equal(CodexLocalConfigurationFailure.CodexExecutableNotFound, exception.Failure);
+    return Task.CompletedTask;
+}
+
+static Task LocalCodexConfigurationDiscoversAbsolutePath()
+{
+    using var fixture = new LocalCodexConfigurationFixture();
+    var configuration = CodexLocalAppServerConfigurationResolver.Resolve(
+        fixture.CreateRequest(pathValue: fixture.DirectoryPath));
+
+    Equal(CodexExecutableSource.Path, configuration.ExecutableSource);
+    Equal(fixture.ExecutablePath, configuration.CodexExecutablePath);
+    return Task.CompletedTask;
+}
+
 static Task StandardErrorLimitIsValidated()
 {
     Throws<ArgumentOutOfRangeException>(() => new AppServerClientOptions
@@ -249,7 +322,61 @@ static void Throws<TException>(Action action)
     throw new InvalidOperationException("Expected " + typeof(TException).Name + ".");
 }
 
+static TException Capture<TException>(Action action)
+    where TException : Exception
+{
+    try
+    {
+        action();
+    }
+    catch (TException exception)
+    {
+        return exception;
+    }
+
+    throw new InvalidOperationException("Expected " + typeof(TException).Name + ".");
+}
+
 internal sealed record TestResult(int Value);
+
+internal sealed class LocalCodexConfigurationFixture : IDisposable
+{
+    public LocalCodexConfigurationFixture()
+    {
+        DirectoryPath = Path.Combine(
+            Path.GetTempPath(),
+            "codex-autocad-local-config-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(DirectoryPath);
+        ExecutablePath = Path.Combine(DirectoryPath, "codex.exe");
+        File.WriteAllBytes(ExecutablePath, Array.Empty<byte>());
+    }
+
+    public string DirectoryPath { get; }
+
+    public string ExecutablePath { get; }
+
+    public CodexLocalAppServerConfigurationRequest CreateRequest(
+        string? commandLineExecutablePath = null,
+        string? environmentExecutablePath = null,
+        string? pathValue = null)
+    {
+        return new CodexLocalAppServerConfigurationRequest
+        {
+            CommandLineExecutablePath = commandLineExecutablePath,
+            EnvironmentExecutablePath = environmentExecutablePath,
+            ApplicationDataDirectory = null,
+            PathValue = pathValue,
+            WorkingDirectory = DirectoryPath,
+            StartupTimeout = TimeSpan.FromSeconds(9),
+            ShutdownTimeout = TimeSpan.FromSeconds(4),
+        };
+    }
+
+    public void Dispose()
+    {
+        Directory.Delete(DirectoryPath, recursive: true);
+    }
+}
 
 internal sealed class ClientFixture : IAsyncDisposable
 {

@@ -32,6 +32,11 @@ internal static class AgentHostProgram
             }
         }
 
+        if (command is not ("doctor" or "run"))
+        {
+            return WriteUsageError(command);
+        }
+
         var workspacePath = GetOption(args, "--workspace")
             ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -39,17 +44,27 @@ internal static class AgentHostProgram
                 "CodexForAutoCAD",
                 "workspace",
                 command);
-        var codexExecutable = ResolveCodexExecutablePath(GetOption(args, "--codex"));
 
         try
         {
             var workspace = AgentWorkspace.Create(workspacePath);
-            return command switch
+            var codexConfiguration = CreateCodexConfiguration(
+                GetOption(args, "--codex"),
+                workspace);
+            return command == "doctor"
+                ? await RunDoctorAsync(codexConfiguration)
+                : await RunUntilCancelledAsync(codexConfiguration);
+        }
+        catch (CodexLocalConfigurationException exception)
+        {
+            WriteJson(new
             {
-                "doctor" => await RunDoctorAsync(codexExecutable, workspace),
-                "run" => await RunUntilCancelledAsync(codexExecutable, workspace),
-                _ => WriteUsageError(command)
-            };
+                ok = false,
+                command,
+                error = "codex_configuration",
+                errorCode = exception.Failure.ToString()
+            });
+            return 1;
         }
         catch (Exception exception)
         {
@@ -161,23 +176,16 @@ internal static class AgentHostProgram
                     "sessions",
                     directionKeys!.SessionId);
                 var workspace = AgentWorkspace.Create(workspaceRoot);
-                var appServerOptions = new AppServerClientOptions
-                {
-                    CodexExecutablePath = ResolveCodexExecutablePath(null),
-                    WorkingDirectory = workspace.Work,
-                    MaximumFrameBytes = 8 * 1024 * 1024,
-                    MaximumJsonDepth = 32,
-                    ShutdownTimeout = TimeSpan.FromSeconds(5),
-                };
+                var codexConfiguration = CreateCodexConfiguration(null, workspace);
                 var cadQueryBroker = new AgentHostCadQueryBroker();
                 await using var runtime = new CodexAgentRuntime(
-                    appServerOptions,
+                    codexConfiguration.CreateClientOptions(),
                     new AgentRuntimeOptions
                     {
                         Sandbox = AgentSandboxMode.ReadOnly,
                         ApprovalPolicy = AgentApprovalPolicy.OnRequest,
                         ApprovalsReviewer = AgentApprovalsReviewer.User,
-                        WorkingDirectory = workspace.Work,
+                        WorkingDirectory = codexConfiguration.WorkingDirectory,
                         ManagedWorkspaceRoot = workspace.Root,
                         MaximumPromptCharacters = 320 * 1024,
                     },
@@ -196,15 +204,16 @@ internal static class AgentHostProgram
         }
     }
 
-    private static async Task<int> RunDoctorAsync(string codexExecutable, AgentWorkspace workspace)
+    private static async Task<int> RunDoctorAsync(CodexLocalAppServerConfiguration codexConfiguration)
     {
-        await using var client = CreateClient(codexExecutable, workspace);
-        var initialized = await client.StartAsync().WaitAsync(TimeSpan.FromSeconds(15));
+        await using var client = CreateClient(codexConfiguration);
+        var initialized = await client.StartAsync().WaitAsync(codexConfiguration.StartupTimeout);
         WriteJson(new
         {
             ok = true,
             state = client.State.ToString(),
             workspaceReady = true,
+            codexExecutableSource = codexConfiguration.ExecutableSource.ToString(),
             codexHomeConfigured = !string.IsNullOrWhiteSpace(initialized.CodexHome),
             platformFamily = initialized.PlatformFamily,
             platformOs = initialized.PlatformOs,
@@ -220,7 +229,7 @@ internal static class AgentHostProgram
         return 0;
     }
 
-    private static async Task<int> RunUntilCancelledAsync(string codexExecutable, AgentWorkspace workspace)
+    private static async Task<int> RunUntilCancelledAsync(CodexLocalAppServerConfiguration codexConfiguration)
     {
         using var shutdown = new CancellationTokenSource();
         Console.CancelKeyPress += (_, eventArgs) =>
@@ -229,13 +238,15 @@ internal static class AgentHostProgram
             shutdown.Cancel();
         };
 
-        await using var client = CreateClient(codexExecutable, workspace);
-        var initialized = await client.StartAsync(shutdown.Token);
+        await using var client = CreateClient(codexConfiguration);
+        var initialized = await client.StartAsync(shutdown.Token)
+            .WaitAsync(codexConfiguration.StartupTimeout, shutdown.Token);
         WriteJson(new
         {
             ok = true,
             state = "ready",
             workspaceReady = true,
+            codexExecutableSource = codexConfiguration.ExecutableSource.ToString(),
             platformFamily = initialized.PlatformFamily,
             userAgent = initialized.UserAgent
         });
@@ -252,18 +263,9 @@ internal static class AgentHostProgram
         return 0;
     }
 
-    private static CodexAppServerClient CreateClient(string codexExecutable, AgentWorkspace workspace)
+    private static CodexAppServerClient CreateClient(CodexLocalAppServerConfiguration codexConfiguration)
     {
-        var options = new AppServerClientOptions
-        {
-            CodexExecutablePath = codexExecutable,
-            WorkingDirectory = workspace.Work,
-            MaximumFrameBytes = 8 * 1024 * 1024,
-            MaximumJsonDepth = 32,
-            ShutdownTimeout = TimeSpan.FromSeconds(5)
-        };
-
-        var client = new CodexAppServerClient(options);
+        var client = new CodexAppServerClient(codexConfiguration.CreateClientOptions());
         client.StandardErrorReceived += (_, message) =>
             Console.Error.WriteLine(
                 "codex: stderrBytes="
@@ -275,92 +277,14 @@ internal static class AgentHostProgram
         return client;
     }
 
-    private static string ResolveCodexExecutablePath(string? commandLineValue)
+    private static CodexLocalAppServerConfiguration CreateCodexConfiguration(
+        string? commandLineExecutablePath,
+        AgentWorkspace workspace)
     {
-        var configured = string.IsNullOrWhiteSpace(commandLineValue)
-            ? Environment.GetEnvironmentVariable("CODEX_EXECUTABLE")
-            : commandLineValue;
-        if (!string.IsNullOrWhiteSpace(configured))
-        {
-            return configured.Trim().Trim('"');
-        }
-
-        if (Environment.OSVersion.Platform == PlatformID.Win32NT)
-        {
-            var applicationData = Environment.GetFolderPath(
-                Environment.SpecialFolder.ApplicationData);
-            if (!string.IsNullOrWhiteSpace(applicationData))
-            {
-                var npmRoot = Path.Combine(applicationData, "npm", "node_modules", "@openai");
-                var candidates = new[]
-                {
-                    Path.Combine(
-                        npmRoot,
-                        "codex",
-                        "node_modules",
-                        "@openai",
-                        "codex-win32-x64",
-                        "vendor",
-                        "x86_64-pc-windows-msvc",
-                        "bin",
-                        "codex.exe"),
-                    Path.Combine(
-                        npmRoot,
-                        "codex-win32-x64",
-                        "vendor",
-                        "x86_64-pc-windows-msvc",
-                        "bin",
-                        "codex.exe"),
-                    Path.Combine(
-                        npmRoot,
-                        "codex",
-                        "vendor",
-                        "x86_64-pc-windows-msvc",
-                        "bin",
-                        "codex.exe"),
-                };
-
-                foreach (var candidate in candidates)
-                {
-                    if (File.Exists(candidate))
-                    {
-                        return Path.GetFullPath(candidate);
-                    }
-                }
-            }
-
-            var pathValue = Environment.GetEnvironmentVariable("PATH");
-            if (!string.IsNullOrWhiteSpace(pathValue))
-            {
-                foreach (var pathEntry in pathValue.Split(
-                             new[] { Path.PathSeparator },
-                             StringSplitOptions.RemoveEmptyEntries))
-                {
-                    var directory = pathEntry.Trim().Trim('"');
-                    if (directory.Length == 0 || !Path.IsPathRooted(directory))
-                    {
-                        continue;
-                    }
-
-                    try
-                    {
-                        var candidate = Path.Combine(directory, "codex.exe");
-                        if (File.Exists(candidate))
-                        {
-                            return Path.GetFullPath(candidate);
-                        }
-                    }
-                    catch (Exception exception) when (
-                        exception is ArgumentException
-                        or NotSupportedException
-                        or PathTooLongException)
-                    {
-                    }
-                }
-            }
-        }
-
-        return "codex";
+        ArgumentNullException.ThrowIfNull(workspace);
+        return CodexLocalAppServerConfigurationResolver.ResolveForCurrentProcess(
+            commandLineExecutablePath,
+            workspace.Work);
     }
 
     private static string? GetOption(string[] args, string option)

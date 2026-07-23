@@ -285,8 +285,11 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   摘要，进程退出事件等待该摘要形成但不阻塞进程事件线程；AgentHost 不再向控制台公开
   stderr 原文、协议异常正文、工作目录或 `CODEX_HOME` 路径。它尚未形成完整沙箱或 M4 候选，详情见
   `M4_PROCESS_ISOLATION_BASELINE_20260723.md`。
-- [ ] Codex 路径、兼容版本、超时和工作目录进入正式配置。
-- [ ] 启动前执行 Codex 版本和 app-server 健康检查。
+- [x] M4 本机 Codex 启动配置：`--codex`、`CODEX_EXECUTABLE`、npm 和绝对 PATH 发现会收敛为
+  固定本地磁盘的绝对 `codex.exe`；显式无效配置不回退，工作目录和启动/关闭超时同样受检。
+  doctor 只记录来源标签。说明见 `M4_LOCAL_CODEX_CONFIGURATION_20260723.md`。
+- [ ] 冻结官方支持的 Codex 版本范围和稳定非交互版本协议，并在启动前执行版本兼容预检；当前
+  app-server initialize doctor 仅是可用性/健康检查，不能替代版本兼容证明。
 - [ ] 每会话独立 CODEX_HOME。
 - [ ] 默认空 MCP、空插件配置和独立凭据边界。
 - [ ] 子进程仅继承白名单环境变量。
