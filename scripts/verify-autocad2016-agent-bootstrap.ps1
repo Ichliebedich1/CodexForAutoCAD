@@ -28,6 +28,8 @@ $evidencePath = Join-Path $stageRoot "verification.json"
 $requiredSpecIds = @(
     "REAL_AGENTHOST_SUCCESS",
     "REAL_AGENTHOST_REPEAT_5",
+    "SERVICE_STOP_KILLS_PROCESS_TREE",
+    "OWNER_EXIT_KILLS_PROCESS_TREE",
     "INVALID_EXECUTABLE_PATHS",
     "EXECUTABLE_SHA256_MISMATCH",
     "TIMEOUT_TERMINATES_UNCONFIRMED",
@@ -262,6 +264,8 @@ function Assert-SourceBoundary {
         "批准SHA-256绑定" = "ExpectedSha256"
         "挂起创建" = "CreateSuspended"
         "硬终止" = "TerminateProcess"
+        "进程树Job Object" = "JobObjectLimitKillOnJobClose"
+        "进程树Job分配" = "AssignProcessToJobObject"
         "进程退出等待" = "WaitForSingleObject"
         "单调绝对截止" = "deadlineTimestamp"
         "专用截止监督线程" = "RunSupervisor"
@@ -326,6 +330,8 @@ function Assert-SourceBoundary {
         ExecutableVolumeAndFileIdTokenFound = $true
         ExecutableSha256TokenFound = $true
         CreateSuspendedTokenFound = $true
+        ProcessTreeJobObjectTokenFound = $true
+        ProcessTreeJobAssignmentTokenFound = $true
         LocalFixedDriveChecksFound = $true
         MonotonicDeadlineTokenFound = $true
         DedicatedSupervisorTokenFound = $true
@@ -608,6 +614,8 @@ try {
         ChildClearsInheritedFlags = "CHILD_CLEARS_INHERITANCE"
         HandleAllowlistCanaryVerified = "HANDLE_ALLOWLIST_CANARY"
         StandardErrorSeparateAndBounded = "STDERR_BOUNDED"
+        ServiceStopKillsProcessTree = "SERVICE_STOP_KILLS_PROCESS_TREE"
+        ProcessOwnerExitKillsProcessTree = "OWNER_EXIT_KILLS_PROCESS_TREE"
     }
     $runtimeEvidence = [ordered]@{}
     foreach ($entry in $runtimeEvidenceSpecMap.GetEnumerator()) {
@@ -658,6 +666,8 @@ try {
             $runtimeEvidence.StartupTimeoutTriggersFailClosedAbortAndBoundedCleanup -and
             $runtimeEvidence.ConfirmationThenHangTriggersFailClosedAbortAndBoundedCleanup -and
             $runtimeEvidence.CancellationTerminatesUnconfirmedChild)
+        ProcessTreeCleanupOnServiceStopLiveVerified = $runtimeEvidence.ServiceStopKillsProcessTree
+        ProcessTreeCleanupOnOwnerExitLiveVerified = $runtimeEvidence.ProcessOwnerExitKillsProcessTree
         PendingBootstrapAtomicConsumptionLiveVerified = $false
         SourceTreeBinOrObjModified = $false
         AutoCadProcessSetChanged = $false
@@ -667,7 +677,7 @@ try {
         NetLoadVerified = $false
         AgentHostLiveBridgeVerified = $false
         CadRuntimeIntegrated = $false
-        EvidenceBoundary = "This gate proves the exact mandatory net45/net8 Spec ID set, real out-of-process bootstrap-doctor authentication through restricted inherited standard handles, approved SHA-256 mismatch rejection, PID/creation-time confirmation rejection, startup-deadline fail-closed abort followed by at most five seconds of bounded termination cleanup (including confirmation-then-hang), cancellation cleanup, bounded stderr, handle-allowlist canary exclusion, complete runnable-output reproducibility before and after execution, and an empty relevant-process baseline/final state. It does not claim that termination finishes inside the configured startup deadline itself. Static source observations are not runtime proof. Deliberate executable replacement during the suspended-launch window, external handle-duplication resistance, the long-running authenticated Bridge, Host.2016/AutoCAD integration, CAD work, and complete AutoCAD 2016 support remain outside this evidence."
+        EvidenceBoundary = "This gate proves the exact mandatory net45/net8 Spec ID set, real out-of-process bootstrap-doctor authentication through restricted inherited standard handles, approved SHA-256 mismatch rejection, PID/creation-time confirmation rejection, startup-deadline fail-closed abort followed by at most five seconds of bounded termination cleanup (including confirmation-then-hang), cancellation cleanup, bounded stderr, handle-allowlist canary exclusion, service-stop cleanup of an AgentHost-owned descendant through the Windows Job Object boundary, and Job cleanup after the process holding that boundary exits without calling StopAsync. It also proves complete runnable-output reproducibility before and after execution and an empty relevant-process baseline/final state. It does not claim that termination finishes inside the configured startup deadline itself, or prove AutoCAD crash cleanup without an AutoCAD process. Static source observations are not runtime proof. Deliberate executable replacement during the suspended-launch window, external handle-duplication resistance, the long-running authenticated Bridge, Host.2016/AutoCAD integration, CAD work, and complete AutoCAD 2016 support remain outside this evidence."
     }
     $evidence | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $evidencePath -Encoding UTF8
 
