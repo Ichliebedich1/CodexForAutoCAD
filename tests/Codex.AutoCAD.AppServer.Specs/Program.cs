@@ -14,11 +14,16 @@ var specs = new (string Name, Func<Task> Run)[]
     ("通知被分发", NotificationIsDispatched),
     ("stderr只保留有界无内容摘要", StandardErrorIsDrainedWithoutText),
     ("进程退出等待完整stderr摘要", ProcessExitPublishesCompletedStandardErrorSummary),
+    ("隔离子进程看不到任意父环境变量", IsolatedChildDoesNotInheritArbitraryParentEnvironment),
+    ("环境null覆写删除继承变量", NullEnvironmentOverrideRemovesInheritedVariable),
+    ("非法环境键值启动前被拒绝", InvalidEnvironmentEntriesAreRejected),
     ("本地Codex配置只接受固定盘绝对exe", LocalCodexConfigurationAcceptsConfiguredExecutable),
+    ("本地Codex配置使用兼容白名单", LocalCodexConfigurationUsesCompatibilityAllowlist),
     ("本地Codex配置错误不泄露路径", LocalCodexConfigurationFailsClosedWithoutPath),
     ("无效环境Codex路径不会回退", LocalCodexConfigurationDoesNotFallbackFromInvalidEnvironment),
     ("缺失本地Codex配置返回稳定错误", LocalCodexConfigurationReportsMissingExecutable),
     ("本地Codex可从绝对PATH发现", LocalCodexConfigurationDiscoversAbsolutePath),
+    ("无效临时目录返回稳定错误", LocalCodexConfigurationRejectsInvalidTemporaryDirectory),
     ("stderr限额无效时被拒绝", StandardErrorLimitIsValidated)
 };
 
@@ -188,6 +193,96 @@ static async Task ProcessExitPublishesCompletedStandardErrorSummary()
     }
 }
 
+static async Task IsolatedChildDoesNotInheritArbitraryParentEnvironment()
+{
+    const string parentVariable = "CODEX_AUTOCAD_TEST_PARENT_SENTINEL";
+    const string allowedVariable = "CODEX_AUTOCAD_TEST_EXPLICIT_ALLOWED";
+    var previousParentValue = Environment.GetEnvironmentVariable(parentVariable);
+    var directory = CreateTemporaryDirectory("environment-isolation");
+    try
+    {
+        Environment.SetEnvironmentVariable(parentVariable, "parent-marker");
+        var environment = new Dictionary<string, string?>(
+            CodexChildEnvironmentPolicy.CreateForCurrentProcess(directory),
+            StringComparer.OrdinalIgnoreCase)
+        {
+            [allowedVariable] = "allow-marker",
+        };
+        var scriptPath = WriteEnvironmentProbe(
+            directory,
+            "if defined " + parentVariable + " (echo parent=present) else (echo parent=absent)",
+            "if \"%" + allowedVariable + "%\"==\"allow-marker\" (echo allowed=present) else (echo allowed=absent)");
+
+        var output = await RunProcessProbeAsync(new AppServerClientOptions
+        {
+            CodexExecutablePath = scriptPath,
+            WorkingDirectory = directory,
+            Environment = environment,
+            InheritParentEnvironment = false,
+        });
+
+        ContainsLine(output, "parent=absent");
+        ContainsLine(output, "allowed=present");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable(parentVariable, previousParentValue);
+        Directory.Delete(directory, recursive: true);
+    }
+}
+
+static async Task NullEnvironmentOverrideRemovesInheritedVariable()
+{
+    const string variable = "CODEX_AUTOCAD_TEST_NULL_REMOVAL";
+    var previousValue = Environment.GetEnvironmentVariable(variable);
+    var directory = CreateTemporaryDirectory("environment-null-removal");
+    try
+    {
+        Environment.SetEnvironmentVariable(variable, "parent-marker");
+        var scriptPath = WriteEnvironmentProbe(
+            directory,
+            "if defined " + variable + " (echo inherited=present) else (echo inherited=absent)");
+
+        var output = await RunProcessProbeAsync(new AppServerClientOptions
+        {
+            CodexExecutablePath = scriptPath,
+            WorkingDirectory = directory,
+            Environment = new Dictionary<string, string?>
+            {
+                [variable] = null,
+            },
+        });
+
+        ContainsLine(output, "inherited=absent");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable(variable, previousValue);
+        Directory.Delete(directory, recursive: true);
+    }
+}
+
+static Task InvalidEnvironmentEntriesAreRejected()
+{
+    Throws<ArgumentException>(() => new AppServerClientOptions
+    {
+        Environment = new Dictionary<string, string?> { [" "] = "value" },
+    }.Validate());
+    Throws<ArgumentException>(() => new AppServerClientOptions
+    {
+        Environment = new Dictionary<string, string?> { ["INVALID=NAME"] = "value" },
+    }.Validate());
+    Throws<ArgumentException>(() => new AppServerClientOptions
+    {
+        Environment = new Dictionary<string, string?> { ["INVALID\0NAME"] = "value" },
+    }.Validate());
+    Throws<ArgumentException>(() => new AppServerClientOptions
+    {
+        Environment = new Dictionary<string, string?> { ["VALID_NAME"] = "invalid\0value" },
+    }.Validate());
+    return Task.CompletedTask;
+}
+
 static Task LocalCodexConfigurationAcceptsConfiguredExecutable()
 {
     using var fixture = new LocalCodexConfigurationFixture();
@@ -201,6 +296,65 @@ static Task LocalCodexConfigurationAcceptsConfiguredExecutable()
     Equal(TimeSpan.FromSeconds(4), configuration.ShutdownTimeout);
     Equal(fixture.ExecutablePath, configuration.CreateClientOptions().CodexExecutablePath);
     return Task.CompletedTask;
+}
+
+static Task LocalCodexConfigurationUsesCompatibilityAllowlist()
+{
+    const string arbitraryVariable = "CODEX_AUTOCAD_TEST_NOT_ALLOWLISTED";
+    const string proxyValue = "http://127.0.0.1:18765";
+    var previousArbitrary = Environment.GetEnvironmentVariable(arbitraryVariable);
+    var previousProxy = Environment.GetEnvironmentVariable("HTTPS_PROXY");
+    try
+    {
+        Environment.SetEnvironmentVariable(arbitraryVariable, "must-not-propagate");
+        Environment.SetEnvironmentVariable("HTTPS_PROXY", proxyValue);
+
+        using var fixture = new LocalCodexConfigurationFixture();
+        var configuration = CodexLocalAppServerConfigurationResolver.Resolve(
+            fixture.CreateRequest(commandLineExecutablePath: fixture.ExecutablePath));
+        var options = configuration.CreateClientOptions();
+        var requiredNames = new[]
+        {
+            "APPDATA",
+            "ComSpec",
+            "GCM_INTERACTIVE",
+            "GIT_CONFIG_GLOBAL",
+            "GIT_CONFIG_NOSYSTEM",
+            "GIT_TERMINAL_PROMPT",
+            "HOME",
+            "HTTPS_PROXY",
+            "LOCALAPPDATA",
+            "PATH",
+            "PATHEXT",
+            "RUST_LOG",
+            "SystemRoot",
+            "TEMP",
+            "TMP",
+            "USERPROFILE",
+            "WINDIR",
+        };
+
+        True(!options.InheritParentEnvironment, "Production Codex options still inherit the parent environment.");
+        True(
+            requiredNames.All(options.Environment.ContainsKey),
+            "Compatibility allowlist omitted a required operating-system or connectivity variable.");
+        Equal(fixture.TempDirectory, options.Environment["TEMP"]);
+        Equal(fixture.TempDirectory, options.Environment["TMP"]);
+        Equal(proxyValue, options.Environment["HTTPS_PROXY"]);
+        True(
+            !options.Environment.ContainsKey(arbitraryVariable),
+            "Compatibility allowlist copied an arbitrary parent variable.");
+        True(!options.Environment.ContainsKey("CODEX_HOME"), "Policy unexpectedly sets CODEX_HOME.");
+        True(!options.Environment.ContainsKey("CODEX_ACCESS_TOKEN"), "Policy inherited a Codex access token.");
+        True(!options.Environment.ContainsKey("OPENAI_API_KEY"), "Policy inherited an API key.");
+        True(!options.Environment.ContainsKey("PSModulePath"), "Policy inherited PowerShell module state.");
+        return Task.CompletedTask;
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable(arbitraryVariable, previousArbitrary);
+        Environment.SetEnvironmentVariable("HTTPS_PROXY", previousProxy);
+    }
 }
 
 static Task LocalCodexConfigurationFailsClosedWithoutPath()
@@ -256,6 +410,20 @@ static Task LocalCodexConfigurationDiscoversAbsolutePath()
     return Task.CompletedTask;
 }
 
+static Task LocalCodexConfigurationRejectsInvalidTemporaryDirectory()
+{
+    using var fixture = new LocalCodexConfigurationFixture();
+    var exception = Capture<CodexLocalConfigurationException>(() =>
+        CodexLocalAppServerConfigurationResolver.Resolve(
+            fixture.CreateRequest(temporaryDirectory: "relative-temp")));
+
+    Equal(CodexLocalConfigurationFailure.InvalidTemporaryDirectory, exception.Failure);
+    True(
+        !exception.Message.Contains(fixture.DirectoryPath, StringComparison.OrdinalIgnoreCase),
+        "Temporary-directory error exposed a local path.");
+    return Task.CompletedTask;
+}
+
 static Task StandardErrorLimitIsValidated()
 {
     Throws<ArgumentOutOfRangeException>(() => new AppServerClientOptions
@@ -264,6 +432,49 @@ static Task StandardErrorLimitIsValidated()
     }.Validate());
 
     return Task.CompletedTask;
+}
+
+static string CreateTemporaryDirectory(string purpose)
+{
+    var directory = Path.Combine(
+        Path.GetTempPath(),
+        "codex-autocad-appserver-" + purpose + "-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(directory);
+    return directory;
+}
+
+static string WriteEnvironmentProbe(string directory, params string[] commands)
+{
+    var scriptPath = Path.Combine(directory, "environment-probe.cmd");
+    File.WriteAllLines(
+        scriptPath,
+        new[] { "@echo off" }.Concat(commands).Concat(new[] { "exit /b 0" }),
+        Encoding.ASCII);
+    return scriptPath;
+}
+
+static async Task<string> RunProcessProbeAsync(AppServerClientOptions options)
+{
+    await using var transport = new CodexProcessTransport(options);
+    var exited = new TaskCompletionSource<AppServerTransportExitedEventArgs>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    transport.Exited += (_, eventArgs) => exited.TrySetResult(eventArgs);
+
+    await transport.StartAsync();
+    using var reader = new StreamReader(transport.ReadStream, Encoding.ASCII);
+    var outputTask = reader.ReadToEndAsync();
+    var exit = await exited.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    var output = await outputTask.WaitAsync(TimeSpan.FromSeconds(10));
+    Equal<int?>(0, exit.ExitCode);
+    return output;
+}
+
+static void ContainsLine(string output, string expected)
+{
+    var lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+    True(
+        lines.Contains(expected, StringComparer.Ordinal),
+        "Process probe did not emit expected marker '" + expected + "'.");
 }
 
 static string? Method(JsonDocument frame)
@@ -347,6 +558,8 @@ internal sealed class LocalCodexConfigurationFixture : IDisposable
             Path.GetTempPath(),
             "codex-autocad-local-config-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(DirectoryPath);
+        TempDirectory = Path.Combine(DirectoryPath, "temp");
+        Directory.CreateDirectory(TempDirectory);
         ExecutablePath = Path.Combine(DirectoryPath, "codex.exe");
         File.WriteAllBytes(ExecutablePath, Array.Empty<byte>());
     }
@@ -355,10 +568,13 @@ internal sealed class LocalCodexConfigurationFixture : IDisposable
 
     public string ExecutablePath { get; }
 
+    public string TempDirectory { get; }
+
     public CodexLocalAppServerConfigurationRequest CreateRequest(
         string? commandLineExecutablePath = null,
         string? environmentExecutablePath = null,
-        string? pathValue = null)
+        string? pathValue = null,
+        string? temporaryDirectory = null)
     {
         return new CodexLocalAppServerConfigurationRequest
         {
@@ -367,6 +583,7 @@ internal sealed class LocalCodexConfigurationFixture : IDisposable
             ApplicationDataDirectory = null,
             PathValue = pathValue,
             WorkingDirectory = DirectoryPath,
+            TemporaryDirectory = temporaryDirectory ?? TempDirectory,
             StartupTimeout = TimeSpan.FromSeconds(9),
             ShutdownTimeout = TimeSpan.FromSeconds(4),
         };

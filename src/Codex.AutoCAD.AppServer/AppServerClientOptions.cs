@@ -15,6 +15,13 @@ public sealed record AppServerClientOptions
         = new Dictionary<string, string?>();
 
     /// <summary>
+    /// Whether the child starts with the current process environment before applying
+    /// <see cref="Environment"/>. Generic transports preserve the compatible default; the
+    /// AgentHost-owned Codex configuration disables inheritance and supplies a fixed allowlist.
+    /// </summary>
+    public bool InheritParentEnvironment { get; init; } = true;
+
+    /// <summary>
     /// Maximum number of Codex stderr bytes counted in bounded diagnostics. The stream is still
     /// fully drained after this limit, but its text is never retained or forwarded.
     /// </summary>
@@ -59,6 +66,30 @@ public sealed record AppServerClientOptions
         if (ShutdownTimeout <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(ShutdownTimeout));
+        }
+
+        if (Environment is null)
+        {
+            throw new ArgumentNullException(nameof(Environment));
+        }
+
+        foreach (var (name, value) in Environment)
+        {
+            if (string.IsNullOrWhiteSpace(name)
+                || name.IndexOf('=') >= 0
+                || name.IndexOf('\0') >= 0)
+            {
+                throw new ArgumentException(
+                    "Environment variable names must be non-empty and cannot contain '=' or NUL.",
+                    nameof(Environment));
+            }
+
+            if (value?.IndexOf('\0') >= 0)
+            {
+                throw new ArgumentException(
+                    "Environment variable values cannot contain NUL.",
+                    nameof(Environment));
+            }
         }
     }
 }

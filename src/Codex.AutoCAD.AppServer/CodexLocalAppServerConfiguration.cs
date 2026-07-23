@@ -16,6 +16,8 @@ public enum CodexLocalConfigurationFailure
     InvalidConfiguredExecutable,
     CodexExecutableNotFound,
     InvalidWorkingDirectory,
+    InvalidTemporaryDirectory,
+    InvalidChildEnvironment,
     InvalidStartupTimeout,
     InvalidShutdownTimeout,
 }
@@ -49,6 +51,8 @@ public sealed record CodexLocalAppServerConfigurationRequest
 
     public string WorkingDirectory { get; init; } = string.Empty;
 
+    public string TemporaryDirectory { get; init; } = string.Empty;
+
     public TimeSpan StartupTimeout { get; init; } = CodexLocalAppServerConfiguration.DefaultStartupTimeout;
 
     public TimeSpan ShutdownTimeout { get; init; } = CodexLocalAppServerConfiguration.DefaultShutdownTimeout;
@@ -69,12 +73,14 @@ public sealed class CodexLocalAppServerConfiguration
         string codexExecutablePath,
         CodexExecutableSource executableSource,
         string workingDirectory,
+        IReadOnlyDictionary<string, string?> childEnvironment,
         TimeSpan startupTimeout,
         TimeSpan shutdownTimeout)
     {
         CodexExecutablePath = codexExecutablePath;
         ExecutableSource = executableSource;
         WorkingDirectory = workingDirectory;
+        ChildEnvironment = childEnvironment;
         StartupTimeout = startupTimeout;
         ShutdownTimeout = shutdownTimeout;
     }
@@ -84,6 +90,8 @@ public sealed class CodexLocalAppServerConfiguration
     public CodexExecutableSource ExecutableSource { get; }
 
     public string WorkingDirectory { get; }
+
+    internal IReadOnlyDictionary<string, string?> ChildEnvironment { get; }
 
     public TimeSpan StartupTimeout { get; }
 
@@ -95,6 +103,8 @@ public sealed class CodexLocalAppServerConfiguration
         {
             CodexExecutablePath = CodexExecutablePath,
             WorkingDirectory = WorkingDirectory,
+            Environment = ChildEnvironment,
+            InheritParentEnvironment = false,
             MaximumFrameBytes = 8 * 1024 * 1024,
             MaximumJsonDepth = 32,
             MaximumStandardErrorBytes = 16 * 1024,
@@ -107,7 +117,8 @@ public static class CodexLocalAppServerConfigurationResolver
 {
     public static CodexLocalAppServerConfiguration ResolveForCurrentProcess(
         string? commandLineExecutablePath,
-        string workingDirectory)
+        string workingDirectory,
+        string temporaryDirectory)
     {
         return Resolve(new CodexLocalAppServerConfigurationRequest
         {
@@ -116,6 +127,7 @@ public static class CodexLocalAppServerConfigurationResolver
             ApplicationDataDirectory = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             PathValue = Environment.GetEnvironmentVariable("PATH"),
             WorkingDirectory = workingDirectory,
+            TemporaryDirectory = temporaryDirectory,
         });
     }
 
@@ -131,6 +143,23 @@ public static class CodexLocalAppServerConfigurationResolver
         }
 
         var workingDirectory = ValidateWorkingDirectory(request.WorkingDirectory);
+        var temporaryDirectory = ValidateTemporaryDirectory(request.TemporaryDirectory);
+        IReadOnlyDictionary<string, string?> childEnvironment;
+        try
+        {
+            childEnvironment = CodexChildEnvironmentPolicy.CreateForCurrentProcess(
+                temporaryDirectory);
+        }
+        catch (Exception exception) when (exception is ArgumentException
+                                          or IOException
+                                          or InvalidOperationException
+                                          or NotSupportedException
+                                          or UnauthorizedAccessException)
+        {
+            throw Failure(
+                CodexLocalConfigurationFailure.InvalidChildEnvironment,
+                "The approved Codex child environment could not be created.");
+        }
         var startupTimeout = ValidateTimeout(
             request.StartupTimeout,
             CodexLocalConfigurationFailure.InvalidStartupTimeout,
@@ -147,6 +176,7 @@ public static class CodexLocalAppServerConfigurationResolver
                 ValidateConfiguredExecutable(configuredCommandLine),
                 CodexExecutableSource.CommandLine,
                 workingDirectory,
+                childEnvironment,
                 startupTimeout,
                 shutdownTimeout);
         }
@@ -158,6 +188,7 @@ public static class CodexLocalAppServerConfigurationResolver
                 ValidateConfiguredExecutable(configuredEnvironment),
                 CodexExecutableSource.Environment,
                 workingDirectory,
+                childEnvironment,
                 startupTimeout,
                 shutdownTimeout);
         }
@@ -170,6 +201,7 @@ public static class CodexLocalAppServerConfigurationResolver
                     executablePath,
                     CodexExecutableSource.NpmPackage,
                     workingDirectory,
+                    childEnvironment,
                     startupTimeout,
                     shutdownTimeout);
             }
@@ -183,6 +215,7 @@ public static class CodexLocalAppServerConfigurationResolver
                     executablePath,
                     CodexExecutableSource.Path,
                     workingDirectory,
+                    childEnvironment,
                     startupTimeout,
                     shutdownTimeout);
             }
@@ -197,6 +230,7 @@ public static class CodexLocalAppServerConfigurationResolver
         string executablePath,
         CodexExecutableSource source,
         string workingDirectory,
+        IReadOnlyDictionary<string, string?> childEnvironment,
         TimeSpan startupTimeout,
         TimeSpan shutdownTimeout)
     {
@@ -204,6 +238,7 @@ public static class CodexLocalAppServerConfigurationResolver
             executablePath,
             source,
             workingDirectory,
+            childEnvironment,
             startupTimeout,
             shutdownTimeout);
     }
@@ -378,6 +413,43 @@ public static class CodexLocalAppServerConfigurationResolver
             throw Failure(
                 CodexLocalConfigurationFailure.InvalidWorkingDirectory,
                 "Codex working directory must be an existing directory on a fixed local drive.");
+        }
+    }
+
+    private static string ValidateTemporaryDirectory(string value)
+    {
+        var normalized = NormalizeOptionalPath(value);
+        if (normalized is null || !LooksLikeAbsoluteLocalWindowsPath(normalized))
+        {
+            throw Failure(
+                CodexLocalConfigurationFailure.InvalidTemporaryDirectory,
+                "Codex temporary directory must be an existing directory on a fixed local drive.");
+        }
+
+        try
+        {
+            var fullPath = Path.GetFullPath(normalized);
+            if (!LooksLikeAbsoluteLocalWindowsPath(fullPath)
+                || !Directory.Exists(fullPath)
+                || ContainsReparsePoint(fullPath)
+                || !IsFixedLocalDrive(fullPath))
+            {
+                throw Failure(
+                    CodexLocalConfigurationFailure.InvalidTemporaryDirectory,
+                    "Codex temporary directory must be an existing directory on a fixed local drive.");
+            }
+
+            return fullPath;
+        }
+        catch (CodexLocalConfigurationException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (IsPathOrFileSystemException(exception))
+        {
+            throw Failure(
+                CodexLocalConfigurationFailure.InvalidTemporaryDirectory,
+                "Codex temporary directory must be an existing directory on a fixed local drive.");
         }
     }
 

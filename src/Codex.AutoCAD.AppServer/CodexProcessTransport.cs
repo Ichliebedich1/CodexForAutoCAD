@@ -81,9 +81,21 @@ public sealed class CodexProcessTransport : IAppServerTransport
                 startInfo.ArgumentList.Add(argument);
             }
 
+            if (!_options.InheritParentEnvironment)
+            {
+                startInfo.Environment.Clear();
+            }
+
             foreach (var (name, value) in _options.Environment)
             {
-                startInfo.Environment[name] = value;
+                if (value is null)
+                {
+                    startInfo.Environment.Remove(name);
+                }
+                else
+                {
+                    startInfo.Environment[name] = value;
+                }
             }
 
             var process = new Process

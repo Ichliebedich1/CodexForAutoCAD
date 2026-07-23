@@ -303,7 +303,8 @@ internal static class AgentHostProgram
         ArgumentNullException.ThrowIfNull(workspace);
         return CodexLocalAppServerConfigurationResolver.ResolveForCurrentProcess(
             commandLineExecutablePath,
-            workspace.Work);
+            workspace.Work,
+            workspace.Temp);
     }
 
     private static string? GetOption(string[] args, string option)
