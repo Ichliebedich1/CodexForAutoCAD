@@ -101,6 +101,7 @@ public static class AgentHostBootstrapDoctor
         }
 
         var executableIdentity = options.GetValidatedExecutableIdentity();
+        var processTreeLimits = options.GetValidatedProcessTreeLimits();
         controller.Checkpoint();
         var sessionId = CreateRandomIdentifier();
         var pipeName = PipeNamePrefix + CreateRandomIdentifier();
@@ -116,6 +117,7 @@ public static class AgentHostBootstrapDoctor
                     controller.BeginStartAttempt();
                     child = WindowsInheritedBootstrapProcess.Start(
                         executableIdentity,
+                        processTreeLimits,
                         controller.Checkpoint);
                     controller.PublishSuspended(child);
                 }
