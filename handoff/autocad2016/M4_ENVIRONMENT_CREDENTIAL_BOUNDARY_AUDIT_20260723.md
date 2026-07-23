@@ -34,7 +34,9 @@ AutoCAD Host.2016
 - 从 AutoCAD/AgentHost 继承的环境可能含有代理、模型、工具或其他敏感配置；它们尚未被最小化。
 - 现有全局 Codex profile 可能同时承载登录状态和用户自定义配置。把 `CODEX_HOME` 直接改到空
   session 目录可能使会话失去登录能力；复制 profile 则可能复制令牌、MCP 或插件配置，均不可接受。
-- 在没有 Job Object 前，环境隔离也不能证明后代进程的完整清理。
+- 已有 Job Object 覆盖 AgentHost 及普通后代的关闭边界；隔离规格已验证显式停止及拥有 Job
+  的启动器直接退出均会回收该树。但它不最小化环境、不能隔离凭据，也尚未替代真实 Codex
+  异常退出与僵尸进程实测。
 
 ## 必须遵守的实现门槛
 
@@ -54,6 +56,7 @@ AutoCAD Host.2016
    process 验证白名单、移除和日志脱敏。
 3. 仅在第 1 步的认证路径被证实后，将每会话 `CODEX_HOME` 接到 AgentWorkspace 的受限子目录；
    使用最小 ACL 和有界清理策略。
-4. 加入真实 Codex doctor、bootstrap-serve、停止/崩溃和僵尸进程矩阵，再进入 Job Object/资源配额。
+4. 加入真实 Codex doctor、bootstrap-serve、停止/崩溃和僵尸进程矩阵，再在现有 Job Object
+   边界上叠加资源配额。
 
 该审计不是完整安全验收，也不取代 AutoCAD 实机测试。

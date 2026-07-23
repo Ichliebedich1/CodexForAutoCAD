@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -97,6 +98,18 @@ internal static class FakeAgentHostProgram
                 Thread.Sleep(Timeout.Infinite);
                 return 99;
             }
+            if (mode == "servechild")
+            {
+                if (!serve)
+                {
+                    throw new ArgumentException("servechild fake mode requires bootstrap-serve.");
+                }
+
+                StartDescendantAndWriteProcessId();
+                confirmationOutput.Dispose();
+                Thread.Sleep(Timeout.Infinite);
+                return 99;
+            }
             if (mode == "trailing")
             {
                 confirmationOutput.WriteByte(0x7f);
@@ -130,6 +143,39 @@ internal static class FakeAgentHostProgram
         var name = Path.GetFileNameWithoutExtension(executable);
         var separator = name.LastIndexOf('-');
         return separator < 0 ? "success" : name.Substring(separator + 1).ToLowerInvariant();
+    }
+
+    private static void StartDescendantAndWriteProcessId()
+    {
+        const string descendantExecutableVariable =
+            "CODEX_AUTOCAD_TEST_DESCENDANT_EXECUTABLE";
+        const string descendantProcessIdPathVariable =
+            "CODEX_AUTOCAD_TEST_DESCENDANT_PROCESS_ID_PATH";
+        var descendantExecutable = Environment.GetEnvironmentVariable(descendantExecutableVariable);
+        var processIdPath = Environment.GetEnvironmentVariable(descendantProcessIdPathVariable);
+        if (string.IsNullOrWhiteSpace(descendantExecutable)
+            || !Path.IsPathFullyQualified(descendantExecutable)
+            || string.IsNullOrWhiteSpace(processIdPath)
+            || !Path.IsPathFullyQualified(processIdPath))
+        {
+            throw new InvalidOperationException("Process-tree test configuration is invalid.");
+        }
+
+        using var descendant = Process.Start(new ProcessStartInfo
+        {
+            FileName = descendantExecutable,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        });
+        if (descendant == null)
+        {
+            throw new InvalidOperationException("Starting the process-tree test descendant failed.");
+        }
+
+        File.WriteAllText(
+            processIdPath,
+            descendant.Id.ToString(CultureInfo.InvariantCulture),
+            new UTF8Encoding(false));
     }
 
     private static bool IsInheritable(Microsoft.Win32.SafeHandles.SafeFileHandle handle)

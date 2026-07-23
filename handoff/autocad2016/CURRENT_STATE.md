@@ -229,13 +229,18 @@ NETLOAD 证据的能力一律视为未支持。
   不再以原文进入事件、退出异常或 AgentHost 控制台，改为有界 `bytes`/`truncated` 摘要；
   退出事件会等待该无内容摘要形成而不阻塞进程事件线程；normal doctor 也不再回显工作目录
   或 `CODEX_HOME`。该分支尚未冻结候选，环境白名单、
-  独立凭据、Job Object、资源配额和完整审计仍未完成，不能据此宣称完整 OS 沙箱。
+  独立凭据、资源配额和完整审计仍未完成，不能据此宣称完整 OS 沙箱。
 - M4 第二启动配置边界已接入 AgentHost：`--codex`、`CODEX_EXECUTABLE`、已知 npm 安装布局和
   绝对 PATH 候选会被归一化为固定本地磁盘的绝对 `codex.exe`；显式无效配置 fail-closed，且
   doctor 仅显示来源标签、不显示路径。启动/关闭超时和工作目录同样进入该配置。版本兼容硬门槛、
-  每会话 `CODEX_HOME`、环境白名单、Job Object 与审计仍未完成，详见
+  每会话 `CODEX_HOME`、环境白名单、资源配额与审计仍未完成，详见
   `M4_LOCAL_CODEX_CONFIGURATION_20260723.md` 与
   `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
+- M4 第三进程树边界已接入真实 AgentHost 启动链：校验后的 AgentHost 会在恢复前进入具有
+  `KILL_ON_JOB_CLOSE` 的未命名 Windows Job Object；普通后代由该 Job 统一回收。隔离
+  bootstrap-serve 规格以真实 PID 验证 `StopAsync` 和拥有 Job 的启动器不调用停止逻辑直接
+  退出后，父/后代均消失，net45/net8 各 `28/28`；这不替代真实 Codex 或 AutoCAD 异常退出
+  矩阵，也不包含资源限制。
 - 冻结构建哈希：AgentHost EXE `002BBA9D...49706`，AgentHost DLL
   `852BD92C...86033`，net45 Launcher `597D99E8...F849`，net8 Launcher
   `84E0E2A7...1FE9`；完整值保存在阶段 evidence。

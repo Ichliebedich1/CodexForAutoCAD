@@ -176,6 +176,7 @@ internal enum AgentHostBootstrapCommand
 internal sealed class WindowsInheritedBootstrapProcess : IDisposable
 {
     private readonly SafeKernelHandle processHandle;
+    private readonly WindowsProcessTreeJob processTreeJob;
     private SafeKernelHandle? primaryThreadHandle;
     private FileStream? executableLock;
     private bool disposed;
@@ -184,6 +185,7 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
 
     private WindowsInheritedBootstrapProcess(
         SafeKernelHandle processHandle,
+        WindowsProcessTreeJob processTreeJob,
         SafeKernelHandle primaryThreadHandle,
         FileStream executableLock,
         int processId,
@@ -194,6 +196,7 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
         FileStream standardErrorInput)
     {
         this.processHandle = processHandle;
+        this.processTreeJob = processTreeJob;
         this.primaryThreadHandle = primaryThreadHandle;
         this.executableLock = executableLock;
         ProcessId = processId;
@@ -246,6 +249,7 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
         SafeFileHandle? childStandardErrorWrite = null;
         SafeKernelHandle? processHandle = null;
         SafeKernelHandle? primaryThreadHandle = null;
+        WindowsProcessTreeJob? processTreeJob = null;
         FileStream? executableLock = null;
         FileStream? bootstrapOutput = null;
         FileStream? confirmationInput = null;
@@ -373,6 +377,10 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
             }
             throwIfLaunchAborted();
 
+            processTreeJob = WindowsProcessTreeJob.CreateKillOnClose();
+            processTreeJob.Assign(processHandle);
+            throwIfLaunchAborted();
+
             childBootstrapRead.Dispose();
             childBootstrapRead = null;
             childConfirmationWrite.Dispose();
@@ -388,6 +396,7 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
 
             var result = new WindowsInheritedBootstrapProcess(
                 processHandle,
+                processTreeJob,
                 primaryThreadHandle,
                 executableLock,
                 processId,
@@ -398,6 +407,7 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
                 standardErrorInput);
             processHandle = null;
             primaryThreadHandle = null;
+            processTreeJob = null;
             executableLock = null;
             bootstrapOutput = null;
             confirmationInput = null;
@@ -461,6 +471,7 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
             bootstrapOutput?.Dispose();
             confirmationInput?.Dispose();
             standardErrorInput?.Dispose();
+            processTreeJob?.Dispose();
             primaryThreadHandle?.Dispose();
             executableLock?.Dispose();
             processHandle?.Dispose();
@@ -612,6 +623,19 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
         if (cleanupFailure != null)
         {
             AgentBootstrapLateFailureRegistry.Record(cleanupFailure);
+        }
+
+        try
+        {
+            processTreeJob.Dispose();
+        }
+        catch (Exception exception)
+        {
+            AgentBootstrapLateFailureRegistry.Record(
+                new AgentBootstrapLaunchException(
+                    AgentBootstrapLaunchFailure.ChildTerminationFailed,
+                    "AgentHost final process-tree job cleanup failed.",
+                    exception));
         }
 
         try
@@ -778,6 +802,99 @@ internal sealed class SafeKernelHandle : SafeHandleZeroOrMinusOneIsInvalid
     }
 }
 
+/// <summary>
+/// Owns the Job Object that contains the authenticated AgentHost and every descendant it starts.
+/// Closing this handle is intentionally a kill boundary, so a Host process crash cannot leave the
+/// AgentHost/Codex subtree running without its owner.
+/// </summary>
+internal sealed class WindowsProcessTreeJob : IDisposable
+{
+    private readonly SafeKernelHandle handle;
+    private bool disposed;
+
+    private WindowsProcessTreeJob(SafeKernelHandle handle)
+    {
+        this.handle = handle;
+    }
+
+    internal static WindowsProcessTreeJob CreateKillOnClose()
+    {
+        var rawHandle = WindowsNative.CreateJobObject(IntPtr.Zero, null);
+        var safeHandle = new SafeKernelHandle(rawHandle, true);
+        if (safeHandle.IsInvalid)
+        {
+            var error = Marshal.GetLastWin32Error();
+            safeHandle.Dispose();
+            throw new AgentBootstrapLaunchException(
+                AgentBootstrapLaunchFailure.ProcessStartFailed,
+                "Creating the AgentHost process-tree job failed.",
+                new Win32Exception(error));
+        }
+
+        try
+        {
+            var limits = new WindowsNative.JobObjectExtendedLimitInformation();
+            limits.BasicLimitInformation.LimitFlags = WindowsNative.JobObjectLimitKillOnJobClose;
+            if (!WindowsNative.SetInformationJobObject(
+                    safeHandle,
+                    WindowsNative.JobObjectExtendedLimitInformationClass,
+                    ref limits,
+                    checked((uint)Marshal.SizeOf(typeof(WindowsNative.JobObjectExtendedLimitInformation)))))
+            {
+                throw new Win32Exception(
+                    Marshal.GetLastWin32Error(),
+                    "Setting the AgentHost process-tree job limit failed.");
+            }
+
+            return new WindowsProcessTreeJob(safeHandle);
+        }
+        catch (Exception exception)
+        {
+            safeHandle.Dispose();
+            throw new AgentBootstrapLaunchException(
+                AgentBootstrapLaunchFailure.ProcessStartFailed,
+                "Configuring the AgentHost process-tree job failed.",
+                exception);
+        }
+    }
+
+    internal void Assign(SafeKernelHandle process)
+    {
+        if (process == null)
+        {
+            throw new ArgumentNullException(nameof(process));
+        }
+
+        ThrowIfDisposed();
+        if (!WindowsNative.AssignProcessToJobObject(handle, process))
+        {
+            throw new AgentBootstrapLaunchException(
+                AgentBootstrapLaunchFailure.ProcessStartFailed,
+                "Assigning AgentHost to the process-tree job failed.",
+                new Win32Exception(Marshal.GetLastWin32Error()));
+        }
+    }
+
+    public void Dispose()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        disposed = true;
+        handle.Dispose();
+    }
+
+    private void ThrowIfDisposed()
+    {
+        if (disposed)
+        {
+            throw new ObjectDisposedException(nameof(WindowsProcessTreeJob));
+        }
+    }
+}
+
 internal static class WindowsNative
 {
     internal const int ErrorInsufficientBuffer = 122;
@@ -786,7 +903,9 @@ internal static class WindowsNative
     internal const uint CreateNoWindow = 0x08000000;
     internal const uint CreateSuspended = 0x00000004;
     internal const uint StartfUseStdHandles = 0x00000100;
+    internal const uint JobObjectLimitKillOnJobClose = 0x00002000;
     internal const int ProcThreadAttributeHandleList = 0x00020002;
+    internal const int JobObjectExtendedLimitInformationClass = 9;
     internal const int StandardInputHandle = -10;
     internal const int StandardOutputHandle = -11;
     internal const int StandardErrorHandle = -12;
@@ -894,6 +1013,42 @@ internal static class WindowsNative
         }
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct IoCounters
+    {
+        internal ulong ReadOperationCount;
+        internal ulong WriteOperationCount;
+        internal ulong OtherOperationCount;
+        internal ulong ReadTransferCount;
+        internal ulong WriteTransferCount;
+        internal ulong OtherTransferCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct JobObjectBasicLimitInformation
+    {
+        internal long PerProcessUserTimeLimit;
+        internal long PerJobUserTimeLimit;
+        internal uint LimitFlags;
+        internal UIntPtr MinimumWorkingSetSize;
+        internal UIntPtr MaximumWorkingSetSize;
+        internal uint ActiveProcessLimit;
+        internal UIntPtr Affinity;
+        internal uint PriorityClass;
+        internal uint SchedulingClass;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct JobObjectExtendedLimitInformation
+    {
+        internal JobObjectBasicLimitInformation BasicLimitInformation;
+        internal IoCounters IoInfo;
+        internal UIntPtr ProcessMemoryLimit;
+        internal UIntPtr JobMemoryLimit;
+        internal UIntPtr PeakProcessMemoryUsed;
+        internal UIntPtr PeakJobMemoryUsed;
+    }
+
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool CreatePipe(
@@ -901,6 +1056,25 @@ internal static class WindowsNative
         out IntPtr writePipe,
         ref SecurityAttributes pipeAttributes,
         uint size);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern IntPtr CreateJobObject(
+        IntPtr jobAttributes,
+        string? name);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetInformationJobObject(
+        SafeKernelHandle job,
+        int jobObjectInformationClass,
+        ref JobObjectExtendedLimitInformation jobObjectInformation,
+        uint jobObjectInformationLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool AssignProcessToJobObject(
+        SafeKernelHandle job,
+        SafeKernelHandle process);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -297,7 +297,11 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 - [ ] 默认空 MCP、空插件配置和独立凭据边界；当前未知 Codex 配置布局不能作为假定的复制来源。
 - [ ] 子进程仅继承白名单环境变量；当前仅是父环境覆写，尚非白名单。实施门槛见
   `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
-- [ ] 使用 Windows Job Object 管理 AgentHost 与 Codex 整个进程树。
+- [x] AgentHost 启动链在恢复前创建 `KILL_ON_JOB_CLOSE` 的未命名 Windows Job Object 并分配
+  已校验的 AgentHost；普通后代继承该边界。隔离 `bootstrap-serve` 规格已按 PID 验证
+  `StopAsync` 和拥有 Job 的启动器直接退出时均回收父/后代，net45/net8 各 `28/28`。真实
+  Codex/AutoCAD 异常退出、僵尸进程和资源配额仍未验收，详见
+  `M4_PROCESS_ISOLATION_BASELINE_20260723.md`。
 - [ ] 评估并实现受限令牌或 AppContainer。
 - [ ] 设置 CPU、内存、进程数、运行时间和工作目录配额。
 - [ ] 工作目录使用最小 ACL 并按策略清理。

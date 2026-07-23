@@ -1,9 +1,16 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Microsoft.Win32.SafeHandles;
 using Codex.AutoCAD.AgentLauncher;
+
+if (args.Length > 0
+    && string.Equals(args[0], "--job-owner-helper", StringComparison.Ordinal))
+{
+    return RunJobOwnerHelper(args);
+}
 
 var arguments = ParseArguments(args);
 var fixture = new FakeAgentHostFixture(arguments.FakeAgentHostPath);
@@ -13,6 +20,8 @@ try
     {
         new SpecCase("REAL_AGENTHOST_SUCCESS", "真实AgentHost完成认证bootstrap doctor且无残留", () => RealAgentHostSucceeds(arguments.AgentHostPath)),
         new SpecCase("REAL_AGENTHOST_REPEAT_5", "连续五次真实引导均成功且无残留", () => RepeatedRealAgentHostSucceeds(arguments.AgentHostPath)),
+        new SpecCase("SERVICE_STOP_KILLS_PROCESS_TREE", "停止服务会回收AgentHost及其受监管后代进程", () => ServiceStopKillsProcessTree(fixture)),
+        new SpecCase("OWNER_EXIT_KILLS_PROCESS_TREE", "拥有Job的启动器退出会回收AgentHost及其受监管后代进程", () => JobOwnerExitKillsProcessTree(fixture)),
         new SpecCase("INVALID_EXECUTABLE_PATHS", "相对路径、真实非EXE与缺失文件均失败关闭", () => InvalidExecutablePathsFailClosed(fixture)),
         new SpecCase("EXECUTABLE_SHA256_MISMATCH", "批准SHA-256不匹配时拒绝启动", () => ExecutableSha256MismatchFails(fixture.CreateMode("success"))),
         new SpecCase("TIMEOUT_TERMINATES_UNCONFIRMED", "启动截止触发失败关闭，随后在有界清理窗口内终止未确认子进程", () => TimeoutTerminatesChild(fixture.CreateMode("hang"))),
@@ -85,6 +94,197 @@ static void RepeatedRealAgentHostSucceeds(string agentHostPath)
     {
         RealAgentHostSucceeds(agentHostPath);
     }
+}
+
+static void ServiceStopKillsProcessTree(FakeAgentHostFixture fixture)
+{
+    const string descendantExecutableVariable = "CODEX_AUTOCAD_TEST_DESCENDANT_EXECUTABLE";
+    const string descendantProcessIdPathVariable = "CODEX_AUTOCAD_TEST_DESCENDANT_PROCESS_ID_PATH";
+    var descendantExecutable = fixture.CreateMode("hang");
+    var processIdPath = Path.Combine(
+        Path.GetTempPath(),
+        "CodexAgentLauncherDescendant-" + Guid.NewGuid().ToString("N") + ".txt");
+    var previousDescendantExecutable = Environment.GetEnvironmentVariable(descendantExecutableVariable);
+    var previousProcessIdPath = Environment.GetEnvironmentVariable(descendantProcessIdPathVariable);
+    AgentHostServiceSession? session = null;
+    var descendantProcessId = 0;
+    try
+    {
+        Environment.SetEnvironmentVariable(descendantExecutableVariable, descendantExecutable);
+        Environment.SetEnvironmentVariable(descendantProcessIdPathVariable, processIdPath);
+        session = AgentHostBootstrapService.StartAsync(
+                CreateOptions(fixture.CreateMode("servechild")),
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        descendantProcessId = ReadProcessIdFile(processIdPath);
+        True(descendantProcessId > 0, "The process-tree test descendant id is invalid.");
+
+        session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+        ProcessMustBeGone(session.ProcessId);
+        ProcessMustBeGone(descendantProcessId);
+        session.Dispose();
+        session = null;
+    }
+    finally
+    {
+        try
+        {
+            session?.Dispose();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                descendantExecutableVariable,
+                previousDescendantExecutable);
+            Environment.SetEnvironmentVariable(
+                descendantProcessIdPathVariable,
+                previousProcessIdPath);
+            if (descendantProcessId > 0)
+            {
+                KillFixtureProcessIfStillRunning(descendantProcessId, descendantExecutable);
+            }
+
+            try
+            {
+                File.Delete(processIdPath);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+}
+
+static void JobOwnerExitKillsProcessTree(FakeAgentHostFixture fixture)
+{
+    var descendantExecutable = fixture.CreateMode("hang");
+    var agentHostExecutable = fixture.CreateMode("servechild");
+    var unique = Guid.NewGuid().ToString("N");
+    var descendantProcessIdPath = Path.Combine(
+        Path.GetTempPath(),
+        "CodexAgentLauncherDescendant-" + unique + ".txt");
+    var agentHostProcessIdPath = Path.Combine(
+        Path.GetTempPath(),
+        "CodexAgentLauncherAgentHost-" + unique + ".txt");
+    var descendantProcessId = 0;
+    var agentHostProcessId = 0;
+    try
+    {
+        using (var owner = StartJobOwnerHelper(
+                   agentHostExecutable,
+                   descendantExecutable,
+                   descendantProcessIdPath,
+                   agentHostProcessIdPath))
+        {
+            if (!owner.WaitForExit(5000))
+            {
+                owner.Kill();
+                throw new InvalidOperationException(
+                    "The process-tree Job owner did not exit inside the test deadline.");
+            }
+
+            Equal(0, owner.ExitCode);
+        }
+
+        descendantProcessId = ReadProcessIdFile(descendantProcessIdPath);
+        agentHostProcessId = ReadProcessIdFile(agentHostProcessIdPath);
+        WaitForProcessToExit(agentHostProcessId, TimeSpan.FromSeconds(3));
+        WaitForProcessToExit(descendantProcessId, TimeSpan.FromSeconds(3));
+    }
+    finally
+    {
+        KillFixtureProcessIfStillRunning(agentHostProcessId, agentHostExecutable);
+        KillFixtureProcessIfStillRunning(descendantProcessId, descendantExecutable);
+        DeleteFileIfPresent(descendantProcessIdPath);
+        DeleteFileIfPresent(agentHostProcessIdPath);
+    }
+}
+
+static int RunJobOwnerHelper(string[] values)
+{
+    var fakeAgentHost = GetRequiredOption(values, "--fake-agent-host");
+    var descendantProcessIdPath = GetRequiredOption(values, "--descendant-process-id-path");
+    var agentHostProcessIdPath = GetRequiredOption(values, "--agenthost-process-id-path");
+    var session = AgentHostBootstrapService.StartAsync(
+            CreateOptions(fakeAgentHost),
+            CancellationToken.None)
+        .GetAwaiter()
+        .GetResult();
+    File.WriteAllText(
+        agentHostProcessIdPath,
+        session.ProcessId.ToString(CultureInfo.InvariantCulture),
+        new System.Text.UTF8Encoding(false));
+    ReadProcessIdFile(descendantProcessIdPath);
+
+    // Deliberately bypass StopAsync and Dispose. The OS closing this process's Job handle is the
+    // behavior under test; the caller must observe the AgentHost subtree disappear afterwards.
+    Environment.Exit(0);
+    return 1;
+}
+
+static Process StartJobOwnerHelper(
+    string fakeAgentHost,
+    string descendantExecutable,
+    string descendantProcessIdPath,
+    string agentHostProcessIdPath)
+{
+    var entryAssembly = Assembly.GetEntryAssembly();
+    if (entryAssembly == null || string.IsNullOrWhiteSpace(entryAssembly.Location))
+    {
+        throw new InvalidOperationException("The AgentLauncher Specs entry assembly is unavailable.");
+    }
+
+    var entryAssemblyPath = entryAssembly.Location;
+    string hostExecutable;
+    using (var current = Process.GetCurrentProcess())
+    {
+        hostExecutable = current.MainModule == null
+            ? string.Empty
+            : current.MainModule.FileName;
+    }
+    if (string.IsNullOrWhiteSpace(hostExecutable))
+    {
+        throw new InvalidOperationException("The AgentLauncher Specs process host is unavailable.");
+    }
+
+    var arguments = string.Join(" ", new[]
+    {
+        "--job-owner-helper",
+        "--fake-agent-host", QuoteCommandLineArgument(fakeAgentHost),
+        "--descendant-process-id-path", QuoteCommandLineArgument(descendantProcessIdPath),
+        "--agenthost-process-id-path", QuoteCommandLineArgument(agentHostProcessIdPath),
+    });
+    var startInfo = new ProcessStartInfo
+    {
+        FileName = string.Equals(
+            Path.GetExtension(entryAssemblyPath),
+            ".dll",
+            StringComparison.OrdinalIgnoreCase)
+            ? hostExecutable
+            : entryAssemblyPath,
+        Arguments = string.Equals(
+            Path.GetExtension(entryAssemblyPath),
+            ".dll",
+            StringComparison.OrdinalIgnoreCase)
+            ? QuoteCommandLineArgument(entryAssemblyPath) + " " + arguments
+            : arguments,
+        UseShellExecute = false,
+        CreateNoWindow = true,
+    };
+    startInfo.EnvironmentVariables["CODEX_AUTOCAD_TEST_DESCENDANT_EXECUTABLE"] = descendantExecutable;
+    startInfo.EnvironmentVariables["CODEX_AUTOCAD_TEST_DESCENDANT_PROCESS_ID_PATH"] =
+        descendantProcessIdPath;
+    var process = Process.Start(startInfo);
+    if (process == null)
+    {
+        throw new InvalidOperationException("Starting the process-tree Job owner helper failed.");
+    }
+
+    return process;
 }
 
 static void ServiceStopRetriesTermination()
@@ -792,6 +992,102 @@ static void ProcessNameMustBeGone(string executablePath)
     throw new InvalidOperationException("Fake AgentHost process remains: " + processName + ".");
 }
 
+static int ReadProcessIdFile(string path)
+{
+    var deadline = DateTime.UtcNow.AddSeconds(3);
+    do
+    {
+        try
+        {
+            var text = File.ReadAllText(path).Trim();
+            int processId;
+            if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out processId)
+                && processId > 0)
+            {
+                return processId;
+            }
+        }
+        catch (FileNotFoundException)
+        {
+        }
+        catch (IOException)
+        {
+        }
+
+        Thread.Sleep(25);
+    } while (DateTime.UtcNow < deadline);
+
+    throw new InvalidOperationException("The process-tree test descendant did not publish its process id.");
+}
+
+static void WaitForProcessToExit(int processId, TimeSpan timeout)
+{
+    var deadline = DateTime.UtcNow.Add(timeout);
+    do
+    {
+        try
+        {
+            using (var process = Process.GetProcessById(processId))
+            {
+                if (process.HasExited)
+                {
+                    return;
+                }
+            }
+        }
+        catch (ArgumentException)
+        {
+            return;
+        }
+
+        Thread.Sleep(25);
+    } while (DateTime.UtcNow < deadline);
+
+    throw new InvalidOperationException(
+        "Expected process did not exit inside the process-tree Job cleanup deadline: " + processId + ".");
+}
+
+static void KillFixtureProcessIfStillRunning(int processId, string executablePath)
+{
+    try
+    {
+        using (var process = Process.GetProcessById(processId))
+        {
+            if (process.HasExited
+                || !string.Equals(
+                    process.ProcessName,
+                    Path.GetFileNameWithoutExtension(executablePath),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            process.Kill();
+            process.WaitForExit(2000);
+        }
+    }
+    catch (ArgumentException)
+    {
+    }
+    catch (InvalidOperationException)
+    {
+    }
+}
+
+static void DeleteFileIfPresent(string path)
+{
+    try
+    {
+        File.Delete(path);
+    }
+    catch (IOException)
+    {
+    }
+    catch (UnauthorizedAccessException)
+    {
+    }
+}
+
 static Arguments ParseArguments(string[] values)
 {
     string? agentHost = null;
@@ -814,6 +1110,28 @@ static Arguments ParseArguments(string[] values)
     }
 
     return new Arguments(Path.GetFullPath(agentHost), Path.GetFullPath(fakeAgentHost));
+}
+
+static string GetRequiredOption(string[] values, string option)
+{
+    for (var index = 0; index < values.Length - 1; index++)
+    {
+        if (string.Equals(values[index], option, StringComparison.Ordinal))
+        {
+            var value = values[index + 1];
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return Path.GetFullPath(value);
+            }
+        }
+    }
+
+    throw new ArgumentException("Missing required helper option: " + option);
+}
+
+static string QuoteCommandLineArgument(string value)
+{
+    return "\"" + value.Replace("\"", "\\\"") + "\"";
 }
 
 static void True(bool condition, string message)
