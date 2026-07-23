@@ -9,10 +9,11 @@ token”描述为完整文件系统沙箱。源代码和本机能力审计表明
 ACL、Credential Manager 读取和 Codex 运行时文件都以当前用户身份为边界；未经改造直接换身份会造成
 启动失败，或更糟地为恢复功能而放宽 ACL。
 
-下一步应先实现并验证一个**默认关闭、fail-closed 的受限自身 token 启动探针**，只对受控假
-AgentHost 做 bootstrap/停止/清理验证。生产 `bootstrap-serve` 在该探针、私有 desktop、显式 ACL、
-真实 Codex 子树和 AutoCAD 共存矩阵完成前继续使用现有启动链。AppContainer 保留为后续部署级方案，
-不是本次可直接上线的替换项。
+仅 Launcher 内部可见、fail-closed 的受限自身 token 启动探针现已实现：它验证真正的 restricted token
+和 private desktop 原语，并将机器结果限制为受限成功或两类结构化失败，始终清理且不回退。它**没有**建立
+可成功运行的受限 runtime/ACL 组合，详见 `M4_RESTRICTED_TOKEN_BOOTSTRAP_PROBE_20260723.md`。生产
+`bootstrap-serve` 在最小 runtime/workspace/pipe ACL、真实 Codex 子树和 AutoCAD 共存矩阵完成前继续
+使用现有启动链。AppContainer 保留为后续部署级方案，不是本次可直接上线的替换项。
 
 ## 已核对的当前链路
 
@@ -28,9 +29,10 @@ Host.2016 / Launcher（当前用户）
 
 审计发现：
 
-1. `WindowsInheritedBootstrapProcess` 只有同用户 `CreateProcessW` P/Invoke；当前没有
-   `CreateRestrictedToken`、`CreateProcessAsUser`、`CreateProcessWithTokenW`、AppContainer profile/token
-   或显式进程身份策略实现。
+1. 生产路径仍是同用户 `CreateProcessW`。公开 `AgentHostBootstrapOptions`、Doctor 和 Service 没有
+   身份选择入口；Launcher 内部 friend Specs 的 `RestrictedToken` probe 调用
+   `CreateRestrictedToken`、`CreateProcessAsUser` 和 private desktop，并在 `IsTokenRestricted`
+   失败时拒绝。没有 `CreateProcessWithTokenW` 或 AppContainer profile/token 实现。
 2. 现有 Job Object 在子进程创建后、恢复主线程前分配，因此它可继续作为受限进程树的资源边界；
    但不能替代身份隔离或磁盘配额。
 3. Bridge 使用 `PipeOptions.CurrentUserOnly`，不是显式的 logon-SID/restricted-SID/AppContainer-SID DACL。
@@ -61,17 +63,18 @@ Microsoft 的 [CreateRestrictedToken](https://learn.microsoft.com/en-us/windows/
 
 ## 分阶段方案
 
-### A. 受限自身 token 探针（下一实现切口）
+### A. 受限自身 token 探针（已完成的原语/fail-closed 切口）
 
-仅新增默认关闭的测试入口，不改生产默认路径：
+已新增仅程序集内部可调用的测试入口，不改生产路径：
 
 - 从当前进程 primary token 创建受限 token，并明确移除/禁用 privilege；若 API、desktop、句柄或
   Job 分配任一失败，返回固定结构化错误，绝不回退到未受限启动。
 - 为受限子进程建立非交互 private desktop；bootstrap 继续只使用继承的单次句柄，不能转用命令行或
   环境变量传递机密。
-- 将受控 fake AgentHost 的可执行映像、必要运行时文件、临时 workspace 和命名管道逐项加入最小 ACL
-  契约，并验证拒绝不在 allowlist 内的路径/对象。
-- 验证启动、认证、STOP、超时、Job kill-on-close 与 `0` 残留；不启动 AutoCAD，不连接真实 Codex。
+- 当前 fake AgentHost 在 runtime/desktop/ACL 组合中无法完成认证，固定失败并 `0` 残留；因此没有为
+  可执行映像、必要 runtime、临时 workspace 或命名管道扩大 ACL。
+- 成功启动、认证、STOP、超时、Job kill-on-close 与拒绝非 allowlist 访问仍是下一子阶段；不启动
+  AutoCAD，不连接真实 Codex。
 
 探针通过后仍不能宣称完整沙箱：它还需要真实 Codex 子树、网络、私有 workspace、Credential Manager、
 嵌套 Job/企业策略与 AutoCAD 共存验证。
@@ -84,9 +87,9 @@ ACL/namespace、最小 network capability 以及凭据 broker 后，才可评估
 
 ## 证据边界
 
-本审计没有创建 restricted token、AppContainer、desktop、子进程或 AutoCAD 进程；未执行 `NETLOAD`
-和 CAD 命令。它是 source/local capability/官方 API 前置条件的设计检查点，**不是**受限进程实际
-运行证据，也不完成 M4 或授权 M5 CAD 写入。
+本审计的原始 source/local capability 结论现已由单独的 restricted-token probe 补充：该 probe 创建了
+受限 token、private desktop 和受控 FakeAgentHost 子进程，但没有启动 AutoCAD、未执行 `NETLOAD` 和 CAD
+命令，也没有完成受限进程的成功认证运行。它不完成 M4 或授权 M5 CAD 写入。
 
 脱敏记录见：
 `evidence/m4-process-identity-isolation-feasibility-20260723.json`。

@@ -335,11 +335,17 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 - [x] 受限 token/AppContainer source 与本机能力可行性审计：当前 Launcher 仍以同用户
   `CreateProcessW` 启动，`CurrentUserOnly` 管道、严格三 SID workspace ACL 和 AgentHost 内 `CredRead`
   不能直接承受身份替换。本机仅显示 `SeIncreaseQuotaPrivilege`/`SeImpersonatePrivilege` 的可行性信号；
-  不将其误写为已运行隔离。先做默认关闭、fail-closed 的受限自身 token synthetic bootstrap probe；
-  AppContainer 留待安装/部署预配。详见 `M4_PROCESS_IDENTITY_ISOLATION_FEASIBILITY_20260723.md`。
-- [ ] 实现并验证受限自身 token 的 private desktop、最小 runtime/workspace/pipe ACL、单次 bootstrap、
-  Job 归属、STOP/超时/清理；任何设置失败必须拒绝启动，不能回退到未受限启动。完成前 AppContainer
-  不得作为生产替代项。
+  不将其误写为已运行隔离。AppContainer 留待安装/部署预配。详见
+  `M4_PROCESS_IDENTITY_ISOLATION_FEASIBILITY_20260723.md`。
+- [x] Launcher 内部受限自身 token/private-desktop 探针：公开 `AgentHostBootstrapOptions`、Doctor
+  和 Service 不暴露身份选择或原始 telemetry，`CurrentUser` 是唯一产品路径。内部 `RestrictedToken`
+  使用真正 restricting SID、`IsTokenRestricted`、private desktop 和 `CreateProcessAsUser`，且无
+  CurrentUser 回退。跨机器规格允许受限成功或两类结构化失败；本机 net45/net8 均为
+  `child_exited`，各 `41/41`。这只证明原语、公共边界和可移植 fail-closed 行为，详见
+  `M4_RESTRICTED_TOKEN_BOOTSTRAP_PROBE_20260723.md`。
+- [ ] 完成受限自身 token 的最小 runtime/workspace/pipe/window-station ACL 契约，并在专用受控 fixture
+  中验证成功单次 bootstrap、Job 归属、STOP/超时/清理及拒绝非 allowlist 访问；不得扩大生产目录 ACL、
+  使用默认 desktop 或回退到未受限启动。完成前 AppContainer 不得作为生产替代项。
 - [ ] 设置可靠的工作目录磁盘硬配额；为进程数/内存/CPU 限制增加真实 Codex 耗尽或节流验证与
   用户可理解的失败诊断。当前 Windows 10 Pro 的只读审计未发现 FSRM/`SrmSvc`、启用的卷 quota
   或 VHD 预配能力；现有 Job Object 不是磁盘配额。不要用轮询目录大小冒充硬配额，必须先部署
@@ -363,10 +369,10 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   AppServer 为 `30/30`、完整 Phase 2 为 `351/351`。详见
   `M4_CONFIGURATION_ERROR_SANITIZATION_20260723.md`。
 - [x] `AgentBootstrapLaunchException` 的公开异常面已由
-  `AgentBootstrapLaunchFailurePolicy` 收敛：十个已知 bootstrap 失败使用固定 code/说明，未知值降级为
+  `AgentBootstrapLaunchFailurePolicy` 收敛：闭合集合中的已知 bootstrap 失败使用固定 code/说明，未知值降级为
   `agenthost_internal_error`；不保留调用方原始诊断或 `InnerException`，`ToString()` 也不回显它们。
   Host.2016 对未知 bootstrap 失败显式映射为不可重试 `internal_error`。Launcher net8/net45 各
-  `38/38`、Host MVP `53/53`，额外双 Shell Bridge `56/56` 与 Phase 2 `351/351` 均通过。详见
+  `41/41`、Host MVP `53/53`，额外双 Shell Bridge `56/56` 与 Phase 2 `351/351` 均通过。详见
   `M4_BOOTSTRAP_ERROR_SANITIZATION_20260723.md`。
 - [ ] 将安全日志导出和未来新增错误出口逐项纳入同一固定代码/说明策略；不能把已覆盖的
   Bridge/运行时/Host/本地配置/Bootstrap 边界误写成完整审计脱敏完成。

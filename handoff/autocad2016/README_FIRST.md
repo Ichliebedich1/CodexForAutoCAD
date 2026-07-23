@@ -107,19 +107,21 @@ M4 进程隔离已完成一个不依赖 AutoCAD 实机的小阶段：
   `--codex` 的路径形态不再回显。AppServer `30/30`、完整 Phase 2 `351/351`、Release `0` warning /
   `0` error 和受控 doctor 握手通过；未启动 AutoCAD。详见
   `M4_CONFIGURATION_ERROR_SANITIZATION_20260723.md`。
-- `AgentBootstrapLaunchException` 的公开诊断现由 `AgentBootstrapLaunchFailurePolicy` 固定：十个已知
+- `AgentBootstrapLaunchException` 的公开诊断现由 `AgentBootstrapLaunchFailurePolicy` 固定：闭合的已知
   Bootstrap 失败只有安全 code/说明，未知值降级为 `agenthost_internal_error`，调用方传入的原始诊断、
   内部异常和 stderr 不会经 `Message`、`InnerException` 或 `ToString()` 泄露。Launcher net8/net45
-  各 `38/38`、Host MVP `53/53`，双 Shell Bridge `56/56`、Phase 2 `351/351` 均通过；未启动
+  当前组合规格各 `41/41`、Host MVP `53/53`，双 Shell Bridge `56/56`、Phase 2 `351/351` 均通过；未启动
   AutoCAD。详见 `M4_BOOTSTRAP_ERROR_SANITIZATION_20260723.md`。
 - 工作目录磁盘硬配额尚未实现：本机 Windows 10 Pro 未部署 FSRM/`SrmSvc`，卷 quota 未启用，
   也没有 VHD 预配模块；现有 Job Object 只限制进程资源。项目拒绝用目录轮询冒充硬配额，须先由
   部署提供 FSRM 目录配额或专用固定大小卷并完成实际拒绝验证。详见
   `M4_WORKSPACE_HARD_QUOTA_FEASIBILITY_20260723.md`。
-- 受限 token/AppContainer 目前仅完成可行性审计，尚未启用：现有同用户 `CreateProcessW`、
-  `CurrentUserOnly` 管道、严格私有 ACL 和 AgentHost 内 `CredRead` 不能安全地直接换身份。下一步是默认
-  关闭且 fail-closed 的受限自身 token synthetic probe；AppContainer 必须等待安装/部署预配 profile、ACL、
-  runtime、命名空间和凭据边界。详见 `M4_PROCESS_IDENTITY_ISOLATION_FEASIBILITY_20260723.md`。
+- 受限 token/AppContainer 已完成可行性审计及 Launcher 内部 primitive/fail-closed probe：公开
+  `AgentHostBootstrapOptions`、Doctor 和 Service 只走 CurrentUser，Host.2016 和插件配置无法选择
+  `RestrictedToken`。探针允许受限成功或两类结构化失败，绝不回退 CurrentUser；本机 net45/net8
+  均记录为 `child_exited`。它不是可运行的生产 sandbox；下一步是最小 runtime/workspace/pipe ACL fixture，
+  AppContainer 仍须等待安装/部署预配 profile、ACL、runtime、命名空间和凭据边界。详见
+  `M4_RESTRICTED_TOKEN_BOOTSTRAP_PROBE_20260723.md`。
 - 每次生产 app-server 调用都固定附加 `-c mcp_servers={}`，以 Codex 结构化配置覆盖默认用户
   profile 的 MCP server 表。此变更的 AppServer `29/29`、AgentHost Release `0` warning / `0` error
   和真实两轮 live `2/2` 已通过；它不隔离默认用户 `CODEX_HOME`、凭据、技能或插件配置。
@@ -301,7 +303,7 @@ M1 仍使用 `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 和精确 `0.3.3.0
    索引分类和 API Probe 不等于按精确 `0.4.2.0` 候选取得的实机逐类字段通过。
 5. M4：进程树清理、进程数/内存/CPU/运行时限制、AgentHost 只读 JSONL 审计、工作区/审计
    ACL 与有界保留、Codex 子进程父环境白名单、版本/App Server 健康预检和本地审计哈希链已完成；
-   继续磁盘硬配额、每会话 `CODEX_HOME`/凭据、插件配置隔离、受限令牌/AppContainer、受保护
+   继续磁盘硬配额、每会话 `CODEX_HOME`/凭据、插件配置隔离、受限 runtime ACL/AppContainer、受保护
    审计锚点和 CAD 写入终态。
 6. M5：AutoCAD 2016 `create_line` 安全写入最小闭环。
 7. 后续阶段见 `LONG_TERM_MEMORY_TODO.md`。
@@ -414,6 +416,10 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
   ACL、凭据边界的可行性结论及分阶段方案。
 - `evidence/m4-process-identity-isolation-feasibility-20260723.json`：上述 source/local capability 审计记录，
   明确没有启动任何隔离进程。
+- `M4_RESTRICTED_TOKEN_BOOTSTRAP_PROBE_20260723.md`：Launcher 内部受限自身
+  token/private-desktop 原语、可移植 fail-closed capability probe 与未完成的 runtime/ACL 契约。
+- `evidence/m4-restricted-token-bootstrap-probe-20260723.json`：上述 probe 的脱敏规格、构建和非 AutoCAD
+  范围记录。
 
 ## 11. 支持声明
 
@@ -433,7 +439,7 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
 > 认证 `bootstrap-serve` 已有可选每会话 `CODEX_HOME`/Windows Generic Credential 路径，默认仍保持
 > 用户 profile 兼容模式。Bridge/运行时/Host/本地配置/Bootstrap 公开诊断均已收敛为固定安全说明；
 > 审计 `/2` 已有本地 canonical SHA-256 链，但没有签名、远端锚定或 WORM
-> 存储。真实隔离登录、插件配置隔离、磁盘硬配额、受限 token 探针、AppContainer 部署方案、其余沙箱、
+> 存储。真实隔离登录、插件配置隔离、磁盘硬配额、受限 token runtime/ACL 兼容、AppContainer 部署方案、其余沙箱、
 > 受保护审计锚点和 CAD 写入终态仍未完成。
 > 安全 CAD 写入、完整沙箱、长期记忆和发布安装
 > 尚未完成。

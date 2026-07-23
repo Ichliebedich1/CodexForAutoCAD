@@ -31,8 +31,9 @@ AgentLauncher 失败点（启动 / 确认 / 超时 / 清理）
 
 ## 自动化验证
 
-- Launcher Release 编译在 net8 与条件 net45 均为 `0` warning / `0` error；对应 Launcher
-  规格分别为 `38/38`。
+- 本检查点时 Launcher Release 编译在 net8 与条件 net45 均为 `0` warning / `0` error；对应 Launcher
+  规格分别为 `38/38`。后续受限 token probe 将当前组合规格扩展为 `41/41`，见
+  `M4_RESTRICTED_TOKEN_BOOTSTRAP_PROBE_20260723.md`。
 - Host.2016 MVP 规格为 `53/53`，覆盖未知 Bootstrap 失败必须映射为 `internal_error`，且路径形态
   `M4-SENTINEL` 不会进入用户失败文本。
 - Launcher 规格为每个已知失败值及一个未知枚举值注入含路径形态的诊断和内部异常，验证公开
