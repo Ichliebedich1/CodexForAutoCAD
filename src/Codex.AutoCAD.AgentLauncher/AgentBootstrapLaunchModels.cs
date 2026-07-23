@@ -12,21 +12,120 @@ public enum AgentBootstrapLaunchFailure
     ChildExitedWithError = 6,
     Timeout = 7,
     Cancellation = 8,
-    ChildTerminationFailed = 9
+    ChildTerminationFailed = 9,
+    InternalError = 10
+}
+
+/// <summary>
+/// Defines the only diagnostics a bootstrap failure may expose outside the launcher.
+/// Callers may supply an unsafe local diagnostic while constructing the exception, but it must never
+/// become the public exception message, error code, or string representation.
+/// </summary>
+public static class AgentBootstrapLaunchFailurePolicy
+{
+    public static AgentBootstrapLaunchFailure Normalize(AgentBootstrapLaunchFailure failure)
+    {
+        switch (failure)
+        {
+            case AgentBootstrapLaunchFailure.InvalidConfiguration:
+            case AgentBootstrapLaunchFailure.ProcessStartFailed:
+            case AgentBootstrapLaunchFailure.BootstrapWriteFailed:
+            case AgentBootstrapLaunchFailure.ConfirmationInvalid:
+            case AgentBootstrapLaunchFailure.IdentityMismatch:
+            case AgentBootstrapLaunchFailure.ChildExitedWithError:
+            case AgentBootstrapLaunchFailure.Timeout:
+            case AgentBootstrapLaunchFailure.Cancellation:
+            case AgentBootstrapLaunchFailure.ChildTerminationFailed:
+            case AgentBootstrapLaunchFailure.InternalError:
+                return failure;
+            default:
+                return AgentBootstrapLaunchFailure.InternalError;
+        }
+    }
+
+    public static string GetErrorCode(AgentBootstrapLaunchFailure failure)
+    {
+        switch (Normalize(failure))
+        {
+            case AgentBootstrapLaunchFailure.InvalidConfiguration:
+                return "agenthost_invalid_configuration";
+            case AgentBootstrapLaunchFailure.ProcessStartFailed:
+                return "agenthost_process_start_failed";
+            case AgentBootstrapLaunchFailure.BootstrapWriteFailed:
+                return "agenthost_bootstrap_write_failed";
+            case AgentBootstrapLaunchFailure.ConfirmationInvalid:
+                return "agenthost_confirmation_invalid";
+            case AgentBootstrapLaunchFailure.IdentityMismatch:
+                return "agenthost_identity_mismatch";
+            case AgentBootstrapLaunchFailure.ChildExitedWithError:
+                return "agenthost_child_exited";
+            case AgentBootstrapLaunchFailure.Timeout:
+                return "agenthost_timeout";
+            case AgentBootstrapLaunchFailure.Cancellation:
+                return "agenthost_cancelled";
+            case AgentBootstrapLaunchFailure.ChildTerminationFailed:
+                return "agenthost_termination_failed";
+            case AgentBootstrapLaunchFailure.InternalError:
+                return "agenthost_internal_error";
+            default:
+                return "agenthost_internal_error";
+        }
+    }
+
+    public static string GetSafeMessage(AgentBootstrapLaunchFailure failure)
+    {
+        switch (Normalize(failure))
+        {
+            case AgentBootstrapLaunchFailure.InvalidConfiguration:
+                return "The AgentHost bootstrap configuration is invalid.";
+            case AgentBootstrapLaunchFailure.ProcessStartFailed:
+                return "The AgentHost process could not be started.";
+            case AgentBootstrapLaunchFailure.BootstrapWriteFailed:
+                return "The AgentHost bootstrap data could not be delivered.";
+            case AgentBootstrapLaunchFailure.ConfirmationInvalid:
+                return "The AgentHost bootstrap confirmation is invalid.";
+            case AgentBootstrapLaunchFailure.IdentityMismatch:
+                return "The AgentHost identity validation failed.";
+            case AgentBootstrapLaunchFailure.ChildExitedWithError:
+                return "The AgentHost stopped before bootstrap completed.";
+            case AgentBootstrapLaunchFailure.Timeout:
+                return "The AgentHost bootstrap timed out.";
+            case AgentBootstrapLaunchFailure.Cancellation:
+                return "The AgentHost bootstrap was cancelled.";
+            case AgentBootstrapLaunchFailure.ChildTerminationFailed:
+                return "The AgentHost cleanup could not be confirmed.";
+            case AgentBootstrapLaunchFailure.InternalError:
+                return "The AgentHost bootstrap failed.";
+            default:
+                return "The AgentHost bootstrap failed.";
+        }
+    }
 }
 
 public sealed class AgentBootstrapLaunchException : Exception
 {
     public AgentBootstrapLaunchException(
         AgentBootstrapLaunchFailure failure,
-        string message,
-        Exception? innerException = null)
-        : base(message, innerException)
+        string unsafeDiagnostic,
+        Exception? unsafeInnerException = null)
+        : base(AgentBootstrapLaunchFailurePolicy.GetSafeMessage(failure))
     {
-        Failure = failure;
+        // Both arguments are deliberately ignored. They can contain subprocess stderr, local
+        // paths, credentials, or framework exception details and must not escape through
+        // Message, InnerException, or ToString().
+        _ = unsafeDiagnostic;
+        _ = unsafeInnerException;
+        Failure = AgentBootstrapLaunchFailurePolicy.Normalize(failure);
     }
 
     public AgentBootstrapLaunchFailure Failure { get; }
+
+    public string ErrorCode => AgentBootstrapLaunchFailurePolicy.GetErrorCode(Failure);
+
+    public override string ToString()
+    {
+        return nameof(AgentBootstrapLaunchException) + ": " + ErrorCode;
+    }
 }
 
 public sealed class AgentHostBootstrapOptions

@@ -39,6 +39,7 @@ try
         new SpecCase("EARLY_EXIT_REJECTED", "子进程提前异常退出被识别", () => EarlyExitIsReported(fixture.CreateMode("exit42"))),
         new SpecCase("MALFORMED_CONFIRMATION_REJECTED", "畸形确认帧被拒绝", () => MalformedConfirmationFails(fixture.CreateMode("garbage"))),
         new SpecCase("IDENTITY_MISMATCH_REJECTED", "确认身份不匹配被拒绝", () => IdentityMismatchFails(fixture.CreateMode("identity"))),
+        new SpecCase("BOOTSTRAP_FAILURE_DIAGNOSTICS_SANITIZED", "Bootstrap失败固定错误码和说明不泄露原始诊断", BootstrapFailureDiagnosticsAreSanitized),
         new SpecCase("TRAILING_DUPLICATE_REJECTED", "确认尾随字节与第二帧均被拒绝", () => TrailingAndDuplicateConfirmationFail(fixture)),
         new SpecCase("CHILD_CLEARS_INHERITANCE", "子端领取句柄后清除继承位", () => ChildClearsInheritance(fixture.CreateMode("inherit"))),
         new SpecCase("HANDLE_ALLOWLIST_CANARY", "启动句柄白名单排除父进程可继承canary", () => HandleAllowListExcludesCanary(fixture.CreateMode("canary"))),
@@ -1296,16 +1297,58 @@ static void StandardErrorIsBounded(FakeAgentHostFixture fixture)
     var failure = ExpectFailure(
         AgentBootstrapLaunchFailure.ChildExitedWithError,
         () => Run(failingOptions));
-    True(
-        failure.Message.IndexOf("stderrBytes=64", StringComparison.Ordinal) >= 0,
-        "The bounded stderr byte count was not reported.");
-    True(
-        failure.Message.IndexOf("stderrTruncated=true", StringComparison.Ordinal) >= 0,
-        "The stderr truncation flag was not reported.");
+    Equal(
+        "agenthost_child_exited",
+        failure.ErrorCode);
+    Equal(
+        AgentBootstrapLaunchFailurePolicy.GetSafeMessage(
+            AgentBootstrapLaunchFailure.ChildExitedWithError),
+        failure.Message);
     True(
         failure.ToString().IndexOf(marker, StringComparison.Ordinal) < 0,
         "Raw stderr escaped through the public failure.");
     ProcessNameMustBeGone(failingPath);
+}
+
+static void BootstrapFailureDiagnosticsAreSanitized()
+{
+    const string marker = "M4-SENTINEL-C:\\private\\bootstrap-token";
+    var failures = (AgentBootstrapLaunchFailure[])Enum.GetValues(
+        typeof(AgentBootstrapLaunchFailure));
+    foreach (var failure in failures)
+    {
+        var exception = new AgentBootstrapLaunchException(
+            failure,
+            marker,
+            new InvalidOperationException(marker));
+        Equal(
+            AgentBootstrapLaunchFailurePolicy.Normalize(failure),
+            exception.Failure);
+        Equal(
+            AgentBootstrapLaunchFailurePolicy.GetErrorCode(failure),
+            exception.ErrorCode);
+        Equal(
+            AgentBootstrapLaunchFailurePolicy.GetSafeMessage(failure),
+            exception.Message);
+        True(
+            exception.InnerException == null
+            && exception.ToString().IndexOf(marker, StringComparison.Ordinal) < 0,
+            "Bootstrap failure leaked an unsafe diagnostic.");
+    }
+
+    var unknown = new AgentBootstrapLaunchException(
+        (AgentBootstrapLaunchFailure)999,
+        marker,
+        new InvalidOperationException(marker));
+    Equal(AgentBootstrapLaunchFailure.InternalError, unknown.Failure);
+    Equal("agenthost_internal_error", unknown.ErrorCode);
+    Equal(
+        AgentBootstrapLaunchFailurePolicy.GetSafeMessage(
+            AgentBootstrapLaunchFailure.InternalError),
+        unknown.Message);
+    True(
+        unknown.ToString().IndexOf(marker, StringComparison.Ordinal) < 0,
+        "Unknown bootstrap failure leaked an unsafe diagnostic.");
 }
 
 static AgentHostBootstrapOptions CreateOptions(string executablePath)

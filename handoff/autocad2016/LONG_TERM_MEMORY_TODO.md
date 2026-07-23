@@ -355,8 +355,14 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   未知失败值归一化为 `invalid_configuration`；CLI 不回显未知命令、异常类型或路径形态 sentinel。
   AppServer 为 `30/30`、完整 Phase 2 为 `351/351`。详见
   `M4_CONFIGURATION_ERROR_SANITIZATION_20260723.md`。
+- [x] `AgentBootstrapLaunchException` 的公开异常面已由
+  `AgentBootstrapLaunchFailurePolicy` 收敛：十个已知 bootstrap 失败使用固定 code/说明，未知值降级为
+  `agenthost_internal_error`；不保留调用方原始诊断或 `InnerException`，`ToString()` 也不回显它们。
+  Host.2016 对未知 bootstrap 失败显式映射为不可重试 `internal_error`。Launcher net8/net45 各
+  `38/38`、Host MVP `53/53`，额外双 Shell Bridge `56/56` 与 Phase 2 `351/351` 均通过。详见
+  `M4_BOOTSTRAP_ERROR_SANITIZATION_20260723.md`。
 - [ ] 将安全日志导出和未来新增错误出口逐项纳入同一固定代码/说明策略；不能把已覆盖的
-  Bridge/运行时/Host/本地配置边界误写成完整审计脱敏完成。
+  Bridge/运行时/Host/本地配置/Bootstrap 边界误写成完整审计脱敏完成。
 - [x] AgentHost 只读运行审计基线：`bootstrap-serve` 每会话在当前用户本地固定盘的独占 JSONL
   文件中记录启动/停止/失败、Bridge 连接、请求、thread/turn、取消、审批请求和 turn 终态；
   `/2` 每条为固定字段白名单、单调 sequence 和 canonical SHA-256 前序哈希链，默认限制

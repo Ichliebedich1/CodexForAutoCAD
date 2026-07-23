@@ -1,0 +1,64 @@
+{
+  "schema": "codex.autocad.m4-bootstrap-error-sanitization-evidence/1",
+  "capturedAt": "2026-07-23T13:24:08.0951355Z",
+  "sourceBranch": "codex/m4-diagnostic-sanitization",
+  "sourceBaselineCommit": "d9415d8",
+  "scope": "agenthost-bootstrap-public-exception-diagnostic-sanitization",
+  "policy": {
+    "knownBootstrapFailureCount": 10,
+    "unknownFailureNormalizesTo": "agenthost_internal_error",
+    "unsafeDiagnosticAppearsInPublicMessage": false,
+    "unsafeInnerExceptionIsRetained": false,
+    "unsafeDiagnosticAppearsInPublicToString": false,
+    "hostUnknownBootstrapFailureMapsTo": "internal_error",
+    "rawStderrAppearsInBootstrapFailure": false
+  },
+  "verification": {
+    "agentLauncherNet8ReleaseWarnings": 0,
+    "agentLauncherNet8ReleaseErrors": 0,
+    "agentLauncherNet45ReleaseWarnings": 0,
+    "agentLauncherNet45ReleaseErrors": 0,
+    "agentLauncherNet8Specs": "38/38",
+    "agentLauncherNet45Specs": "38/38",
+    "host2016MvpSpecs": "53/53",
+    "dualShellBridgeClientNet45Specs": "29/29",
+    "dualShellBridgeClientNet8Specs": "29/29",
+    "dualShellBridgeSpecs": "56/56",
+    "dualShellPhase2Specs": "351/351",
+    "dualShellPhase2ReleaseWarnings": 0,
+    "dualShellPhase2ReleaseErrors": 0,
+    "dualShellGitDiffCheck": "passed",
+    "dualShellSecretScan": "passed",
+    "dualShellAgentHostDoctor": "passed",
+    "residualAgentHostProcessesAfterControlledTests": 0,
+    "autoCadProcessSetChanged": false,
+    "autoCadStartedOrRestarted": false,
+    "cadCommandsSent": false,
+    "netLoadAttempted": false,
+    "cadWriteEnabled": false,
+    "pluginSaveEnabled": false
+  },
+  "sourceHashes": {
+    "agentBootstrapLaunchModels": "7A30CCA6BEEEAC341FA2FC923D513A5411B59840866D11B806236DE80FF6FCD2",
+    "mvpAgentFailure": "F628B91D8FAB08AC750A3B812A02CC1AECDD8DE9736567292C0DF1DD4D0C01BF",
+    "agentLauncherSpecs": "7F8F52FDE4D3FBA5F763B17EBA7734153724357B3BAB5CE3413B7BDCF8B0639F",
+    "host2016MvpSpecs": "48709B53321E9A7FEA31E29ADB3C66E2C42608CC048F7DC4ACB366B3E50886CD"
+  },
+  "notProven": [
+    "host2016-netload",
+    "live-autocad-agenthost-connection",
+    "real-codex-cad-conversation",
+    "workspace-disk-hard-quota",
+    "real-credential-manager-isolation",
+    "plugin-configuration-isolation",
+    "restricted-token-or-appcontainer",
+    "protected-audit-anchor",
+    "real-codex-or-autocad-crash-and-zombie-matrix",
+    "cad-write-terminal-audit"
+  ],
+  "notes": [
+    "No raw diagnostic, local path, token, stderr, exception text, prompt, CAD context, user identity or full environment is retained in this evidence.",
+    "The dual-shell stage gate validates managed Bridge and Phase 2 regressions; focused Launcher specs separately validate the public Bootstrap exception boundary on net8 and net45.",
+    "This checkpoint closes only the public Bootstrap diagnostic boundary and does not complete M4 or authorize CAD writes."
+  ]
+}

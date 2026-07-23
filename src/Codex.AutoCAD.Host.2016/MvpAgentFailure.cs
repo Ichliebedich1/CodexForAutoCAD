@@ -275,6 +275,10 @@ namespace Codex.AutoCAD.Host2016
                     code = MvpAgentErrorCodes.AgentHostTerminationFailed;
                     retryable = true;
                     break;
+                case AgentBootstrapLaunchFailure.InternalError:
+                    code = MvpAgentErrorCodes.InternalError;
+                    retryable = false;
+                    break;
                 default:
                     code = MvpAgentErrorCodes.InternalError;
                     retryable = false;
