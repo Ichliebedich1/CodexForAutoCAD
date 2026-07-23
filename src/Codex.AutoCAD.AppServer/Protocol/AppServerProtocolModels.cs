@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Codex.AutoCAD.AppServer;
 
 namespace Codex.AutoCAD.AppServer.Protocol;
 
@@ -62,13 +63,13 @@ public sealed record ServerRequestResolution
 public sealed class AppServerProcessExitedEventArgs(
     int? exitCode,
     bool expected,
-    IReadOnlyList<string> standardErrorTail) : EventArgs
+    IReadOnlyList<AppServerStandardErrorSummary> standardErrorTail) : EventArgs
 {
     public int? ExitCode { get; } = exitCode;
 
     public bool Expected { get; } = expected;
 
-    public IReadOnlyList<string> StandardErrorTail { get; } = standardErrorTail;
+    public IReadOnlyList<AppServerStandardErrorSummary> StandardErrorTail { get; } = standardErrorTail;
 }
 
 public sealed class AppServerProtocolFaultEventArgs(Exception exception) : EventArgs

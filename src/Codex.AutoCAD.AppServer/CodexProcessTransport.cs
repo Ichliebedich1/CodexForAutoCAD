@@ -6,10 +6,10 @@ namespace Codex.AutoCAD.AppServer;
 /// <summary>Starts <c>codex app-server --stdio</c> and exposes its standard streams.</summary>
 public sealed class CodexProcessTransport : IAppServerTransport
 {
-    private const int StandardErrorTailLimit = 64;
+    private const int StandardErrorTailLimit = 1;
     private readonly AppServerClientOptions _options;
     private readonly object _sync = new();
-    private readonly ConcurrentQueue<string> _standardErrorTail = new();
+    private readonly ConcurrentQueue<AppServerStandardErrorSummary> _standardErrorTail = new();
     private Process? _process;
     private Task? _standardErrorPump;
     private Stream? _readStream;
@@ -89,7 +89,6 @@ public sealed class CodexProcessTransport : IAppServerTransport
             var process = new Process
             {
                 StartInfo = startInfo,
-                EnableRaisingEvents = true,
             };
             process.Exited += OnProcessExited;
             _process = process;
@@ -104,6 +103,10 @@ public sealed class CodexProcessTransport : IAppServerTransport
                 _readStream = process.StandardOutput.BaseStream;
                 _writeStream = process.StandardInput.BaseStream;
                 _standardErrorPump = PumpStandardErrorAsync(process);
+
+                // A fast-failing child can exit before StartAsync returns. Do not enable the exit
+                // callback until the stderr drain task exists, otherwise diagnostics race as empty.
+                process.EnableRaisingEvents = true;
             }
             catch
             {
@@ -186,29 +189,42 @@ public sealed class CodexProcessTransport : IAppServerTransport
 
     private async Task PumpStandardErrorAsync(Process process)
     {
-        while (true)
+        var summary = await AppServerStandardErrorCapture.DrainAsync(
+                process.StandardError.BaseStream,
+                _options.MaximumStandardErrorBytes)
+            .ConfigureAwait(false);
+        _standardErrorTail.Enqueue(summary);
+        while (_standardErrorTail.Count > StandardErrorTailLimit)
         {
-            var line = await process.StandardError.ReadLineAsync().ConfigureAwait(false);
-            if (line is null)
-            {
-                return;
-            }
-
-            _standardErrorTail.Enqueue(line);
-            while (_standardErrorTail.Count > StandardErrorTailLimit)
-            {
-                _standardErrorTail.TryDequeue(out _);
-            }
-
-            StandardErrorReceived?.Invoke(this, new AppServerStandardErrorEventArgs(line));
+            _standardErrorTail.TryDequeue(out _);
         }
+
+        StandardErrorReceived?.Invoke(
+            this,
+            new AppServerStandardErrorEventArgs(summary));
     }
 
-    private void OnProcessExited(object? sender, EventArgs args)
+    private async void OnProcessExited(object? sender, EventArgs args)
     {
         if (Interlocked.Exchange(ref _exitRaised, 1) != 0 || sender is not Process process)
         {
             return;
+        }
+
+        var standardErrorPump = _standardErrorPump;
+        var expectedExit = _expectedExit;
+        if (standardErrorPump is not null)
+        {
+            try
+            {
+                // The child has exited, so this ordinarily completes at pipe EOF. It runs
+                // asynchronously to avoid blocking the Process event thread.
+                await standardErrorPump.ConfigureAwait(false);
+            }
+            catch
+            {
+                // Stderr is diagnostics only; a drain failure must not strand exit propagation.
+            }
         }
 
         int? exitCode;
@@ -221,8 +237,30 @@ public sealed class CodexProcessTransport : IAppServerTransport
             exitCode = null;
         }
 
-        Exited?.Invoke(
-            this,
-            new AppServerTransportExitedEventArgs(exitCode, _expectedExit, _standardErrorTail.ToArray()));
+        var eventArgs = new AppServerTransportExitedEventArgs(
+            exitCode,
+            expectedExit,
+            _standardErrorTail.ToArray());
+        RaiseExited(eventArgs);
+    }
+
+    private void RaiseExited(AppServerTransportExitedEventArgs eventArgs)
+    {
+        if (Exited is null)
+        {
+            return;
+        }
+
+        foreach (EventHandler<AppServerTransportExitedEventArgs> handler in Exited.GetInvocationList())
+        {
+            try
+            {
+                handler(this, eventArgs);
+            }
+            catch
+            {
+                // Background exit observers cannot fault an async Process event callback.
+            }
+        }
     }
 }

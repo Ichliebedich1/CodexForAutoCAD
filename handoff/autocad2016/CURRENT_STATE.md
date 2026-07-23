@@ -227,6 +227,11 @@ NETLOAD 证据的能力一律视为未支持。
   不声称终止本身严格完成于配置的启动截止内。重复真实引导 `5` 次通过，相关进程
   基线/终态均为 `0 -> 0`。stderr 始终排空且只公开受限字节数与
   截断标志，失败异常不公开原始文本。
+- M4 第一诊断边界已在独立 `codex/m4-process-config` 分支完成：Codex App Server stderr
+  不再以原文进入事件、退出异常或 AgentHost 控制台，改为有界 `bytes`/`truncated` 摘要；
+  退出事件会等待该无内容摘要形成而不阻塞进程事件线程；normal doctor 也不再回显工作目录
+  或 `CODEX_HOME`。该分支尚未冻结候选，环境白名单、
+  独立凭据、Job Object、资源配额和完整审计仍未完成，不能据此宣称完整 OS 沙箱。
 - 冻结构建哈希：AgentHost EXE `002BBA9D...49706`，AgentHost DLL
   `852BD92C...86033`，net45 Launcher `597D99E8...F849`，net8 Launcher
   `84E0E2A7...1FE9`；完整值保存在阶段 evidence。

@@ -11,7 +11,10 @@ var specs = new (string Name, Func<Task> Run)[]
     ("initialize握手完成", InitializeHandshakeCompletes),
     ("乱序响应仍按请求关联", OutOfOrderResponsesAreCorrelated),
     ("无处理器的命令审批默认拒绝", CommandApprovalDefaultsToDecline),
-    ("通知被分发", NotificationIsDispatched)
+    ("通知被分发", NotificationIsDispatched),
+    ("stderr只保留有界无内容摘要", StandardErrorIsDrainedWithoutText),
+    ("进程退出等待完整stderr摘要", ProcessExitPublishesCompletedStandardErrorSummary),
+    ("stderr限额无效时被拒绝", StandardErrorLimitIsValidated)
 };
 
 var failed = 0;
@@ -124,6 +127,72 @@ static async Task NotificationIsDispatched()
     Equal("turn/started", await received.Task.WaitAsync(TimeSpan.FromSeconds(5)));
 }
 
+static async Task StandardErrorIsDrainedWithoutText()
+{
+    var raw = Encoding.UTF8.GetBytes("secret-line-" + new string('x', 2_048));
+    await using var input = new MemoryStream(raw, writable: false);
+    var summary = await AppServerStandardErrorCapture.DrainAsync(input, maximumBytes: 1_024);
+
+    Equal(1_024, summary.Bytes);
+    True(summary.Truncated, "stderr summary did not report truncation.");
+    True(
+        typeof(AppServerStandardErrorSummary).GetProperties()
+            .All(property => property.PropertyType != typeof(string)),
+        "stderr summary unexpectedly exposes text.");
+}
+
+static async Task ProcessExitPublishesCompletedStandardErrorSummary()
+{
+    var directory = Path.Combine(
+        Path.GetTempPath(),
+        "codex-autocad-appserver-spec-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(directory);
+    try
+    {
+        var payloadPath = Path.Combine(directory, "stderr-payload.txt");
+        var scriptPath = Path.Combine(directory, "stderr-child.cmd");
+        File.WriteAllText(payloadPath, new string('x', 32 * 1024), Encoding.ASCII);
+        File.WriteAllText(
+            scriptPath,
+            "@echo off\r\ntype \"%~dp0stderr-payload.txt\" 1>&2\r\nexit /b 37\r\n",
+            Encoding.ASCII);
+
+        await using (var transport = new CodexProcessTransport(new AppServerClientOptions
+        {
+            CodexExecutablePath = scriptPath,
+            WorkingDirectory = directory,
+            MaximumStandardErrorBytes = 1_024,
+        }))
+        {
+            var exited = new TaskCompletionSource<AppServerTransportExitedEventArgs>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            transport.Exited += (_, eventArgs) => exited.TrySetResult(eventArgs);
+
+            await transport.StartAsync();
+            var actual = await exited.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Equal<int?>(37, actual.ExitCode);
+            Equal(1, actual.StandardErrorTail.Count);
+            Equal(1_024, actual.StandardErrorTail[0].Bytes);
+            True(actual.StandardErrorTail[0].Truncated, "Exit event did not retain the bounded stderr summary.");
+        }
+    }
+    finally
+    {
+        Directory.Delete(directory, recursive: true);
+    }
+}
+
+static Task StandardErrorLimitIsValidated()
+{
+    Throws<ArgumentOutOfRangeException>(() => new AppServerClientOptions
+    {
+        MaximumStandardErrorBytes = 1_023,
+    }.Validate());
+
+    return Task.CompletedTask;
+}
+
 static string? Method(JsonDocument frame)
 {
     return frame.RootElement.TryGetProperty("method", out var method) ? method.GetString() : null;
@@ -163,6 +232,21 @@ static void True(bool condition, string message)
     {
         throw new InvalidOperationException(message);
     }
+}
+
+static void Throws<TException>(Action action)
+    where TException : Exception
+{
+    try
+    {
+        action();
+    }
+    catch (TException)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException("Expected " + typeof(TException).Name + ".");
 }
 
 internal sealed record TestResult(int Value);
