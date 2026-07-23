@@ -4,11 +4,11 @@
 
 ## 状态
 
-本文件记录 M4 已完成的十一个小切口：Codex 子进程 stderr/AgentHost 诊断脱敏、本机 Codex
+本文件记录 M4 已完成的十二个小切口：Codex 子进程 stderr/AgentHost 诊断脱敏、本机 Codex
 启动配置、AgentHost 进程树的 Job Object 边界、该 Job 的进程数/总提交内存硬限制，以及
 AgentHost 只读会话的内容脱敏 JSONL 运行审计与本地 SHA-256 哈希链、Codex 子进程父环境白名单和
-CPU/累计用户时间/会话墙钟限制、workspace/audit 私有 ACL 与有界保留、Codex 版本/App Server 健康预检、
-默认空 MCP；不是完整沙箱候选，不代表已完成每会话 `CODEX_HOME`、磁盘硬配额、凭据隔离、外部不可篡改
+CPU/累计用户时间/会话墙钟限制、已认证 AgentHost 异常退出后的 retained-Job 清理、workspace/audit
+私有 ACL 与有界保留、Codex 版本/App Server 健康预检、默认空 MCP；不是完整沙箱候选，不代表已完成每会话 `CODEX_HOME`、磁盘硬配额、凭据隔离、外部不可篡改
 审计或 CAD 写入终态审计。
 本轮没有启动、关闭或控制 AutoCAD，也没有加载 DLL、保存或修改图纸。
 
@@ -28,9 +28,9 @@ AutoCAD Host.2016
 现有受限 bootstrap、批准的 AgentHost EXE 哈希、受限继承句柄和有界直接子进程终止继续保留。
 启动器在恢复 AgentHost 前创建未命名 Job Object、设置 `KILL_ON_JOB_CLOSE`、`ACTIVE_PROCESS`、
 `JOB_MEMORY`、`JOB_TIME` 和 CPU hard cap 并完成进程分配；该 Job handle 随受认证的 service
-session 保存。因此正常停止
-或拥有它的 Host 进程结束都会关闭该边界。普通后代会继承 Job membership；真实 Codex 的
-配额耗尽和异常退出矩阵仍需另做验证。
+session 保存。因此正常停止、拥有它的 Host 进程结束，或已认证 AgentHost 自行退出都会关闭
+该边界。最后一条由后台退出监视器接管并走同一有界 cleanup；普通后代会继承 Job membership。
+真实 Codex 的配额耗尽和异常退出矩阵仍需另做验证。
 
 ## 本轮完成
 
@@ -60,9 +60,12 @@ session 保存。因此正常停止
 - 认证完成后的 service session 另有默认 `24` 小时墙钟截止，允许 `1 s..7 d`；截止后调用既有
   有界 Stop 清理，首次终止失败会在 `100 ms` 后重试一次，连续失败会记录 late failure 并阻止
   后续启动。`RuntimeExpired` 保留终止原因状态。
-- AgentLauncher net45/net8 规格各 `35/35`：隔离的 `bootstrap-serve` 假 AgentHost 会启动一个
-  已知挂起的后代；`StopAsync` 返回后，以及拥有 Job 的启动器不调用停止逻辑而直接退出后，
-  父/后代 PID 都必须消失。规格还验证默认/自定义限额、Windows 读回值和非法配置。专用
+- 已认证 AgentHost 的后台退出监视器会在根进程自行退出、或等待根进程发生不可恢复错误时触发同一
+  有界 Stop 收口；自动清理失败会在 `100 ms` 后重试一次，再失败才 poison 后续启动。
+- AgentLauncher net45/net8 规格各 `37/37`：隔离的 `bootstrap-serve` 假 AgentHost 会启动一个
+  已知挂起的后代；`StopAsync` 返回后、拥有 Job 的启动器不调用停止逻辑而直接退出后，以及已建立
+  session 的根 AgentHost 自行退出而启动器仍存活时，父/后代 PID 都必须消失。最后一条在检查后代
+  PID 已消失前不会调用 `STOP`。规格还验证默认/自定义限额、Windows 读回值和非法配置。专用
   引导门禁还验证 Job user-time 真实终止、墙钟终止、显式 STOP 胜过已撤销截止、清理重试和
   连续失败后阻断后续启动；相关进程基线/终态均为 `0`，没有启动或操作 AutoCAD。
 - `AgentHostAuditLog` 已成为 `bootstrap-serve` 真实会话的必需依赖。它在当前用户的本地固定
@@ -109,7 +112,7 @@ dotnet run --project tests\Codex.AutoCAD.AppServer.Specs\Codex.AutoCAD.AppServer
 Result: 27/27 specs passed
 
 scripts\verify-autocad2016-agent-bootstrap.ps1 -Configuration Release
-Result: isolated net45/net8 builds 0 warnings / 0 errors; net45 36/36; net8 36/36;
+Result: isolated net45/net8 builds 0 warnings / 0 errors; net45 37/37; net8 37/37;
 bit-for-bit runnable output match; relevant processes 0 -> 0.
 
 scripts\verify-phase2.ps1 -Configuration Release
@@ -131,6 +134,11 @@ CPU/运行时间限制证据见
 `B6F8546CC9410D172E501BAF217B1C7B7FF0D52195E14AEC9322FB1709788207`。它证明 synthetic
 CPU user-time 与墙钟终止，不证明真实 Codex CPU 节流性能、内存/进程槽耗尽或 AutoCAD 行为。
 
+AgentHost 异常退出 retained-Job 清理证据见
+`evidence/m4-agenthost-unexpected-exit-cleanup-20260723.json`，对应说明为
+`M4_AGENTHOST_UNEXPECTED_EXIT_CLEANUP_20260723.md`。它证明 synthetic 根 AgentHost 退出后
+普通后代不会因为启动器仍持有 Job 而残留；不证明 AutoCAD 异常退出或真实 Codex 故障矩阵。
+
 私有存储与保留证据见
 `evidence/m4-agenthost-private-storage-retention-20260723.json`，对应说明为
 `M4_PRIVATE_STORAGE_RETENTION_20260723.md`。它不证明磁盘硬配额、每会话凭据或 AutoCAD
@@ -148,8 +156,8 @@ CPU user-time 与墙钟终止，不证明真实 Codex CPU 节流性能、内存/
   Codex 耗尽行为也未验证。
 - 受限令牌或 AppContainer。
 - 已处于企业 Job/受限桌面环境时的嵌套 Job 兼容性与用户可理解的诊断。
-- 工作目录与审计目录的最小 ACL/有界保留清理已完成；可靠磁盘硬配额以及故障注入/僵尸进程
-  实测仍未完成。
+- 工作目录与审计目录的最小 ACL/有界保留清理已完成；synthetic AgentHost 异常退出的 Job 回收已
+  覆盖。可靠磁盘硬配额、真实 Codex/AutoCAD 故障注入和完整僵尸进程矩阵仍未完成。
 - 审批解决、CAD 写入提案/执行终态和未来日志导出尚未进入当前审计。当前 CAD 写入仍禁用，
   不得把只读 `approval_requested` 记录解释为 CAD 审批审计闭环。
 - 当前 SHA-256 链不是签名、HMAC、远端锚定或 WORM 存储；能够替换整个文件并重算链的主体仍可
@@ -162,7 +170,8 @@ CPU user-time 与墙钟终止，不证明真实 Codex CPU 节流性能、内存/
    登录行为。
 2. 独立 `CODEX_HOME` 需先迁移到 OS keyring 或受信 token；不复制用户 profile 中的配置或
    `auth.json` 作为临时方案，并补插件配置隔离。
-3. 已完成 Job Object 进程数/总提交内存/CPU/user-time、session 墙钟限制和 workspace/audit
-   私有 ACL/有界保留；继续补可靠磁盘硬配额，并以真实 Codex、异常退出和僵尸进程矩阵验证。
+3. 已完成 Job Object 进程数/总提交内存/CPU/user-time、session 墙钟限制、synthetic AgentHost
+   异常退出回收和 workspace/audit 私有 ACL/有界保留；继续补可靠磁盘硬配额，并以真实 Codex、
+   AutoCAD 异常退出和僵尸进程矩阵验证。
 4. 将当前只读审计扩展到审批解决和 M5 强类型 CAD 写入终态，并完成受保护审计锚点、凭据/环境边界和
    实机矩阵后，才允许开始 M5 CAD 写入。

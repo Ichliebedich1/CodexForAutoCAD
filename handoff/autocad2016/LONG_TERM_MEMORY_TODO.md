@@ -313,10 +313,10 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   每会话凭据隔离。见 `M4_CODEX_CHILD_ENVIRONMENT_ALLOWLIST_20260723.md`。
 - [x] AgentHost 启动链在恢复前创建 `KILL_ON_JOB_CLOSE` 的未命名 Windows Job Object 并分配
   已校验的 AgentHost；普通后代继承该边界。隔离 `bootstrap-serve` 规格已按 PID 验证
-  `StopAsync` 和拥有 Job 的启动器直接退出时均回收父/后代；当前完整 AgentLauncher 门禁
-  net45/net8 各 `35/35`。真实
-  Codex/AutoCAD 异常退出和僵尸进程仍未验收，详见
-  `M4_PROCESS_ISOLATION_BASELINE_20260723.md`。
+  `StopAsync`、拥有 Job 的启动器直接退出，以及已认证 AgentHost 自行退出但启动器仍存活时均回收
+  父/后代；最后一条由退出监视器触发保留 Job 的有界关闭和一次重试。当前完整 AgentLauncher 门禁
+  net45/net8 各 `37/37`。真实 Codex/AutoCAD 异常退出、嵌套 Job 企业环境和完整僵尸进程矩阵仍未
+  验收，详见 `M4_AGENTHOST_UNEXPECTED_EXIT_CLEANUP_20260723.md`。
 - [x] 同一 Job 默认限制 AgentHost/Codex 进程树最多 `16` 个进程、总提交内存最多 `4 GiB`；
   可接受范围分别为 `2..64` 与 `512 MiB..16 GiB`，非法值在进程创建前结构化失败。
   `QueryInformationJobObject` 已读回实际标志和值，但没有故意耗尽真实 Codex 的进程槽或内存。
@@ -351,7 +351,8 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 - [ ] 将审批解决、M5 CAD 提案/执行终态和安全日志导出接入审计；选择并验证受保护的哈希锚点、
   签名或 append-only 存储。审计目录最小 ACL 与保留/清理及本地哈希链已完成；当前 CAD 写入保持
   禁用，不能把只读审计基线写成 CAD 操作审计。
-- [ ] 增加安全故障注入和僵尸进程测试。
+- [ ] 扩展安全故障注入和僵尸进程测试：synthetic AgentHost 意外退出已覆盖，但真实 Codex 子树、
+  AutoCAD 异常退出、嵌套 Job/受限桌面环境和失败清理后的用户可理解诊断仍待验收。
 
 ## 10. M5：AutoCAD 2016 安全写入最小闭环
 

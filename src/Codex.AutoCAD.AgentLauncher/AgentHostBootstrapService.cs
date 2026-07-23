@@ -425,9 +425,10 @@ public sealed class AgentHostServiceSession : IDisposable
 {
     private const int GracefulExitWaitMilliseconds = 1000;
     private const int TerminationWaitMilliseconds = 5000;
-    private const int RuntimeDeadlineCleanupAttempts = 2;
+    private const int ProcessExitWatcherWaitMilliseconds = int.MaxValue;
+    private const int AutomaticCleanupAttempts = 2;
     private static readonly TimeSpan StandardErrorDrainTimeout = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan RuntimeDeadlineRetryDelay = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan AutomaticCleanupRetryDelay = TimeSpan.FromMilliseconds(100);
 
     private readonly object _sync = new object();
     private readonly Func<int, bool> _waitForExit;
@@ -479,6 +480,7 @@ public sealed class AgentHostServiceSession : IDisposable
         PipeName = result.PipeName;
         ExecutableSha256 = result.ExecutableSha256;
         StartRuntimeDeadline(maximumSessionRuntime);
+        StartProcessExitWatcher();
     }
 
     internal AgentHostServiceSession(
@@ -876,6 +878,98 @@ public sealed class AgentHostServiceSession : IDisposable
         return failure;
     }
 
+    // The Job handle belongs to the launcher, not to AgentHost. If AgentHost exits on its own,
+    // observe it and close that handle through the normal stop path so surviving descendants are
+    // killed by KILL_ON_JOB_CLOSE while the AutoCAD host is still alive.
+    private void StartProcessExitWatcher()
+    {
+        _ = Task.Factory.StartNew(
+            WatchForUnexpectedProcessExit,
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+    }
+
+    private void WatchForUnexpectedProcessExit()
+    {
+        Exception? monitorFailure = null;
+        try
+        {
+            while (!_waitForExit(ProcessExitWatcherWaitMilliseconds))
+            {
+                lock (_sync)
+                {
+                    if (_stopping || _processDisposed || Volatile.Read(ref _disposeSignaled) != 0)
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            monitorFailure = exception;
+        }
+
+        lock (_sync)
+        {
+            if (_stopping || _processDisposed || Volatile.Read(ref _disposeSignaled) != 0)
+            {
+                return;
+            }
+        }
+
+        var cleanupTask = CompleteUnexpectedProcessExitCleanupAsync(monitorFailure);
+        cleanupTask.ContinueWith(
+            completed =>
+            {
+                var ignored = completed.Exception;
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private async Task CompleteUnexpectedProcessExitCleanupAsync(Exception? monitorFailure)
+    {
+        AgentBootstrapLaunchException? lastFailure = null;
+        for (var attempt = 0; attempt < AutomaticCleanupAttempts; attempt++)
+        {
+            try
+            {
+                await GetOrStartStopTask().ConfigureAwait(false);
+                return;
+            }
+            catch (AgentBootstrapLaunchException exception)
+            {
+                lastFailure = exception;
+            }
+            catch (Exception exception)
+            {
+                lastFailure = new AgentBootstrapLaunchException(
+                    AgentBootstrapLaunchFailure.ChildTerminationFailed,
+                    "AgentHost unexpected-exit cleanup failed.",
+                    exception);
+            }
+
+            if (attempt + 1 < AutomaticCleanupAttempts)
+            {
+                await Task.Delay(AutomaticCleanupRetryDelay).ConfigureAwait(false);
+            }
+        }
+
+        var cleanupFailure = lastFailure ?? new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.ChildTerminationFailed,
+            "AgentHost unexpected-exit cleanup ended without a terminal failure detail.");
+        AgentBootstrapLateFailureRegistry.Record(
+            new AgentBootstrapLaunchException(
+                AgentBootstrapLaunchFailure.ChildTerminationFailed,
+                "AgentHost exited or its exit monitor failed before complete process-tree cleanup after retry.",
+                monitorFailure == null
+                    ? cleanupFailure
+                    : new AggregateException(monitorFailure, cleanupFailure)));
+    }
+
     private void StartRuntimeDeadline(TimeSpan maximumSessionRuntime)
     {
         if (maximumSessionRuntime <= TimeSpan.Zero
@@ -922,7 +1016,7 @@ public sealed class AgentHostServiceSession : IDisposable
     private async Task CompleteRuntimeDeadlineCleanupAsync()
     {
         AgentBootstrapLaunchException? lastFailure = null;
-        for (var attempt = 0; attempt < RuntimeDeadlineCleanupAttempts; attempt++)
+        for (var attempt = 0; attempt < AutomaticCleanupAttempts; attempt++)
         {
             try
             {
@@ -941,9 +1035,9 @@ public sealed class AgentHostServiceSession : IDisposable
                     exception);
             }
 
-            if (attempt + 1 < RuntimeDeadlineCleanupAttempts)
+            if (attempt + 1 < AutomaticCleanupAttempts)
             {
-                await Task.Delay(RuntimeDeadlineRetryDelay).ConfigureAwait(false);
+                await Task.Delay(AutomaticCleanupRetryDelay).ConfigureAwait(false);
             }
         }
 

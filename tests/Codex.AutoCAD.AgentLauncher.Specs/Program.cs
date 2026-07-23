@@ -28,6 +28,7 @@ try
         new SpecCase("SESSION_STOP_PREVENTS_RUNTIME_EXPIRY", "显式停止完成后会话墙钟状态不得反转", SessionStopPreventsRuntimeExpiry),
         new SpecCase("SERVICE_STOP_ALLOWS_GRACEFUL_EXIT", "service停止在强制终止前允许一次自然退出", ServiceStopAllowsGracefulExit),
         new SpecCase("SERVICE_STOP_KILLS_PROCESS_TREE", "停止服务会回收AgentHost及其受监管后代进程", () => ServiceStopKillsProcessTree(fixture)),
+        new SpecCase("AGENTHOST_UNEXPECTED_EXIT_KILLS_PROCESS_TREE", "AgentHost异常退出时启动器仍存活也会回收受监管后代进程", () => AgentHostUnexpectedExitKillsProcessTree(fixture)),
         new SpecCase("OWNER_EXIT_KILLS_PROCESS_TREE", "拥有Job的启动器退出会回收AgentHost及其受监管后代进程", () => JobOwnerExitKillsProcessTree(fixture)),
         new SpecCase("INVALID_EXECUTABLE_PATHS", "相对路径、真实非EXE与缺失文件均失败关闭", () => InvalidExecutablePathsFailClosed(fixture)),
         new SpecCase("EXECUTABLE_SHA256_MISMATCH", "批准SHA-256不匹配时拒绝启动", () => ExecutableSha256MismatchFails(fixture.CreateMode("success"))),
@@ -491,6 +492,79 @@ static void ServiceStopKillsProcessTree(FakeAgentHostFixture fixture)
             catch (UnauthorizedAccessException)
             {
             }
+        }
+    }
+}
+
+static void AgentHostUnexpectedExitKillsProcessTree(FakeAgentHostFixture fixture)
+{
+    const string descendantExecutableVariable = "CODEX_AUTOCAD_TEST_DESCENDANT_EXECUTABLE";
+    const string descendantProcessIdPathVariable = "CODEX_AUTOCAD_TEST_DESCENDANT_PROCESS_ID_PATH";
+    const string exitEventNameVariable = "CODEX_AUTOCAD_TEST_AGENTHOST_EXIT_EVENT";
+    var descendantExecutable = fixture.CreateMode("hang");
+    var processIdPath = Path.Combine(
+        Path.GetTempPath(),
+        "CodexAgentLauncherUnexpectedExitDescendant-" + Guid.NewGuid().ToString("N") + ".txt");
+    var eventName = "CodexAgentLauncherUnexpectedExit-" + Guid.NewGuid().ToString("N");
+    var previousDescendantExecutable = Environment.GetEnvironmentVariable(descendantExecutableVariable);
+    var previousProcessIdPath = Environment.GetEnvironmentVariable(descendantProcessIdPathVariable);
+    var previousExitEventName = Environment.GetEnvironmentVariable(exitEventNameVariable);
+    AgentHostServiceSession? session = null;
+    var descendantProcessId = 0;
+    try
+    {
+        // The AgentLauncher integration suite is Windows-only; use a named event to make the
+        // FakeAgentHost exit only after the service session and its Job are established.
+#pragma warning disable CA1416
+        using (var exitSignal = new EventWaitHandle(
+                   false,
+                   EventResetMode.ManualReset,
+                   eventName))
+#pragma warning restore CA1416
+        {
+            Environment.SetEnvironmentVariable(descendantExecutableVariable, descendantExecutable);
+            Environment.SetEnvironmentVariable(descendantProcessIdPathVariable, processIdPath);
+            Environment.SetEnvironmentVariable(exitEventNameVariable, eventName);
+            session = AgentHostBootstrapService.StartAsync(
+                    CreateOptions(fixture.CreateMode("servechildexit")),
+                    CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+            descendantProcessId = ReadProcessIdFile(processIdPath);
+            True(descendantProcessId > 0, "The unexpected-exit descendant id is invalid.");
+
+            exitSignal.Set();
+            WaitForProcessToExit(session.ProcessId, TimeSpan.FromSeconds(3));
+            // Do not call STOP before this assertion: the watcher itself must close the retained
+            // Job handle and let KILL_ON_JOB_CLOSE collect the still-running descendant.
+            WaitForProcessToExit(descendantProcessId, TimeSpan.FromSeconds(3));
+
+            session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+            session.Dispose();
+            session = null;
+        }
+    }
+    finally
+    {
+        try
+        {
+            session?.Dispose();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                descendantExecutableVariable,
+                previousDescendantExecutable);
+            Environment.SetEnvironmentVariable(
+                descendantProcessIdPathVariable,
+                previousProcessIdPath);
+            Environment.SetEnvironmentVariable(exitEventNameVariable, previousExitEventName);
+            if (descendantProcessId > 0)
+            {
+                KillFixtureProcessIfStillRunning(descendantProcessId, descendantExecutable);
+            }
+
+            DeleteFileIfPresent(processIdPath);
         }
     }
 }

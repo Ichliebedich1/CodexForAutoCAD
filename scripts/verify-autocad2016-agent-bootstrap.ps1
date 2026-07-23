@@ -36,6 +36,7 @@ $requiredSpecIds = @(
     "SESSION_STOP_PREVENTS_RUNTIME_EXPIRY",
     "SERVICE_STOP_ALLOWS_GRACEFUL_EXIT",
     "SERVICE_STOP_KILLS_PROCESS_TREE",
+    "AGENTHOST_UNEXPECTED_EXIT_KILLS_PROCESS_TREE",
     "OWNER_EXIT_KILLS_PROCESS_TREE",
     "INVALID_EXECUTABLE_PATHS",
     "EXECUTABLE_SHA256_MISMATCH",
@@ -277,7 +278,8 @@ function Assert-SourceBoundary {
         "进程树内存上限" = "JobObjectLimitJobMemory"
         "进程树累计用户时间上限" = "JobObjectLimitJobTime"
         "进程树CPU硬上限" = "JobObjectCpuRateControlHardCap"
-        "会话墙钟截止" = "RuntimeDeadlineCleanupAttempts"
+        "会话墙钟截止与自动清理重试" = "AutomaticCleanupAttempts"
+        "AgentHost异常退出监视" = "WatchForUnexpectedProcessExit"
         "停止前自然退出宽限" = "GracefulExitWaitMilliseconds"
         "进程树Job分配" = "AssignProcessToJobObject"
         "进程退出等待" = "WaitForSingleObject"
@@ -350,6 +352,7 @@ function Assert-SourceBoundary {
         ProcessTreeJobUserTimeLimitTokenFound = $true
         ProcessTreeCpuHardCapTokenFound = $true
         SessionWallClockDeadlineTokenFound = $true
+        UnexpectedAgentHostExitWatcherTokenFound = $true
         GracefulExitWaitTokenFound = $true
         ProcessTreeJobAssignmentTokenFound = $true
         LocalFixedDriveChecksFound = $true
@@ -643,6 +646,7 @@ try {
         HandleAllowlistCanaryVerified = "HANDLE_ALLOWLIST_CANARY"
         StandardErrorSeparateAndBounded = "STDERR_BOUNDED"
         ServiceStopKillsProcessTree = "SERVICE_STOP_KILLS_PROCESS_TREE"
+        UnexpectedAgentHostExitKillsProcessTree = "AGENTHOST_UNEXPECTED_EXIT_KILLS_PROCESS_TREE"
         ProcessOwnerExitKillsProcessTree = "OWNER_EXIT_KILLS_PROCESS_TREE"
     }
     $runtimeEvidence = [ordered]@{}
@@ -652,7 +656,7 @@ try {
     }
 
     $evidence = [ordered]@{
-        SchemaVersion = 7
+        SchemaVersion = 8
         RecordedAtLocal = [DateTimeOffset]::Now.ToString("o")
         Scope = "autocad2016-live-agenthost-inherited-handle-bootstrap-doctor"
         Status = "live-agenthost-bootstrap-doctor-gate-passed"
@@ -695,6 +699,8 @@ try {
             $runtimeEvidence.ConfirmationThenHangTriggersFailClosedAbortAndBoundedCleanup -and
             $runtimeEvidence.CancellationTerminatesUnconfirmedChild)
         ProcessTreeCleanupOnServiceStopLiveVerified = $runtimeEvidence.ServiceStopKillsProcessTree
+        ProcessTreeCleanupOnUnexpectedAgentHostExitLiveVerified =
+            $runtimeEvidence.UnexpectedAgentHostExitKillsProcessTree
         ProcessTreeCleanupOnOwnerExitLiveVerified = $runtimeEvidence.ProcessOwnerExitKillsProcessTree
         ProcessTreeResourceLimitsRuntimeVerified = (
             $runtimeEvidence.ProcessTreeResourceLimitsApplied -and
@@ -716,7 +722,7 @@ try {
         NetLoadVerified = $false
         AgentHostLiveBridgeVerified = $false
         CadRuntimeIntegrated = $false
-        EvidenceBoundary = "This gate proves the exact mandatory net45/net8 Spec ID set, real out-of-process bootstrap-doctor authentication through restricted inherited standard handles, approved SHA-256 mismatch rejection, PID/creation-time confirmation rejection, startup-deadline fail-closed abort followed by at most five seconds of bounded termination cleanup (including confirmation-then-hang), cancellation cleanup, bounded stderr, handle-allowlist canary exclusion, one bounded natural-exit grace before forced service termination, service-stop cleanup of an AgentHost-owned descendant through the Windows Job Object boundary, Job cleanup after the process holding that boundary exits without calling StopAsync, Windows-reported active-process/job-memory/job-user-time/CPU-hard-cap flags and values, actual termination of a CPU-busy synthetic AgentHost after aggregate Job user time is exhausted, authenticated-service wall-clock termination with one bounded cleanup retry, explicit Stop winning over a cancelled runtime deadline, and process-wide fail-closed launch poisoning after two consecutive deadline-cleanup failures. It also proves complete runnable-output reproducibility before and after execution and an empty relevant-process baseline/final state. It does not intentionally exhaust memory or process slots, measure CPU throttling performance, claim that Job user time is wall-clock time, claim that termination finishes inside the configured startup deadline itself, or prove AutoCAD crash cleanup without an AutoCAD process. Static source observations are not runtime proof. Deliberate executable replacement during the suspended-launch window, external handle-duplication resistance, the long-running authenticated Bridge beyond the synthetic deadline case, Host.2016/AutoCAD integration, CAD work, and complete AutoCAD 2016 support remain outside this evidence."
+        EvidenceBoundary = "This gate proves the exact mandatory net45/net8 Spec ID set, real out-of-process bootstrap-doctor authentication through restricted inherited standard handles, approved SHA-256 mismatch rejection, PID/creation-time confirmation rejection, startup-deadline fail-closed abort followed by at most five seconds of bounded termination cleanup (including confirmation-then-hang), cancellation cleanup, bounded stderr, handle-allowlist canary exclusion, one bounded natural-exit grace before forced service termination, service-stop cleanup of an AgentHost-owned descendant through the Windows Job Object boundary, automatic retained-Job cleanup after an already-established AgentHost exits while its launcher remains alive, Job cleanup after the process holding that boundary exits without calling StopAsync, Windows-reported active-process/job-memory/job-user-time/CPU-hard-cap flags and values, actual termination of a CPU-busy synthetic AgentHost after aggregate Job user time is exhausted, authenticated-service wall-clock termination with one bounded cleanup retry, explicit Stop winning over a cancelled runtime deadline, and process-wide fail-closed launch poisoning after two consecutive deadline-cleanup failures. It also proves complete runnable-output reproducibility before and after execution and an empty relevant-process baseline/final state. It does not intentionally exhaust memory or process slots, measure CPU throttling performance, claim that Job user time is wall-clock time, claim that termination finishes inside the configured startup deadline itself, or prove AutoCAD crash cleanup without an AutoCAD process. Static source observations are not runtime proof. Deliberate executable replacement during the suspended-launch window, external handle-duplication resistance, the long-running authenticated Bridge beyond the synthetic deadline case, Host.2016/AutoCAD integration, CAD work, and complete AutoCAD 2016 support remain outside this evidence."
     }
     $evidence | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $evidencePath -Encoding UTF8
 

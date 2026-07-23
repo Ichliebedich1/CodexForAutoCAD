@@ -1,0 +1,36 @@
+{
+  "schema": "codex.autocad.m4-agenthost-unexpected-exit-cleanup/1",
+  "recordedAtLocal": "2026-07-23T18:40:06.6339026+08:00",
+  "scope": "Windows synthetic AgentHost retained-Job cleanup; no AutoCAD process was started or controlled.",
+  "verificationGate": {
+    "script": "scripts/verify-autocad2016-agent-bootstrap.ps1",
+    "schemaVersion": 8,
+    "status": "live-agenthost-bootstrap-doctor-gate-passed",
+    "gateSha256": "8A015C106A993301866441C18CBE59B934F6F4A820837B21091A0BA9EE208B27",
+    "isolatedBuildCount": 2,
+    "bitForBitRunnableOutputMatch": true,
+    "net45Specs": "37/37",
+    "net8Specs": "37/37",
+    "requiredSpec": "AGENTHOST_UNEXPECTED_EXIT_KILLS_PROCESS_TREE",
+    "requiredSpecPassed": true,
+    "relevantProcessBaselineCount": 0,
+    "relevantProcessFinalCount": 0,
+    "noResidualAgentProcesses": true
+  },
+  "behavior": {
+    "rootAgentHostUnexpectedExitDetected": true,
+    "retainedJobClosedBySessionCleanup": true,
+    "ordinaryDescendantCollectedByKillOnJobClose": true,
+    "automaticCleanupAttempts": 2,
+    "cleanupRetryDelayMilliseconds": 100,
+    "lateFailurePoisonsSubsequentLaunch": true
+  },
+  "notProven": [
+    "real Codex app-server abnormal-exit matrix",
+    "AutoCAD abnormal-exit cleanup",
+    "nested Job or restricted-desktop compatibility",
+    "credential or plugin isolation",
+    "disk hard quota",
+    "CAD write behavior"
+  ]
+}

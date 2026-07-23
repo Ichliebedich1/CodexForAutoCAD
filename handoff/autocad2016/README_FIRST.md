@@ -76,15 +76,17 @@ M3 `0.4.2.0` 的读取语义纵切已冻结自动化候选，但尚未人工 `NE
 
 M4 进程隔离已完成一个不依赖 AutoCAD 实机的小阶段：
 
-- 校验后的 AgentHost 在恢复前进入未命名 Windows Job Object；正常 STOP 或 Job 拥有者退出
-  会回收 AgentHost 及其普通后代。
+- 校验后的 AgentHost 在恢复前进入未命名 Windows Job Object；正常 STOP、Job 拥有者退出，或
+  已认证 AgentHost 自行退出而启动器仍存活时，都会回收 AgentHost 及其普通后代。最后一条由
+  service session 退出监视器关闭保留的 Job。
 - 同一 Job 保留 `KILL_ON_JOB_CLOSE`，并默认限制进程树最多 `16` 个进程、Job 总提交内存
   最多 `4 GiB`、CPU hard cap `75%`、累计 Job user-time `8` 小时；认证后的 service session
   另有 `24` 小时墙钟截止。非法配置在创建子进程前 fail-closed。
-- net45/net8 AgentLauncher Specs 各 `36/36`；Windows 已读回同一 Job 工厂设置的实际标志
+- net45/net8 AgentLauncher Specs 各 `37/37`；Windows 已读回同一 Job 工厂设置的实际标志
   与值，CPU-busy synthetic child user-time 耗尽、墙钟终止、显式 STOP 胜过已撤销截止、一次
   清理重试及连续失败后阻断后续启动均通过；正常 STOP 先等待 `1` 秒自然退出，再进入原有
-  `5` 秒强制回收。相关进程基线/终态为 `0 -> 0`。
+  `5` 秒强制回收。新增 synthetic 异常退出规格确认根 AgentHost 退出后后代不会因启动器仍持有
+  Job 而残留；相关进程基线/终态为 `0 -> 0`。这不等于 AutoCAD 异常退出实机验证。
 - AgentHost 只读会话现在强制写入每会话独立的有界 JSONL 审计，覆盖 session、Bridge、请求、
   thread/turn、取消、审批请求和 turn 终态；仅记录受限 ID/方法/稳定状态码，审计故障会关闭
   Bridge。workspace 和 audit 使用受保护的当前用户/SYSTEM/Administrators ACL；session 正常
@@ -338,6 +340,10 @@ API 双 Shell Probe 为 `29 passed / 8 expected failed`，两个 Shell 的成员
   M3 自动化冻结、候选身份和未实机边界。
 - `evidence/m4-agenthost-job-resource-limits-20260723.json`：M4 AgentHost Job 进程树清理、
   进程数/总提交内存限制、双运行时 Specs 和未实机边界。
+- `M4_AGENTHOST_UNEXPECTED_EXIT_CLEANUP_20260723.md`：已认证 AgentHost 自行退出、启动器仍存活时的
+  retained-Job 清理、自动重试与明确未覆盖边界。
+- `evidence/m4-agenthost-unexpected-exit-cleanup-20260723.json`：上述 synthetic 进程树回收的
+  脱敏门禁摘要；不等于 AutoCAD 异常退出实机验证。
 - `M4_RUNTIME_AUDIT_BASELINE_20260723.md`：M4 AgentHost 只读 JSONL 审计契约、脱敏字段、
   fail-closed 行为、自动化证据和未完成边界。
 - `evidence/m4-agenthost-runtime-audit-20260723.json`：M4 只读运行审计的脱敏结构、门禁结果和

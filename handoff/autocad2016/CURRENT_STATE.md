@@ -242,8 +242,9 @@ NETLOAD 证据的能力一律视为未支持。
   `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
 - M4 第三进程树边界已接入真实 AgentHost 启动链：校验后的 AgentHost 会在恢复前进入具有
   `KILL_ON_JOB_CLOSE` 的未命名 Windows Job Object；普通后代由该 Job 统一回收。隔离
-  bootstrap-serve 规格以真实 PID 验证 `StopAsync` 和拥有 Job 的启动器不调用停止逻辑直接
-  退出后，父/后代均消失。
+  bootstrap-serve 规格以真实 PID 验证 `StopAsync`、拥有 Job 的启动器不调用停止逻辑直接退出，
+  以及已认证 AgentHost 自行退出但启动器仍存活的三条路径；最后一条由 service session 的退出监视器
+  关闭保留 Job，父/后代均消失。该 synthetic 边界不替代真实 Codex 或 AutoCAD 异常退出矩阵。
 - M4 第四资源限制边界当时在同一 Job 上增加 `ACTIVE_PROCESS` 与 `JOB_MEMORY`：默认最多 `16`
   个进程、Job 总提交内存最多 `4 GiB`，允许范围分别为 `2..64` 与 `512 MiB..16 GiB`。
   非法配置在创建子进程前 fail-closed；同一 Job 工厂通过 `QueryInformationJobObject`
@@ -275,9 +276,10 @@ NETLOAD 证据的能力一律视为未支持。
   service session 墙钟截止默认 `24` 小时（允许 `1 s..7 d`）。Job user-time 是整个进程树累计
   的用户态 CPU 时间，不是墙钟时间。Windows 已读回 `JOB_TIME`、CPU enable/hard-cap 标志和
   精确值；CPU-busy synthetic child 在 user-time 耗尽后被 OS 终止，挂起 service 在墙钟截止后
-  进入既有有界清理，首次终止失败会自动重试一次，连续失败会毒化后续启动。net45/net8 各
-  `35/35`，相关进程 `0 -> 0`。CPU 节流性能、真实 Codex 内存/进程槽耗尽和 AutoCAD 异常退出
-  未由此证明。见 `M4_CPU_RUNTIME_LIMITS_20260723.md`。
+  进入既有有界清理，首次终止失败会自动重试一次，连续失败会毒化后续启动。相同的两次自动清理
+  策略现在也用于已认证 AgentHost 意外退出；net45/net8 各 `37/37`，相关进程 `0 -> 0`。CPU
+  节流性能、真实 Codex 内存/进程槽耗尽和 AutoCAD 异常退出未由此证明。见
+  `M4_CPU_RUNTIME_LIMITS_20260723.md`、`M4_AGENTHOST_UNEXPECTED_EXIT_CLEANUP_20260723.md`。
 - 当前 CPU/运行时间证据的构建哈希：AgentHost EXE `4D6D0DCC...83B9E`，AgentHost DLL
   `17F8E846...0858E`，net45 Launcher `E1A3B4B1...BEBE9`，net8 Launcher
   `08E4294C...1239`；完整值保存在阶段 evidence，其文件 SHA-256 为
