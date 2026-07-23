@@ -359,13 +359,14 @@ function Assert-M2ReadOnlySource([string[]] $SourceFiles) {
     }
     foreach ($required in @(
         'Codex drawing-query tool: authenticated AgentHost Bridge; manual Agent start',
-        'DrawingIndex v1/CadQuery v1 通过认证 AgentHost Bridge')) {
+        'DrawingIndex: codex.autocad.drawing-index/1; Idle-chunked read-only scan',
+        'CadQuery: codex.autocad.cad-query/1; cursor pagination')) {
         if ($commandsText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
-            throw "Host 诊断缺少 M2-B 已接入声明：$required"
+            throw "Host 诊断缺少 drawing-query 已接入声明：$required"
         }
     }
-    if ($extensionText.IndexOf('手动启动的 Codex 通过认证 Bridge 按需分页查询', [StringComparison]::Ordinal) -lt 0) {
-        throw 'Host 加载横幅缺少 M2-B 已接入声明。'
+    if ($extensionText.IndexOf('DrawingIndexRuntime.Initialize();', [StringComparison]::Ordinal) -lt 0) {
+        throw 'Host 扩展入口缺少 DrawingIndex 初始化。'
     }
     foreach ($command in @('CODEX16INDEX','CODEX16INDEXINFO','CODEX16INDEXCANCEL','CODEX16QUERY','CODEX16QUERYNEXT')) {
         $count = [regex]::Matches($commandsText, 'CommandMethod\("' + [regex]::Escape($command) + '"').Count
