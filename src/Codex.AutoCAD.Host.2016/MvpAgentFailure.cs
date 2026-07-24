@@ -45,6 +45,7 @@ namespace Codex.AutoCAD.Host2016
         internal const string AgentHostTimeout = "agenthost_timeout";
         internal const string AgentHostCancelled = "agenthost_cancelled";
         internal const string AgentHostTerminationFailed = "agenthost_termination_failed";
+        internal const string AgentHostProcessIsolationFailed = "agenthost_process_isolation_failed";
         internal const string AgentHostCleanupFailed = "agenthost_cleanup_failed";
         internal const string AgentHostStopFailed = "agenthost_stop_failed";
         internal const string InvalidRequest = "invalid_request";
@@ -249,6 +250,10 @@ namespace Codex.AutoCAD.Host2016
                     code = MvpAgentErrorCodes.AgentHostProcessStartFailed;
                     retryable = true;
                     break;
+                case AgentBootstrapLaunchFailure.ProcessIsolationFailed:
+                    code = MvpAgentErrorCodes.AgentHostProcessIsolationFailed;
+                    retryable = false;
+                    break;
                 case AgentBootstrapLaunchFailure.BootstrapWriteFailed:
                     code = MvpAgentErrorCodes.AgentHostBootstrapWriteFailed;
                     retryable = true;
@@ -276,6 +281,10 @@ namespace Codex.AutoCAD.Host2016
                 case AgentBootstrapLaunchFailure.ChildTerminationFailed:
                     code = MvpAgentErrorCodes.AgentHostTerminationFailed;
                     retryable = true;
+                    break;
+                case AgentBootstrapLaunchFailure.InternalError:
+                    code = MvpAgentErrorCodes.InternalError;
+                    retryable = false;
                     break;
                 default:
                     code = MvpAgentErrorCodes.InternalError;

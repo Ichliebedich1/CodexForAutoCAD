@@ -1248,6 +1248,35 @@ static Task FailureFormatterSanitizesBootstrap()
         && !display.Contains("C:\\Users", StringComparison.OrdinalIgnoreCase)
         && !display.Contains("secret-token", StringComparison.Ordinal),
         "Bootstrap failure user message leaked local exception details.");
+
+    var unknownFailure = MvpAgentFailureFormatter.FromException(
+        new AgentBootstrapLaunchException(
+            (AgentBootstrapLaunchFailure)999,
+            sensitiveDetail,
+            new InvalidOperationException(sensitiveDetail)),
+        MvpAgentFailureStages.StartingAgentHost);
+    True(
+        string.Equals(
+            MvpAgentErrorCodes.InternalError,
+            unknownFailure.ErrorCode,
+            StringComparison.Ordinal)
+        && !unknownFailure.UserMessage.Contains(sensitiveDetail, StringComparison.Ordinal),
+        "Unknown bootstrap failure did not become a sanitized internal error.");
+
+    var isolationFailure = MvpAgentFailureFormatter.FromException(
+        new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+            sensitiveDetail,
+            new InvalidOperationException(sensitiveDetail)),
+        MvpAgentFailureStages.StartingAgentHost);
+    True(
+        string.Equals(
+            MvpAgentErrorCodes.AgentHostProcessIsolationFailed,
+            isolationFailure.ErrorCode,
+            StringComparison.Ordinal)
+        && !isolationFailure.Retryable
+        && !isolationFailure.UserMessage.Contains(sensitiveDetail, StringComparison.Ordinal),
+        "Process isolation failure did not remain structured and sanitized.");
     return Task.CompletedTask;
 }
 

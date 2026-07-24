@@ -219,6 +219,15 @@ try
                     catch (OperationCanceledException) when (queryCancellation.IsCancellationRequested)
                     {
                     }
+                    catch (BridgeRemoteException exception)
+                        when (string.Equals(
+                            exception.Code,
+                            AgentBridgeErrorCodes.RequestCancelled,
+                            StringComparison.Ordinal))
+                    {
+                        // The peer's stable cancellation result can arrive before this thread
+                        // observes the timer-backed token. No other remote error is accepted.
+                    }
                 }
                 else
                 {

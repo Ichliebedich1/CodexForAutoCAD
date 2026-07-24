@@ -28,8 +28,11 @@ $evidencePath = Join-Path $stageRoot "verification.json"
 $requiredSpecIds = @(
     "REAL_AGENTHOST_SUCCESS",
     "REAL_AGENTHOST_REPEAT_5",
+    "RESTRICTED_TOKEN_PRIMITIVES_FAIL_CLOSED",
+    "RESTRICTED_TOKEN_BOOTSTRAP_PROBE_PORTABLE",
     "JOB_RESOURCE_LIMITS_APPLIED",
     "JOB_RESOURCE_LIMITS_INVALID",
+    "EXPERIMENTAL_IDENTITY_NOT_PUBLIC",
     "JOB_USER_TIME_TERMINATES_TREE",
     "SESSION_RUNTIME_TERMINATES_TREE",
     "SESSION_RUNTIME_RETRIES_CLEANUP",
@@ -47,6 +50,7 @@ $requiredSpecIds = @(
     "EARLY_EXIT_REJECTED",
     "MALFORMED_CONFIRMATION_REJECTED",
     "IDENTITY_MISMATCH_REJECTED",
+    "BOOTSTRAP_FAILURE_DIAGNOSTICS_SANITIZED",
     "TRAILING_DUPLICATE_REJECTED",
     "CHILD_CLEARS_INHERITANCE",
     "HANDLE_ALLOWLIST_CANARY",
@@ -502,6 +506,28 @@ function Test-SpecPassed {
     return @($SpecResult.Ids | Where-Object { $_ -ceq $Id }).Count -eq 1
 }
 
+function Get-ProbeOutcome {
+    param(
+        [Parameter(Mandatory = $true)][string[]] $Lines,
+        [Parameter(Mandatory = $true)][string] $Name,
+        [Parameter(Mandatory = $true)][string[]] $AllowedValues,
+        [Parameter(Mandatory = $true)][string] $RuntimeLabel
+    )
+
+    $prefix = $Name + "="
+    $matches = @($Lines | Where-Object { $_.StartsWith($prefix, [StringComparison]::Ordinal) })
+    if ($matches.Count -ne 1) {
+        throw "$RuntimeLabel 必须且只能输出一个 $Name；实际：$($matches.Count)。"
+    }
+
+    $outcome = $matches[0].Substring($prefix.Length)
+    if (-not ($AllowedValues -ccontains $outcome)) {
+        throw "$RuntimeLabel 输出了未知 $Name：$outcome。"
+    }
+
+    return $outcome
+}
+
 function Get-ProcessSnapshot {
     return @(
         Get-Process -ErrorAction SilentlyContinue |
@@ -579,6 +605,32 @@ try {
         -Arguments $specArguments `
         -Description "运行 net45 AgentHost bootstrap Specs"
     $net45Specs = Assert-SpecOutput -Lines $net45Output -RuntimeLabel "net45"
+    $primitiveOutcomes = @("available", "process_isolation_failed")
+    $bootstrapOutcomes = @(
+        "authenticated_success",
+        "process_isolation_failed",
+        "child_exited"
+    )
+    $net8RestrictedPrimitiveOutcome = Get-ProbeOutcome `
+        -Lines $net8Output `
+        -Name "RESTRICTED_TOKEN_PRIMITIVES_OUTCOME" `
+        -AllowedValues $primitiveOutcomes `
+        -RuntimeLabel "net8"
+    $net45RestrictedPrimitiveOutcome = Get-ProbeOutcome `
+        -Lines $net45Output `
+        -Name "RESTRICTED_TOKEN_PRIMITIVES_OUTCOME" `
+        -AllowedValues $primitiveOutcomes `
+        -RuntimeLabel "net45"
+    $net8RestrictedBootstrapOutcome = Get-ProbeOutcome `
+        -Lines $net8Output `
+        -Name "RESTRICTED_TOKEN_BOOTSTRAP_OUTCOME" `
+        -AllowedValues $bootstrapOutcomes `
+        -RuntimeLabel "net8"
+    $net45RestrictedBootstrapOutcome = Get-ProbeOutcome `
+        -Lines $net45Output `
+        -Name "RESTRICTED_TOKEN_BOOTSTRAP_OUTCOME" `
+        -AllowedValues $bootstrapOutcomes `
+        -RuntimeLabel "net45"
     if ($net45Specs.Total -ne $net8Specs.Total -or
         (($net45Specs.Ids | ConvertTo-Json -Compress) -cne
          ($net8Specs.Ids | ConvertTo-Json -Compress))) {
@@ -624,6 +676,9 @@ try {
     $runtimeEvidenceSpecMap = [ordered]@{
         RealAgentHostBootstrapDoctorCompleted = "REAL_AGENTHOST_SUCCESS"
         RepeatedRealAgentHostBootstrapCompleted = "REAL_AGENTHOST_REPEAT_5"
+        RestrictedTokenPrimitivesFailClosed = "RESTRICTED_TOKEN_PRIMITIVES_FAIL_CLOSED"
+        RestrictedTokenBootstrapProbePortable = "RESTRICTED_TOKEN_BOOTSTRAP_PROBE_PORTABLE"
+        ExperimentalProcessIdentityNotPublic = "EXPERIMENTAL_IDENTITY_NOT_PUBLIC"
         ProcessTreeResourceLimitsApplied = "JOB_RESOURCE_LIMITS_APPLIED"
         InvalidProcessTreeResourceLimitsFailClosed = "JOB_RESOURCE_LIMITS_INVALID"
         JobUserTimeTerminatesProcessTree = "JOB_USER_TIME_TERMINATES_TREE"
@@ -656,7 +711,7 @@ try {
     }
 
     $evidence = [ordered]@{
-        SchemaVersion = 8
+        SchemaVersion = 9
         RecordedAtLocal = [DateTimeOffset]::Now.ToString("o")
         Scope = "autocad2016-live-agenthost-inherited-handle-bootstrap-doctor"
         Status = "live-agenthost-bootstrap-doctor-gate-passed"
@@ -713,6 +768,24 @@ try {
             $runtimeEvidence.SessionWallClockFailedCleanupPoisonsStart)
         GracefulServiceExitBeforeForcedTerminationRuntimeVerified =
             $runtimeEvidence.ServiceStopAllowsGracefulExitBeforeForcedTermination
+        RestrictedTokenPrimitiveRuntimeVerified =
+            $runtimeEvidence.RestrictedTokenPrimitivesFailClosed
+        RestrictedTokenPublicProductSurfaceClosed =
+            $runtimeEvidence.ExperimentalProcessIdentityNotPublic
+        RestrictedTokenCompatibilityProbePortable =
+            $runtimeEvidence.RestrictedTokenBootstrapProbePortable
+        RestrictedTokenProbeOutcomes = [ordered]@{
+            Net8Primitives = $net8RestrictedPrimitiveOutcome
+            Net45Primitives = $net45RestrictedPrimitiveOutcome
+            Net8Bootstrap = $net8RestrictedBootstrapOutcome
+            Net45Bootstrap = $net45RestrictedBootstrapOutcome
+        }
+        RestrictedTokenCurrentRuntimeFailsClosed =
+            ($net8RestrictedBootstrapOutcome -ne "authenticated_success" -and
+             $net45RestrictedBootstrapOutcome -ne "authenticated_success")
+        RestrictedTokenSuccessfulAuthenticatedBootstrapVerified =
+            ($net8RestrictedBootstrapOutcome -eq "authenticated_success" -and
+             $net45RestrictedBootstrapOutcome -eq "authenticated_success")
         PendingBootstrapAtomicConsumptionLiveVerified = $false
         SourceTreeBinOrObjModified = $false
         AutoCadProcessSetChanged = $false
@@ -722,7 +795,7 @@ try {
         NetLoadVerified = $false
         AgentHostLiveBridgeVerified = $false
         CadRuntimeIntegrated = $false
-        EvidenceBoundary = "This gate proves the exact mandatory net45/net8 Spec ID set, real out-of-process bootstrap-doctor authentication through restricted inherited standard handles, approved SHA-256 mismatch rejection, PID/creation-time confirmation rejection, startup-deadline fail-closed abort followed by at most five seconds of bounded termination cleanup (including confirmation-then-hang), cancellation cleanup, bounded stderr, handle-allowlist canary exclusion, one bounded natural-exit grace before forced service termination, service-stop cleanup of an AgentHost-owned descendant through the Windows Job Object boundary, automatic retained-Job cleanup after an already-established AgentHost exits while its launcher remains alive, Job cleanup after the process holding that boundary exits without calling StopAsync, Windows-reported active-process/job-memory/job-user-time/CPU-hard-cap flags and values, actual termination of a CPU-busy synthetic AgentHost after aggregate Job user time is exhausted, authenticated-service wall-clock termination with one bounded cleanup retry, explicit Stop winning over a cancelled runtime deadline, and process-wide fail-closed launch poisoning after two consecutive deadline-cleanup failures. It also proves complete runnable-output reproducibility before and after execution and an empty relevant-process baseline/final state. It does not intentionally exhaust memory or process slots, measure CPU throttling performance, claim that Job user time is wall-clock time, claim that termination finishes inside the configured startup deadline itself, or prove AutoCAD crash cleanup without an AutoCAD process. Static source observations are not runtime proof. Deliberate executable replacement during the suspended-launch window, external handle-duplication resistance, the long-running authenticated Bridge beyond the synthetic deadline case, Host.2016/AutoCAD integration, CAD work, and complete AutoCAD 2016 support remain outside this evidence."
+        EvidenceBoundary = "This gate proves the exact mandatory net45/net8 Spec ID set, real out-of-process bootstrap-doctor authentication through restricted inherited standard handles, approved SHA-256 mismatch rejection, PID/creation-time confirmation rejection, startup-deadline fail-closed abort followed by bounded termination cleanup, cancellation cleanup, bounded stderr, handle-allowlist canary exclusion, service and owner process-tree cleanup, Windows-reported Job resource limits, and authenticated-service runtime cleanup. The public product configuration and result surfaces do not expose the experimental process-identity selector or its raw telemetry. The internal restricted-token probe accepts only a Windows-reported restricted success, a structured process-isolation failure, or child failure after a restricted launch; it never falls back to CurrentUser, and the exact sanitized net45/net8 outcomes are recorded separately. A successful primitive or probe result is not production sandbox evidence and does not prove runtime/workspace/pipe ACLs, credentials, real Codex, bootstrap-serve, AutoCAD integration, CAD work, or complete AutoCAD 2016 support. The gate also proves reproducible runnable outputs and an empty relevant-process baseline/final state."
     }
     $evidence | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $evidencePath -Encoding UTF8
 
