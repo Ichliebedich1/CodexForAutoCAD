@@ -52,6 +52,7 @@ namespace Codex.AutoCAD.Host2016
                     client.StatusChanged += OnStatusChanged;
                     client.TextChanged += OnTextChanged;
                     client.ErrorChanged += OnErrorChanged;
+                    client.SnapshotChanged += OnSnapshotChanged;
                 }
 
                 current = client;
@@ -283,6 +284,7 @@ namespace Codex.AutoCAD.Host2016
 
                 UpdateAgentStatusSafely(
                     "AgentHost 已停止；CAD 写入仍禁用。");
+                UpdateAgentSnapshotSafely(AgentClientSnapshot.Offline);
                 return;
             }
 
@@ -308,11 +310,14 @@ namespace Codex.AutoCAD.Host2016
                 current.StatusChanged -= OnStatusChanged;
                 current.TextChanged -= OnTextChanged;
                 current.ErrorChanged -= OnErrorChanged;
+                current.SnapshotChanged -= OnSnapshotChanged;
                 current.Dispose();
                 if (currentLifetime != null)
                 {
                     currentLifetime.Dispose();
                 }
+
+                UpdateAgentSnapshotSafely(AgentClientSnapshot.Offline);
             }
         }
 
@@ -329,6 +334,49 @@ namespace Codex.AutoCAD.Host2016
         private static void OnErrorChanged(string value)
         {
             UpdateAgentStatusSafely(value);
+        }
+
+        private static void OnSnapshotChanged(AgentClientSnapshot value)
+        {
+            UpdateAgentSnapshotSafely(value);
+        }
+
+        /// <summary>
+        /// Current read-only Agent snapshot for presentation enablement; never throws into callers.
+        /// </summary>
+        internal static AgentClientSnapshot GetAgentSnapshot()
+        {
+            MvpAgentClient current;
+            lock (sync)
+            {
+                current = client;
+            }
+
+            if (current == null)
+            {
+                return AgentClientSnapshot.Offline;
+            }
+
+            try
+            {
+                return current.GetSnapshot();
+            }
+            catch
+            {
+                return AgentClientSnapshot.Offline;
+            }
+        }
+
+        private static void UpdateAgentSnapshotSafely(AgentClientSnapshot value)
+        {
+            try
+            {
+                UnifiedPaletteRuntime.UpdateAgentSnapshot(value);
+            }
+            catch
+            {
+                // Palette state is observational and must never retain AgentHost resources.
+            }
         }
 
         private static void UpdateAgentStatusSafely(string value)

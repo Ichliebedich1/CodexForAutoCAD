@@ -64,6 +64,7 @@ namespace Codex.AutoCAD.Host2016
     internal static class UnifiedPaletteRuntime
     {
         private static UnifiedPaletteController controller;
+        private static AgentClientSnapshot latestAgentSnapshot = AgentClientSnapshot.Offline;
         private static string latestDrawingIndexStatus = "整图索引：not_built";
         private static PaletteDrawingIndexView latestDrawingIndexView = PaletteDrawingIndexView.Empty;
         private static PaletteContextView latestContext = new PaletteContextView(
@@ -124,6 +125,49 @@ namespace Codex.AutoCAD.Host2016
             }
         }
 
+        internal static void UpdateAgentSnapshot(AgentClientSnapshot value)
+        {
+            latestAgentSnapshot = value ?? AgentClientSnapshot.Offline;
+            var current = controller;
+            if (current != null)
+            {
+                current.UpdateAgentSnapshot(latestAgentSnapshot);
+            }
+        }
+
+        internal static void RecordUserPrompt(string text)
+        {
+            var current = controller;
+            if (current != null)
+            {
+                current.RecordUserPrompt(text);
+            }
+        }
+
+        internal static void RecordPromptError(string formatted)
+        {
+            var current = controller;
+            if (current != null)
+            {
+                current.RecordPromptError(formatted);
+            }
+        }
+
+        internal static void SaveDraft(string text)
+        {
+            var current = controller;
+            if (current != null)
+            {
+                current.SaveDraft(text);
+            }
+        }
+
+        /// <summary>Re-pulls the real DrawingIndex descriptor and pushes it (cancel/start retry path).</summary>
+        internal static void RefreshDrawingIndexView()
+        {
+            UpdateDrawingIndexStatus(latestDrawingIndexStatus);
+        }
+
         internal static void UpdateDrawingIndexStatus(string value)
         {
             latestDrawingIndexStatus = value ?? latestDrawingIndexStatus;
@@ -161,6 +205,7 @@ namespace Codex.AutoCAD.Host2016
             {
                 controller = new UnifiedPaletteController(latestContext);
                 controller.UpdateDrawingIndexStatus(latestDrawingIndexStatus, latestDrawingIndexView);
+                controller.UpdateAgentSnapshot(latestAgentSnapshot);
             }
 
             return controller;

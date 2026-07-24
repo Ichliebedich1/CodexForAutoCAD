@@ -20,7 +20,9 @@ namespace Codex.AutoCAD.Host2016
 
         private readonly DocumentCollection documents;
         private readonly object agentSync = new object();
-        private readonly StringBuilder agentText = new StringBuilder();
+        private readonly PaletteConversationStore conversationStore = new PaletteConversationStore();
+        private readonly Dictionary<long, string> drafts = new Dictionary<long, string>();
+        private AgentClientSnapshot agentSnapshot = AgentClientSnapshot.Offline;
         private PaletteSet paletteSet;
         private UnifiedPalettePanel panel;
         private PaletteContextView context;
@@ -86,35 +88,103 @@ namespace Codex.AutoCAD.Host2016
             {
                 agentStatus = value ?? string.Empty;
                 currentStatus = agentStatus;
+                RecordSignificantStatusLocked(currentStatus);
             }
 
-            var currentPanel = panel;
-            if (currentPanel != null)
-            {
-                currentPanel.UpdateAgentStatus(currentStatus);
-            }
+            UpdatePanel();
         }
 
         internal void UpdateAgentText(string value)
         {
-            string currentText;
             lock (agentSync)
             {
                 if (string.IsNullOrEmpty(value))
                 {
-                    agentText.Clear();
+                    conversationStore.NoteStreamReset();
                 }
                 else
                 {
-                    agentText.Append(value);
+                    conversationStore.AppendAssistantDelta(value);
                 }
-                currentText = agentText.ToString();
             }
 
-            var currentPanel = panel;
-            if (currentPanel != null)
+            UpdatePanel();
+        }
+
+        internal void UpdateAgentSnapshot(AgentClientSnapshot value)
+        {
+            lock (agentSync)
             {
-                currentPanel.UpdateAgentText(currentText);
+                agentSnapshot = value ?? AgentClientSnapshot.Offline;
+                conversationStore.EnsureEpoch(agentSnapshot.ConversationEpoch);
+                if (!agentSnapshot.HasActiveTurn)
+                {
+                    conversationStore.FinalizeAssistantStream();
+                }
+            }
+
+            UpdatePanel();
+        }
+
+        /// <summary>Records a user prompt the panel just submitted through the real Ask chain.</summary>
+        internal void RecordUserPrompt(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            lock (agentSync)
+            {
+                conversationStore.AppendUserMessage(text.Trim());
+            }
+
+            UpdatePanel();
+        }
+
+        internal void RecordPromptError(string formatted)
+        {
+            if (string.IsNullOrWhiteSpace(formatted))
+            {
+                return;
+            }
+
+            lock (agentSync)
+            {
+                conversationStore.AddError(formatted.Trim());
+            }
+
+            UpdatePanel();
+        }
+
+        internal void SaveDraft(string text)
+        {
+            lock (agentSync)
+            {
+                drafts[agentSnapshot.ConversationEpoch] = text ?? string.Empty;
+            }
+        }
+
+        private void RecordSignificantStatusLocked(string status)
+        {
+            // Only conversation-shaping Host lines become message entries; transient progress
+            // lines stay in the session bar. Prefixes match the Host's own frozen formatters.
+            if (string.IsNullOrEmpty(status))
+            {
+                return;
+            }
+
+            if (status.IndexOf("（error_code=", StringComparison.Ordinal) >= 0
+                || status.StartsWith("Agent Bridge 已断开", StringComparison.Ordinal))
+            {
+                conversationStore.AddError(status);
+                return;
+            }
+
+            if (status.StartsWith("Codex 回答完成", StringComparison.Ordinal)
+                || status.StartsWith("Codex 回合已取消", StringComparison.Ordinal))
+            {
+                conversationStore.AddStatus(status);
             }
         }
 
@@ -177,6 +247,15 @@ namespace Codex.AutoCAD.Host2016
                 currentAgentStatus = agentStatus;
             }
             builder.Append("Agent: ").AppendLine(currentAgentStatus);
+            lock (agentSync)
+            {
+                builder.Append("Conversation messages: ").AppendLine(
+                    conversationStore.Count.ToString(CultureInfo.InvariantCulture));
+                builder.Append("Conversation epoch: ").AppendLine(
+                    agentSnapshot.ConversationEpoch.ToString(CultureInfo.InvariantCulture));
+                builder.Append("Late deltas ignored: ").AppendLine(
+                    conversationStore.LateDeltasIgnored.ToString(CultureInfo.InvariantCulture));
+            }
             builder.AppendLine("CAD write: disabled");
             builder.AppendLine("Plugin-initiated save: disabled");
             builder.AppendLine("AutoCAD SAVETIME setting: not modified");
@@ -376,14 +455,23 @@ namespace Codex.AutoCAD.Host2016
             currentPanel.UpdateContext(context);
             currentPanel.UpdateDrawingIndex(drawingIndexStatus, drawingIndexView);
             string currentAgentStatus;
-            string currentAgentText;
+            AgentClientSnapshot currentSnapshot;
+            IReadOnlyList<PaletteMessage> messages;
+            string currentDraft;
             lock (agentSync)
             {
                 currentAgentStatus = agentStatus;
-                currentAgentText = agentText.ToString();
+                currentSnapshot = agentSnapshot;
+                messages = conversationStore.Snapshot();
+                string draftValue;
+                currentDraft = drafts.TryGetValue(currentSnapshot.ConversationEpoch, out draftValue)
+                    ? draftValue
+                    : string.Empty;
             }
             currentPanel.UpdateAgentStatus(currentAgentStatus);
-            currentPanel.UpdateAgentText(currentAgentText);
+            currentPanel.UpdateAgentSnapshot(currentSnapshot);
+            currentPanel.SyncMessages(messages);
+            currentPanel.SetDraft(currentSnapshot.ConversationEpoch, currentDraft);
         }
 
         private static string ReadDbmod()

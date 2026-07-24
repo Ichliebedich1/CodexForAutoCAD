@@ -10,6 +10,64 @@ using Codex.AutoCAD.Contracts;
 namespace Codex.AutoCAD.Host2016
 {
     /// <summary>
+    /// Read-only point-in-time view of the Host-owned Agent state machine. The Palette presentation
+    /// layer derives control enablement exclusively from this snapshot; it never sees Provider turn
+    /// ids, thread ids or process handles. Turn state reuses the frozen MvpAgentTurnStates values
+    /// plus <see cref="AgentClientSnapshot.TurnNone"/> when no request exists.
+    /// </summary>
+    internal sealed class AgentClientSnapshot
+    {
+        internal const string ConnectionOffline = "offline";
+        internal const string ConnectionStarting = "starting";
+        internal const string ConnectionOnline = "online";
+        internal const string ConnectionStopping = "stopping";
+
+        internal const string TurnNone = "none";
+
+        internal AgentClientSnapshot(string connectionState, string turnState, long conversationEpoch)
+        {
+            ConnectionState = connectionState ?? ConnectionOffline;
+            TurnState = string.IsNullOrEmpty(turnState) ? TurnNone : turnState;
+            ConversationEpoch = conversationEpoch;
+        }
+
+        internal string ConnectionState { get; private set; }
+
+        internal string TurnState { get; private set; }
+
+        internal long ConversationEpoch { get; private set; }
+
+        internal bool HasActiveTurn
+        {
+            get
+            {
+                return string.Equals(TurnState, MvpAgentTurnStates.StartingProvider, StringComparison.Ordinal)
+                    || string.Equals(TurnState, MvpAgentTurnStates.Running, StringComparison.Ordinal)
+                    || string.Equals(TurnState, MvpAgentTurnStates.Cancelling, StringComparison.Ordinal);
+            }
+        }
+
+        internal bool IsOnline
+        {
+            get { return string.Equals(ConnectionState, ConnectionOnline, StringComparison.Ordinal); }
+        }
+
+        internal bool IsBusy
+        {
+            get
+            {
+                return string.Equals(ConnectionState, ConnectionStarting, StringComparison.Ordinal)
+                    || string.Equals(ConnectionState, ConnectionStopping, StringComparison.Ordinal);
+            }
+        }
+
+        internal static AgentClientSnapshot Offline
+        {
+            get { return new AgentClientSnapshot(ConnectionOffline, TurnNone, 0L); }
+        }
+    }
+
+    /// <summary>
     /// Minimal read-only MVP client. It owns the authenticated AgentHost lifetime and exposes one
     /// system conversation to the Palette. CAD writes and approval resolution are intentionally not
     /// exposed here.
@@ -42,6 +100,12 @@ namespace Codex.AutoCAD.Host2016
         internal event Action<string> TextChanged;
 
         internal event Action<string> ErrorChanged;
+
+        /// <summary>
+        /// Fired after every connection/turn/conversation-epoch transition, outside the state lock.
+        /// Subscribers receive a fresh immutable snapshot; observer failures are isolated.
+        /// </summary>
+        internal event Action<AgentClientSnapshot> SnapshotChanged;
 
         internal MvpAgentClient()
         {
@@ -97,8 +161,59 @@ namespace Codex.AutoCAD.Host2016
             }
         }
 
+        /// <summary>
+        /// Current read-only Agent state for the Palette presentation layer. Safe to call from any
+        /// thread; the result is immutable and detached from the state lock.
+        /// </summary>
+        internal AgentClientSnapshot GetSnapshot()
+        {
+            lock (sync)
+            {
+                return CreateSnapshotLocked();
+            }
+        }
+
+        private AgentClientSnapshot CreateSnapshotLocked()
+        {
+            string connectionState;
+            if (stopRequested || stopCompleted)
+            {
+                connectionState = AgentClientSnapshot.ConnectionStopping;
+            }
+            else if (online)
+            {
+                connectionState = AgentClientSnapshot.ConnectionOnline;
+            }
+            else if (startTask != null && string.IsNullOrEmpty(terminalBridgeErrorCode))
+            {
+                connectionState = AgentClientSnapshot.ConnectionStarting;
+            }
+            else
+            {
+                connectionState = AgentClientSnapshot.ConnectionOffline;
+            }
+
+            return new AgentClientSnapshot(
+                connectionState,
+                activeTurn == null ? AgentClientSnapshot.TurnNone : activeTurn.State,
+                conversationEpoch);
+        }
+
+        private void NotifySnapshotChanged()
+        {
+            AgentClientSnapshot snapshot;
+            lock (sync)
+            {
+                snapshot = CreateSnapshotLocked();
+            }
+
+            PublishSafely(SnapshotChanged, snapshot);
+        }
+
         internal Task StartAsync(CancellationToken cancellationToken)
         {
+            Task currentStart;
+            bool beganStart;
             lock (sync)
             {
                 if (stopRequested || stopCompleted)
@@ -112,15 +227,23 @@ namespace Codex.AutoCAD.Host2016
                     throw CreateUnavailableExceptionLocked();
                 }
 
-                if (startTask == null)
+                beganStart = startTask == null;
+                if (beganStart)
                 {
                     startTask = Task.Run(
                         () => StartCoreAsync(cancellationToken),
                         CancellationToken.None);
                 }
 
-                return startTask;
+                currentStart = startTask;
             }
+
+            if (beganStart)
+            {
+                NotifySnapshotChanged();
+            }
+
+            return currentStart;
         }
 
         internal Task AskAsync(
@@ -255,6 +378,7 @@ namespace Codex.AutoCAD.Host2016
                     "正在向本机 Codex 发送只读问题",
                     requestTurn.RequestId,
                     requestTurn.State));
+            NotifySnapshotChanged();
             var request = new AgentTurnStartV2Request
             {
                 ThreadId = currentThread,
@@ -325,6 +449,7 @@ namespace Codex.AutoCAD.Host2016
                         requestTurn.RequestId,
                         currentState));
                 BeginTurnTimeoutMonitor(requestTurn);
+                NotifySnapshotChanged();
                 if (dispatchCancellation)
                 {
                     BeginCancellationDispatch(
@@ -367,6 +492,7 @@ namespace Codex.AutoCAD.Host2016
                     cancellationCompletion.TrySetException(turnException);
                 }
 
+                NotifySnapshotChanged();
                 throw turnException;
             }
         }
@@ -448,6 +574,7 @@ namespace Codex.AutoCAD.Host2016
                 PublishSafely(
                     StatusChanged,
                     "新的只读 Codex 对话已建立；CAD 上下文保持不变。");
+                NotifySnapshotChanged();
             }
             catch
             {
@@ -532,6 +659,7 @@ namespace Codex.AutoCAD.Host2016
                 PublishSafely(
                     StatusChanged,
                     "图纸已切换；旧 Codex 对话已隔离，下一次提问将建立新对话。");
+                NotifySnapshotChanged();
                 return;
             }
 
@@ -562,6 +690,8 @@ namespace Codex.AutoCAD.Host2016
                     currentThread,
                     providerTurnId);
             }
+
+            NotifySnapshotChanged();
         }
 
         internal void ClearConversation()
@@ -596,6 +726,7 @@ namespace Codex.AutoCAD.Host2016
             PublishSafely(
                 StatusChanged,
                 "当前 Codex 对话已清除；下一次提问将建立新对话。");
+            NotifySnapshotChanged();
         }
 
         private static async Task InterruptTurnBestEffortAsync(
@@ -667,6 +798,7 @@ namespace Codex.AutoCAD.Host2016
                         : "正在取消 Codex 回合",
                     requestTurn.RequestId,
                     requestTurn.State));
+            NotifySnapshotChanged();
             if (dispatchCancellation)
             {
                 BeginCancellationDispatch(
@@ -739,6 +871,8 @@ namespace Codex.AutoCAD.Host2016
                 if (cancellationCompletion != null)
                 {
                     cancellationCompletion.TrySetException(turnException);
+                    // The turn recovered to its pre-dispatch state; observers must re-derive.
+                    NotifySnapshotChanged();
                 }
             }
         }
@@ -811,6 +945,7 @@ namespace Codex.AutoCAD.Host2016
                         MvpAgentFailureStages.RunningTurn)
                     .WithRequest(requestTurn.RequestId, requestTurn.State)
                     .FormatForUser("Codex 回合"));
+            NotifySnapshotChanged();
 
             if (!dispatchInterrupt || currentBridge == null)
             {
@@ -930,6 +1065,7 @@ namespace Codex.AutoCAD.Host2016
             }
 
             PublishSafely(StatusChanged, "正在停止 AgentHost……");
+            NotifySnapshotChanged();
             try
             {
                 if (currentCoordinator != null)
@@ -946,6 +1082,7 @@ namespace Codex.AutoCAD.Host2016
                             exception,
                             MvpAgentFailureStages.StoppingAgentHost)
                         .FormatForUser("停止 AgentHost"));
+                NotifySnapshotChanged();
                 throw;
             }
 
@@ -982,6 +1119,7 @@ namespace Codex.AutoCAD.Host2016
             }
 
             PublishSafely(StatusChanged, "AgentHost 已停止；CAD 写入仍禁用。");
+            NotifySnapshotChanged();
         }
 
         private MvpAgentStopCoordinator CreateStopCoordinator(
@@ -1229,6 +1367,8 @@ namespace Codex.AutoCAD.Host2016
                 {
                     PublishSafely(StatusChanged, "启动期间已收到停止请求，正在清理 AgentHost……");
                 }
+
+                NotifySnapshotChanged();
             }
             catch (Exception exception)
             {
@@ -1268,6 +1408,7 @@ namespace Codex.AutoCAD.Host2016
                                 cleanupFailure,
                                 MvpAgentFailureStages.StoppingAgentHost)
                             .FormatForUser("回收 AgentHost"));
+                    NotifySnapshotChanged();
                     throw new AggregateException(exception, cleanupFailure);
                 }
 
@@ -1287,6 +1428,7 @@ namespace Codex.AutoCAD.Host2016
                             exception,
                             MvpAgentFailureStages.StartingAgentHost)
                         .FormatForUser("启动 AgentHost"));
+                NotifySnapshotChanged();
                 throw;
             }
         }
@@ -1528,6 +1670,15 @@ namespace Codex.AutoCAD.Host2016
                         requestId,
                         currentState));
             }
+
+            if (becameTerminal
+                || string.Equals(
+                    bridgeEvent.Kind,
+                    AgentBridgeEventKinds.TurnStarted,
+                    StringComparison.Ordinal))
+            {
+                NotifySnapshotChanged();
+            }
         }
 
         private void OnBridgeFaulted(object sender, AgentBridgeConnectionFaultedEventArgs args)
@@ -1599,6 +1750,7 @@ namespace Codex.AutoCAD.Host2016
                         + currentState
                         + "）；")
                 + "后续问题已拒绝。请先停止并重新启动 AgentHost。");
+            NotifySnapshotChanged();
         }
 
         private void EnsureOnlineForAskLocked()
@@ -1711,6 +1863,26 @@ namespace Codex.AutoCAD.Host2016
                 {
                     // Palette/dispatcher observers must never acquire resource-lifecycle
                     // ownership or prevent AgentHost cleanup.
+                }
+            }
+        }
+
+        private static void PublishSafely(Action<AgentClientSnapshot> subscribers, AgentClientSnapshot value)
+        {
+            if (subscribers == null)
+            {
+                return;
+            }
+
+            foreach (Action<AgentClientSnapshot> subscriber in subscribers.GetInvocationList())
+            {
+                try
+                {
+                    subscriber(value);
+                }
+                catch
+                {
+                    // Same isolation rule as the string publishers above.
                 }
             }
         }

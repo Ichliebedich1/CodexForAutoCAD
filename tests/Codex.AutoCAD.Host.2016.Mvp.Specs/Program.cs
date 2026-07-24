@@ -230,6 +230,46 @@ var specs = new[]
         "HOST2016_PALETTE_AGENT_STATUS_CLASSIFIES_KNOWN_MESSAGES",
         "the palette agent status view only colors known Host messages and stays neutral otherwise",
         PaletteAgentStatusClassifiesKnownMessages),
+    new SpecCase(
+        "HOST2016_PALETTE_SEND_MATRIX_FOLLOWS_REAL_SNAPSHOT",
+        "Send/Cancel enablement derives only from the real client snapshot state machine",
+        PaletteSendMatrixFollowsRealSnapshot),
+    new SpecCase(
+        "HOST2016_PALETTE_DRAFT_SURVIVES_IN_FLIGHT_TYPING",
+        "a draft typed while the request is in flight is never cleared by the terminal state",
+        PaletteDraftSurvivesInFlightTyping),
+    new SpecCase(
+        "HOST2016_PALETTE_CLIPBOARD_FAILURE_IS_BOUNDED",
+        "clipboard failures map to one fixed sanitized retry hint without exception text",
+        PaletteClipboardFailureIsBounded),
+    new SpecCase(
+        "HOST2016_PALETTE_INDEX_CANCEL_RETRY_STATE",
+        "a failed index cancel leaves the view cancellable so the user can retry",
+        PaletteIndexCancelRetryState),
+    new SpecCase(
+        "HOST2016_PALETTE_EMPTY_INDEX_IS_ESTABLISHED",
+        "a zero-entity completed index is established, never confused with not_built",
+        PaletteEmptyIndexIsEstablished),
+    new SpecCase(
+        "HOST2016_PALETTE_MODEL_GATE_CLOSED_WITHOUT_CAPABILITY",
+        "model and reasoning selectors stay disabled on Codex defaults and reject arbitrary values",
+        PaletteModelGateClosedWithoutCapability),
+    new SpecCase(
+        "HOST2016_PALETTE_DELTA_COALESCER_LIMITS_FLUSHES",
+        "streaming deltas merge into at most one UI flush per 40 ms window",
+        PaletteDeltaCoalescerLimitsFlushes),
+    new SpecCase(
+        "HOST2016_PALETTE_STORE_REJECTS_LATE_DELTAS",
+        "deltas after the real terminal state are rejected and epoch switches reset the store",
+        PaletteStoreRejectsLateDeltas),
+    new SpecCase(
+        "HOST2016_PALETTE_STORE_BOUNDED_AND_ORDERED",
+        "long sessions keep bounded messages in order with the streaming item protected",
+        PaletteStoreBoundedAndOrdered),
+    new SpecCase(
+        "HOST2016_PALETTE_LAYOUT_POLICY_FITS_NARROW_WIDTH",
+        "fixed DIP layout constants stay inside the 300/520 workable widths",
+        PaletteLayoutPolicyFitsNarrowWidth),
 };
 
 var failed = 0;
@@ -2305,6 +2345,365 @@ static Task PaletteAgentStatusClassifiesKnownMessages()
     True(
         PaletteAgentStatusView.FromHostStatus("   ").Tone == PaletteStatusTone.Neutral,
         "blank status must stay neutral.");
+    return Task.CompletedTask;
+}
+
+static Task PaletteSendMatrixFollowsRealSnapshot()
+{
+    var offline = PaletteCommandAvailability.FromSnapshot(
+        new AgentClientSnapshot(AgentClientSnapshot.ConnectionOffline, AgentClientSnapshot.TurnNone, 0L));
+    True(offline.CanSend, "stable offline must allow send because AskAsync auto-starts the host.");
+    True(offline.CanStartAgent, "offline must allow start.");
+    True(!offline.CanStopAgent, "offline must not allow stop.");
+    True(!offline.CanCancelTurn, "offline must not allow cancel.");
+    True(offline.SendHint.Length > 0, "offline send hint must explain the auto-start path.");
+
+    var starting = PaletteCommandAvailability.FromSnapshot(
+        new AgentClientSnapshot(AgentClientSnapshot.ConnectionStarting, AgentClientSnapshot.TurnNone, 0L));
+    True(!starting.CanSend && !starting.CanStartAgent && starting.CanStopAgent,
+        "starting must disable send/start but keep stop available.");
+
+    var stopping = PaletteCommandAvailability.FromSnapshot(
+        new AgentClientSnapshot(AgentClientSnapshot.ConnectionStopping, AgentClientSnapshot.TurnNone, 0L));
+    True(!stopping.CanSend && !stopping.CanStartAgent && !stopping.CanStopAgent
+            && !stopping.CanCancelTurn && !stopping.CanNewConversation,
+        "stopping must disable every command.");
+
+    var onlineIdle = PaletteCommandAvailability.FromSnapshot(
+        new AgentClientSnapshot(AgentClientSnapshot.ConnectionOnline, AgentClientSnapshot.TurnNone, 5L));
+    True(onlineIdle.CanSend && onlineIdle.CanNewConversation && onlineIdle.CanStopAgent
+            && !onlineIdle.CanCancelTurn && !onlineIdle.CanStartAgent,
+        "online without a turn must allow send/new/stop only.");
+    True(onlineIdle.SendHint.Length == 0, "available send needs no hint.");
+
+    foreach (var activeState in new[]
+    {
+        MvpAgentTurnStates.StartingProvider,
+        MvpAgentTurnStates.Running,
+        MvpAgentTurnStates.Cancelling,
+    })
+    {
+        var busy = PaletteCommandAvailability.FromSnapshot(
+            new AgentClientSnapshot(AgentClientSnapshot.ConnectionOnline, activeState, 5L));
+        True(!busy.CanSend, "state " + activeState + " must block a duplicate send.");
+        True(busy.CanCancelTurn, "state " + activeState + " must keep cancel available.");
+        True(!busy.CanNewConversation, "state " + activeState + " must block new conversation.");
+        True(busy.SendHint.Length > 0, "busy send hint must explain.");
+    }
+
+    foreach (var terminalState in new[]
+    {
+        MvpAgentTurnStates.Completed,
+        MvpAgentTurnStates.Failed,
+        MvpAgentTurnStates.Cancelled,
+    })
+    {
+        var terminal = PaletteCommandAvailability.FromSnapshot(
+            new AgentClientSnapshot(AgentClientSnapshot.ConnectionOnline, terminalState, 5L));
+        True(terminal.CanSend, "terminal " + terminalState + " must restore send.");
+        True(!terminal.CanCancelTurn, "terminal " + terminalState + " must not allow cancel.");
+    }
+
+    var nullSnapshot = PaletteCommandAvailability.FromSnapshot(null);
+    True(
+        nullSnapshot.CanSend && !nullSnapshot.CanCancelTurn && nullSnapshot.CanStartAgent,
+        "null snapshot must behave exactly like stable offline.");
+    return Task.CompletedTask;
+}
+
+static Task PaletteDraftSurvivesInFlightTyping()
+{
+    True(
+        PaletteDraftGuard.ShouldClearAfterSend("介绍一下这张图", "介绍一下这张图"),
+        "untouched submitted text should clear after acceptance.");
+    True(
+        !PaletteDraftGuard.ShouldClearAfterSend("介绍一下这张图", "介绍一下这张图，顺便统计图层"),
+        "continued typing during the request must survive the terminal state.");
+    True(
+        !PaletteDraftGuard.ShouldClearAfterSend("介绍一下这张图", string.Empty),
+        "manually cleared input must not be resurrected.");
+    True(
+        !PaletteDraftGuard.ShouldClearAfterSend(string.Empty, "新草稿"),
+        "an empty submission record must never clear user input.");
+    True(
+        !PaletteDraftGuard.ShouldClearAfterSend(null, null),
+        "null records must fail safe and keep the draft.");
+    return Task.CompletedTask;
+}
+
+static Task PaletteClipboardFailureIsBounded()
+{
+    var failures = new Exception[]
+    {
+        new System.Runtime.InteropServices.COMException("CLIPBRD_E_CANT_OPEN synthetic"),
+        new InvalidOperationException("clipboard busy on C:\\secret\\path"),
+        new System.Threading.ThreadStateException("STA required by user alice"),
+        new UnauthorizedAccessException("denied"),
+        new Exception("unexpected failure with token sk-synthetic"),
+    };
+
+    foreach (var failure in failures)
+    {
+        var feedback = PaletteClipboardFeedback.FromException(failure);
+        True(
+            string.Equals(feedback, PaletteClipboardFeedback.Unavailable, StringComparison.Ordinal),
+            "every clipboard failure must map to the fixed retry hint.");
+        True(
+            feedback.IndexOf("secret", StringComparison.OrdinalIgnoreCase) < 0
+                && feedback.IndexOf("alice", StringComparison.OrdinalIgnoreCase) < 0
+                && feedback.IndexOf("sk-", StringComparison.Ordinal) < 0
+                && feedback.IndexOf("C:\\", StringComparison.Ordinal) < 0,
+            "feedback must not leak exception content.");
+    }
+
+    return Task.CompletedTask;
+}
+
+static Task PaletteIndexCancelRetryState()
+{
+    var scanning = PaletteDrawingIndexView.FromDescriptor(new DrawingIndexDescriptor
+    {
+        IndexId = "index-retry",
+        Status = DrawingIndexStatuses.Scanning,
+        EntityCount = 100,
+        IndexedEntityCount = 40,
+        ProgressPercent = 40,
+    });
+    True(scanning.CanCancel && !scanning.CanStart, "scanning must allow cancel only.");
+
+    // A failed cancel leaves the real descriptor still scanning: the view must stay cancellable
+    // so the user can retry instead of watching a permanently disabled button.
+    var afterFailedCancel = PaletteDrawingIndexView.FromDescriptor(new DrawingIndexDescriptor
+    {
+        IndexId = "index-retry",
+        Status = DrawingIndexStatuses.Scanning,
+        EntityCount = 100,
+        IndexedEntityCount = 41,
+        ProgressPercent = 41,
+    });
+    True(afterFailedCancel.CanCancel, "failed cancel must remain retryable while scanning.");
+
+    var cancelled = PaletteDrawingIndexView.FromDescriptor(new DrawingIndexDescriptor
+    {
+        IndexId = "index-retry",
+        Status = DrawingIndexStatuses.Cancelled,
+        EntityCount = 100,
+        IndexedEntityCount = 41,
+        ProgressPercent = 41,
+    });
+    True(cancelled.CanStart && !cancelled.CanCancel, "cancelled must allow restart only.");
+    return Task.CompletedTask;
+}
+
+static Task PaletteEmptyIndexIsEstablished()
+{
+    var emptyReady = PaletteDrawingIndexView.FromDescriptor(new DrawingIndexDescriptor
+    {
+        IndexId = "index-empty",
+        Status = DrawingIndexStatuses.Ready,
+        Scope = DrawingIndexScopes.ModelSpace,
+        EntityCount = 0,
+        IndexedEntityCount = 0,
+        ProgressPercent = 100,
+        Complete = true,
+    });
+    True(emptyReady.Established, "0/0 ready index must count as established.");
+    True(emptyReady.HasIndex, "0/0 ready index must keep its real session identity.");
+    True(emptyReady.CanStart && !emptyReady.CanCancel, "empty ready index must allow rescan.");
+    True(emptyReady.Complete, "empty ready index must keep the real completeness flag.");
+    var stats = emptyReady.BuildStatsText();
+    True(
+        stats.IndexOf("已建立：0 / 0", StringComparison.Ordinal) >= 0,
+        "empty index stats must show established 0 / 0: " + stats);
+    True(
+        stats.IndexOf("100%", StringComparison.Ordinal) >= 0
+            && stats.IndexOf("完整", StringComparison.Ordinal) >= 0,
+        "empty index stats must carry real progress and completeness: " + stats);
+
+    var missing = PaletteDrawingIndexView.FromDescriptor(null);
+    True(!missing.Established && !missing.HasIndex, "null descriptor must stay unestablished.");
+    True(
+        string.Equals(missing.StatusLabel, "未建立", StringComparison.Ordinal),
+        "null descriptor must display not-built.");
+    True(
+        missing.BuildStatsText().IndexOf("已建立", StringComparison.Ordinal) < 0,
+        "null descriptor must not print established stats.");
+
+    var scanningEmpty = PaletteDrawingIndexView.FromDescriptor(new DrawingIndexDescriptor
+    {
+        IndexId = "index-pending",
+        Status = DrawingIndexStatuses.Scanning,
+        EntityCount = 0,
+        IndexedEntityCount = 0,
+    });
+    True(!scanningEmpty.Established, "an in-flight zero-count scan is not yet established.");
+    return Task.CompletedTask;
+}
+
+static Task PaletteModelGateClosedWithoutCapability()
+{
+    var view = PaletteModelCapabilityView.Unavailable;
+    True(!view.Enabled, "model capability view must be disabled without backend capability.");
+    True(
+        string.Equals(view.ModelLabel, "使用 Codex 默认值", StringComparison.Ordinal)
+            && string.Equals(view.ReasoningLabel, "使用 Codex 默认值", StringComparison.Ordinal),
+        "disabled selectors must honestly show Codex defaults.");
+
+    var closed = PaletteModelSelectionGate.Closed();
+    True(!closed.CapabilityAvailable, "closed gate reports no capability.");
+    string error;
+    True(
+        !closed.TryAcceptModel("gpt-5-codex", out error) && error.Length > 0,
+        "arbitrary model strings must be rejected when the gate is closed.");
+    True(
+        !closed.TryAcceptReasoningLevel("high", out error) && error.Length > 0,
+        "arbitrary reasoning levels must be rejected when the gate is closed.");
+
+    True(
+        !PaletteModelSelectionGate.FromAllowlists(null, new[] { "low" }).CapabilityAvailable,
+        "null allowlists must close the gate.");
+    True(
+        !PaletteModelSelectionGate.FromAllowlists(new string[0], new[] { "low" }).CapabilityAvailable,
+        "empty allowlists must close the gate.");
+
+    var open = PaletteModelSelectionGate.FromAllowlists(
+        new[] { "codex-mini" },
+        new[] { "low", "medium" });
+    True(open.CapabilityAvailable, "populated allowlists open the gate.");
+    True(open.TryAcceptModel("codex-mini", out error), "allowlisted model must pass.");
+    True(!open.TryAcceptModel("gpt-5-codex", out error), "non-allowlisted model must be rejected.");
+    True(open.TryAcceptReasoningLevel("low", out error), "allowlisted reasoning must pass.");
+    True(!open.TryAcceptReasoningLevel("extreme", out error), "non-allowlisted reasoning must be rejected.");
+    return Task.CompletedTask;
+}
+
+static Task PaletteDeltaCoalescerLimitsFlushes()
+{
+    long now = 1000L;
+    var coalescer = new PaletteDeltaCoalescer(() => now, PaletteDeltaCoalescer.DefaultWindowMilliseconds);
+
+    for (var index = 0; index < 100; index++)
+    {
+        coalescer.Append("d" + index + ",");
+    }
+
+    True(coalescer.HasPending, "appended deltas must pend.");
+    True(coalescer.TryFlush() == null, "deltas inside the window must not flush per character.");
+
+    now += 39L;
+    True(coalescer.TryFlush() == null, "one ms before the window must still buffer.");
+
+    now += 1L;
+    var flushed = coalescer.TryFlush();
+    True(flushed != null, "reaching the window must flush once.");
+    True(
+        flushed.IndexOf("d0,", StringComparison.Ordinal) >= 0
+            && flushed.IndexOf("d99,", StringComparison.Ordinal) >= 0,
+        "the single flush must carry every merged delta in order.");
+    True(!coalescer.HasPending, "flush must drain the buffer.");
+    True(coalescer.TryFlush() == null, "an empty buffer must not emit.");
+
+    coalescer.Append("x");
+    now += PaletteDeltaCoalescer.DefaultWindowMilliseconds;
+    var forced = coalescer.Flush();
+    True(string.Equals(forced, "x", StringComparison.Ordinal), "final repaint must flush pending text.");
+    return Task.CompletedTask;
+}
+
+static Task PaletteStoreRejectsLateDeltas()
+{
+    var store = new PaletteConversationStore();
+    store.AppendUserMessage("统计当前图层数量");
+    store.BeginAssistantStream();
+    store.AppendAssistantDelta("当前图纸共有 ");
+    store.AppendAssistantDelta("8 个图层。");
+    store.FinalizeAssistantStream();
+    store.AppendAssistantDelta("（迟到增量）");
+    Equal(1, store.LateDeltasIgnored, "late delta after terminal must be counted and ignored.");
+
+    var messages = store.Snapshot();
+    Equal(2, messages.Count, "store must hold user and assistant messages.");
+    True(
+        string.Equals(messages[1].Text, "当前图纸共有 8 个图层。", StringComparison.Ordinal),
+        "late delta must not pollute the finalized assistant text: " + messages[1].Text);
+    True(!messages[1].IsStreaming, "finalized assistant message must not keep streaming.");
+
+    True(store.EnsureEpoch(1L), "epoch change must be detected.");
+    Equal(0, store.Count, "epoch change must clear the old conversation.");
+    Equal(1, (int)store.Epoch, "epoch must follow the real conversation boundary.");
+    True(!store.EnsureEpoch(1L), "unchanged epoch must not reset the store.");
+
+    store.BeginAssistantStream();
+    store.Reset(2L);
+    store.AppendAssistantDelta("stale");
+    Equal(2, store.LateDeltasIgnored, "deltas after reset must be rejected as late.");
+    return Task.CompletedTask;
+}
+
+static Task PaletteStoreBoundedAndOrdered()
+{
+    var store = new PaletteConversationStore();
+    for (var index = 0; index < PaletteConversationStore.MaxMessages + 100; index++)
+    {
+        store.AppendUserMessage("m" + index);
+    }
+
+    True(
+        store.Count <= PaletteConversationStore.MaxMessages,
+        "store must stay bounded for long sessions: " + store.Count);
+    var snapshot = store.Snapshot();
+    for (var index = 1; index < snapshot.Count; index++)
+    {
+        True(
+            snapshot[index].Sequence > snapshot[index - 1].Sequence,
+            "message order must stay monotonic after trimming.");
+    }
+
+    store.BeginAssistantStream();
+    for (var index = 0; index < 100; index++)
+    {
+        // Status entries do not finalize the stream, so the in-flight assistant message
+        // must survive bounded trimming while older finalized messages drop out.
+        store.AddStatus("overflow" + index);
+    }
+
+    var trimmed = store.Snapshot();
+    var streamingSurvivors = 0;
+    foreach (var message in trimmed)
+    {
+        if (message.IsStreaming)
+        {
+            streamingSurvivors++;
+        }
+    }
+
+    Equal(1, streamingSurvivors, "the streaming item must survive trimming.");
+    return Task.CompletedTask;
+}
+
+static Task PaletteLayoutPolicyFitsNarrowWidth()
+{
+    True(
+        PaletteLayoutPolicy.MinWorkableWidthDip <= 300.0,
+        "300 DIP must remain a workable width.");
+    True(
+        PaletteLayoutPolicy.DefaultWidthDip >= 520.0,
+        "520 DIP must stay the comfortable default width.");
+    True(
+        PaletteLayoutPolicy.MinWorkableWidthDip < PaletteLayoutPolicy.DefaultWidthDip,
+        "minimum must stay below default.");
+    True(
+        PaletteLayoutPolicy.ActionButtonMinHeight >= 28.0,
+        "action buttons must keep an operable minimum height.");
+    True(
+        PaletteLayoutPolicy.InputMinHeight >= 48.0,
+        "the multiline input must keep a stable minimum height.");
+    True(
+        PaletteLayoutPolicy.CornerRadiusDip <= 6.0,
+        "corner radius must stay inside the visual constraint.");
+    True(
+        PaletteLayoutPolicy.MaxStatusLineCharacters >= 80,
+        "status elision must leave readable Chinese text.");
     return Task.CompletedTask;
 }
 
