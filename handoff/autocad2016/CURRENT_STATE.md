@@ -247,12 +247,21 @@ NETLOAD 证据的能力一律视为未支持。
   bootstrap-serve 规格以真实 PID 验证 `StopAsync` 和拥有 Job 的启动器不调用停止逻辑直接
   退出后，父/后代均消失，net45/net8 各 `28/28`；这不替代真实 Codex 或 AutoCAD 异常退出
   矩阵，也不包含资源限制。
-- 上述三个 M4 切口已从 `codex/m3-integration@dcc7237` 受控吸收到
-  `codex/m4-integration@25c373d`，对应提交为 `c821e48`、`67345b2`、`87d3624` 和
-  `25c373d`。PowerShell 7 与 Windows PowerShell 5.1 的完整 Phase 2 均为 `331/331`，
-  AppServer 为 `15/15`，AgentLauncher net45/net8 各为 `28/28`，Release 为
-  `0 warning / 0 error`；R20.1 双 Shell API Probe 仍为
-  `29 passed / 8 expected failed`，Host A/B 编译位级一致。
+- M4.4/M4.5 已在当前集成分支提交为 `0763022`：产品公共配置、导出类型和公开结果不再
+  暴露实验身份选择；RestrictedToken 只保留为 internal-only 可移植能力探针，且任何结果
+  都禁止回退 CurrentUser。本机 net45/net8 原语均为 `available`，受限 FakeAgentHost
+  均在认证前以 `child_exited` 退出；这不是生产受限身份成功。详情见
+  `M4_4_M4_5_RESTRICTED_IDENTITY_PROBE_20260724.md`。
+- 当前 `codex/m4-integration@0763022` 的专项 AgentLauncher net45/net8 各为 `41/41`；
+  PowerShell 7 与 Windows PowerShell 5.1 的完整 Phase 2 均为 `358/358`，Bridge 为
+  `49/49`，Release 为 `0 warning / 0 error`。R20.1 双 Shell API Probe 为
+  `29 passed / 8 expected failed`、Autodesk DLL 复制数 `0`。
+- M4.4/M4.5 脱敏 evidence 为
+  `evidence/m4-restricted-identity-probe-verification-20260724.json`。专项原始
+  verification SHA-256 为
+  `9F2828286E1259BC6B3FBB32A518638BABA40769D9353E922FCA9CF448A2BEA3`；完整双 Shell
+  verification SHA-256 为
+  `1DC258ABF33ECF9575E278352BEE103700E75EA3699ABC8FAF415A14706378D0`。
 - 从该精确 M4 集成提交重跑 M3 候选脚本仅作为只读回归检查：Host `0.4.2.0` SHA-256
   `467BC9711F6BD9598D7E788CB211A39D8DEE47428748CB0BDB3AF81F6322428D` 保持不变，
   AgentHost SHA-256 为
@@ -260,8 +269,9 @@ NETLOAD 证据的能力一律视为未支持。
   `6CDE171520FDDA6E7FAE68E00038A90C8091E1D1EBAE0C7B63FAA199161E2CED`。该临时包不是新的
   正式 M3 候选，也不是 M4.16 安全候选；未启动 AutoCAD、未取得 NETLOAD 或真实 Codex
   进程树证据。脱敏边界见 `evidence/m4-integration-checkpoint-20260724.json`。
-- 当前 M4.1 配置、M4.2 版本/健康预检和 M4.3 环境/session-home 基础均已进入代码；M4.2/M4.3
-  仍缺正式候选实机和生产隔离登录，不能标记为最终完成。M4.6 只有 Job Object 自动化回收基础。
+- 当前 M4.1 配置、M4.2 版本/健康预检和 M4.3 环境/session-home 基础均已进入代码；
+  M4.4/M4.5 已完成代码、自动化和当前分支受控提交。M4.2/M4.3 仍缺正式候选实机和生产
+  隔离登录，M4.6 只有 Job Object 自动化回收基础，M4.7 生产身份隔离仍未完成。
   凭据 Broker、资源/磁盘配额、ACL/lease 强化、JSONL 哈希链审计、统一脱敏和故障/企业实机
   矩阵仍未完成，因此 M5 CAD 写入继续禁用。
 - 冻结构建哈希：AgentHost EXE `002BBA9D...49706`，AgentHost DLL

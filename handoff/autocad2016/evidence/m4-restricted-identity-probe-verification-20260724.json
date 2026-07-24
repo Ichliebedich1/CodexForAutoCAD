@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "scope": "m4-restricted-identity-probe-controlled-integration",
+  "recordedAtUtc": "2026-07-24T06:49:42.3134179Z",
+  "status": "automated-gates-passed-production-identity-not-proven",
+  "branch": "codex/m4-integration",
+  "sourceCommit": "0763022f34bdd7ac09e4411f8d9f4ddcd97c0c33",
+  "goalSha256": "164333019801590C57C21A74AE40F7E5AC8A677B1E1D60FE6D4D5E0C884B8DB5",
+  "implemented": {
+    "publicExperimentalIdentitySelectorRemoved": true,
+    "publicExperimentalIdentityTelemetryRemoved": true,
+    "restrictedTokenProbeInternalOnly": true,
+    "restrictedTokenProbePortableOutcomes": true,
+    "currentUserFallbackAllowed": false,
+    "structuredBootstrapFailureMapping": true,
+    "bootstrapDiagnosticsSanitized": true
+  },
+  "restrictedTokenProbe": {
+    "net45Primitives": "available",
+    "net8Primitives": "available",
+    "net45Bootstrap": "child_exited",
+    "net8Bootstrap": "child_exited",
+    "authenticatedRestrictedBootstrapVerified": false,
+    "interpretation": "Windows restricted-token and private-desktop primitives were available. The restricted FakeAgentHost exited before authenticated bootstrap. No CurrentUser fallback occurred."
+  },
+  "agentBootstrapGate": {
+    "net45Specs": "41/41",
+    "net8Specs": "41/41",
+    "bitForBitRebuild": true,
+    "releaseWarnings": 0,
+    "releaseErrors": 0,
+    "noResidualAgentProcesses": true,
+    "artifactPath": "artifacts/autocad2016-agent-bootstrap-dd40e74ecd264454976ed2d49b62c0de/verification.json",
+    "artifactSha256": "9F2828286E1259BC6B3FBB32A518638BABA40769D9353E922FCA9CF448A2BEA3"
+  },
+  "fullRegressionGate": {
+    "bridgeClientNet45Specs": "30/30",
+    "bridgeClientNet8Specs": "30/30",
+    "bridgeSpecs": "49/49",
+    "phase2PowerShell7": "358/358",
+    "phase2WindowsPowerShell51": "358/358",
+    "releaseWarnings": 0,
+    "releaseErrors": 0,
+    "sourceManifestSha256": "12649611FA8ED6F4F366CF60C06EB73A2E2958CF99000C49B976D91808DA28C5",
+    "artifactPath": "artifacts/autocad2016-bridge-client-stage-53ccea8858e74eda9f6d6314aad331e2/verification.json",
+    "artifactSha256": "1DC258ABF33ECF9575E278352BEE103700E75EA3699ABC8FAF415A14706378D0"
+  },
+  "r20_1ApiGate": {
+    "powerShell7AndWindowsPowerShell51Equivalent": true,
+    "runtimeChecksPassed": 29,
+    "runtimeChecksExpectedFailed": 8,
+    "releaseWarnings": 0,
+    "releaseErrors": 0,
+    "autodeskDllsInOutput": 0,
+    "artifactPath": "artifacts/v2api-m4-gate/v2-api-surface-probe-m3-cross-shell-20260723.json",
+    "artifactSha256": "8AE4E690EEDB25AF3AA3989B5D331110850396067C6F830BE1A7D5F300C25E4F"
+  },
+  "boundaries": {
+    "autoCadStartedOrControlled": false,
+    "netLoadVerified": false,
+    "autoCadLiveEvidence": false,
+    "cadWriteEnabled": false,
+    "productionRestrictedIdentityEnabled": false,
+    "productionSandboxVerified": false,
+    "m4_7Completed": false,
+    "m4_16SecurityCandidate": false,
+    "containsSecretsRawPathsOrEnvironment": false
+  },
+  "notProven": [
+    "RestrictedToken or AppContainer authenticated production bootstrap",
+    "runtime, workspace, pipe, window-station, and desktop minimum ACLs",
+    "real Codex under the restricted production identity",
+    "AutoCAD 2016 start, stop, crash, and nested enterprise Job matrix",
+    "credential broker and isolated Codex login",
+    "M4.16 security candidate"
+  ]
+}

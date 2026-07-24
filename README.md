@@ -48,11 +48,14 @@ M4 的本机 Codex 配置、诊断脱敏和 Job Object 进程树回收已进入�
   R20.1/net45/x64 Host A/B 输出逐字节一致，Host SHA-256 为
   `467BC9711F6BD9598D7E788CB211A39D8DEE47428748CB0BDB3AF81F6322428D`，Autodesk DLL
   复制数为 `0`。这些是自动化候选证据，不是 AutoCAD 实机证据。
-- M4 受控集成分支 `codex/m4-integration@25c373d` 已接入有界无内容 stderr 诊断、固定本地
-  `codex.exe` 配置/健康检查和 `KILL_ON_JOB_CLOSE` 进程树边界。双 Shell Phase 2 均为
-  `331/331`，AppServer `15/15`，AgentLauncher net45/net8 各 `28/28`，Release
-  `0 warning / 0 error`。这不是 M4.16 安全候选；版本硬门槛、每会话 `CODEX_HOME`、
-  环境/凭据隔离、资源和磁盘配额、ACL、审计链及企业/真实 Codex 实机矩阵仍未完成。
+- M4 受控集成分支 `codex/m4-integration@0763022` 已接入有界无内容 stderr 诊断、固定本地
+  `codex.exe` 版本/健康预检、可选每会话 `CODEX_HOME`、显式环境白名单、
+  `KILL_ON_JOB_CLOSE` 进程树边界和 internal-only RestrictedToken 能力探针。
+  M4.4/M4.5 已收回公共实验身份入口且禁止 CurrentUser 回退；本机探针结果
+  `available/child_exited` 不是生产身份成功。专项 AgentLauncher net45/net8 各
+  `41/41`，双 Shell Phase 2 均为 `358/358`，Bridge `49/49`，Release
+  `0 warning / 0 error`。这不是 M4.16 安全候选；生产受限身份、凭据、资源和磁盘配额、
+  ACL、审计链及企业/真实 Codex 实机矩阵仍未完成。
 - 显式 CAD 上下文清除和文档激活清除旧缓存通过；CAD 写入和插件保存仍禁用。
 - P0 停止生命周期已有独立实机证据：重复 STOP、DBMOD 不变和 AgentHost 残留为零。
 - M1 已实现 Bridge 断线 fail-closed、结构化脱敏错误、request_id/唯一终态、幂等取消、

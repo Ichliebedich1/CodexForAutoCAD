@@ -68,13 +68,19 @@ M3 `0.4.2.0` 已形成 source-bound 自动化冻结候选：
 
 M4 当前只形成自动化集成检查点，不是安全候选：
 
-- `codex/m4-integration@25c373d` 已接入 Codex stderr 无内容摘要、本地固定
-  `codex.exe` 配置/健康检查和 `KILL_ON_JOB_CLOSE` 进程树边界。
-- 双 Shell Phase 2 均为 `331/331`，AppServer `15/15`，AgentLauncher net45/net8 各
-  `28/28`，Release `0 warning / 0 error`；M3/R20.1 只读回归保持通过。
+- `codex/m4-integration@0763022` 已接入 Codex stderr 无内容摘要、本地固定
+  `codex.exe` 配置/健康检查、可选 session `CODEX_HOME`、显式环境白名单、
+  `KILL_ON_JOB_CLOSE` 进程树边界和 internal-only RestrictedToken 能力探针。
+- M4.4/M4.5 已收回公共实验身份入口并禁止 CurrentUser 回退。本机探针只得到原语
+  `available`、认证前 `child_exited`，不能解释为生产受限身份成功。
+- AgentLauncher net45/net8 各 `41/41`；双 Shell Phase 2 均为 `358/358`，Bridge
+  `49/49`，Release `0 warning / 0 error`；R20.1 API Probe 为
+  `29 passed / 8 expected failed`、Autodesk DLL 复制数 `0`。
 - 版本硬门槛和健康预检已进入正式调用链；`6d99bb9` 已完成显式环境白名单、可选每会话
   `CODEX_HOME`、空 MCP/插件及租约基础，但生产默认未启用。凭据 Broker、CPU/内存/进程/时间
   和磁盘配额、ACL/lease 强化、JSONL 哈希链审计、统一脱敏与企业/真实 Codex 故障矩阵仍未完成。
+- M4.4/M4.5 证据和边界见
+  `M4_4_M4_5_RESTRICTED_IDENTITY_PROBE_20260724.md`。
 - M4.16 完成前 CAD 写入继续禁用，M5 不得进入产品调用链。
 
 脱敏实机范围证据：

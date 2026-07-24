@@ -281,17 +281,25 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 完成定义：AutoCAD 或 AgentHost 异常退出后进程树可确定清理；凭据和用户配置不进入日志或
 普通工作目录。此阶段是启用 CAD 写入前置条件。
 
-当前受控集成检查点为 `codex/m4-integration@25c373d`：
+当前受控集成检查点为 `codex/m4-integration@0763022`：
 
 - M4.1 部分完成：本机 Codex 绝对路径、工作目录、启动/关闭超时已进入真实 AgentHost
   调用链；允许版本、请求超时、日志和资源策略尚未形成完整配置层。
-- M4.2 部分完成：自动发现和 `app-server initialize` 健康检查已通过；受支持版本范围和
-  启动前版本硬门槛未完成。
+- M4.2 的代码和自动化基础完成：自动发现、固定可执行文件身份租约、版本窗口
+  `>=0.144.4 <0.145.0`、启动前版本预检和 `app-server initialize` 健康检查已进入真实
+  调用链；正式 M4 候选的 AutoCAD 启停/退出实机仍缺，因此不扩大成 M4.16 完成。
+- M4.3 的可选 session-home、显式环境白名单、空 MCP/插件、租约和安全清理基础已完成；
+  生产默认因空 home 未登录而保持关闭，等待 M4.8 ACL/lease 与 M4.11 凭据 Broker。
+- M4.4/M4.5 已在当前分支受控提交为 `0763022`：公共产品面不暴露实验身份，internal-only
+  RestrictedToken 探针跨机器接受结构化结果且绝不回退 CurrentUser。本机探针结果为
+  `available/child_exited`，不是认证成功或生产沙箱证据。
 - M4.6 自动化基础完成：`KILL_ON_JOB_CLOSE` 已覆盖 AgentHost 及普通后代，Stop 和拥有者
   异常退出规格在 net45/net8 各为 `28/28`；真实 Codex、AutoCAD 退出和企业嵌套 Job
   矩阵仍缺，因此该子目标不能标为完成。
-- 双 Shell Phase 2 均为 `331/331`、AppServer `15/15`、Release `0 warning / 0 error`；
-  这只证明当前三个切口没有破坏 M3/R20.1，只读回归包不是 M4.16 安全候选。
+- 当前专项 AgentLauncher net45/net8 各为 `41/41`，双 Shell Phase 2 均为 `358/358`、
+  Bridge `49/49`、Release `0 warning / 0 error`；R20.1 双 Shell Probe 仍为
+  `29 passed / 8 expected failed`。这只证明当前切口没有破坏 M3/R20.1，只读回归包不是
+  M4.16 安全候选。
 
 - [x] M4 第一诊断边界：Codex 子进程 stderr 持续排空且只传递有界 `bytes`/`truncated`
   摘要，进程退出事件等待该摘要形成但不阻塞进程事件线程；AgentHost 不再向控制台公开
@@ -300,8 +308,9 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 - [x] M4 本机 Codex 启动配置：`--codex`、`CODEX_EXECUTABLE`、npm 和绝对 PATH 发现会收敛为
   固定本地磁盘的绝对 `codex.exe`；显式无效配置不回退，工作目录和启动/关闭超时同样受检。
   doctor 只记录来源标签。说明见 `M4_LOCAL_CODEX_CONFIGURATION_20260723.md`。
-- [ ] 冻结官方支持的 Codex 版本范围和稳定非交互版本协议，并在启动前执行版本兼容预检；当前
-  app-server initialize doctor 仅是可用性/健康检查，不能替代版本兼容证明。
+- [x] 冻结当前产品支持的 Codex 版本范围 `>=0.144.4 <0.145.0`，版本预检与
+  `app-server initialize` 绑定同一可执行文件身份租约；正式候选实机仍属于 M4.16 门禁，
+  详见 `M4_2_CODEX_HEALTH_PREFLIGHT_20260724.md`。
 - [ ] 每会话独立 CODEX_HOME：`6d99bb9` 已完成可选配置、32 字节系统 session ID 租约、空 MCP/
   插件配置、稳定错误和安全清理基础；生产默认仍未启用。不得复制、链接、解析或记录全局 Codex
   profile，必须先完成 M4.8 ACL/lease 与 M4.11 凭据 Broker。见
@@ -316,7 +325,13 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   `StopAsync` 和拥有 Job 的启动器直接退出时均回收父/后代，net45/net8 各 `28/28`。真实
   Codex/AutoCAD 异常退出、僵尸进程和资源配额仍未验收，详见
   `M4_PROCESS_ISOLATION_BASELINE_20260723.md`。
-- [ ] 评估并实现受限令牌或 AppContainer。
+- [x] 收回未成熟 RestrictedToken 公共入口，并将能力探针限制为 internal-only；公共配置、
+  结果和 doctor 不暴露实验身份选择或原始 telemetry。
+- [x] RestrictedToken 探针已改为跨机器可移植结果模型；net45/net8 均禁止 CurrentUser
+  回退。本机为原语 `available`、认证前 `child_exited`，不能记作 M4.7 生产身份成功，详见
+  `M4_4_M4_5_RESTRICTED_IDENTITY_PROBE_20260724.md`。
+- [ ] 在 RestrictedToken 或预配置 AppContainer 下实现生产身份隔离；必须完成真实
+  AgentHost/Codex bootstrap、Pipe、STOP、最小 DACL 和越权拒绝矩阵。
 - [ ] 设置 CPU、内存、进程数、运行时间和工作目录配额。
 - [ ] 为工作目录增加真实磁盘硬配额；仅限制内存或统计目录大小不能代替 M4.10。
 - [ ] 工作目录使用最小 ACL 并按策略清理。
