@@ -17,6 +17,7 @@ public enum CodexLocalConfigurationFailure
     CodexExecutableNotFound,
     InvalidWorkingDirectory,
     InvalidTemporaryDirectory,
+    InvalidCodexHomeDirectory,
     InvalidChildEnvironment,
     InvalidStartupTimeout,
     InvalidShutdownTimeout,
@@ -52,6 +53,12 @@ public sealed record CodexLocalAppServerConfigurationRequest
     public string WorkingDirectory { get; init; } = string.Empty;
 
     public string TemporaryDirectory { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional, pre-created per-session Codex home. Production bootstrap leaves this unset until
+    /// an approved credential broker can provision the isolated home without copying user state.
+    /// </summary>
+    public string? CodexHomeDirectory { get; init; }
 
     public TimeSpan StartupTimeout { get; init; } = CodexLocalAppServerConfiguration.DefaultStartupTimeout;
 
@@ -156,11 +163,13 @@ public static class CodexLocalAppServerConfigurationResolver
 
         var workingDirectory = ValidateWorkingDirectory(request.WorkingDirectory);
         var temporaryDirectory = ValidateTemporaryDirectory(request.TemporaryDirectory);
+        var codexHomeDirectory = ValidateOptionalCodexHomeDirectory(request.CodexHomeDirectory);
         IReadOnlyDictionary<string, string?> childEnvironment;
         try
         {
             childEnvironment = CodexChildEnvironmentPolicy.CreateForCurrentProcess(
-                temporaryDirectory);
+                temporaryDirectory,
+                codexHomeDirectory);
         }
         catch (Exception exception) when (exception is ArgumentException
                                           or IOException
@@ -470,6 +479,48 @@ public static class CodexLocalAppServerConfigurationResolver
             throw Failure(
                 CodexLocalConfigurationFailure.InvalidTemporaryDirectory,
                 "Codex temporary directory must be an existing directory on a fixed local drive.");
+        }
+    }
+
+    private static string? ValidateOptionalCodexHomeDirectory(string? value)
+    {
+        var normalized = NormalizeOptionalPath(value);
+        if (normalized is null)
+        {
+            return null;
+        }
+
+        if (!LooksLikeAbsoluteLocalWindowsPath(normalized))
+        {
+            throw Failure(
+                CodexLocalConfigurationFailure.InvalidCodexHomeDirectory,
+                "Codex home must be an existing directory on a fixed local drive.");
+        }
+
+        try
+        {
+            var fullPath = Path.GetFullPath(normalized);
+            if (!LooksLikeAbsoluteLocalWindowsPath(fullPath)
+                || !Directory.Exists(fullPath)
+                || ContainsReparsePoint(fullPath)
+                || !IsFixedLocalDrive(fullPath))
+            {
+                throw Failure(
+                    CodexLocalConfigurationFailure.InvalidCodexHomeDirectory,
+                    "Codex home must be an existing directory on a fixed local drive.");
+            }
+
+            return fullPath;
+        }
+        catch (CodexLocalConfigurationException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (IsPathOrFileSystemException(exception))
+        {
+            throw Failure(
+                CodexLocalConfigurationFailure.InvalidCodexHomeDirectory,
+                "Codex home must be an existing directory on a fixed local drive.");
         }
     }
 

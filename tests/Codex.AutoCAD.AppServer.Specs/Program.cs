@@ -26,11 +26,13 @@ var specs = new (string Name, Func<Task> Run)[]
     ("非法环境键值启动前被拒绝", InvalidEnvironmentEntriesAreRejected),
     ("本地Codex配置只接受固定盘绝对exe", LocalCodexConfigurationAcceptsConfiguredExecutable),
     ("本地Codex配置使用兼容白名单", LocalCodexConfigurationUsesCompatibilityAllowlist),
+    ("隔离CodexHome覆盖父配置并进入子进程", IsolatedCodexHomeOverridesParentAndReachesChild),
     ("本地Codex配置错误不泄露路径", LocalCodexConfigurationFailsClosedWithoutPath),
     ("无效环境Codex路径不会回退", LocalCodexConfigurationDoesNotFallbackFromInvalidEnvironment),
     ("缺失本地Codex配置返回稳定错误", LocalCodexConfigurationReportsMissingExecutable),
     ("本地Codex可从绝对PATH发现", LocalCodexConfigurationDiscoversAbsolutePath),
     ("无效临时目录返回稳定错误", LocalCodexConfigurationRejectsInvalidTemporaryDirectory),
+    ("无效隔离CodexHome返回稳定错误", LocalCodexConfigurationRejectsInvalidCodexHomeDirectory),
     ("stderr限额无效时被拒绝", StandardErrorLimitIsValidated),
     ("Codex版本格式与兼容范围固定", CodexVersionFormatAndCompatibilityAreFrozen),
     ("Codex版本预检使用同一身份锁和隔离环境", CodexVersionPreflightUsesLockedIdentityAndIsolatedEnvironment),
@@ -375,6 +377,51 @@ static Task LocalCodexConfigurationUsesCompatibilityAllowlist()
     }
 }
 
+static async Task IsolatedCodexHomeOverridesParentAndReachesChild()
+{
+    var previousCodexHome = Environment.GetEnvironmentVariable("CODEX_HOME");
+    using var fixture = new LocalCodexConfigurationFixture();
+    var globalHome = Path.Combine(fixture.DirectoryPath, "global-home");
+    var sessionHome = Path.Combine(fixture.DirectoryPath, "session-home");
+    Directory.CreateDirectory(globalHome);
+    Directory.CreateDirectory(sessionHome);
+    try
+    {
+        Environment.SetEnvironmentVariable("CODEX_HOME", globalHome);
+        var configuration = CodexLocalAppServerConfigurationResolver.Resolve(
+            fixture.CreateRequest(
+                commandLineExecutablePath: fixture.ExecutablePath,
+                codexHomeDirectory: sessionHome));
+        var options = configuration.CreateClientOptions();
+
+        Equal(sessionHome, options.Environment["CODEX_HOME"]);
+        True(!options.InheritParentEnvironment, "Isolated Codex home still inherited the parent environment.");
+
+        const string expectedVariable = "CODEX_AUTOCAD_TEST_EXPECTED_HOME";
+        var environment = new Dictionary<string, string?>(
+            options.Environment,
+            StringComparer.OrdinalIgnoreCase)
+        {
+            [expectedVariable] = sessionHome,
+        };
+        var scriptPath = WriteEnvironmentProbe(
+            fixture.DirectoryPath,
+            "if /I \"%CODEX_HOME%\"==\"%" + expectedVariable
+                + "%\" (echo home=isolated) else (echo home=unexpected)");
+        var output = await RunProcessProbeAsync(options with
+        {
+            CodexExecutablePath = scriptPath,
+            Environment = environment,
+        });
+
+        ContainsLine(output, "home=isolated");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("CODEX_HOME", previousCodexHome);
+    }
+}
+
 static Task LocalCodexConfigurationFailsClosedWithoutPath()
 {
     using var fixture = new LocalCodexConfigurationFixture();
@@ -439,6 +486,22 @@ static Task LocalCodexConfigurationRejectsInvalidTemporaryDirectory()
     True(
         !exception.Message.Contains(fixture.DirectoryPath, StringComparison.OrdinalIgnoreCase),
         "Temporary-directory error exposed a local path.");
+    return Task.CompletedTask;
+}
+
+static Task LocalCodexConfigurationRejectsInvalidCodexHomeDirectory()
+{
+    using var fixture = new LocalCodexConfigurationFixture();
+    var exception = Capture<CodexLocalConfigurationException>(() =>
+        CodexLocalAppServerConfigurationResolver.Resolve(
+            fixture.CreateRequest(
+                commandLineExecutablePath: fixture.ExecutablePath,
+                codexHomeDirectory: "relative-codex-home")));
+
+    Equal(CodexLocalConfigurationFailure.InvalidCodexHomeDirectory, exception.Failure);
+    True(
+        !exception.Message.Contains(fixture.DirectoryPath, StringComparison.OrdinalIgnoreCase),
+        "Codex-home error exposed a local path.");
     return Task.CompletedTask;
 }
 
@@ -1097,7 +1160,8 @@ internal sealed class LocalCodexConfigurationFixture : IDisposable
         string? commandLineExecutablePath = null,
         string? environmentExecutablePath = null,
         string? pathValue = null,
-        string? temporaryDirectory = null)
+        string? temporaryDirectory = null,
+        string? codexHomeDirectory = null)
     {
         return new CodexLocalAppServerConfigurationRequest
         {
@@ -1107,6 +1171,7 @@ internal sealed class LocalCodexConfigurationFixture : IDisposable
             PathValue = pathValue,
             WorkingDirectory = DirectoryPath,
             TemporaryDirectory = temporaryDirectory ?? TempDirectory,
+            CodexHomeDirectory = codexHomeDirectory,
             StartupTimeout = TimeSpan.FromSeconds(9),
             ShutdownTimeout = TimeSpan.FromSeconds(4),
         };

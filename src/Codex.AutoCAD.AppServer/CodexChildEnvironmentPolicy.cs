@@ -23,7 +23,8 @@ internal static class CodexChildEnvironmentPolicy
     };
 
     internal static IReadOnlyDictionary<string, string?> CreateForCurrentProcess(
-        string temporaryDirectory)
+        string temporaryDirectory,
+        string? codexHomeDirectory = null)
     {
         var systemRoot = RequireDirectory(
             Environment.GetFolderPath(Environment.SpecialFolder.Windows),
@@ -78,6 +79,11 @@ internal static class CodexChildEnvironmentPolicy
             {
                 values[name] = value;
             }
+        }
+
+        if (!string.IsNullOrWhiteSpace(codexHomeDirectory))
+        {
+            values["CODEX_HOME"] = RequireDirectory(codexHomeDirectory, "CodexHome");
         }
 
         return new ReadOnlyDictionary<string, string?>(values);

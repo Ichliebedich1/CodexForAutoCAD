@@ -60,7 +60,13 @@ public static class AgentHostAuditErrorCodes
     public const string AuditUnavailable = "audit_unavailable";
     public const string CodexAppServerHandshakeFailed = "codex_appserver_handshake_failed";
     public const string CodexAppServerHandshakeTimedOut = "codex_appserver_handshake_timeout";
+    public const string CodexConfigurationInvalid = "codex_configuration_invalid";
     public const string CodexExecutableIdentityFailed = "codex_executable_identity_failed";
+    public const string CodexHomeConfigurationInvalid = "codex_home_configuration_invalid";
+    public const string CodexSessionHomeCleanupFailed = "codex_session_home_cleanup_failed";
+    public const string CodexSessionHomeInitializationFailed = "codex_session_home_initialization_failed";
+    public const string CodexSessionHomeInvalid = "codex_session_home_invalid";
+    public const string CodexSessionHomeInUse = "codex_session_home_in_use";
     public const string CodexVersionCancelled = "codex_version_cancelled";
     public const string CodexVersionInvalidOutput = "codex_version_invalid_output";
     public const string CodexVersionProcessFailed = "codex_version_process_failed";
@@ -86,6 +92,25 @@ public static class AgentHostAuditErrorCodes
                 Failure: AgentHostCodexHealthFailure.AppServerHandshakeTimedOut
             } => CodexAppServerHandshakeTimedOut,
             AgentHostCodexHealthException => CodexAppServerHandshakeFailed,
+            CodexSessionHomeException
+            {
+                Failure: CodexSessionHomeFailure.InvalidSessionId
+                    or CodexSessionHomeFailure.InvalidRoot
+            } => CodexSessionHomeInvalid,
+            CodexSessionHomeException
+            {
+                Failure: CodexSessionHomeFailure.AlreadyExists
+            } => CodexSessionHomeInUse,
+            CodexSessionHomeException
+            {
+                Failure: CodexSessionHomeFailure.CleanupFailed
+            } => CodexSessionHomeCleanupFailed,
+            CodexSessionHomeException => CodexSessionHomeInitializationFailed,
+            CodexLocalConfigurationException
+            {
+                Failure: CodexLocalConfigurationFailure.InvalidCodexHomeDirectory
+            } => CodexHomeConfigurationInvalid,
+            CodexLocalConfigurationException => CodexConfigurationInvalid,
             CodexVersionPreflightException
             {
                 Failure: CodexVersionPreflightFailure.UnsupportedVersion

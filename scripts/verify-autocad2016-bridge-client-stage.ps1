@@ -27,8 +27,8 @@ $phase2Verifier = Join-Path $repoRoot "scripts\verify-phase2.ps1"
 $nugetConfig = Join-Path $repoRoot "src\Codex.AutoCAD.Host.2016\NuGet.Config"
 $expectedSdk = "8.0.319"
 $expectedClientSpecs = 30
-$expectedBridgeSpecs = 46
-$expectedPhase2Specs = 353
+$expectedBridgeSpecs = 49
+$expectedPhase2Specs = 358
 
 function Get-Sha256 {
     param([Parameter(Mandatory = $true)][string] $Path)
@@ -93,6 +93,8 @@ function Get-SourceManifest {
     $paths = [System.Collections.Generic.List[string]]::new()
     foreach ($file in @(
         $solutionPath,
+        (Join-Path $repoRoot "global.json"),
+        (Join-Path $repoRoot "Directory.Build.props"),
         $scriptPath,
         $phase2Verifier,
         (Join-Path $repoRoot "scripts\verify-autocad2016-auth-compat.ps1"),
@@ -108,21 +110,29 @@ function Get-SourceManifest {
     }
 
     foreach ($directory in @(
-        (Split-Path -Parent $clientProject),
-        (Split-Path -Parent $clientSpecsProject),
-        (Split-Path -Parent $testServerProject)
+        (Join-Path $repoRoot "src"),
+        (Join-Path $repoRoot "tests"),
+        (Join-Path $repoRoot "scripts")
     )) {
         foreach ($file in @(Get-ChildItem -LiteralPath $directory -Recurse -File | Where-Object {
-            $_.FullName -notmatch '\\(?:bin|obj)\\' -and
-            $_.Extension -in @('.cs', '.csproj')
+            $_.FullName -notmatch '\\(?:bin|obj|artifacts)\\'
         })) {
             $paths.Add($file.FullName)
         }
     }
 
+    $uniquePaths = [System.Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::OrdinalIgnoreCase)
+    foreach ($path in $paths) {
+        [void]$uniquePaths.Add($path)
+    }
+
+    [string[]]$sortedPaths = @($uniquePaths)
+    [Array]::Sort($sortedPaths, [StringComparer]::Ordinal)
+
     $entries = [ordered]@{}
     $lines = [System.Collections.Generic.List[string]]::new()
-    foreach ($path in @($paths | Sort-Object -Unique)) {
+    foreach ($path in $sortedPaths) {
         $relative = Get-RelativePathText -Path $path
         $hash = Get-Sha256 -Path $path
         $entries[$relative] = $hash
@@ -341,6 +351,9 @@ function Invoke-Worker {
             "-c", "safe.directory=$safeRepoRoot", "-C", $repoRoot, "diff", "--cached", "--check"
         ) -Description "检查已暂存差异格式" | Out-Null
 
+        # Restore lock files before hashing the expanded source manifest. Restore/build may rewrite
+        # them mechanically even when package resolution is unchanged.
+        Restore-PackageLockSnapshots -Snapshots $packageLockSnapshots
         $sourceAfter = Get-SourceManifest
         if ($sourceBefore.Sha256 -cne $sourceAfter.Sha256) {
             throw "Bridge Client阶段验证期间受审源码发生变化。"
