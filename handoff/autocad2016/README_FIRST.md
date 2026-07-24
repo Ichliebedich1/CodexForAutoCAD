@@ -72,8 +72,9 @@ M4 当前只形成自动化集成检查点，不是安全候选：
   `codex.exe` 配置/健康检查和 `KILL_ON_JOB_CLOSE` 进程树边界。
 - 双 Shell Phase 2 均为 `331/331`，AppServer `15/15`，AgentLauncher net45/net8 各
   `28/28`，Release `0 warning / 0 error`；M3/R20.1 只读回归保持通过。
-- 版本硬门槛、每会话 `CODEX_HOME`、环境白名单、凭据 Broker、CPU/内存/进程/时间和磁盘
-  配额、ACL/lease、JSONL 哈希链审计、统一脱敏与企业/真实 Codex 故障矩阵仍未完成。
+- 版本硬门槛和健康预检已进入正式调用链；`6d99bb9` 已完成显式环境白名单、可选每会话
+  `CODEX_HOME`、空 MCP/插件及租约基础，但生产默认未启用。凭据 Broker、CPU/内存/进程/时间
+  和磁盘配额、ACL/lease 强化、JSONL 哈希链审计、统一脱敏与企业/真实 Codex 故障矩阵仍未完成。
 - M4.16 完成前 CAD 写入继续禁用，M5 不得进入产品调用链。
 
 脱敏实机范围证据：

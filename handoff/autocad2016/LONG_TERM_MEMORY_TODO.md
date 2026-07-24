@@ -302,11 +302,15 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   doctor 只记录来源标签。说明见 `M4_LOCAL_CODEX_CONFIGURATION_20260723.md`。
 - [ ] 冻结官方支持的 Codex 版本范围和稳定非交互版本协议，并在启动前执行版本兼容预检；当前
   app-server initialize doctor 仅是可用性/健康检查，不能替代版本兼容证明。
-- [ ] 每会话独立 CODEX_HOME；不得复制、链接或记录全局 Codex profile，需先采用经用户确认且
-  经审计的认证恢复方式。见 `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
-- [ ] 默认空 MCP、空插件配置和独立凭据边界；当前未知 Codex 配置布局不能作为假定的复制来源。
-- [ ] 子进程仅继承白名单环境变量；当前仅是父环境覆写，尚非白名单。实施门槛见
-  `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
+- [ ] 每会话独立 CODEX_HOME：`6d99bb9` 已完成可选配置、32 字节系统 session ID 租约、空 MCP/
+  插件配置、稳定错误和安全清理基础；生产默认仍未启用。不得复制、链接、解析或记录全局 Codex
+  profile，必须先完成 M4.8 ACL/lease 与 M4.11 凭据 Broker。见
+  `M4_3_CODEX_SESSION_HOME_BASELINE_20260724.md`。
+- [ ] 独立凭据边界：空 MCP/插件已进入隔离 home 基础，但真实隔离登录、恢复、过期和撤销尚未
+  验证；全局 profile 不能作为复制来源。
+- [x] 子进程显式环境白名单基础：真实 transport 使用 `InheritParentEnvironment=false`，只保留
+  必要 Windows/profile/temp/代理变量和受控 PATH；显式 session `CODEX_HOME` 会覆盖父值。完整
+  凭据、身份和企业代理策略仍分别由 M4.7/M4.11/M4.15 验收。
 - [x] AgentHost 启动链在恢复前创建 `KILL_ON_JOB_CLOSE` 的未命名 Windows Job Object 并分配
   已校验的 AgentHost；普通后代继承该边界。隔离 `bootstrap-serve` 规格已按 PID 验证
   `StopAsync` 和拥有 Job 的启动器直接退出时均回收父/后代，net45/net8 各 `28/28`。真实

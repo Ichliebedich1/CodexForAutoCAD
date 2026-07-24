@@ -2,6 +2,12 @@
 
 本文记录阶段 2 实际已经实现的安全边界，以及仍然属于后续阶段的发布阻断项。它用于避免把“进程内 CAD 预演”误称为完整操作系统沙箱，也避免在真实 AgentHost 尚未接通时宣称自然语言绘图已经端到端完成。
 
+> 2026-07-24 增量状态：当前 `codex/m4-integration@6d99bb9` 已加入 Codex 子进程显式环境
+> 白名单、可选 session `CODEX_HOME`、空 MCP/插件配置和 home 租约基础；生产默认仍未启用，
+> 凭据 Broker、ACL/TOCTOU、异常恢复与 AutoCAD 实机尚未完成。本文后部 2026-07-18 的计数和
+> “尚未实现”列表属于当时证据快照；当前 M4.3 权威边界见
+> `handoff/autocad2016/M4_3_CODEX_SESSION_HOME_BASELINE_20260724.md`。
+
 ## 已实现
 
 ### 本地 IPC

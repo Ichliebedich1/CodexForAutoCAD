@@ -2,6 +2,12 @@
 
 最后更新：2026-07-24（北京时间）
 
+> 2026-07-24 状态更新：`codex/m4-integration@6d99bb9` 已把显式子进程环境白名单和可选
+> `CodexHomeDirectory` 接入真实 `CodexProcessTransport`，并新增未启用生产默认的 session-home
+> 租约基础。本文以下“当前没有白名单/不设置 CODEX_HOME”的描述保留为实施前审计记录；当前
+> 权威边界见 `M4_3_CODEX_SESSION_HOME_BASELINE_20260724.md`。凭据隔离、生产激活、ACL/TOCTOU
+> 和异常恢复仍未完成。
+
 ## 结论
 
 截至本审计，Codex 子进程尚未处于环境白名单或每会话凭据隔离中。当前行为可完成已验证的

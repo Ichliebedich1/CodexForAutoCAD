@@ -232,12 +232,16 @@ NETLOAD 证据的能力一律视为未支持。
   退出事件会等待该无内容摘要形成而不阻塞进程事件线程；normal doctor 也不再回显工作目录
   或 `CODEX_HOME`。该分支尚未冻结候选，环境白名单、
   独立凭据、资源配额和完整审计仍未完成，不能据此宣称完整 OS 沙箱。
-- M4 第二启动配置边界已接入 AgentHost：`--codex`、`CODEX_EXECUTABLE`、已知 npm 安装布局和
-  绝对 PATH 候选会被归一化为固定本地磁盘的绝对 `codex.exe`；显式无效配置 fail-closed，且
-  doctor 仅显示来源标签、不显示路径。启动/关闭超时和工作目录同样进入该配置。版本兼容硬门槛、
-  每会话 `CODEX_HOME`、环境白名单、资源配额与审计仍未完成，详见
-  `M4_LOCAL_CODEX_CONFIGURATION_20260723.md` 与
-  `M4_ENVIRONMENT_CREDENTIAL_BOUNDARY_AUDIT_20260723.md`。
+- M4 第二启动配置和健康边界已接入 AgentHost：`--codex`、`CODEX_EXECUTABLE`、已知 npm 安装布局
+  和绝对 PATH 候选会归一化为固定本地磁盘的绝对 `codex.exe`；显式无效配置 fail-closed，doctor
+  只显示来源标签。产品兼容窗口固定为 `>=0.144.4 <0.145.0`，预检与 app-server initialize
+  绑定同一可执行文件身份租约。自动化已通过，正式 M4 候选的 AutoCAD 2016 启动/停止/退出实机
+  仍待验收，详见 `M4_2_CODEX_HEALTH_PREFLIGHT_20260724.md`。
+- M4.3 基础提交 `6d99bb9` 已让真实 Codex transport 使用显式环境白名单，并提供可选、严格验证的
+  session `CODEX_HOME` 与活动租约；home 固定为空 MCP、禁用插件，正常清理不跟随重解析点。
+  生产 bootstrap 尚未启用该 home，因为空 home 没有现有 ChatGPT 登录；M4.8 ACL/lease 和 M4.11
+  凭据 Broker 完成前不得复制或解析全局 profile。详见
+  `M4_3_CODEX_SESSION_HOME_BASELINE_20260724.md`。
 - M4 第三进程树边界已接入真实 AgentHost 启动链：校验后的 AgentHost 会在恢复前进入具有
   `KILL_ON_JOB_CLOSE` 的未命名 Windows Job Object；普通后代由该 Job 统一回收。隔离
   bootstrap-serve 规格以真实 PID 验证 `StopAsync` 和拥有 Job 的启动器不调用停止逻辑直接
@@ -256,10 +260,10 @@ NETLOAD 证据的能力一律视为未支持。
   `6CDE171520FDDA6E7FAE68E00038A90C8091E1D1EBAE0C7B63FAA199161E2CED`。该临时包不是新的
   正式 M3 候选，也不是 M4.16 安全候选；未启动 AutoCAD、未取得 NETLOAD 或真实 Codex
   进程树证据。脱敏边界见 `evidence/m4-integration-checkpoint-20260724.json`。
-- 当前 M4.1 只完成 Codex 路径、工作目录及启动/关闭超时的部分配置；M4.2 只完成发现和
-  app-server initialize 健康检查，版本兼容硬门槛未完成；M4.6 只完成 Job Object 自动化
-  回收基础。每会话 `CODEX_HOME`、环境白名单、凭据 Broker、资源/磁盘配额、ACL/lease、
-  JSONL 哈希链审计、统一脱敏和故障/企业实机矩阵仍未完成，因此 M5 CAD 写入继续禁用。
+- 当前 M4.1 配置、M4.2 版本/健康预检和 M4.3 环境/session-home 基础均已进入代码；M4.2/M4.3
+  仍缺正式候选实机和生产隔离登录，不能标记为最终完成。M4.6 只有 Job Object 自动化回收基础。
+  凭据 Broker、资源/磁盘配额、ACL/lease 强化、JSONL 哈希链审计、统一脱敏和故障/企业实机
+  矩阵仍未完成，因此 M5 CAD 写入继续禁用。
 - 冻结构建哈希：AgentHost EXE `002BBA9D...49706`，AgentHost DLL
   `852BD92C...86033`，net45 Launcher `597D99E8...F849`，net8 Launcher
   `84E0E2A7...1FE9`；完整值保存在阶段 evidence。
