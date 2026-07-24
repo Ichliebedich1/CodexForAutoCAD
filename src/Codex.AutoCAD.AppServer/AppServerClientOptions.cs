@@ -39,6 +39,8 @@ public sealed record AppServerClientOptions
 
     public TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
+    internal CodexExecutableLease? ExecutableLease { get; init; }
+
     internal void Validate()
     {
         if (string.IsNullOrWhiteSpace(CodexExecutablePath))
@@ -72,6 +74,8 @@ public sealed record AppServerClientOptions
         {
             throw new ArgumentNullException(nameof(Environment));
         }
+
+        ExecutableLease?.ValidateCurrentPath(CodexExecutablePath);
 
         foreach (var (name, value) in Environment)
         {

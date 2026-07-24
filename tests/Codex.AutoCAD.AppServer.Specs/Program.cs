@@ -1,7 +1,14 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using Codex.AutoCAD.AppServer;
+
+if (args is ["--version"])
+{
+    return await RunFakeCodexVersionProbeAsync();
+}
 
 var specs = new (string Name, Func<Task> Run)[]
 {
@@ -24,7 +31,17 @@ var specs = new (string Name, Func<Task> Run)[]
     ("缺失本地Codex配置返回稳定错误", LocalCodexConfigurationReportsMissingExecutable),
     ("本地Codex可从绝对PATH发现", LocalCodexConfigurationDiscoversAbsolutePath),
     ("无效临时目录返回稳定错误", LocalCodexConfigurationRejectsInvalidTemporaryDirectory),
-    ("stderr限额无效时被拒绝", StandardErrorLimitIsValidated)
+    ("stderr限额无效时被拒绝", StandardErrorLimitIsValidated),
+    ("Codex版本格式与兼容范围固定", CodexVersionFormatAndCompatibilityAreFrozen),
+    ("Codex版本预检使用同一身份锁和隔离环境", CodexVersionPreflightUsesLockedIdentityAndIsolatedEnvironment),
+    ("不支持Codex版本fail-closed", UnsupportedCodexVersionFailsClosed),
+    ("Codex版本错误输出不泄露stderr", CodexVersionProcessExitFailsClosed),
+    ("超限与非UTF8版本输出fail-closed", InvalidCodexVersionOutputFailsClosed),
+    ("Codex版本预检超时清理后代", CodexVersionTimeoutCleansDescendant),
+    ("Codex版本预检取消清理子进程", CodexVersionCancellationCleansProcess),
+    ("Codex版本终止失败有界返回", CodexVersionTerminationFailureIsBounded),
+    ("Codex身份租约阻止路径替换", CodexExecutableLeasePreventsReplacement),
+    ("AppServer停止超时与取消均清理进程", AppServerStopTimeoutAndCancellationCleanProcess)
 };
 
 var failed = 0;
@@ -295,6 +312,7 @@ static Task LocalCodexConfigurationAcceptsConfiguredExecutable()
     Equal(TimeSpan.FromSeconds(9), configuration.StartupTimeout);
     Equal(TimeSpan.FromSeconds(4), configuration.ShutdownTimeout);
     Equal(fixture.ExecutablePath, configuration.CreateClientOptions().CodexExecutablePath);
+    Equal(">=0.144.4 <0.145.0", configuration.VersionCompatibility.ToString());
     return Task.CompletedTask;
 }
 
@@ -434,6 +452,367 @@ static Task StandardErrorLimitIsValidated()
     return Task.CompletedTask;
 }
 
+static Task CodexVersionFormatAndCompatibilityAreFrozen()
+{
+    True(
+        CodexVersionPreflight.TryParseVersion("codex-cli 0.144.4\r\n", out var observed),
+        "The documented local Codex version format was not parsed.");
+    Equal(new CodexSemanticVersion(0, 144, 4), observed);
+    True(CodexVersionCompatibility.Default.IsSupported(observed), "Minimum version was rejected.");
+    True(
+        CodexVersionCompatibility.Default.IsSupported(new CodexSemanticVersion(0, 144, 99)),
+        "Compatible patch version was rejected.");
+    True(
+        !CodexVersionCompatibility.Default.IsSupported(new CodexSemanticVersion(0, 145, 0)),
+        "Unreviewed minor version was accepted.");
+    True(
+        !CodexVersionPreflight.TryParseVersion("codex-cli 0.144.4-preview", out _),
+        "Unreviewed prerelease was accepted.");
+    True(
+        !CodexVersionPreflight.TryParseVersion("codex-cli 0.144.4\nother", out _),
+        "Ambiguous multi-line output was accepted.");
+    return Task.CompletedTask;
+}
+
+static async Task CodexVersionPreflightUsesLockedIdentityAndIsolatedEnvironment()
+{
+    const string parentVariable = "CODEX_AUTOCAD_VERSION_PREFLIGHT_PARENT";
+    var previousValue = Environment.GetEnvironmentVariable(parentVariable);
+    using var fixture = new VersionPreflightFixture("isolated");
+    try
+    {
+        Environment.SetEnvironmentVariable(parentVariable, "must-not-propagate");
+        var configuration = fixture.Resolve();
+        using var launch = await CodexVersionPreflight.VerifyAsync(configuration);
+        var options = launch.CreateClientOptions();
+
+        Equal(new CodexSemanticVersion(0, 144, 4), launch.Version.Version);
+        Equal(">=0.144.4 <0.145.0", launch.Version.Compatibility.ToString());
+        Equal("--version", File.ReadAllText(fixture.ArgumentsPath, Encoding.UTF8));
+        True(!options.InheritParentEnvironment, "Version preflight inherited the parent environment.");
+        True(options.ExecutableLease is not null, "Verified launch omitted its executable identity lease.");
+        options.ExecutableLease!.ValidateCurrentPath(options.CodexExecutablePath);
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable(parentVariable, previousValue);
+    }
+}
+
+static async Task UnsupportedCodexVersionFailsClosed()
+{
+    using var fixture = new VersionPreflightFixture("unsupported");
+    var exception = await CaptureAsync<CodexVersionPreflightException>(() =>
+        CodexVersionPreflight.VerifyAsync(fixture.Resolve()));
+
+    Equal(CodexVersionPreflightFailure.UnsupportedVersion, exception.Failure);
+    True(
+        !exception.Message.Contains(fixture.DirectoryPath, StringComparison.OrdinalIgnoreCase),
+        "Version preflight error exposed a local path.");
+}
+
+static async Task CodexVersionProcessExitFailsClosed()
+{
+    using var fixture = new VersionPreflightFixture("error");
+    var exception = await CaptureAsync<CodexVersionPreflightException>(() =>
+        CodexVersionPreflight.VerifyAsync(fixture.Resolve()));
+
+    Equal(CodexVersionPreflightFailure.ProcessExitedWithError, exception.Failure);
+    True(
+        !exception.Message.Contains(VersionPreflightFixture.PrivateStderrMarker, StringComparison.Ordinal),
+        "Version preflight error exposed stderr text.");
+}
+
+static async Task InvalidCodexVersionOutputFailsClosed()
+{
+    using (var oversized = new VersionPreflightFixture("oversized"))
+    {
+        var exception = await CaptureAsync<CodexVersionPreflightException>(() =>
+            CodexVersionPreflight.VerifyAsync(oversized.Resolve()));
+        Equal(CodexVersionPreflightFailure.VersionOutputTooLarge, exception.Failure);
+    }
+
+    using (var nonUtf8 = new VersionPreflightFixture("nonutf8"))
+    {
+        var exception = await CaptureAsync<CodexVersionPreflightException>(() =>
+            CodexVersionPreflight.VerifyAsync(nonUtf8.Resolve()));
+        Equal(CodexVersionPreflightFailure.InvalidVersionOutput, exception.Failure);
+    }
+}
+
+static async Task CodexVersionTimeoutCleansDescendant()
+{
+    using var fixture = new VersionPreflightFixture(
+        "descendant",
+        startupTimeout: TimeSpan.FromMilliseconds(250));
+    var exception = await CaptureAsync<CodexVersionPreflightException>(() =>
+        CodexVersionPreflight.VerifyAsync(fixture.Resolve()));
+
+    Equal(CodexVersionPreflightFailure.TimedOut, exception.Failure);
+    var descendantId = await fixture.ReadDescendantProcessIdAsync();
+    await RequireProcessExitAsync(descendantId, TimeSpan.FromSeconds(5));
+}
+
+static async Task CodexVersionCancellationCleansProcess()
+{
+    using var fixture = new VersionPreflightFixture(
+        "timeout",
+        startupTimeout: TimeSpan.FromSeconds(5));
+    using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
+    var exception = await CaptureAsync<CodexVersionPreflightException>(() =>
+        CodexVersionPreflight.VerifyAsync(fixture.Resolve(), cancellation.Token));
+
+    Equal(CodexVersionPreflightFailure.Cancelled, exception.Failure);
+    var childId = int.Parse(
+        await WaitForFileTextAsync(fixture.ProcessIdPath, TimeSpan.FromSeconds(5)),
+        System.Globalization.CultureInfo.InvariantCulture);
+    await RequireProcessExitAsync(childId, TimeSpan.FromSeconds(5));
+}
+
+static async Task CodexVersionTerminationFailureIsBounded()
+{
+    var stopwatch = Stopwatch.StartNew();
+    var exception = await CaptureAsync<CodexVersionPreflightException>(() =>
+        CodexVersionPreflight.VerifyProcessAsync(
+            new AppServerClientOptions
+            {
+                CodexExecutablePath = "unused.exe",
+                WorkingDirectory = Environment.CurrentDirectory,
+            },
+            CodexVersionCompatibility.Default,
+            TimeSpan.FromMilliseconds(20),
+            TimeSpan.FromMilliseconds(40),
+            _ => new UnterminableVersionProcess()));
+    stopwatch.Stop();
+
+    Equal(CodexVersionPreflightFailure.TerminationFailed, exception.Failure);
+    True(stopwatch.Elapsed < TimeSpan.FromSeconds(2), "Termination failure exceeded its hard bound.");
+}
+
+static Task CodexExecutableLeasePreventsReplacement()
+{
+    using var fixture = new LocalCodexConfigurationFixture();
+    var configuration = CodexLocalAppServerConfigurationResolver.Resolve(
+        fixture.CreateRequest(commandLineExecutablePath: fixture.ExecutablePath));
+    using var lease = CodexExecutableLease.Acquire(configuration.CodexExecutablePath);
+
+    Throws<IOException>(() =>
+    {
+        using var write = new FileStream(
+            fixture.ExecutablePath,
+            FileMode.Open,
+            FileAccess.Write,
+            FileShare.ReadWrite | FileShare.Delete);
+    });
+    lease.ValidateCurrentPath(configuration.CodexExecutablePath);
+    var movedPath = fixture.DirectoryPath + "-moved";
+    var directoryMoveBlocked = false;
+    try
+    {
+        Directory.Move(fixture.DirectoryPath, movedPath);
+    }
+    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+    {
+        directoryMoveBlocked = true;
+    }
+    finally
+    {
+        if (Directory.Exists(movedPath) && !Directory.Exists(fixture.DirectoryPath))
+        {
+            Directory.Move(movedPath, fixture.DirectoryPath);
+        }
+    }
+
+    True(directoryMoveBlocked, "Executable identity lease allowed its parent directory to move.");
+    using var retainedReference = lease.AcquireReference();
+    lease.Dispose();
+    retainedReference.Lease.ValidateCurrentPath(configuration.CodexExecutablePath);
+    Throws<IOException>(() =>
+    {
+        using var write = new FileStream(
+            fixture.ExecutablePath,
+            FileMode.Open,
+            FileAccess.Write,
+            FileShare.ReadWrite | FileShare.Delete);
+    });
+    retainedReference.Dispose();
+    using (var write = new FileStream(
+        fixture.ExecutablePath,
+        FileMode.Open,
+        FileAccess.Write,
+        FileShare.ReadWrite | FileShare.Delete))
+    {
+    }
+
+    return Task.CompletedTask;
+}
+
+static async Task AppServerStopTimeoutAndCancellationCleanProcess()
+{
+    var directory = CreateTemporaryDirectory("transport-stop");
+    try
+    {
+        var scriptPath = Path.Combine(directory, "slow-appserver.cmd");
+        File.WriteAllLines(
+            scriptPath,
+            new[]
+            {
+                "@echo off",
+                "ping 127.0.0.1 -n 30 > nul",
+                "exit /b 0",
+            },
+            Encoding.ASCII);
+
+        await using (var timeoutTransport = new CodexProcessTransport(new AppServerClientOptions
+        {
+            CodexExecutablePath = scriptPath,
+            WorkingDirectory = directory,
+        }))
+        {
+            await timeoutTransport.StartAsync();
+            await timeoutTransport.StopAsync(TimeSpan.FromMilliseconds(50));
+            True(!timeoutTransport.IsRunning, "Timeout stop left the App Server process running.");
+        }
+
+        await using (var cancelledTransport = new CodexProcessTransport(new AppServerClientOptions
+        {
+            CodexExecutablePath = scriptPath,
+            WorkingDirectory = directory,
+        }))
+        {
+            await cancelledTransport.StartAsync();
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+            await ThrowsAsync<OperationCanceledException>(() =>
+                cancelledTransport.StopAsync(TimeSpan.FromSeconds(5), cancellation.Token));
+            True(!cancelledTransport.IsRunning, "Cancelled stop left the App Server process running.");
+        }
+    }
+    finally
+    {
+        Directory.Delete(directory, recursive: true);
+    }
+}
+
+static async Task<int> RunFakeCodexVersionProbeAsync()
+{
+    var directory = Environment.CurrentDirectory;
+    var mode = (await File.ReadAllTextAsync(
+            Path.Combine(directory, VersionPreflightFixture.ModeFileName),
+            Encoding.UTF8))
+        .Trim();
+    await File.WriteAllTextAsync(
+        Path.Combine(directory, VersionPreflightFixture.ArgumentsFileName),
+        string.Join(" ", Environment.GetCommandLineArgs().Skip(1)),
+        new UTF8Encoding(false));
+    await File.WriteAllTextAsync(
+        Path.Combine(directory, VersionPreflightFixture.ProcessIdFileName),
+        Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        new UTF8Encoding(false));
+
+    switch (mode)
+    {
+        case "valid":
+            Console.WriteLine("codex-cli 0.144.4");
+            return 0;
+        case "isolated":
+            if (Environment.GetEnvironmentVariable("CODEX_AUTOCAD_VERSION_PREFLIGHT_PARENT") is not null)
+            {
+                return 17;
+            }
+
+            Console.WriteLine("codex-cli 0.144.4");
+            return 0;
+        case "unsupported":
+            Console.WriteLine("codex-cli 0.145.0");
+            return 0;
+        case "error":
+            Console.Error.WriteLine(VersionPreflightFixture.PrivateStderrMarker);
+            return 23;
+        case "oversized":
+            await Console.OpenStandardOutput().WriteAsync(
+                new byte[CodexVersionPreflight.MaximumVersionOutputBytes + 1]);
+            return 0;
+        case "nonutf8":
+            await Console.OpenStandardOutput().WriteAsync(new byte[] { 0xff, 0xfe, 0xfd });
+            return 0;
+        case "descendant":
+        {
+            var pingPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.System),
+                "ping.exe");
+            using var descendant = Process.Start(new ProcessStartInfo
+            {
+                FileName = pingPath,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                ArgumentList = { "127.0.0.1", "-n", "30" },
+            }) ?? throw new InvalidOperationException("Fake descendant did not start.");
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, VersionPreflightFixture.DescendantIdFileName),
+                descendant.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                new UTF8Encoding(false));
+            await Task.Delay(TimeSpan.FromSeconds(30));
+            return 0;
+        }
+        case "timeout":
+            await Task.Delay(TimeSpan.FromSeconds(30));
+            return 0;
+        default:
+            return 29;
+    }
+}
+
+static async Task RequireProcessExitAsync(int processId, TimeSpan timeout)
+{
+    var deadline = DateTime.UtcNow + timeout;
+    while (DateTime.UtcNow < deadline)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            if (process.HasExited)
+            {
+                return;
+            }
+        }
+        catch (ArgumentException)
+        {
+            return;
+        }
+
+        await Task.Delay(25);
+    }
+
+    throw new InvalidOperationException("Version preflight left a residual process.");
+}
+
+static async Task<string> WaitForFileTextAsync(string path, TimeSpan timeout)
+{
+    var deadline = DateTime.UtcNow + timeout;
+    while (DateTime.UtcNow < deadline)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                var value = await File.ReadAllTextAsync(path, Encoding.UTF8);
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value.Trim();
+                }
+            }
+        }
+        catch (IOException)
+        {
+        }
+
+        await Task.Delay(25);
+    }
+
+    throw new InvalidOperationException("Version preflight probe did not publish expected evidence.");
+}
+
 static string CreateTemporaryDirectory(string purpose)
 {
     var directory = Path.Combine(
@@ -502,6 +881,21 @@ static async Task ThrowsAsync<TException>(Func<Task> action)
     throw new InvalidOperationException("Expected " + typeof(TException).Name);
 }
 
+static async Task<TException> CaptureAsync<TException>(Func<Task> action)
+    where TException : Exception
+{
+    try
+    {
+        await action();
+    }
+    catch (TException exception)
+    {
+        return exception;
+    }
+
+    throw new InvalidOperationException("Expected " + typeof(TException).Name + ".");
+}
+
 static void Equal<T>(T expected, T actual)
 {
     if (!EqualityComparer<T>.Default.Equals(expected, actual))
@@ -549,6 +943,135 @@ static TException Capture<TException>(Action action)
 }
 
 internal sealed record TestResult(int Value);
+
+internal sealed class VersionPreflightFixture : IDisposable
+{
+    internal const string ModeFileName = "codex-version-probe.mode";
+    internal const string ArgumentsFileName = "codex-version-arguments.txt";
+    internal const string ProcessIdFileName = "codex-version-process.pid";
+    internal const string DescendantIdFileName = "codex-version-descendant.pid";
+    internal const string PrivateStderrMarker = "version-preflight-private-stderr-marker";
+
+    private readonly TimeSpan _startupTimeout;
+
+    internal VersionPreflightFixture(
+        string mode,
+        TimeSpan? startupTimeout = null)
+    {
+        DirectoryPath = Path.Combine(
+            Path.GetTempPath(),
+            "codex-autocad-appserver-version-preflight-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(DirectoryPath);
+        TempDirectory = Path.Combine(DirectoryPath, "temp");
+        Directory.CreateDirectory(TempDirectory);
+        ExecutablePath = Path.Combine(
+            AppContext.BaseDirectory,
+            "Codex.AutoCAD.AppServer.Specs.exe");
+        if (!File.Exists(ExecutablePath))
+        {
+            throw new InvalidOperationException("Version preflight test apphost is unavailable.");
+        }
+
+        File.WriteAllText(
+            Path.Combine(DirectoryPath, ModeFileName),
+            mode,
+            new UTF8Encoding(false));
+        _startupTimeout = startupTimeout ?? TimeSpan.FromSeconds(5);
+    }
+
+    internal string DirectoryPath { get; }
+
+    internal string TempDirectory { get; }
+
+    internal string ExecutablePath { get; }
+
+    internal string ArgumentsPath => Path.Combine(DirectoryPath, ArgumentsFileName);
+
+    internal string ProcessIdPath => Path.Combine(DirectoryPath, ProcessIdFileName);
+
+    internal CodexLocalAppServerConfiguration Resolve()
+    {
+        return CodexLocalAppServerConfigurationResolver.Resolve(
+            new CodexLocalAppServerConfigurationRequest
+            {
+                CommandLineExecutablePath = ExecutablePath,
+                ApplicationDataDirectory = null,
+                PathValue = null,
+                WorkingDirectory = DirectoryPath,
+                TemporaryDirectory = TempDirectory,
+                StartupTimeout = _startupTimeout,
+                ShutdownTimeout = TimeSpan.FromSeconds(2),
+            });
+    }
+
+    internal async Task<int> ReadDescendantProcessIdAsync()
+    {
+        var path = Path.Combine(DirectoryPath, DescendantIdFileName);
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    var value = await File.ReadAllTextAsync(path, Encoding.UTF8);
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        return int.Parse(
+                            value.Trim(),
+                            System.Globalization.CultureInfo.InvariantCulture);
+                    }
+                }
+            }
+            catch (IOException)
+            {
+            }
+
+            await Task.Delay(25);
+        }
+
+        throw new InvalidOperationException("Version preflight descendant evidence was not published.");
+    }
+
+    public void Dispose()
+    {
+        Directory.Delete(DirectoryPath, recursive: true);
+    }
+}
+
+internal sealed class UnterminableVersionProcess : ICodexVersionProcess
+{
+    private readonly MemoryStream _standardOutput = new();
+    private readonly MemoryStream _standardError = new();
+
+    public Stream StandardOutput => _standardOutput;
+
+    public Stream StandardError => _standardError;
+
+    public int ExitCode => throw new InvalidOperationException("Process is still running.");
+
+    public bool HasExited => false;
+
+    public void CloseStandardInput()
+    {
+    }
+
+    public void KillProcessTree()
+    {
+        throw new Win32Exception(5);
+    }
+
+    public Task WaitForExitAsync(CancellationToken cancellationToken)
+    {
+        return Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+    }
+
+    public void Dispose()
+    {
+        _standardOutput.Dispose();
+        _standardError.Dispose();
+    }
+}
 
 internal sealed class LocalCodexConfigurationFixture : IDisposable
 {

@@ -7,7 +7,9 @@ namespace Codex.AutoCAD.AppServer;
 public sealed class CodexProcessTransport : IAppServerTransport
 {
     private const int StandardErrorTailLimit = 1;
+    private static readonly TimeSpan ForcedTerminationTimeout = TimeSpan.FromSeconds(2);
     private readonly AppServerClientOptions _options;
+    private readonly CodexExecutableLeaseReference? _executableLeaseReference;
     private readonly object _sync = new();
     private readonly ConcurrentQueue<AppServerStandardErrorSummary> _standardErrorTail = new();
     private Process? _process;
@@ -22,6 +24,7 @@ public sealed class CodexProcessTransport : IAppServerTransport
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _options = options;
+        _executableLeaseReference = options.ExecutableLease?.AcquireReference();
     }
 
     public Stream ReadStream => _readStream
@@ -48,6 +51,7 @@ public sealed class CodexProcessTransport : IAppServerTransport
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        _executableLeaseReference?.Lease.ValidateCurrentPath(_options.CodexExecutablePath);
 
         lock (_sync)
         {
@@ -159,20 +163,34 @@ public sealed class CodexProcessTransport : IAppServerTransport
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(gracefulTimeout);
+            var callerCancelled = false;
             try
             {
                 await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
-                process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                callerCancelled = cancellationToken.IsCancellationRequested;
+                await TerminateProcessTreeAsync(process).ConfigureAwait(false);
+            }
+
+            if (callerCancelled)
+            {
+                throw new OperationCanceledException(cancellationToken);
             }
         }
 
         if (_standardErrorPump is not null)
         {
-            await _standardErrorPump.ConfigureAwait(false);
+            try
+            {
+                await _standardErrorPump.WaitAsync(ForcedTerminationTimeout).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                throw new AppServerProcessTerminationException(
+                    "The Codex App Server diagnostic stream did not close after process termination.");
+            }
         }
     }
 
@@ -195,6 +213,7 @@ public sealed class CodexProcessTransport : IAppServerTransport
 
                 _readStream = null;
                 _writeStream = null;
+                _executableLeaseReference?.Dispose();
             }
         }
     }
@@ -214,6 +233,63 @@ public sealed class CodexProcessTransport : IAppServerTransport
         StandardErrorReceived?.Invoke(
             this,
             new AppServerStandardErrorEventArgs(summary));
+    }
+
+    private static async Task TerminateProcessTreeAsync(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            if (process.HasExited)
+            {
+                return;
+            }
+
+            throw new AppServerProcessTerminationException(
+                "The Codex App Server process tree could not be terminated safely.");
+        }
+        catch (Exception exception) when (exception is NotSupportedException
+                                          or System.ComponentModel.Win32Exception)
+        {
+            if (process.HasExited)
+            {
+                return;
+            }
+
+            throw new AppServerProcessTerminationException(
+                "The Codex App Server process tree could not be terminated safely.");
+        }
+
+        using var deadline = new CancellationTokenSource(ForcedTerminationTimeout);
+        try
+        {
+            await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw new AppServerProcessTerminationException(
+                "The Codex App Server process tree did not exit before the cleanup deadline.");
+        }
+        catch (InvalidOperationException)
+        {
+            if (!process.HasExited)
+            {
+                throw new AppServerProcessTerminationException(
+                    "The Codex App Server process tree termination could not be verified.");
+            }
+        }
+
+        if (!process.HasExited)
+        {
+            throw new AppServerProcessTerminationException(
+                "The Codex App Server process tree termination could not be verified.");
+        }
     }
 
     private async void OnProcessExited(object? sender, EventArgs args)

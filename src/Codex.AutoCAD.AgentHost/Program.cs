@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Codex.AutoCAD.AgentRuntime;
 using Codex.AutoCAD.AppServer;
+using Codex.AutoCAD.AppServer.Protocol;
 using Codex.AutoCAD.AgentHost;
 using Codex.AutoCAD.AgentLauncher;
 using Codex.AutoCAD.Ipc;
@@ -62,6 +63,28 @@ internal static class AgentHostProgram
                 ok = false,
                 command,
                 error = "codex_configuration",
+                errorCode = exception.Failure.ToString()
+            });
+            return 1;
+        }
+        catch (CodexVersionPreflightException exception)
+        {
+            WriteJson(new
+            {
+                ok = false,
+                command,
+                error = "codex_version_preflight",
+                errorCode = exception.Failure.ToString()
+            });
+            return 1;
+        }
+        catch (AgentHostCodexHealthException exception)
+        {
+            WriteJson(new
+            {
+                ok = false,
+                command,
+                error = "codex_appserver_health",
                 errorCode = exception.Failure.ToString()
             });
             return 1;
@@ -179,9 +202,13 @@ internal static class AgentHostProgram
                     directionKeys!.SessionId);
                 var workspace = AgentWorkspace.Create(workspaceRoot);
                 var codexConfiguration = CreateCodexConfiguration(null, workspace);
+                using var verifiedLaunch = await CodexVersionPreflight.VerifyAsync(
+                        codexConfiguration,
+                        shutdown.Token)
+                    .ConfigureAwait(false);
                 var cadQueryBroker = new AgentHostCadQueryBroker();
                 await using (var runtime = new CodexAgentRuntime(
-                    codexConfiguration.CreateClientOptions(),
+                    verifiedLaunch.CreateClientOptions(),
                     new AgentRuntimeOptions
                     {
                         Sandbox = AgentSandboxMode.ReadOnly,
@@ -193,6 +220,11 @@ internal static class AgentHostProgram
                     },
                     cadDrawingQueryBroker: cadQueryBroker))
                 {
+                    await AgentHostCodexHealthCheck.StartAsync(
+                            runtime.StartAsync,
+                            codexConfiguration.StartupTimeout,
+                            shutdown.Token)
+                        .ConfigureAwait(false);
                     var session = new AgentHostBridgeSession(
                         runtime,
                         "agenthost-" + directionKeys.SessionId,
@@ -225,14 +257,22 @@ internal static class AgentHostProgram
 
     private static async Task<int> RunDoctorAsync(CodexLocalAppServerConfiguration codexConfiguration)
     {
-        await using var client = CreateClient(codexConfiguration);
-        var initialized = await client.StartAsync().WaitAsync(codexConfiguration.StartupTimeout);
+        using var verifiedLaunch = await CodexVersionPreflight.VerifyAsync(codexConfiguration)
+            .ConfigureAwait(false);
+        await using var client = CreateClient(verifiedLaunch);
+        var initialized = await AgentHostCodexHealthCheck.StartAsync(
+                client.StartAsync,
+                codexConfiguration.StartupTimeout,
+                CancellationToken.None)
+            .ConfigureAwait(false);
         WriteJson(new
         {
             ok = true,
             state = client.State.ToString(),
             workspaceReady = true,
             codexExecutableSource = codexConfiguration.ExecutableSource.ToString(),
+            codexVersion = verifiedLaunch.Version.Version.ToString(),
+            codexVersionCompatibility = verifiedLaunch.Version.Compatibility.ToString(),
             codexHomeConfigured = !string.IsNullOrWhiteSpace(initialized.CodexHome),
             platformFamily = initialized.PlatformFamily,
             platformOs = initialized.PlatformOs,
@@ -257,15 +297,24 @@ internal static class AgentHostProgram
             shutdown.Cancel();
         };
 
-        await using var client = CreateClient(codexConfiguration);
-        var initialized = await client.StartAsync(shutdown.Token)
-            .WaitAsync(codexConfiguration.StartupTimeout, shutdown.Token);
+        using var verifiedLaunch = await CodexVersionPreflight.VerifyAsync(
+                codexConfiguration,
+                shutdown.Token)
+            .ConfigureAwait(false);
+        await using var client = CreateClient(verifiedLaunch);
+        var initialized = await AgentHostCodexHealthCheck.StartAsync(
+                client.StartAsync,
+                codexConfiguration.StartupTimeout,
+                shutdown.Token)
+            .ConfigureAwait(false);
         WriteJson(new
         {
             ok = true,
             state = "ready",
             workspaceReady = true,
             codexExecutableSource = codexConfiguration.ExecutableSource.ToString(),
+            codexVersion = verifiedLaunch.Version.Version.ToString(),
+            codexVersionCompatibility = verifiedLaunch.Version.Compatibility.ToString(),
             platformFamily = initialized.PlatformFamily,
             userAgent = initialized.UserAgent
         });
@@ -282,9 +331,9 @@ internal static class AgentHostProgram
         return 0;
     }
 
-    private static CodexAppServerClient CreateClient(CodexLocalAppServerConfiguration codexConfiguration)
+    private static CodexAppServerClient CreateClient(CodexVerifiedLaunch verifiedLaunch)
     {
-        var client = new CodexAppServerClient(codexConfiguration.CreateClientOptions());
+        var client = new CodexAppServerClient(verifiedLaunch.CreateClientOptions());
         client.StandardErrorReceived += (_, message) =>
             Console.Error.WriteLine(
                 "codex: stderrBytes="

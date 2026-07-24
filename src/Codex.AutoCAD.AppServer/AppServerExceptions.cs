@@ -48,3 +48,11 @@ public sealed class AppServerProcessExitedException : AppServerException
 
     public IReadOnlyList<AppServerStandardErrorSummary> StandardErrorTail { get; }
 }
+
+public sealed class AppServerProcessTerminationException : AppServerException
+{
+    public AppServerProcessTerminationException(string message)
+        : base(message)
+    {
+    }
+}

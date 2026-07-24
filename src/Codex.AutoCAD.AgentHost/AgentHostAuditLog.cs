@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Codex.AutoCAD.AppServer;
 
 namespace Codex.AutoCAD.AgentHost;
 
@@ -57,6 +58,15 @@ public static class AgentHostAuditErrorCodes
 {
     public const string AccessDenied = "access_denied";
     public const string AuditUnavailable = "audit_unavailable";
+    public const string CodexAppServerHandshakeFailed = "codex_appserver_handshake_failed";
+    public const string CodexAppServerHandshakeTimedOut = "codex_appserver_handshake_timeout";
+    public const string CodexExecutableIdentityFailed = "codex_executable_identity_failed";
+    public const string CodexVersionCancelled = "codex_version_cancelled";
+    public const string CodexVersionInvalidOutput = "codex_version_invalid_output";
+    public const string CodexVersionProcessFailed = "codex_version_process_failed";
+    public const string CodexVersionTerminationFailed = "codex_version_termination_failed";
+    public const string CodexVersionTimedOut = "codex_version_timeout";
+    public const string CodexVersionUnsupported = "codex_version_unsupported";
     public const string InvalidRequest = "invalid_request";
     public const string InvalidState = "invalid_state";
     public const string IoFailure = "io_failure";
@@ -71,6 +81,38 @@ public static class AgentHostAuditErrorCodes
         return exception switch
         {
             AgentHostAuditException => AuditUnavailable,
+            AgentHostCodexHealthException
+            {
+                Failure: AgentHostCodexHealthFailure.AppServerHandshakeTimedOut
+            } => CodexAppServerHandshakeTimedOut,
+            AgentHostCodexHealthException => CodexAppServerHandshakeFailed,
+            CodexVersionPreflightException
+            {
+                Failure: CodexVersionPreflightFailure.UnsupportedVersion
+            } => CodexVersionUnsupported,
+            CodexVersionPreflightException
+            {
+                Failure: CodexVersionPreflightFailure.TimedOut
+            } => CodexVersionTimedOut,
+            CodexVersionPreflightException
+            {
+                Failure: CodexVersionPreflightFailure.Cancelled
+            } => CodexVersionCancelled,
+            CodexVersionPreflightException
+            {
+                Failure: CodexVersionPreflightFailure.TerminationFailed
+            } => CodexVersionTerminationFailed,
+            CodexVersionPreflightException
+            {
+                Failure: CodexVersionPreflightFailure.ExecutableIdentityUnavailable
+                    or CodexVersionPreflightFailure.ExecutableIdentityChanged
+            } => CodexExecutableIdentityFailed,
+            CodexVersionPreflightException
+            {
+                Failure: CodexVersionPreflightFailure.InvalidVersionOutput
+                    or CodexVersionPreflightFailure.VersionOutputTooLarge
+            } => CodexVersionInvalidOutput,
+            CodexVersionPreflightException => CodexVersionProcessFailed,
             OperationCanceledException => RequestCancelled,
             TimeoutException => Timeout,
             InvalidDataException or JsonException or ArgumentException => InvalidRequest,
@@ -80,6 +122,25 @@ public static class AgentHostAuditErrorCodes
             _ => UnexpectedFailure,
         };
     }
+}
+
+public enum AgentHostCodexHealthFailure
+{
+    AppServerHandshakeFailed,
+    AppServerHandshakeTimedOut,
+}
+
+public sealed class AgentHostCodexHealthException : Exception
+{
+    public AgentHostCodexHealthException(
+        AgentHostCodexHealthFailure failure,
+        string message)
+        : base(message)
+    {
+        Failure = failure;
+    }
+
+    public AgentHostCodexHealthFailure Failure { get; }
 }
 
 public sealed class AgentHostAuditEvent

@@ -301,6 +301,108 @@ internal static class AgentHostBridgeSessionSpecs
         }
     }
 
+    public static Task CodexHealthFailuresUseStableAuditCodes()
+    {
+        Equal(
+            AgentHostAuditErrorCodes.CodexVersionUnsupported,
+            AgentHostAuditErrorCodes.FromException(new CodexVersionPreflightException(
+                CodexVersionPreflightFailure.UnsupportedVersion,
+                "sanitized")));
+        Equal(
+            AgentHostAuditErrorCodes.CodexVersionTerminationFailed,
+            AgentHostAuditErrorCodes.FromException(new CodexVersionPreflightException(
+                CodexVersionPreflightFailure.TerminationFailed,
+                "sanitized")));
+        Equal(
+            AgentHostAuditErrorCodes.CodexExecutableIdentityFailed,
+            AgentHostAuditErrorCodes.FromException(new CodexVersionPreflightException(
+                CodexVersionPreflightFailure.ExecutableIdentityChanged,
+                "sanitized")));
+        Equal(
+            AgentHostAuditErrorCodes.CodexAppServerHandshakeTimedOut,
+            AgentHostAuditErrorCodes.FromException(new AgentHostCodexHealthException(
+                AgentHostCodexHealthFailure.AppServerHandshakeTimedOut,
+                "sanitized")));
+        Equal(
+            AgentHostAuditErrorCodes.CodexAppServerHandshakeFailed,
+            AgentHostAuditErrorCodes.FromException(new AgentHostCodexHealthException(
+                AgentHostCodexHealthFailure.AppServerHandshakeFailed,
+                "sanitized")));
+        return Task.CompletedTask;
+    }
+
+    public static async Task CodexHealthTimeoutCancelsUnderlyingStart()
+    {
+        using var cleanup = new CancellationTokenSource();
+        var cancellationObserved = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        AgentHostCodexHealthException? failure = null;
+        try
+        {
+            await AgentHostCodexHealthCheck.StartAsync(
+                async cancellationToken =>
+                {
+                    try
+                    {
+                        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        cancellationObserved.TrySetResult();
+                        throw;
+                    }
+                },
+                TimeSpan.FromMilliseconds(50),
+                cleanup.Token);
+        }
+        catch (AgentHostCodexHealthException exception)
+        {
+            failure = exception;
+        }
+
+        var cancelledBeforeCallerCleanup = cancellationObserved.Task.IsCompletedSuccessfully;
+        cleanup.Cancel();
+        await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+
+        Equal(AgentHostCodexHealthFailure.AppServerHandshakeTimedOut, failure?.Failure);
+        Equal(true, cancelledBeforeCallerCleanup);
+
+        using var callerCancellation = new CancellationTokenSource();
+        var callerCancellationObserved = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        callerCancellation.CancelAfter(TimeSpan.FromMilliseconds(50));
+        OperationCanceledException? cancellationFailure = null;
+        try
+        {
+            await AgentHostCodexHealthCheck.StartAsync(
+                async cancellationToken =>
+                {
+                    try
+                    {
+                        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        callerCancellationObserved.TrySetResult();
+                        throw;
+                    }
+                },
+                TimeSpan.FromSeconds(1),
+                callerCancellation.Token);
+        }
+        catch (OperationCanceledException exception)
+        {
+            cancellationFailure = exception;
+        }
+
+        await callerCancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(1))
+            .ConfigureAwait(false);
+        Equal(true, cancellationFailure is not null);
+        Equal(true, callerCancellation.IsCancellationRequested);
+    }
+
     public static async Task ApprovalRequestAuditOmitsCommandAndPath()
     {
         var keyPair = CreateBootstrapDirectionKeyPair();

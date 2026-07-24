@@ -56,6 +56,12 @@ public sealed record CodexLocalAppServerConfigurationRequest
     public TimeSpan StartupTimeout { get; init; } = CodexLocalAppServerConfiguration.DefaultStartupTimeout;
 
     public TimeSpan ShutdownTimeout { get; init; } = CodexLocalAppServerConfiguration.DefaultShutdownTimeout;
+
+    /// <summary>
+    /// Product-owned compatibility window. Production configuration does not read this value from
+    /// an environment variable, so an unreviewed local override cannot widen the accepted protocol.
+    /// </summary>
+    public CodexVersionCompatibility? VersionCompatibility { get; init; }
 }
 
 /// <summary>
@@ -75,7 +81,8 @@ public sealed class CodexLocalAppServerConfiguration
         string workingDirectory,
         IReadOnlyDictionary<string, string?> childEnvironment,
         TimeSpan startupTimeout,
-        TimeSpan shutdownTimeout)
+        TimeSpan shutdownTimeout,
+        CodexVersionCompatibility versionCompatibility)
     {
         CodexExecutablePath = codexExecutablePath;
         ExecutableSource = executableSource;
@@ -83,6 +90,8 @@ public sealed class CodexLocalAppServerConfiguration
         ChildEnvironment = childEnvironment;
         StartupTimeout = startupTimeout;
         ShutdownTimeout = shutdownTimeout;
+        VersionCompatibility = versionCompatibility
+            ?? throw new ArgumentNullException(nameof(versionCompatibility));
     }
 
     public string CodexExecutablePath { get; }
@@ -97,7 +106,9 @@ public sealed class CodexLocalAppServerConfiguration
 
     public TimeSpan ShutdownTimeout { get; }
 
-    public AppServerClientOptions CreateClientOptions()
+    public CodexVersionCompatibility VersionCompatibility { get; }
+
+    internal AppServerClientOptions CreateClientOptions(CodexExecutableLease? executableLease = null)
     {
         return new AppServerClientOptions
         {
@@ -109,6 +120,7 @@ public sealed class CodexLocalAppServerConfiguration
             MaximumJsonDepth = 32,
             MaximumStandardErrorBytes = 16 * 1024,
             ShutdownTimeout = ShutdownTimeout,
+            ExecutableLease = executableLease,
         };
     }
 }
@@ -168,6 +180,8 @@ public static class CodexLocalAppServerConfigurationResolver
             request.ShutdownTimeout,
             CodexLocalConfigurationFailure.InvalidShutdownTimeout,
             "Codex shutdown timeout must be positive and no greater than 60 seconds.");
+        var versionCompatibility = request.VersionCompatibility
+            ?? CodexVersionCompatibility.Default;
 
         var configuredCommandLine = NormalizeOptionalPath(request.CommandLineExecutablePath);
         if (configuredCommandLine is not null)
@@ -178,7 +192,8 @@ public static class CodexLocalAppServerConfigurationResolver
                 workingDirectory,
                 childEnvironment,
                 startupTimeout,
-                shutdownTimeout);
+                shutdownTimeout,
+                versionCompatibility);
         }
 
         var configuredEnvironment = NormalizeOptionalPath(request.EnvironmentExecutablePath);
@@ -190,7 +205,8 @@ public static class CodexLocalAppServerConfigurationResolver
                 workingDirectory,
                 childEnvironment,
                 startupTimeout,
-                shutdownTimeout);
+                shutdownTimeout,
+                versionCompatibility);
         }
 
         foreach (var candidate in EnumerateNpmCandidates(request.ApplicationDataDirectory))
@@ -203,7 +219,8 @@ public static class CodexLocalAppServerConfigurationResolver
                     workingDirectory,
                     childEnvironment,
                     startupTimeout,
-                    shutdownTimeout);
+                    shutdownTimeout,
+                    versionCompatibility);
             }
         }
 
@@ -217,7 +234,8 @@ public static class CodexLocalAppServerConfigurationResolver
                     workingDirectory,
                     childEnvironment,
                     startupTimeout,
-                    shutdownTimeout);
+                    shutdownTimeout,
+                    versionCompatibility);
             }
         }
 
@@ -232,7 +250,8 @@ public static class CodexLocalAppServerConfigurationResolver
         string workingDirectory,
         IReadOnlyDictionary<string, string?> childEnvironment,
         TimeSpan startupTimeout,
-        TimeSpan shutdownTimeout)
+        TimeSpan shutdownTimeout,
+        CodexVersionCompatibility versionCompatibility)
     {
         return new CodexLocalAppServerConfiguration(
             executablePath,
@@ -240,7 +259,8 @@ public static class CodexLocalAppServerConfigurationResolver
             workingDirectory,
             childEnvironment,
             startupTimeout,
-            shutdownTimeout);
+            shutdownTimeout,
+            versionCompatibility);
     }
 
     private static IEnumerable<string> EnumerateNpmCandidates(string? applicationDataDirectory)
