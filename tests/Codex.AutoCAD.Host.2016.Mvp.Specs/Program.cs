@@ -139,6 +139,14 @@ var specs = new[]
         "AgentHost startup failures expose stable structured fields without local exception details",
         FailureFormatterSanitizesBootstrap),
     new SpecCase(
+        "HOST2016_RESOURCE_LIMIT_FAILURES_STRUCTURED",
+        "all AgentHost resource limits map to stable non-retryable runtime failures",
+        ResourceLimitFailuresAreStructured),
+    new SpecCase(
+        "HOST2016_RESOURCE_LIMIT_WINS_BRIDGE_FAULT_RACE",
+        "an authoritative AgentHost resource limit wins the Bridge disconnect terminal-state race",
+        ResourceLimitWinsBridgeFaultRace),
+    new SpecCase(
         "HOST2016_TURN_FAILURE_IS_STRUCTURED_AND_SANITIZED",
         "A failed Codex turn publishes stable fields without raw Provider error text",
         TurnFailureIsStructuredAndSanitized),
@@ -1280,6 +1288,168 @@ static Task FailureFormatterSanitizesBootstrap()
     return Task.CompletedTask;
 }
 
+static Task ResourceLimitFailuresAreStructured()
+{
+    var cases = new[]
+    {
+        new
+        {
+            Failure = AgentHostResourceLimitFailure.ProcessCountExceeded,
+            ErrorCode = MvpAgentErrorCodes.AgentHostProcessLimitExceeded,
+        },
+        new
+        {
+            Failure = AgentHostResourceLimitFailure.JobMemoryExceeded,
+            ErrorCode = MvpAgentErrorCodes.AgentHostMemoryLimitExceeded,
+        },
+        new
+        {
+            Failure = AgentHostResourceLimitFailure.JobUserTimeExceeded,
+            ErrorCode = MvpAgentErrorCodes.AgentHostUserTimeLimitExceeded,
+        },
+        new
+        {
+            Failure = AgentHostResourceLimitFailure.SessionRuntimeExceeded,
+            ErrorCode = MvpAgentErrorCodes.AgentHostSessionRuntimeLimitExceeded,
+        },
+    };
+
+    const string sensitiveMarker = @"C:\Users\Private CODEX_RESOURCE_SECRET";
+    foreach (var item in cases)
+    {
+        var failure = MvpAgentFailureFormatter.FromResourceLimitFailure(
+            item.Failure,
+            MvpAgentFailureStages.AgentHostRuntime);
+        EqualString(item.ErrorCode, failure.ErrorCode, "Resource-limit error code");
+        EqualString(
+            MvpAgentFailureStages.AgentHostRuntime,
+            failure.ErrorStage,
+            "Resource-limit error stage");
+        True(!failure.Retryable, "A resource-limit failure was incorrectly retryable.");
+        var display = failure.FormatForUser("AgentHost resource");
+        True(
+            !display.Contains(sensitiveMarker, StringComparison.Ordinal),
+            "A resource-limit failure exposed an untrusted operation label.");
+        True(
+            display.Contains(item.ErrorCode, StringComparison.Ordinal)
+            && display.Contains("error_stage=agenthost_runtime", StringComparison.Ordinal)
+            && display.Contains("retryable=false", StringComparison.Ordinal),
+            "A resource-limit failure lost its structured fields.");
+    }
+
+    return Task.CompletedTask;
+}
+
+static async Task ResourceLimitWinsBridgeFaultRace()
+{
+    var serviceSession = new AgentHostServiceSession(
+        _ => true,
+        () => null,
+        () => { },
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateResourceServiceResult(),
+        TimeSpan.FromMilliseconds(250));
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-resource-race",
+        "system-session-resource-race",
+        TimeSpan.FromSeconds(5),
+        serviceSession);
+    var errors = new List<string>();
+    var resourceTerminal = new TaskCompletionSource<bool>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    client.ErrorChanged += value =>
+    {
+        lock (errors)
+        {
+            errors.Add(value);
+        }
+
+        if (value.Contains(
+                MvpAgentErrorCodes.AgentHostSessionRuntimeLimitExceeded,
+                StringComparison.Ordinal))
+        {
+            resourceTerminal.TrySetResult(true);
+        }
+    };
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2(),
+        ContextSha256 = new string('9', 64),
+    };
+
+    await client.AskAsync(
+            "resource race turn",
+            context,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    bridge.RaiseFault(new AgentBridgeClientException(
+        AgentBridgeErrorCodes.ConnectionLost,
+        "CODEX_RESOURCE_RACE_SECRET"));
+
+    var completed = await Task.WhenAny(
+            resourceTerminal.Task,
+            Task.Delay(TimeSpan.FromSeconds(5)))
+        .ConfigureAwait(false);
+    True(
+        ReferenceEquals(completed, resourceTerminal.Task),
+        "The AgentHost resource terminal state did not win the Bridge fault race.");
+    True(!client.IsStarted, "The resource terminal state did not transition the client offline.");
+
+    var rejected = await ExpectBridgeClientFailure(
+            client.AskAsync(
+                "must fail closed after resource exhaustion",
+                context,
+                () => true,
+                CancellationToken.None))
+        .ConfigureAwait(false);
+    EqualString(
+        MvpAgentErrorCodes.AgentHostSessionRuntimeLimitExceeded,
+        rejected.Code,
+        "Rejected ASK resource error code");
+    Equal(1, bridge.StartTurnV2Count, "Turn start count after resource exhaustion");
+
+    List<string> snapshot;
+    lock (errors)
+    {
+        snapshot = new List<string>(errors);
+    }
+
+    Equal(
+        1,
+        snapshot.Count(value => value.Contains(
+            MvpAgentErrorCodes.AgentHostSessionRuntimeLimitExceeded,
+            StringComparison.Ordinal)),
+        "Resource terminal notification count");
+    True(
+        snapshot.TrueForAll(value =>
+            !value.Contains("CODEX_RESOURCE_RACE_SECRET", StringComparison.Ordinal)
+            && !value.Contains(AgentBridgeErrorCodes.ConnectionLost, StringComparison.Ordinal)),
+        "The resource terminal state was overwritten by or leaked the Bridge failure.");
+    True(
+        snapshot.Exists(value =>
+            value.Contains("error_stage=agenthost_runtime", StringComparison.Ordinal)
+            && value.Contains("state=failed", StringComparison.Ordinal)
+            && value.Contains("request_id=", StringComparison.Ordinal)),
+        "The resource terminal state lost the active Host request identity.");
+}
+
+static AgentBootstrapDoctorResult CreateResourceServiceResult()
+{
+    return new AgentBootstrapDoctorResult(
+        4321,
+        8765,
+        "0123456789abcdef0123456789abcdef",
+        "fedcba9876543210fedcba9876543210",
+        "codex-autocad-resource-test",
+        new string('B', 64),
+        0,
+        false);
+}
+
 static async Task TurnFailureIsStructuredAndSanitized()
 {
     const string sensitiveProviderError = @"C:\Private\drawing.dwg provider-secret";
@@ -2345,6 +2515,15 @@ static void True(bool condition, string message)
 static void Equal(int expected, int actual, string label)
 {
     if (expected != actual)
+    {
+        throw new InvalidOperationException(
+            label + " expected " + expected + " but was " + actual + ".");
+    }
+}
+
+static void EqualString(string expected, string actual, string label)
+{
+    if (!string.Equals(expected, actual, StringComparison.Ordinal))
     {
         throw new InvalidOperationException(
             label + " expected " + expected + " but was " + actual + ".");

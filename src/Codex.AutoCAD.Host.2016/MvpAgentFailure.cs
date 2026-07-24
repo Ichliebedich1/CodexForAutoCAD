@@ -15,6 +15,7 @@ namespace Codex.AutoCAD.Host2016
         internal const string ClearingConversation = "clearing_conversation";
         internal const string StoppingAgentHost = "stopping_agenthost";
         internal const string TerminatingAgentHost = "terminating_agenthost";
+        internal const string AgentHostRuntime = "agenthost_runtime";
     }
 
     internal sealed class MvpAgentTurnException : Exception
@@ -46,6 +47,11 @@ namespace Codex.AutoCAD.Host2016
         internal const string AgentHostCancelled = "agenthost_cancelled";
         internal const string AgentHostTerminationFailed = "agenthost_termination_failed";
         internal const string AgentHostProcessIsolationFailed = "agenthost_process_isolation_failed";
+        internal const string AgentHostProcessLimitExceeded = "agenthost_process_limit_exceeded";
+        internal const string AgentHostMemoryLimitExceeded = "agenthost_memory_limit_exceeded";
+        internal const string AgentHostUserTimeLimitExceeded = "agenthost_user_time_limit_exceeded";
+        internal const string AgentHostSessionRuntimeLimitExceeded =
+            "agenthost_session_runtime_limit_exceeded";
         internal const string AgentHostCleanupFailed = "agenthost_cleanup_failed";
         internal const string AgentHostStopFailed = "agenthost_stop_failed";
         internal const string InvalidRequest = "invalid_request";
@@ -133,6 +139,11 @@ namespace Codex.AutoCAD.Host2016
                 return FromBootstrapFailure(bootstrap.Failure, errorStage);
             }
 
+            if (exception is AgentHostResourceLimitException resourceLimit)
+            {
+                return FromResourceLimitFailure(resourceLimit.Failure, errorStage);
+            }
+
             if (exception is AgentBridgeClientException bridge)
             {
                 return FromErrorCode(
@@ -204,6 +215,15 @@ namespace Codex.AutoCAD.Host2016
         internal static MvpAgentFailure FromErrorCode(string errorCode, string errorStage)
         {
             var code = NormalizeBridgeErrorCode(errorCode);
+            if (IsResourceLimitErrorCode(code))
+            {
+                return new MvpAgentFailure(
+                    code,
+                    NormalizeStage(errorStage),
+                    false,
+                    "AgentHost 已触发受控资源限制；不会自动重试，请检查任务规模和管理员资源策略。");
+            }
+
             var retryable = string.Equals(code, AgentBridgeErrorCodes.Offline, StringComparison.Ordinal)
                 || string.Equals(code, AgentBridgeErrorCodes.AgentUnavailable, StringComparison.Ordinal)
                 || string.Equals(code, AgentBridgeErrorCodes.ConnectionLost, StringComparison.Ordinal)
@@ -217,6 +237,26 @@ namespace Codex.AutoCAD.Host2016
                 NormalizeStage(errorStage),
                 retryable,
                 message);
+        }
+
+        internal static MvpAgentFailure FromResourceLimitFailure(
+            AgentHostResourceLimitFailure failure,
+            string errorStage)
+        {
+            if (failure == AgentHostResourceLimitFailure.None)
+            {
+                return new MvpAgentFailure(
+                    MvpAgentErrorCodes.InternalError,
+                    NormalizeStage(errorStage),
+                    false,
+                    "AgentHost 资源终态无效；原始详情已隐藏。");
+            }
+
+            return new MvpAgentFailure(
+                AgentHostResourceLimitFailurePolicy.GetErrorCode(failure),
+                NormalizeStage(errorStage),
+                false,
+                "AgentHost 已触发受控资源限制；不会自动重试，请检查任务规模和管理员资源策略。");
         }
 
         internal static string NormalizeBridgeErrorCode(AgentBridgeClientException exception)
@@ -311,7 +351,8 @@ namespace Codex.AutoCAD.Host2016
 
         private static bool IsKnownBridgeErrorCode(string code)
         {
-            return string.Equals(code, AgentBridgeErrorCodes.Offline, StringComparison.Ordinal)
+            return IsResourceLimitErrorCode(code)
+                || string.Equals(code, AgentBridgeErrorCodes.Offline, StringComparison.Ordinal)
                 || string.Equals(code, AgentBridgeErrorCodes.ContractMismatch, StringComparison.Ordinal)
                 || string.Equals(code, AgentBridgeErrorCodes.AuthenticationFailed, StringComparison.Ordinal)
                 || string.Equals(code, AgentBridgeErrorCodes.ReplayRejected, StringComparison.Ordinal)
@@ -328,6 +369,26 @@ namespace Codex.AutoCAD.Host2016
                 || string.Equals(code, AgentBridgeErrorCodes.ApprovalAlreadyConsumed, StringComparison.Ordinal)
                 || string.Equals(code, AgentBridgeErrorCodes.ResultIdentityMismatch, StringComparison.Ordinal)
                 || string.Equals(code, AgentBridgeErrorCodes.InternalError, StringComparison.Ordinal);
+        }
+
+        private static bool IsResourceLimitErrorCode(string code)
+        {
+            return string.Equals(
+                    code,
+                    MvpAgentErrorCodes.AgentHostProcessLimitExceeded,
+                    StringComparison.Ordinal)
+                || string.Equals(
+                    code,
+                    MvpAgentErrorCodes.AgentHostMemoryLimitExceeded,
+                    StringComparison.Ordinal)
+                || string.Equals(
+                    code,
+                    MvpAgentErrorCodes.AgentHostUserTimeLimitExceeded,
+                    StringComparison.Ordinal)
+                || string.Equals(
+                    code,
+                    MvpAgentErrorCodes.AgentHostSessionRuntimeLimitExceeded,
+                    StringComparison.Ordinal);
         }
     }
 }

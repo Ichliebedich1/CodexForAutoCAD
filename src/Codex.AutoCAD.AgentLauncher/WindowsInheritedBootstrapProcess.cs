@@ -692,6 +692,23 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
         return WindowsNative.TerminateAndWait(processHandle, milliseconds);
     }
 
+    internal AgentHostProcessTreeLimitNotification WaitForLimitNotification(
+        int milliseconds)
+    {
+        ThrowIfDisposed();
+        return processTreeJob.WaitForLimitNotification(milliseconds, ProcessId);
+    }
+
+    internal void CancelLimitNotificationWait()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        processTreeJob.CancelLimitNotificationWait();
+    }
+
     public void Dispose()
     {
         if (disposed)
@@ -1102,14 +1119,29 @@ internal static class WindowsPrivateDesktop
 /// Closing this handle is intentionally a kill boundary, so a Host process crash cannot leave the
 /// AgentHost/Codex subtree running without its owner.
 /// </summary>
+internal enum AgentHostProcessTreeLimitNotification
+{
+    None = 0,
+    ProcessCountExceeded = 1,
+    JobMemoryExceeded = 2,
+    JobUserTimeExceeded = 3,
+    RootProcessExited = 4,
+    MonitorClosed = 5
+}
+
 internal sealed class WindowsProcessTreeJob : IDisposable
 {
+    private const ulong CompletionKey = 1;
     private readonly SafeKernelHandle handle;
+    private readonly SafeKernelHandle completionPort;
     private bool disposed;
 
-    private WindowsProcessTreeJob(SafeKernelHandle handle)
+    private WindowsProcessTreeJob(
+        SafeKernelHandle handle,
+        SafeKernelHandle completionPort)
     {
         this.handle = handle;
+        this.completionPort = completionPort;
     }
 
     internal static WindowsProcessTreeJob CreateKillOnClose(
@@ -1122,6 +1154,7 @@ internal sealed class WindowsProcessTreeJob : IDisposable
 
         var rawHandle = WindowsNative.CreateJobObject(IntPtr.Zero, null);
         var safeHandle = new SafeKernelHandle(rawHandle, true);
+        SafeKernelHandle? completionPort = null;
         if (safeHandle.IsInvalid)
         {
             var error = Marshal.GetLastWin32Error();
@@ -1134,6 +1167,36 @@ internal sealed class WindowsProcessTreeJob : IDisposable
 
         try
         {
+            var rawCompletionPort = WindowsNative.CreateIoCompletionPort(
+                new IntPtr(-1),
+                IntPtr.Zero,
+                UIntPtr.Zero,
+                1);
+            completionPort = new SafeKernelHandle(rawCompletionPort, true);
+            if (completionPort.IsInvalid)
+            {
+                throw new Win32Exception(
+                    Marshal.GetLastWin32Error(),
+                    "Creating the AgentHost Job completion port failed.");
+            }
+
+            var association = new WindowsNative.JobObjectAssociateCompletionPort
+            {
+                CompletionKey = new IntPtr(checked((long)CompletionKey)),
+                CompletionPort = completionPort.DangerousGetHandle()
+            };
+            if (!WindowsNative.SetInformationJobObject(
+                    safeHandle,
+                    WindowsNative.JobObjectAssociateCompletionPortInformationClass,
+                    ref association,
+                    checked((uint)Marshal.SizeOf(
+                        typeof(WindowsNative.JobObjectAssociateCompletionPort)))))
+            {
+                throw new Win32Exception(
+                    Marshal.GetLastWin32Error(),
+                    "Associating the AgentHost Job completion port failed.");
+            }
+
             var limits = new WindowsNative.JobObjectExtendedLimitInformation();
             limits.BasicLimitInformation.LimitFlags =
                 WindowsNative.JobObjectLimitKillOnJobClose
@@ -1172,16 +1235,56 @@ internal sealed class WindowsProcessTreeJob : IDisposable
                     "Setting the AgentHost process-tree CPU-rate limit failed.");
             }
 
-            return new WindowsProcessTreeJob(safeHandle);
+            return new WindowsProcessTreeJob(safeHandle, completionPort);
         }
         catch (Exception exception)
         {
+            completionPort?.Dispose();
             safeHandle.Dispose();
             throw new AgentBootstrapLaunchException(
                 AgentBootstrapLaunchFailure.ProcessStartFailed,
                 "Configuring the AgentHost process-tree job failed.",
                 exception);
         }
+    }
+
+    internal static SafeKernelHandle OpenProcessForAssignment(int processId)
+    {
+        if (processId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(processId));
+        }
+
+        var rawHandle = WindowsNative.OpenProcess(
+            WindowsNative.ProcessSetQuota
+                | WindowsNative.ProcessTerminate
+                | WindowsNative.ProcessQueryLimitedInformation
+                | WindowsNative.Synchronize,
+            false,
+            checked((uint)processId));
+        var safeHandle = new SafeKernelHandle(rawHandle, true);
+        if (!safeHandle.IsInvalid)
+        {
+            return safeHandle;
+        }
+
+        var error = Marshal.GetLastWin32Error();
+        safeHandle.Dispose();
+        throw new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+            "Opening the process for Job assignment failed.",
+            new Win32Exception(error));
+    }
+
+    internal static bool IsProcessInAnyJob(SafeKernelHandle process)
+    {
+        return QueryMembership(process, IntPtr.Zero);
+    }
+
+    internal bool Contains(SafeKernelHandle process)
+    {
+        ThrowIfDisposed();
+        return QueryMembership(process, handle.DangerousGetHandle());
     }
 
     internal AgentHostProcessTreeLimitSnapshot QueryLimits()
@@ -1223,6 +1326,102 @@ internal sealed class WindowsProcessTreeJob : IDisposable
             checked((int)cpuRate.CpuRate));
     }
 
+    internal AgentHostProcessTreeLimitNotification WaitForLimitNotification(
+        int milliseconds,
+        int rootProcessId)
+    {
+        if (milliseconds < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(milliseconds));
+        }
+        if (rootProcessId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(rootProcessId));
+        }
+
+        while (true)
+        {
+            if (disposed)
+            {
+                return AgentHostProcessTreeLimitNotification.MonitorClosed;
+            }
+
+            uint message;
+            UIntPtr observedCompletionKey;
+            IntPtr overlapped;
+            if (!WindowsNative.GetQueuedCompletionStatus(
+                    completionPort,
+                    out message,
+                    out observedCompletionKey,
+                    out overlapped,
+                    checked((uint)milliseconds)))
+            {
+                var error = Marshal.GetLastWin32Error();
+                if (error == WindowsNative.ErrorWaitTimeout)
+                {
+                    return AgentHostProcessTreeLimitNotification.None;
+                }
+
+                if (disposed || error == WindowsNative.ErrorAbandonedWait)
+                {
+                    return AgentHostProcessTreeLimitNotification.MonitorClosed;
+                }
+
+                throw new AgentBootstrapLaunchException(
+                    AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+                    "Waiting for an AgentHost Job resource notification failed.",
+                    new Win32Exception(error));
+            }
+
+            if (observedCompletionKey.ToUInt64() == 0 && message == 0)
+            {
+                return AgentHostProcessTreeLimitNotification.MonitorClosed;
+            }
+
+            if (observedCompletionKey.ToUInt64() != CompletionKey)
+            {
+                continue;
+            }
+
+            switch (message)
+            {
+                case WindowsNative.JobObjectMessageEndOfJobTime:
+                    return AgentHostProcessTreeLimitNotification.JobUserTimeExceeded;
+                case WindowsNative.JobObjectMessageActiveProcessLimit:
+                    return AgentHostProcessTreeLimitNotification.ProcessCountExceeded;
+                case WindowsNative.JobObjectMessageJobMemoryLimit:
+                    return AgentHostProcessTreeLimitNotification.JobMemoryExceeded;
+                case WindowsNative.JobObjectMessageExitProcess:
+                case WindowsNative.JobObjectMessageAbnormalExitProcess:
+                    if (overlapped.ToInt64() == rootProcessId)
+                    {
+                        return AgentHostProcessTreeLimitNotification.RootProcessExited;
+                    }
+                    break;
+            }
+        }
+    }
+
+    internal void CancelLimitNotificationWait()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        if (!WindowsNative.PostQueuedCompletionStatus(
+                completionPort,
+                0,
+                UIntPtr.Zero,
+                IntPtr.Zero))
+        {
+            throw new AgentBootstrapLaunchException(
+                AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+                "Cancelling the AgentHost Job resource monitor failed.",
+                new Win32Exception(Marshal.GetLastWin32Error()));
+        }
+    }
+
     internal void Assign(SafeKernelHandle process)
     {
         if (process == null)
@@ -1231,12 +1430,22 @@ internal sealed class WindowsProcessTreeJob : IDisposable
         }
 
         ThrowIfDisposed();
+        var wasAlreadyInJob = IsProcessInAnyJob(process);
         if (!WindowsNative.AssignProcessToJobObject(handle, process))
         {
             throw new AgentBootstrapLaunchException(
-                AgentBootstrapLaunchFailure.ProcessStartFailed,
-                "Assigning AgentHost to the process-tree job failed.",
+                AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+                wasAlreadyInJob
+                    ? "Assigning AgentHost to the nested process-tree job failed."
+                    : "Assigning AgentHost to the process-tree job failed.",
                 new Win32Exception(Marshal.GetLastWin32Error()));
+        }
+
+        if (!Contains(process))
+        {
+            throw new AgentBootstrapLaunchException(
+                AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+                "AgentHost process-tree Job membership could not be confirmed.");
         }
     }
 
@@ -1248,7 +1457,20 @@ internal sealed class WindowsProcessTreeJob : IDisposable
         }
 
         disposed = true;
+        try
+        {
+            WindowsNative.PostQueuedCompletionStatus(
+                completionPort,
+                0,
+                UIntPtr.Zero,
+                IntPtr.Zero);
+        }
+        catch
+        {
+        }
+
         handle.Dispose();
+        completionPort.Dispose();
     }
 
     private void ThrowIfDisposed()
@@ -1257,6 +1479,34 @@ internal sealed class WindowsProcessTreeJob : IDisposable
         {
             throw new ObjectDisposedException(nameof(WindowsProcessTreeJob));
         }
+    }
+
+    private static bool QueryMembership(
+        SafeKernelHandle process,
+        IntPtr job)
+    {
+        if (process == null)
+        {
+            throw new ArgumentNullException(nameof(process));
+        }
+
+        if (process.IsInvalid || process.IsClosed)
+        {
+            throw new AgentBootstrapLaunchException(
+                AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+                "The process handle for Job membership validation is invalid.");
+        }
+
+        bool isMember;
+        if (!WindowsNative.IsProcessInJob(process, job, out isMember))
+        {
+            throw new AgentBootstrapLaunchException(
+                AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+                "Querying AgentHost process-tree Job membership failed.",
+                new Win32Exception(Marshal.GetLastWin32Error()));
+        }
+
+        return isMember;
     }
 
     private static UIntPtr ToUIntPtr(long value)
@@ -1306,7 +1556,13 @@ internal sealed class AgentHostProcessTreeLimitSnapshot
 internal static class WindowsNative
 {
     internal const int ErrorInsufficientBuffer = 122;
+    internal const int ErrorWaitTimeout = 258;
+    internal const int ErrorAbandonedWait = 735;
     internal const uint HandleFlagInherit = 0x00000001;
+    internal const uint ProcessTerminate = 0x00000001;
+    internal const uint ProcessSetQuota = 0x00000100;
+    internal const uint ProcessQueryLimitedInformation = 0x00001000;
+    internal const uint Synchronize = 0x00100000;
     internal const uint ExtendedStartupInfoPresent = 0x00080000;
     internal const uint CreateNoWindow = 0x08000000;
     internal const uint CreateSuspended = 0x00000004;
@@ -1323,8 +1579,14 @@ internal static class WindowsNative
     internal const uint DisableMaxPrivilege = 0x00000001;
     internal const uint DesktopAllAccess = 0x000F01FF;
     internal const int ProcThreadAttributeHandleList = 0x00020002;
+    internal const int JobObjectAssociateCompletionPortInformationClass = 7;
     internal const int JobObjectExtendedLimitInformationClass = 9;
     internal const int JobObjectCpuRateControlInformationClass = 15;
+    internal const uint JobObjectMessageEndOfJobTime = 1;
+    internal const uint JobObjectMessageActiveProcessLimit = 3;
+    internal const uint JobObjectMessageExitProcess = 7;
+    internal const uint JobObjectMessageAbnormalExitProcess = 8;
+    internal const uint JobObjectMessageJobMemoryLimit = 10;
     internal const int StandardInputHandle = -10;
     internal const int StandardOutputHandle = -11;
     internal const int StandardErrorHandle = -12;
@@ -1482,6 +1744,13 @@ internal static class WindowsNative
         internal uint CpuRate;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct JobObjectAssociateCompletionPort
+    {
+        internal IntPtr CompletionKey;
+        internal IntPtr CompletionPort;
+    }
+
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool CreatePipe(
@@ -1513,6 +1782,38 @@ internal static class WindowsNative
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetInformationJobObject(
+        SafeKernelHandle job,
+        int jobObjectInformationClass,
+        ref JobObjectAssociateCompletionPort jobObjectInformation,
+        uint jobObjectInformationLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern IntPtr CreateIoCompletionPort(
+        IntPtr fileHandle,
+        IntPtr existingCompletionPort,
+        UIntPtr completionKey,
+        uint numberOfConcurrentThreads);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetQueuedCompletionStatus(
+        SafeKernelHandle completionPort,
+        out uint numberOfBytesTransferred,
+        out UIntPtr completionKey,
+        out IntPtr overlapped,
+        uint milliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool PostQueuedCompletionStatus(
+        SafeKernelHandle completionPort,
+        uint numberOfBytesTransferred,
+        UIntPtr completionKey,
+        IntPtr overlapped);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool QueryInformationJobObject(
         SafeKernelHandle job,
         int jobObjectInformationClass,
@@ -1534,6 +1835,19 @@ internal static class WindowsNative
     internal static extern bool AssignProcessToJobObject(
         SafeKernelHandle job,
         SafeKernelHandle process);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsProcessInJob(
+        SafeKernelHandle process,
+        IntPtr job,
+        [MarshalAs(UnmanagedType.Bool)] out bool result);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern IntPtr OpenProcess(
+        uint desiredAccess,
+        [MarshalAs(UnmanagedType.Bool)] bool inheritHandle,
+        uint processId);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

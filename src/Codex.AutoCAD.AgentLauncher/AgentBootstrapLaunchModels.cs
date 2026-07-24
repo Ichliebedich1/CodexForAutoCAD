@@ -17,6 +17,77 @@ public enum AgentBootstrapLaunchFailure
     ProcessIsolationFailed = 11
 }
 
+public enum AgentHostResourceLimitFailure
+{
+    None = 0,
+    ProcessCountExceeded = 1,
+    JobMemoryExceeded = 2,
+    JobUserTimeExceeded = 3,
+    SessionRuntimeExceeded = 4
+}
+
+public static class AgentHostResourceLimitFailurePolicy
+{
+    public static string GetErrorCode(AgentHostResourceLimitFailure failure)
+    {
+        switch (failure)
+        {
+            case AgentHostResourceLimitFailure.ProcessCountExceeded:
+                return "agenthost_process_limit_exceeded";
+            case AgentHostResourceLimitFailure.JobMemoryExceeded:
+                return "agenthost_memory_limit_exceeded";
+            case AgentHostResourceLimitFailure.JobUserTimeExceeded:
+                return "agenthost_user_time_limit_exceeded";
+            case AgentHostResourceLimitFailure.SessionRuntimeExceeded:
+                return "agenthost_session_runtime_limit_exceeded";
+            case AgentHostResourceLimitFailure.None:
+            default:
+                return "agenthost_resource_limit_unknown";
+        }
+    }
+
+    public static string GetSafeMessage(AgentHostResourceLimitFailure failure)
+    {
+        switch (failure)
+        {
+            case AgentHostResourceLimitFailure.ProcessCountExceeded:
+                return "The AgentHost process-tree process limit was exceeded.";
+            case AgentHostResourceLimitFailure.JobMemoryExceeded:
+                return "The AgentHost process-tree memory limit was exceeded.";
+            case AgentHostResourceLimitFailure.JobUserTimeExceeded:
+                return "The AgentHost process-tree user-time limit was exceeded.";
+            case AgentHostResourceLimitFailure.SessionRuntimeExceeded:
+                return "The AgentHost session runtime limit was exceeded.";
+            case AgentHostResourceLimitFailure.None:
+            default:
+                return "The AgentHost resource limit failure is unavailable.";
+        }
+    }
+}
+
+public sealed class AgentHostResourceLimitException : Exception
+{
+    public AgentHostResourceLimitException(AgentHostResourceLimitFailure failure)
+        : base(AgentHostResourceLimitFailurePolicy.GetSafeMessage(failure))
+    {
+        if (failure == AgentHostResourceLimitFailure.None)
+        {
+            throw new ArgumentOutOfRangeException(nameof(failure));
+        }
+
+        Failure = failure;
+    }
+
+    public AgentHostResourceLimitFailure Failure { get; }
+
+    public string ErrorCode => AgentHostResourceLimitFailurePolicy.GetErrorCode(Failure);
+
+    public override string ToString()
+    {
+        return nameof(AgentHostResourceLimitException) + ": " + ErrorCode;
+    }
+}
+
 /// <summary>
 /// Defines the only diagnostics a bootstrap failure may expose outside the launcher.
 /// Callers may supply an unsafe local diagnostic while constructing the exception, but it must never
@@ -163,6 +234,8 @@ public sealed class AgentHostBootstrapOptions
     public static readonly TimeSpan DefaultMaximumSessionRuntime = TimeSpan.FromHours(24);
     public static readonly TimeSpan MinimumMaximumSessionRuntime = TimeSpan.FromSeconds(1);
     public static readonly TimeSpan MaximumMaximumSessionRuntime = TimeSpan.FromDays(7);
+    public static readonly TimeSpan DefaultGracefulStopTimeout = TimeSpan.FromSeconds(1);
+    public static readonly TimeSpan MaximumGracefulStopTimeout = TimeSpan.FromSeconds(30);
 
     public AgentHostBootstrapOptions(
         string agentHostExecutablePath,
@@ -198,6 +271,11 @@ public sealed class AgentHostBootstrapOptions
 
     /// <summary>Elapsed runtime allowed after an authenticated AgentHost service session starts.</summary>
     public TimeSpan MaximumSessionRuntime { get; set; } = DefaultMaximumSessionRuntime;
+
+    /// <summary>
+    /// Time allowed for AgentHost to exit naturally before its process-tree Job is terminated.
+    /// </summary>
+    public TimeSpan GracefulStopTimeout { get; set; } = DefaultGracefulStopTimeout;
 
     internal TimeSpan GetValidatedStartupTimeout()
     {
@@ -252,6 +330,7 @@ public sealed class AgentHostBootstrapOptions
 
         GetValidatedProcessTreeLimits();
         GetValidatedSessionRuntime();
+        GetValidatedGracefulStopTimeout();
 
         var expectedSha256 = NormalizeSha256(ExpectedExecutableSha256);
         return new AgentHostExecutableIdentity(fullPath, expectedSha256);
@@ -321,6 +400,21 @@ public sealed class AgentHostBootstrapOptions
         }
 
         return MaximumSessionRuntime;
+    }
+
+    internal TimeSpan GetValidatedGracefulStopTimeout()
+    {
+        if (GracefulStopTimeout < TimeSpan.Zero
+            || GracefulStopTimeout > MaximumGracefulStopTimeout)
+        {
+            throw Invalid(
+                "AgentHost graceful-stop timeout must be between 0 and "
+                + MaximumGracefulStopTimeout.TotalSeconds.ToString(
+                    CultureInfo.InvariantCulture)
+                + " seconds.");
+        }
+
+        return GracefulStopTimeout;
     }
 
     private static DriveType GetDriveType(string path)

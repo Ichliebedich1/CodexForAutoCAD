@@ -25,19 +25,20 @@ $windowsPowerShellCommand = Join-Path `
     $env:SystemRoot `
     "System32\WindowsPowerShell\v1.0\powershell.exe"
 $expectedPhase2ProjectResults = [ordered]@{
-    "Codex.AutoCAD.Contracts.Specs" = 32
+    "Codex.AutoCAD.Contracts.Specs" = 96
     "Codex.AutoCAD.Ipc.Specs" = 35
     "Codex.AutoCAD.Security.Specs" = 19
-    "Codex.AutoCAD.AppServer.Specs" = 7
-    "Codex.AutoCAD.Bridge.Specs" = 37
-    "Codex.AutoCAD.Bridge.Client.Specs" = 25
-    "Codex.AutoCAD.AgentRuntime.Specs" = 31
+    "Codex.AutoCAD.AppServer.Specs" = 32
+    "Codex.AutoCAD.Bridge.Specs" = 49
+    "Codex.AutoCAD.Bridge.Client.Specs" = 30
+    "Codex.AutoCAD.AgentRuntime.Specs" = 34
     "Codex.AutoCAD.Chat.Specs" = 9
+    "Codex.AutoCAD.Host.2016.Mvp.Specs" = 56
 }
 $expectedPhase2Specs = [int] (
     ($expectedPhase2ProjectResults.Values | Measure-Object -Sum).Sum)
-if ($expectedPhase2Specs -ne 195) {
-    throw "冻结 Phase2 项目计数必须精确合计为 195。"
+if ($expectedPhase2Specs -ne 360) {
+    throw "冻结 Phase2 项目计数必须精确合计为 360。"
 }
 
 $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
@@ -291,14 +292,14 @@ function Assert-BooleanProperty {
 function Assert-BootstrapEvidence {
     param([Parameter(Mandatory = $true)] $Evidence)
 
-    Assert-PropertyEquals $Evidence "SchemaVersion" 3
+    Assert-PropertyEquals $Evidence "SchemaVersion" 16
     Assert-PropertyEquals $Evidence "Scope" `
         "autocad2016-live-agenthost-inherited-handle-bootstrap-doctor"
     Assert-PropertyEquals $Evidence "Status" `
         "live-agenthost-bootstrap-doctor-gate-passed"
     Assert-PropertyEquals $Evidence "Configuration" "Release"
-    Assert-PropertyEquals $Evidence "Net45Specs" "26/26"
-    Assert-PropertyEquals $Evidence "Net8Specs" "26/26"
+    Assert-PropertyEquals $Evidence "Net45Specs" "57/57"
+    Assert-PropertyEquals $Evidence "Net8Specs" "57/57"
     Assert-PropertyEquals $Evidence "RelevantProcessBaselineCount" 0
     Assert-PropertyEquals $Evidence "RelevantProcessFinalCount" 0
 
@@ -312,7 +313,18 @@ function Assert-BootstrapEvidence {
         "DedicatedInheritedHandleTransportLiveVerified",
         "ChildConfirmationPidAndCreationTimeBindingLiveVerified",
         "ApprovedExecutableSha256EnforcementLiveVerified",
-        "StartupDeadlineAbortAndBoundedTerminationCleanupLiveVerified"
+        "StartupDeadlineAbortAndBoundedTerminationCleanupLiveVerified",
+        "ProcessTreeCleanupOnServiceStopLiveVerified",
+        "ProcessTreeStartStopRepeat500Verified",
+        "ProcessTreeCleanupOnUnexpectedAgentHostExitLiveVerified",
+        "ProcessTreeCleanupOnOwnerExitLiveVerified",
+        "ProcessTreeResourceLimitsRuntimeVerified",
+        "ResourceLimitTerminalAttributionRuntimeVerified",
+        "NestedJobAssignmentCurrentRuntimeVerified",
+        "SessionWallClockDeadlineRuntimeVerified",
+        "GracefulServiceExitBeforeForcedTerminationRuntimeVerified",
+        "ConfiguredGracefulStopTimeoutRuntimeVerified",
+        "ProtectedSessionWorkspaceLifecycleRuntimeVerified"
     )) {
         Assert-BooleanProperty $Evidence $name $true
     }
@@ -325,6 +337,7 @@ function Assert-BootstrapEvidence {
         "ExecutableFileIdentityToctouRaceDynamicallyVerified",
         "SuspendedLaunchRaceDynamicallyVerified",
         "PendingBootstrapAtomicConsumptionLiveVerified",
+        "EnterpriseNestedJobMatrixVerified",
         "SourceTreeBinOrObjModified",
         "AutoCadProcessSetChanged",
         "AutoCadStartedOrRestarted",
@@ -352,7 +365,31 @@ function Assert-BootstrapEvidence {
         "TrailingAndDuplicateConfirmationRejected",
         "ChildClearsInheritedFlags",
         "HandleAllowlistCanaryVerified",
-        "StandardErrorSeparateAndBounded"
+        "StandardErrorSeparateAndBounded",
+        "ServiceStopKillsProcessTree",
+        "UnexpectedAgentHostExitKillsProcessTree",
+        "ProcessOwnerExitKillsProcessTree",
+        "ProcessTreeResourceLimitsApplied",
+        "InvalidProcessTreeResourceLimitsFailClosed",
+        "ResourceLimitErrorCodesStable",
+        "NestedJobAssignmentCompatible",
+        "JobUserTimeTerminatesProcessTree",
+        "JobProcessLimitProducesStructuredTerminal",
+        "JobMemoryLimitProducesStructuredTerminal",
+        "CombinedJobLimitsProduceSingleTerminal",
+        "SessionWallClockTerminatesProcessTree",
+        "SessionWallClockRetriesCleanup",
+        "SessionStopPreventsRuntimeExpiry",
+        "ServiceStopUsesConfiguredGrace",
+        "SessionWorkspaceProtectedLayout",
+        "SessionWorkspaceDuplicateRejected",
+        "SessionWorkspaceInvalidRootsRejected",
+        "SessionWorkspaceReparseRootRejected",
+        "SessionWorkspaceActiveLeasePreserved",
+        "SessionWorkspaceCrashRecovery",
+        "ServiceSessionWorkspaceRemoved",
+        "ServiceStartFailureWorkspaceRemoved",
+        "ServiceWorkspaceCleanupCanRetry"
     )) {
         Assert-BooleanProperty $Evidence.RuntimeEvidence $name $true
     }
@@ -369,7 +406,7 @@ function Assert-AuthEvidence {
     Assert-PropertyEquals $Evidence "Configuration" "Release"
     Assert-PropertyEquals $Evidence "Net45Specs" "35/35"
     Assert-PropertyEquals $Evidence "Net8Specs" "35/35"
-    Assert-PropertyEquals $Evidence "BridgeRegressionSpecs" "37/37"
+    Assert-PropertyEquals $Evidence "BridgeRegressionSpecs" "49/49"
 
     foreach ($name in @(
         "AuthCompatIsolatedRestoreOffline",
@@ -472,7 +509,7 @@ function Assert-Phase2Log {
     $projectPattern = '(?m)^(?<name>Codex\.AutoCAD\.[A-Za-z0-9.]+\.Specs):\s*(?<passed>\d+)/(?<total>\d+)\s*$'
     $projectMatches = [regex]::Matches($text, $projectPattern)
     if ($projectMatches.Count -ne $expectedPhase2ProjectResults.Count) {
-        throw "$($GateRun.Label) 必须输出冻结的七个 Phase2 规格项目汇总；实际：$($projectMatches.Count)。"
+        throw "$($GateRun.Label) 必须输出冻结的 $($expectedPhase2ProjectResults.Count) 个 Phase2 规格项目汇总；实际：$($projectMatches.Count)。"
     }
     $actualProjectResults = [ordered]@{}
     foreach ($match in $projectMatches) {
@@ -712,7 +749,7 @@ try {
     }
 
     $finalEvidence = [ordered]@{
-        schemaVersion = 2
+        schemaVersion = 3
         recordedDate = [DateTimeOffset]::Now.ToString("yyyy-MM-dd")
         recordedAtLocal = [DateTimeOffset]::Now.ToString("o")
         generatedBy = "scripts/verify-autocad2016-agent-bootstrap-stage.ps1"
@@ -742,7 +779,7 @@ try {
         verifierHashes = $scriptHashes
         rawEvidenceBindings = [ordered]@{
             bootstrap = [ordered]@{
-                schemaVersion = 3
+                schemaVersion = 16
                 powerShell7EvidenceSha256 = $bootstrapPs7.Sha256
                 windowsPowerShell51EvidenceSha256 = $bootstrapPs51.Sha256
                 normalizedEvidenceSha256 = Get-TextSha256 $bootstrapPs7Comparable
@@ -868,7 +905,7 @@ try {
             credentialsIncluded = $false
             rawStandardErrorIncluded = $false
         }
-    conclusion = "The machine-orchestrated AgentHost secure-bootstrap stage passed PowerShell 7 and Windows PowerShell 5.1 bootstrap gates (26/26 net45 and net8), authentication compatibility gates (Bridge 37/37 and net45/net8 35/35), and Phase2 Release gates (0 warnings, 0 errors, 195/195 Specs, Host scan, doctor, diff, and secret scan). The configured startup deadline triggers fail-closed abort followed by no more than five seconds of bounded termination cleanup. AutoCAD was not started, restarted, or commanded. Long-running Bridge, Host.2016 integration, and complete AutoCAD 2016 support remain unverified."
+    conclusion = "The machine-orchestrated AgentHost secure-bootstrap stage passed PowerShell 7 and Windows PowerShell 5.1 bootstrap gates (57/57 net45 and net8), authentication compatibility gates (Bridge 49/49 and net45/net8 35/35), and Phase2 Release gates (0 warnings, 0 errors, 360/360 Specs, Host scan, doctor, diff, and secret scan). The configured startup deadline triggers fail-closed abort followed by no more than five seconds of bounded termination cleanup. Process-tree cleanup, protected per-session workspace ACL/lifecycle, junction rejection, active-lease preservation, expired crash recovery, validated graceful-stop configuration, authoritative process-count, Job-memory, Job-user-time, wall-clock, and combined resource terminal attribution, 500 consecutive service start/stop cycles, and nested Job assignment were verified on the current Windows runtime; the required enterprise nested-Job policy matrix remains unverified. AutoCAD was not started, restarted, or commanded. Long-running Bridge, Host.2016 integration, and complete AutoCAD 2016 support remain unverified."
     }
 
     $finalJson = $finalEvidence | ConvertTo-Json -Depth 30

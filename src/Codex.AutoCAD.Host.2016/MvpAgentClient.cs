@@ -17,6 +17,8 @@ namespace Codex.AutoCAD.Host2016
     internal sealed class MvpAgentClient : IDisposable
     {
         private static readonly TimeSpan DefaultTurnTimeout = TimeSpan.FromMinutes(10);
+        private static readonly TimeSpan AgentHostResourceAttributionWindow =
+            TimeSpan.FromSeconds(1);
         private readonly object sync = new object();
         private readonly TimeSpan turnTimeout;
         private AgentHostServiceSession serviceSession;
@@ -52,7 +54,8 @@ namespace Codex.AutoCAD.Host2016
             IAgentBridgeClient establishedBridge,
             string establishedThreadId,
             string establishedSystemSessionId,
-            TimeSpan? configuredTurnTimeout = null)
+            TimeSpan? configuredTurnTimeout = null,
+            AgentHostServiceSession establishedServiceSession = null)
         {
             if (establishedBridge == null)
             {
@@ -72,6 +75,7 @@ namespace Codex.AutoCAD.Host2016
             }
 
             bridge = establishedBridge;
+            serviceSession = establishedServiceSession;
             threadId = establishedThreadId;
             systemSessionId = establishedSystemSessionId;
             turnTimeout = configuredTurnTimeout ?? DefaultTurnTimeout;
@@ -84,6 +88,12 @@ namespace Codex.AutoCAD.Host2016
             online = true;
             establishedBridge.EventReceived += OnBridgeEvent;
             establishedBridge.ConnectionFaulted += OnBridgeFaulted;
+            if (establishedServiceSession != null)
+            {
+                _ = MonitorAgentHostResourceLimitAsync(
+                    establishedServiceSession,
+                    establishedBridge);
+            }
         }
 
         internal bool IsStarted
@@ -1200,6 +1210,8 @@ namespace Codex.AutoCAD.Host2016
                     throw new InvalidOperationException("AgentHost 未返回有效 Codex thread。");
                 }
 
+                var monitoredServiceSession = newServiceSession;
+                var monitoredBridge = newBridge;
                 bool stopWasRequested;
                 lock (sync)
                 {
@@ -1215,6 +1227,10 @@ namespace Codex.AutoCAD.Host2016
                     newServiceSession = null;
                     newBridge = null;
                 }
+
+                _ = MonitorAgentHostResourceLimitAsync(
+                    monitoredServiceSession,
+                    monitoredBridge);
 
                 lock (sync)
                 {
@@ -1324,6 +1340,95 @@ namespace Codex.AutoCAD.Host2016
             }
         }
 
+        private async Task MonitorAgentHostResourceLimitAsync(
+            AgentHostServiceSession monitoredServiceSession,
+            IAgentBridgeClient monitoredBridge)
+        {
+            try
+            {
+                var failure = await monitoredServiceSession.ResourceLimitFailureTask
+                    .ConfigureAwait(false);
+                if (failure == AgentHostResourceLimitFailure.None)
+                {
+                    return;
+                }
+
+                var exception = new AgentHostResourceLimitException(failure);
+                TransitionOfflineForAgentHostFailure(
+                    monitoredServiceSession,
+                    monitoredBridge,
+                    exception,
+                    MvpAgentFailureFormatter.FromResourceLimitFailure(
+                        failure,
+                        MvpAgentFailureStages.AgentHostRuntime));
+            }
+            catch (Exception exception)
+            {
+                TransitionOfflineForAgentHostFailure(
+                    monitoredServiceSession,
+                    monitoredBridge,
+                    exception,
+                    MvpAgentFailureFormatter.FromException(
+                        exception,
+                        MvpAgentFailureStages.AgentHostRuntime));
+            }
+        }
+
+        private void TransitionOfflineForAgentHostFailure(
+            AgentHostServiceSession monitoredServiceSession,
+            IAgentBridgeClient monitoredBridge,
+            Exception exception,
+            MvpAgentFailure failure)
+        {
+            MvpAgentTurnState requestTurn;
+            TaskCompletionSource<bool> cancellationCompletion;
+            string requestId;
+            string currentState;
+            lock (sync)
+            {
+                if (!ReferenceEquals(serviceSession, monitoredServiceSession)
+                    || !ReferenceEquals(bridge, monitoredBridge)
+                    || stopRequested
+                    || stopCompleted
+                    || (!online && !string.IsNullOrEmpty(terminalBridgeErrorCode)))
+                {
+                    return;
+                }
+
+                requestTurn = activeTurn != null && !activeTurn.IsTerminal
+                    ? activeTurn
+                    : null;
+                cancellationCompletion = requestTurn == null
+                    ? null
+                    : requestTurn.MarkTerminal(MvpAgentTurnStates.Failed);
+                requestId = requestTurn == null ? string.Empty : requestTurn.RequestId;
+                currentState = requestTurn == null ? string.Empty : requestTurn.State;
+                activeDrawingQueryBinding = null;
+                terminalBridgeErrorCode = failure.ErrorCode;
+                online = false;
+            }
+
+            if (requestTurn != null)
+            {
+                requestTurn.CancelTimeout();
+            }
+
+            if (cancellationCompletion != null)
+            {
+                cancellationCompletion.TrySetException(
+                    new MvpAgentTurnException(
+                        requestId,
+                        currentState,
+                        exception));
+            }
+
+            PublishSafely(
+                ErrorChanged,
+                failure
+                    .WithRequest(requestId, currentState)
+                    .FormatForUser("AgentHost 资源限制"));
+        }
+
         private void OnBridgeEvent(object sender, AgentBridgeEventReceivedEventArgs args)
         {
             var bridgeEvent = args == null ? null : args.BridgeEvent;
@@ -1346,7 +1451,7 @@ namespace Codex.AutoCAD.Host2016
                         AgentBridgeConnectionStates.Closed,
                         StringComparison.Ordinal))
                 {
-                    TransitionOffline(
+                    QueueBridgeFaultAttribution(
                         sender as IAgentBridgeClient,
                         new AgentBridgeClientException(
                             AgentBridgeErrorCodes.Offline,
@@ -1532,9 +1637,86 @@ namespace Codex.AutoCAD.Host2016
 
         private void OnBridgeFaulted(object sender, AgentBridgeConnectionFaultedEventArgs args)
         {
-            TransitionOffline(
+            QueueBridgeFaultAttribution(
                 sender as IAgentBridgeClient,
                 args == null ? null : args.Exception);
+        }
+
+        private void QueueBridgeFaultAttribution(
+            IAgentBridgeClient faultedBridge,
+            AgentBridgeClientException exception)
+        {
+            AgentHostServiceSession currentServiceSession;
+            lock (sync)
+            {
+                if (faultedBridge == null
+                    || !ReferenceEquals(bridge, faultedBridge)
+                    || stopRequested
+                    || stopCompleted
+                    || (!online && !string.IsNullOrEmpty(terminalBridgeErrorCode)))
+                {
+                    return;
+                }
+
+                currentServiceSession = serviceSession;
+            }
+
+            if (currentServiceSession == null)
+            {
+                TransitionOffline(faultedBridge, exception);
+                return;
+            }
+
+            _ = AttributeBridgeFaultAsync(
+                currentServiceSession,
+                faultedBridge,
+                exception);
+        }
+
+        private async Task AttributeBridgeFaultAsync(
+            AgentHostServiceSession monitoredServiceSession,
+            IAgentBridgeClient faultedBridge,
+            AgentBridgeClientException exception)
+        {
+            try
+            {
+                var resourceFailureTask = monitoredServiceSession.ResourceLimitFailureTask;
+                var completed = resourceFailureTask.IsCompleted
+                    ? resourceFailureTask
+                    : await Task.WhenAny(
+                            resourceFailureTask,
+                            Task.Delay(AgentHostResourceAttributionWindow))
+                        .ConfigureAwait(false);
+                if (ReferenceEquals(completed, resourceFailureTask))
+                {
+                    var failure = await resourceFailureTask.ConfigureAwait(false);
+                    if (failure != AgentHostResourceLimitFailure.None)
+                    {
+                        var resourceException = new AgentHostResourceLimitException(failure);
+                        TransitionOfflineForAgentHostFailure(
+                            monitoredServiceSession,
+                            faultedBridge,
+                            resourceException,
+                            MvpAgentFailureFormatter.FromResourceLimitFailure(
+                                failure,
+                                MvpAgentFailureStages.AgentHostRuntime));
+                        return;
+                    }
+                }
+            }
+            catch (Exception resourceMonitorException)
+            {
+                TransitionOfflineForAgentHostFailure(
+                    monitoredServiceSession,
+                    faultedBridge,
+                    resourceMonitorException,
+                    MvpAgentFailureFormatter.FromException(
+                        resourceMonitorException,
+                        MvpAgentFailureStages.AgentHostRuntime));
+                return;
+            }
+
+            TransitionOffline(faultedBridge, exception);
         }
 
         private void TransitionOffline(

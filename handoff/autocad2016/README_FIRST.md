@@ -73,12 +73,27 @@ M4 当前只形成自动化集成检查点，不是安全候选：
   `KILL_ON_JOB_CLOSE` 进程树边界和 internal-only RestrictedToken 能力探针。
 - M4.4/M4.5 已收回公共实验身份入口并禁止 CurrentUser 回退。本机探针只得到原语
   `available`、认证前 `child_exited`，不能解释为生产受限身份成功。
-- AgentLauncher net45/net8 各 `41/41`；双 Shell Phase 2 均为 `358/358`，Bridge
-  `49/49`，Release `0 warning / 0 error`；R20.1 API Probe 为
+- 未提交 M4.6/M4.8/M4.9 切口已增加 Job 成员检测、分配后反查、当前 Windows 嵌套 Job 验证、
+  连续 `500` 次 service 启停回收、受检的 `0–30 s` 停止宽限，以及进程数、Job 内存、累计
+  用户时间和服务墙钟的稳定结构化终态，以及 Job 内存/用户时间组合耗尽；AgentLauncher
+  net45/net8 各 `57/57`，Host MVP
+  `56/56`，双 Shell Phase 2 均为 `360/360`，Bridge `49/49`、认证兼容 net45/net8
+  各 `35/35`，Release
+  `0 warning / 0 error`；阶段证据固定写入
+  `evidence/agent-bootstrap-verification-20260719.json`，其最终 SHA-256 由门禁输出记录，
+  不在受该证据 manifest 约束的文档中反向固化。
+  企业嵌套 Job 策略矩阵仍未验证。R20.1 API Probe 为
   `29 passed / 8 expected failed`、Autodesk DLL 复制数 `0`。
 - 版本硬门槛和健康预检已进入正式调用链；`6d99bb9` 已完成显式环境白名单、可选每会话
-  `CODEX_HOME`、空 MCP/插件及租约基础，但生产默认未启用。凭据 Broker、CPU/内存/进程/时间
-  和磁盘配额、ACL/lease 强化、JSONL 哈希链审计、统一脱敏与企业/真实 Codex 故障矩阵仍未完成。
+  `CODEX_HOME`、空 MCP/插件及租约基础，但生产默认未启用。M4.8 自动化切口已将每会话
+  `workspace`、`audit`、`codex-home`、schema marker 和活动 lease 接入真实启动/停止链，使用
+  受保护最小 ACL、拒绝 reparse 根，并支持过期崩溃恢复；企业/AutoCAD 实机矩阵和独立 Git
+  提交仍缺。working set 已明确只做性能 telemetry，Job 总提交内存是硬边界。真实
+  Codex/AutoCAD 配额矩阵、磁盘硬配额、M4.11 凭据 Broker、JSONL 哈希链审计、统一脱敏与
+  企业故障矩阵仍未完成；凭据 Broker 完成前隔离
+  `codex-home` 不得启用。
+- M4.9 结构化终态和 working-set 决策见
+  `M4_9_RESOURCE_LIMIT_TERMINALS_20260724.md`。
 - M4.4/M4.5 证据和边界见
   `M4_4_M4_5_RESTRICTED_IDENTITY_PROBE_20260724.md`。
 - M4.16 完成前 CAD 写入继续禁用，M5 不得进入产品调用链。

@@ -288,6 +288,20 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
             "CodexForAutoCAD",
             "audit",
             "agenthost");
+        return CreateInSessionDirectory(sessionId, auditDirectory);
+    }
+
+    internal static AgentHostAuditLog CreateInSessionDirectory(
+        string sessionId,
+        string auditDirectory)
+    {
+        ValidateBootstrapSessionId(sessionId);
+        if (string.IsNullOrWhiteSpace(auditDirectory))
+        {
+            throw new AgentHostAuditException(
+                "AgentHost session audit directory is unavailable.");
+        }
+
         var auditPath = Path.Combine(auditDirectory, sessionId + ".jsonl");
         try
         {

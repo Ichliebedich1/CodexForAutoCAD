@@ -207,7 +207,7 @@ try
                 if (mode == "reverse-query-cancel")
                 {
                     using var queryCancellation = new CancellationTokenSource(
-                        TimeSpan.FromMilliseconds(200));
+                        TimeSpan.FromSeconds(2));
                     try
                     {
                         _ = await connection.RequestAsync(

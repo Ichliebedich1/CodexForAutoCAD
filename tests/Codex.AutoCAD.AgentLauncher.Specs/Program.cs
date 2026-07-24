@@ -11,6 +11,11 @@ if (args.Length > 0
 {
     return RunJobOwnerHelper(args);
 }
+if (args.Length > 0
+    && string.Equals(args[0], "--workspace-lease-owner-helper", StringComparison.Ordinal))
+{
+    return RunWorkspaceLeaseOwnerHelper(args);
+}
 
 var arguments = ParseArguments(args);
 var fixture = new FakeAgentHostFixture(arguments.FakeAgentHostPath);
@@ -24,12 +29,28 @@ try
         new SpecCase("RESTRICTED_TOKEN_BOOTSTRAP_PROBE_PORTABLE", "受限身份探针接受结构化能力结果、禁止回退且无残留", () => RestrictedTokenBootstrapProbeIsPortable(fixture)),
         new SpecCase("JOB_RESOURCE_LIMITS_APPLIED", "Job Object应用进程数、内存、CPU与累计用户时间硬限制", ProcessTreeResourceLimitsAreApplied),
         new SpecCase("JOB_RESOURCE_LIMITS_INVALID", "无效进程树与会话运行限制在启动前失败关闭", ProcessTreeResourceLimitsFailClosed),
+        new SpecCase("RESOURCE_LIMIT_ERROR_CODES_STABLE", "资源限制终态使用稳定脱敏错误码", ResourceLimitErrorCodesAreStable),
+        new SpecCase("NESTED_JOB_ASSIGNMENT_COMPATIBLE", "已有Job中的进程可检测并进入受控嵌套Job", () => NestedJobAssignmentIsCompatible(fixture)),
         new SpecCase("EXPERIMENTAL_IDENTITY_NOT_PUBLIC", "产品公共配置与结果不暴露实验身份选择或遥测", ExperimentalProcessIdentityIsNotPublic),
         new SpecCase("JOB_USER_TIME_TERMINATES_TREE", "累计Job用户时间耗尽会终止忙碌进程树", () => JobUserTimeTerminatesBusyTree(fixture)),
+        new SpecCase("JOB_PROCESS_LIMIT_STRUCTURED", "Job进程数耗尽产生结构化终态并清理进程树", () => JobProcessLimitIsStructured(fixture)),
+        new SpecCase("JOB_MEMORY_LIMIT_STRUCTURED", "Job总提交内存耗尽产生结构化终态并清理进程树", () => JobMemoryLimitIsStructured(fixture)),
+        new SpecCase("JOB_COMBINED_LIMIT_SINGLE_TERMINAL", "组合Job内存和用户时间耗尽只产生一个权威终态", () => JobCombinedLimitHasSingleTerminal(fixture)),
         new SpecCase("SESSION_RUNTIME_TERMINATES_TREE", "会话墙钟截止会终止AgentHost进程树", () => SessionRuntimeTerminatesTree(fixture)),
         new SpecCase("SESSION_RUNTIME_RETRIES_CLEANUP", "会话墙钟截止首次清理失败后自动重试", SessionRuntimeRetriesCleanup),
         new SpecCase("SESSION_STOP_PREVENTS_RUNTIME_EXPIRY", "显式停止完成后会话墙钟状态不得反转", SessionStopPreventsRuntimeExpiry),
         new SpecCase("SERVICE_STOP_ALLOWS_GRACEFUL_EXIT", "service停止在强制终止前允许一次自然退出", ServiceStopAllowsGracefulExit),
+        new SpecCase("SERVICE_STOP_USES_CONFIGURED_GRACE", "service停止使用启动前受检的宽限时长", ServiceStopUsesConfiguredGrace),
+        new SpecCase("SESSION_WORKSPACE_PROTECTED_LAYOUT", "会话工作区使用受保护ACL、固定布局和不可替换目录租约", SessionWorkspaceProtectedLayout),
+        new SpecCase("SESSION_WORKSPACE_DUPLICATE_REJECTED", "同一会话工作区不得并发或重复创建", SessionWorkspaceDuplicateIsRejected),
+        new SpecCase("SESSION_WORKSPACE_INVALID_ROOTS_REJECTED", "相对、UNC、设备路径和非法会话身份均失败关闭", SessionWorkspaceInvalidRootsAreRejected),
+        new SpecCase("SESSION_WORKSPACE_REPARSE_ROOT_REJECTED", "junction工作区根在创建会话前失败关闭", SessionWorkspaceReparseRootIsRejected),
+        new SpecCase("SESSION_WORKSPACE_ACTIVE_LEASE_PRESERVED", "过期清理跳过活动lease和无标记旧目录", SessionWorkspaceActiveLeaseIsPreserved),
+        new SpecCase("SESSION_WORKSPACE_CRASH_RECOVERY", "崩溃释放lease后可按过期策略安全清理", SessionWorkspaceCrashRecovery),
+        new SpecCase("SERVICE_SESSION_WORKSPACE_REMOVED", "真实service停止后删除对应会话工作区", () => ServiceSessionWorkspaceIsRemoved(fixture)),
+        new SpecCase("SERVICE_START_FAILURE_WORKSPACE_REMOVED", "service启动失败也不遗留会话工作区", () => ServiceStartFailureWorkspaceIsRemoved(fixture)),
+        new SpecCase("SERVICE_WORKSPACE_CLEANUP_CAN_RETRY", "工作区清理失败后第二次STOP只重试未完成清理", ServiceWorkspaceCleanupCanRetry),
+        new SpecCase("SERVICE_START_STOP_REPEAT_500", "连续五百次service启动停止均回收进程", () => ServiceStartStopRepeat500(fixture)),
         new SpecCase("SERVICE_STOP_KILLS_PROCESS_TREE", "停止服务会回收AgentHost及其受监管后代进程", () => ServiceStopKillsProcessTree(fixture)),
         new SpecCase("AGENTHOST_UNEXPECTED_EXIT_KILLS_PROCESS_TREE", "AgentHost异常退出时启动器仍存活也会回收受监管后代进程", () => AgentHostUnexpectedExitKillsProcessTree(fixture)),
         new SpecCase("OWNER_EXIT_KILLS_PROCESS_TREE", "拥有Job的启动器退出会回收AgentHost及其受监管后代进程", () => JobOwnerExitKillsProcessTree(fixture)),
@@ -238,6 +259,10 @@ static void ProcessTreeResourceLimitsAreApplied()
         AgentHostBootstrapOptions.DefaultMaximumSessionRuntime,
         new AgentHostBootstrapOptions("relative.exe", new string('0', 64))
             .GetValidatedSessionRuntime());
+    Equal(
+        AgentHostBootstrapOptions.DefaultGracefulStopTimeout,
+        new AgentHostBootstrapOptions("relative.exe", new string('0', 64))
+            .GetValidatedGracefulStopTimeout());
     using (var job = WindowsProcessTreeJob.CreateKillOnClose(
                new AgentHostProcessTreeLimits(
                    processLimit,
@@ -338,6 +363,64 @@ static void ProcessTreeResourceLimitsFailClosed()
     ExpectFailure(
         AgentBootstrapLaunchFailure.InvalidConfiguration,
         () => options.GetValidatedSessionRuntime());
+
+    options.MaximumSessionRuntime = AgentHostBootstrapOptions.DefaultMaximumSessionRuntime;
+    options.GracefulStopTimeout = TimeSpan.FromTicks(-1);
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => options.GetValidatedGracefulStopTimeout());
+
+    options.GracefulStopTimeout =
+        AgentHostBootstrapOptions.MaximumGracefulStopTimeout + TimeSpan.FromTicks(1);
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => options.GetValidatedGracefulStopTimeout());
+}
+
+static void NestedJobAssignmentIsCompatible(FakeAgentHostFixture fixture)
+{
+    var executablePath = fixture.CreateMode("hang");
+    using var child = Process.Start(new ProcessStartInfo
+    {
+        FileName = executablePath,
+        UseShellExecute = false,
+        CreateNoWindow = true,
+    }) ?? throw new InvalidOperationException("Starting the nested-Job probe child failed.");
+    using var processHandle = WindowsProcessTreeJob.OpenProcessForAssignment(child.Id);
+    using var outerJob = WindowsProcessTreeJob.CreateKillOnClose(
+        new AgentHostProcessTreeLimits(
+            AgentHostBootstrapOptions.DefaultMaximumActiveProcesses,
+            AgentHostBootstrapOptions.DefaultMaximumJobMemoryBytes,
+            AgentHostBootstrapOptions.DefaultMaximumCpuRatePercent,
+            AgentHostBootstrapOptions.DefaultMaximumJobUserTime));
+    using var innerJob = WindowsProcessTreeJob.CreateKillOnClose(
+        new AgentHostProcessTreeLimits(
+            AgentHostBootstrapOptions.DefaultMaximumActiveProcesses,
+            AgentHostBootstrapOptions.DefaultMaximumJobMemoryBytes,
+            AgentHostBootstrapOptions.DefaultMaximumCpuRatePercent,
+            AgentHostBootstrapOptions.DefaultMaximumJobUserTime));
+    try
+    {
+        outerJob.Assign(processHandle);
+        True(
+            WindowsProcessTreeJob.IsProcessInAnyJob(processHandle),
+            "The outer Job membership was not detected.");
+        True(
+            outerJob.Contains(processHandle),
+            "The process was not detected in the outer Job.");
+
+        innerJob.Assign(processHandle);
+        True(
+            innerJob.Contains(processHandle),
+            "The process was not detected in the nested inner Job.");
+    }
+    finally
+    {
+        innerJob.Dispose();
+        outerJob.Dispose();
+        WaitForProcessToExit(child.Id, TimeSpan.FromSeconds(3));
+        KillFixtureProcessIfStillRunning(child.Id, executablePath);
+    }
 }
 
 static void ExperimentalProcessIdentityIsNotPublic()
@@ -383,6 +466,60 @@ static void ExperimentalProcessIdentityIsNotPublic()
             .GetResult());
 }
 
+static void ResourceLimitErrorCodesAreStable()
+{
+    var cases = new[]
+    {
+        new
+        {
+            Failure = AgentHostResourceLimitFailure.ProcessCountExceeded,
+            ErrorCode = "agenthost_process_limit_exceeded",
+        },
+        new
+        {
+            Failure = AgentHostResourceLimitFailure.JobMemoryExceeded,
+            ErrorCode = "agenthost_memory_limit_exceeded",
+        },
+        new
+        {
+            Failure = AgentHostResourceLimitFailure.JobUserTimeExceeded,
+            ErrorCode = "agenthost_user_time_limit_exceeded",
+        },
+        new
+        {
+            Failure = AgentHostResourceLimitFailure.SessionRuntimeExceeded,
+            ErrorCode = "agenthost_session_runtime_limit_exceeded",
+        },
+    };
+
+    const string secretMarker = "CODEX_RESOURCE_SECRET_MUST_NOT_ESCAPE";
+    foreach (var item in cases)
+    {
+        Equal(
+            item.ErrorCode,
+            AgentHostResourceLimitFailurePolicy.GetErrorCode(item.Failure));
+        var safeMessage = AgentHostResourceLimitFailurePolicy.GetSafeMessage(item.Failure);
+        True(
+            !string.IsNullOrWhiteSpace(safeMessage),
+            "A resource-limit terminal state did not provide a safe message.");
+        True(
+            safeMessage.IndexOf(secretMarker, StringComparison.Ordinal) < 0,
+            "A resource-limit safe message leaked the secret marker.");
+
+        var exception = new AgentHostResourceLimitException(item.Failure);
+        Equal(item.Failure, exception.Failure);
+        Equal(item.ErrorCode, exception.ErrorCode);
+        Equal(
+            nameof(AgentHostResourceLimitException) + ": " + item.ErrorCode,
+            exception.ToString());
+    }
+
+    Equal(
+        "agenthost_resource_limit_unknown",
+        AgentHostResourceLimitFailurePolicy.GetErrorCode(
+            AgentHostResourceLimitFailure.None));
+}
+
 static void JobUserTimeTerminatesBusyTree(FakeAgentHostFixture fixture)
 {
     AgentHostServiceSession? session = null;
@@ -398,7 +535,122 @@ static void JobUserTimeTerminatesBusyTree(FakeAgentHostFixture fixture)
 
         WaitForProcessToExit(session.ProcessId, TimeSpan.FromSeconds(10));
         True(!session.RuntimeExpired, "The wall-clock deadline fired before the Job user-time limit.");
+        Equal(
+            AgentHostResourceLimitFailure.JobUserTimeExceeded,
+            session.ResourceLimitFailureTask.GetAwaiter().GetResult());
         session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+        session.Dispose();
+        session = null;
+    }
+    finally
+    {
+        session?.Dispose();
+    }
+}
+
+static void JobProcessLimitIsStructured(FakeAgentHostFixture fixture)
+{
+    const string descendantExecutableVariable =
+        "CODEX_AUTOCAD_TEST_DESCENDANT_EXECUTABLE";
+    var previousDescendantExecutable = Environment.GetEnvironmentVariable(
+        descendantExecutableVariable);
+    AgentHostServiceSession? session = null;
+    try
+    {
+        Environment.SetEnvironmentVariable(
+            descendantExecutableVariable,
+            fixture.CreateMode("hangdescendant"));
+        var options = CreateOptions(fixture.CreateMode("serveprocesslimit"));
+        options.MaximumActiveProcesses = 2;
+        options.MaximumSessionRuntime = TimeSpan.FromSeconds(15);
+        session = AgentHostBootstrapService.StartAsync(options, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+
+        True(
+            session.ResourceLimitFailureTask.Wait(TimeSpan.FromSeconds(10)),
+            "The process-count limit did not publish a terminal resource state.");
+        Equal(
+            AgentHostResourceLimitFailure.ProcessCountExceeded,
+            session.ResourceLimitFailureTask.GetAwaiter().GetResult());
+        WaitForProcessToExit(session.ProcessId, TimeSpan.FromSeconds(5));
+        session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+        session.Dispose();
+        session = null;
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable(
+            descendantExecutableVariable,
+            previousDescendantExecutable);
+        session?.Dispose();
+    }
+}
+
+static void JobMemoryLimitIsStructured(FakeAgentHostFixture fixture)
+{
+    AgentHostServiceSession? session = null;
+    try
+    {
+        var options = CreateOptions(fixture.CreateMode("servememorylimit"));
+        options.MaximumJobMemoryBytes =
+            AgentHostBootstrapOptions.MinimumMaximumJobMemoryBytes;
+        options.MaximumSessionRuntime = TimeSpan.FromSeconds(30);
+        session = AgentHostBootstrapService.StartAsync(options, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+
+        True(
+            session.ResourceLimitFailureTask.Wait(TimeSpan.FromSeconds(20)),
+            "The Job memory limit did not publish a terminal resource state.");
+        Equal(
+            AgentHostResourceLimitFailure.JobMemoryExceeded,
+            session.ResourceLimitFailureTask.GetAwaiter().GetResult());
+        WaitForProcessToExit(session.ProcessId, TimeSpan.FromSeconds(5));
+        session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+        session.Dispose();
+        session = null;
+    }
+    finally
+    {
+        session?.Dispose();
+    }
+}
+
+static void JobCombinedLimitHasSingleTerminal(FakeAgentHostFixture fixture)
+{
+    AgentHostServiceSession? session = null;
+    try
+    {
+        var options = CreateOptions(fixture.CreateMode("servecombinedlimit"));
+        options.MaximumCpuRatePercent = 100;
+        options.MaximumJobMemoryBytes =
+            AgentHostBootstrapOptions.MinimumMaximumJobMemoryBytes;
+        options.MaximumJobUserTime = TimeSpan.FromMilliseconds(250);
+        options.MaximumSessionRuntime = TimeSpan.FromSeconds(10);
+        session = AgentHostBootstrapService.StartAsync(options, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+
+        True(
+            session.ResourceLimitFailureTask.Wait(TimeSpan.FromSeconds(10)),
+            "The combined Job limits did not publish a terminal resource state.");
+        var failure = session.ResourceLimitFailureTask.GetAwaiter().GetResult();
+        True(
+            failure == AgentHostResourceLimitFailure.JobMemoryExceeded
+            || failure == AgentHostResourceLimitFailure.JobUserTimeExceeded,
+            "The combined Job limits produced a non-authoritative terminal state: "
+                + failure
+                + ".");
+        True(
+            AgentHostResourceLimitFailurePolicy.GetErrorCode(failure)
+                .StartsWith("agenthost_", StringComparison.Ordinal),
+            "The combined Job-limit terminal state lost its stable error code.");
+        WaitForProcessToExit(session.ProcessId, TimeSpan.FromSeconds(5));
+        session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+        Equal(
+            failure,
+            session.ResourceLimitFailureTask.GetAwaiter().GetResult());
         session.Dispose();
         session = null;
     }
@@ -425,6 +677,9 @@ static void SessionRuntimeTerminatesTree(FakeAgentHostFixture fixture)
             () => session.RuntimeExpired,
             TimeSpan.FromSeconds(1),
             "The service process exited without publishing the wall-clock deadline state.");
+        Equal(
+            AgentHostResourceLimitFailure.SessionRuntimeExceeded,
+            session.ResourceLimitFailureTask.GetAwaiter().GetResult());
         session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
         session.Dispose();
         session = null;
@@ -494,6 +749,9 @@ static void SessionStopPreventsRuntimeExpiry()
         session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
         Thread.Sleep(500);
         True(!session.RuntimeExpired, "A cancelled runtime deadline reversed the stopped state.");
+        Equal(
+            AgentHostResourceLimitFailure.None,
+            session.ResourceLimitFailureTask.GetAwaiter().GetResult());
         Equal(1, Volatile.Read(ref terminateCount));
         Equal(1, Volatile.Read(ref abortIoCount));
         Equal(1, Volatile.Read(ref disposeCount));
@@ -580,6 +838,404 @@ static void ServiceStopAllowsGracefulExit()
     Equal(0, Volatile.Read(ref terminateCount));
     Equal(1, Volatile.Read(ref abortIoCount));
     Equal(1, Volatile.Read(ref disposeCount));
+}
+
+static void ServiceStopUsesConfiguredGrace()
+{
+    var observedWaitMilliseconds = -1;
+    var terminateCount = 0;
+    var session = new AgentHostServiceSession(
+        milliseconds =>
+        {
+            observedWaitMilliseconds = milliseconds;
+            return false;
+        },
+        _ =>
+        {
+            Interlocked.Increment(ref terminateCount);
+            return true;
+        },
+        () => null,
+        () => { },
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateServiceResult(),
+        TimeSpan.FromMilliseconds(2345));
+    session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+    session.Dispose();
+
+    Equal(2345, observedWaitMilliseconds);
+    Equal(1, Volatile.Read(ref terminateCount));
+}
+
+static void SessionWorkspaceProtectedLayout()
+{
+    var root = CreateWorkspaceTestRoot();
+    var sessionId = Guid.NewGuid().ToString("N");
+    AgentSessionWorkspaceLease? lease = null;
+    try
+    {
+        lease = AgentSessionWorkspaceLease.Create(root, sessionId);
+        Equal(sessionId, lease.SessionId);
+        Equal(Path.Combine(root, sessionId), lease.SessionPath);
+        True(Directory.Exists(lease.WorkspacePath), "Session workspace directory is missing.");
+        True(Directory.Exists(lease.AuditPath), "Session audit directory is missing.");
+        True(Directory.Exists(lease.CodexHomePath), "Session Codex home directory is missing.");
+        True(
+            File.Exists(Path.Combine(lease.SessionPath, ".active")),
+            "Session active lease marker is missing.");
+        Equal(
+            "codex.autocad.session-workspace/1\r\n" + sessionId + "\r\n",
+            File.ReadAllText(Path.Combine(lease.SessionPath, ".codex-autocad-session")));
+        AgentSessionWorkspaceLease.VerifyProtectedDirectory(
+            lease.SessionPath,
+            lease.CurrentUserSid);
+
+        AssertDirectoryMoveDenied(lease.WorkspacePath);
+        AssertDirectoryMoveDenied(lease.AuditPath);
+        AssertDirectoryMoveDenied(lease.CodexHomePath);
+        AssertDirectoryMoveDenied(lease.SessionPath);
+        AssertDirectoryMoveDenied(root);
+
+        var sessionPath = lease.SessionPath;
+        lease.Dispose();
+        lease = null;
+        True(!Directory.Exists(sessionPath), "Disposed session workspace still exists.");
+    }
+    finally
+    {
+        lease?.Dispose();
+        DeleteTestDirectory(root);
+    }
+}
+
+static void SessionWorkspaceDuplicateIsRejected()
+{
+    var root = CreateWorkspaceTestRoot();
+    var sessionId = Guid.NewGuid().ToString("N");
+    AgentSessionWorkspaceLease? lease = null;
+    try
+    {
+        lease = AgentSessionWorkspaceLease.Create(root, sessionId);
+        ExpectFailure(
+            AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+            () => AgentSessionWorkspaceLease.Create(root, sessionId).Dispose());
+        True(
+            Directory.Exists(lease.SessionPath),
+            "Duplicate create damaged the active session workspace.");
+    }
+    finally
+    {
+        lease?.Dispose();
+        DeleteTestDirectory(root);
+    }
+}
+
+static void SessionWorkspaceInvalidRootsAreRejected()
+{
+    const string validSessionId = "0123456789abcdef0123456789abcdef";
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+        () => AgentSessionWorkspaceLease.Create("relative-workspace", validSessionId).Dispose());
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+        () => AgentSessionWorkspaceLease.Create(
+            @"\\server\codex-autocad-workspace",
+            validSessionId).Dispose());
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+        () => AgentSessionWorkspaceLease.Create(
+            @"\\?\C:\codex-autocad-workspace",
+            validSessionId).Dispose());
+
+    var root = CreateWorkspaceTestRoot();
+    try
+    {
+        ExpectFailure(
+            AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+            () => AgentSessionWorkspaceLease.Create(
+                root,
+                "0123456789ABCDEF0123456789ABCDEF").Dispose());
+        ExpectFailure(
+            AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+            () => AgentSessionWorkspaceLease.Create(root, "..\\escape").Dispose());
+    }
+    finally
+    {
+        DeleteTestDirectory(root);
+    }
+}
+
+static void SessionWorkspaceReparseRootIsRejected()
+{
+    var container = CreateWorkspaceTestRoot();
+    var target = CreateWorkspaceTestRoot();
+    var junction = Path.Combine(container, "workspace-junction");
+    try
+    {
+        CreateJunction(junction, target);
+        ExpectFailure(
+            AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+            () => AgentSessionWorkspaceLease.Create(
+                junction,
+                Guid.NewGuid().ToString("N")).Dispose());
+        True(Directory.Exists(target), "Rejecting a junction damaged its target directory.");
+    }
+    finally
+    {
+        if (Directory.Exists(junction))
+        {
+            Directory.Delete(junction, recursive: false);
+        }
+        DeleteTestDirectory(container);
+        DeleteTestDirectory(target);
+    }
+}
+
+static void SessionWorkspaceActiveLeaseIsPreserved()
+{
+    var root = CreateWorkspaceTestRoot();
+    var activeSessionId = Guid.NewGuid().ToString("N");
+    var concurrentSessionId = Guid.NewGuid().ToString("N");
+    var legacySessionId = Guid.NewGuid().ToString("N");
+    AgentSessionWorkspaceLease? lease = null;
+    AgentSessionWorkspaceLease? concurrentLease = null;
+    try
+    {
+        lease = AgentSessionWorkspaceLease.Create(root, activeSessionId);
+        concurrentLease = AgentSessionWorkspaceLease.Create(root, concurrentSessionId);
+        var legacyPath = Path.Combine(root, legacySessionId);
+        Directory.CreateDirectory(legacyPath);
+        File.WriteAllText(Path.Combine(legacyPath, "legacy.txt"), "preserve");
+
+        Equal(
+            0,
+            AgentSessionWorkspaceLease.CleanupExpired(
+                root,
+                DateTime.UtcNow,
+                TimeSpan.Zero));
+        True(Directory.Exists(lease.SessionPath), "Expired cleanup removed an active lease.");
+        True(
+            Directory.Exists(concurrentLease.SessionPath),
+            "Expired cleanup removed a concurrent active lease.");
+        True(Directory.Exists(legacyPath), "Expired cleanup removed an unmarked legacy directory.");
+    }
+    finally
+    {
+        concurrentLease?.Dispose();
+        lease?.Dispose();
+        DeleteTestDirectory(root);
+    }
+}
+
+static void SessionWorkspaceCrashRecovery()
+{
+    var root = CreateWorkspaceTestRoot();
+    var sessionId = Guid.NewGuid().ToString("N");
+    var readyPath = Path.Combine(root, "lease-owner-ready.txt");
+    Process? owner = null;
+    try
+    {
+        owner = StartWorkspaceLeaseOwnerHelper(root, sessionId, readyPath);
+        WaitForCondition(
+            () => File.Exists(readyPath),
+            TimeSpan.FromSeconds(5),
+            "Workspace lease owner helper did not publish readiness.");
+        var sessionPath = Path.Combine(root, sessionId);
+        True(Directory.Exists(sessionPath), "Crash-recovery fixture session is missing.");
+
+        owner.Kill();
+        True(owner.WaitForExit(5000), "Workspace lease owner helper did not exit after kill.");
+        owner.Dispose();
+        owner = null;
+
+        var expiredTimestamp = DateTime.UtcNow.Subtract(
+            AgentSessionWorkspaceLease.DefaultExpiredLeaseAge + TimeSpan.FromHours(1));
+        File.SetLastWriteTimeUtc(Path.Combine(sessionPath, ".active"), expiredTimestamp);
+        Equal(
+            1,
+            AgentSessionWorkspaceLease.CleanupExpired(
+                root,
+                DateTime.UtcNow,
+                AgentSessionWorkspaceLease.DefaultExpiredLeaseAge));
+        True(!Directory.Exists(sessionPath), "Expired crash workspace was not recovered.");
+    }
+    finally
+    {
+        if (owner != null)
+        {
+            try
+            {
+                if (!owner.HasExited)
+                {
+                    owner.Kill();
+                    owner.WaitForExit(5000);
+                }
+            }
+            finally
+            {
+                owner.Dispose();
+            }
+        }
+        DeleteTestDirectory(root);
+    }
+}
+
+static void ServiceSessionWorkspaceIsRemoved(FakeAgentHostFixture fixture)
+{
+    AgentHostServiceSession? session = null;
+    try
+    {
+        session = AgentHostBootstrapService.StartAsync(
+                CreateOptions(fixture.CreateMode("success")),
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        var sessionPath = GetDefaultSessionPath(session.SessionId);
+        True(Directory.Exists(sessionPath), "Service session workspace was not created.");
+        True(
+            Directory.Exists(Path.Combine(sessionPath, "workspace")),
+            "Service session did not receive the managed workspace layout.");
+        session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+        True(!Directory.Exists(sessionPath), "Service STOP left its session workspace behind.");
+        session.Dispose();
+        session = null;
+    }
+    finally
+    {
+        session?.Dispose();
+    }
+}
+
+static void ServiceStartFailureWorkspaceIsRemoved(FakeAgentHostFixture fixture)
+{
+    var before = SnapshotDefaultSessionDirectories();
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.ChildExitedWithError,
+        () => AgentHostBootstrapService.StartAsync(
+                CreateOptions(fixture.CreateMode("exit42")),
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult());
+    WaitForCondition(
+        () => before.SetEquals(SnapshotDefaultSessionDirectories()),
+        TimeSpan.FromSeconds(5),
+        "Failed service bootstrap did not clean its session workspace inside the bounded retry window.");
+    var after = SnapshotDefaultSessionDirectories();
+    var added = after.Where(value => !before.Contains(value)).ToArray();
+    var removed = before.Where(value => !after.Contains(value)).ToArray();
+    True(
+        before.SetEquals(after),
+        "Failed service bootstrap changed session workspaces. Added="
+        + string.Join(",", added)
+        + "; Removed="
+        + string.Join(",", removed)
+        + ".");
+}
+
+static void ServiceWorkspaceCleanupCanRetry()
+{
+    var root = CreateWorkspaceTestRoot();
+    var result = CreateServiceResult();
+    AgentSessionWorkspaceLease? lease = null;
+    AgentHostServiceSession? session = null;
+    FileStream? blocker = null;
+    var waitCount = 0;
+    var terminateCount = 0;
+    var abortIoCount = 0;
+    var disposeCount = 0;
+    try
+    {
+        lease = AgentSessionWorkspaceLease.Create(root, result.SessionId);
+        var sessionPath = lease.SessionPath;
+        var blockedPath = Path.Combine(lease.WorkspacePath, "cleanup-blocker.tmp");
+        blocker = new FileStream(
+            blockedPath,
+            FileMode.CreateNew,
+            FileAccess.ReadWrite,
+            FileShare.None);
+        session = new AgentHostServiceSession(
+            _ =>
+            {
+                waitCount++;
+                return true;
+            },
+            _ =>
+            {
+                terminateCount++;
+                return true;
+            },
+            () =>
+            {
+                abortIoCount++;
+                return null;
+            },
+            () => disposeCount++,
+            Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+            result,
+            TimeSpan.Zero,
+            lease);
+        lease = null;
+
+        ExpectFailure(
+            AgentBootstrapLaunchFailure.ChildTerminationFailed,
+            () => session.StopAsync(CancellationToken.None).GetAwaiter().GetResult());
+        Equal(1, waitCount);
+        Equal(0, terminateCount);
+        Equal(1, abortIoCount);
+        Equal(1, disposeCount);
+        True(Directory.Exists(sessionPath), "Failed cleanup discarded retry state.");
+
+        blocker.Dispose();
+        blocker = null;
+        session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+        Equal(1, waitCount);
+        Equal(0, terminateCount);
+        Equal(1, abortIoCount);
+        Equal(1, disposeCount);
+        True(!Directory.Exists(sessionPath), "Retried workspace cleanup did not finish.");
+        session.Dispose();
+        session = null;
+    }
+    finally
+    {
+        blocker?.Dispose();
+        session?.Dispose();
+        lease?.Dispose();
+        DeleteTestDirectory(root);
+    }
+}
+
+static void ServiceStartStopRepeat500(FakeAgentHostFixture fixture)
+{
+    var fakePath = fixture.CreateMode("serveexit");
+    for (var iteration = 0; iteration < 500; iteration++)
+    {
+        AgentHostServiceSession? session = null;
+        try
+        {
+            session = AgentHostBootstrapService.StartAsync(
+                    CreateOptions(fakePath),
+                    CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+            var processId = session.ProcessId;
+            session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+            ProcessMustBeGone(processId);
+            session.Dispose();
+            session = null;
+            if ((iteration + 1) % 100 == 0)
+            {
+                Console.WriteLine(
+                    "SERVICE_START_STOP_REPEAT_500_PROGRESS=" + (iteration + 1));
+            }
+        }
+        finally
+        {
+            session?.Dispose();
+        }
+    }
+
+    ProcessNameMustBeGone(fakePath);
 }
 
 static void ServiceStopKillsProcessTree(FakeAgentHostFixture fixture)
@@ -728,6 +1384,9 @@ static void JobOwnerExitKillsProcessTree(FakeAgentHostFixture fixture)
     var agentHostProcessIdPath = Path.Combine(
         Path.GetTempPath(),
         "CodexAgentLauncherAgentHost-" + unique + ".txt");
+    var workspaceSessionPathFile = Path.Combine(
+        Path.GetTempPath(),
+        "CodexAgentLauncherWorkspace-" + unique + ".txt");
     var descendantProcessId = 0;
     var agentHostProcessId = 0;
     var descendantExitVerified = false;
@@ -738,7 +1397,8 @@ static void JobOwnerExitKillsProcessTree(FakeAgentHostFixture fixture)
                    agentHostExecutable,
                    descendantExecutable,
                    descendantProcessIdPath,
-                   agentHostProcessIdPath))
+                   agentHostProcessIdPath,
+                   workspaceSessionPathFile))
         {
             if (!owner.WaitForExit(5000))
             {
@@ -756,6 +1416,17 @@ static void JobOwnerExitKillsProcessTree(FakeAgentHostFixture fixture)
         agentHostExitVerified = true;
         WaitForProcessToExit(descendantProcessId, TimeSpan.FromSeconds(3));
         descendantExitVerified = true;
+        var workspaceSessionPath = File.ReadAllText(workspaceSessionPathFile).Trim();
+        True(
+            Directory.Exists(workspaceSessionPath),
+            "Owner-exit crash workspace was not preserved for recovery.");
+        AgentSessionWorkspaceLease.CleanupExpired(
+            GetDefaultSessionsRoot(),
+            DateTime.UtcNow,
+            TimeSpan.Zero);
+        True(
+            !Directory.Exists(workspaceSessionPath),
+            "Owner-exit crash workspace was not recovered.");
     }
     finally
     {
@@ -769,6 +1440,7 @@ static void JobOwnerExitKillsProcessTree(FakeAgentHostFixture fixture)
         }
         DeleteFileIfPresent(descendantProcessIdPath);
         DeleteFileIfPresent(agentHostProcessIdPath);
+        DeleteFileIfPresent(workspaceSessionPathFile);
     }
 }
 
@@ -777,6 +1449,7 @@ static int RunJobOwnerHelper(string[] values)
     var fakeAgentHost = GetRequiredOption(values, "--fake-agent-host");
     var descendantProcessIdPath = GetRequiredOption(values, "--descendant-process-id-path");
     var agentHostProcessIdPath = GetRequiredOption(values, "--agenthost-process-id-path");
+    var workspaceSessionPathFile = GetRequiredOption(values, "--workspace-session-path-file");
     var session = AgentHostBootstrapService.StartAsync(
             CreateOptions(fakeAgentHost),
             CancellationToken.None)
@@ -785,6 +1458,10 @@ static int RunJobOwnerHelper(string[] values)
     File.WriteAllText(
         agentHostProcessIdPath,
         session.ProcessId.ToString(CultureInfo.InvariantCulture),
+        new System.Text.UTF8Encoding(false));
+    File.WriteAllText(
+        workspaceSessionPathFile,
+        GetDefaultSessionPath(session.SessionId),
         new System.Text.UTF8Encoding(false));
     ReadProcessIdFile(descendantProcessIdPath);
 
@@ -798,7 +1475,8 @@ static Process StartJobOwnerHelper(
     string fakeAgentHost,
     string descendantExecutable,
     string descendantProcessIdPath,
-    string agentHostProcessIdPath)
+    string agentHostProcessIdPath,
+    string workspaceSessionPathFile)
 {
     var entryAssembly = Assembly.GetEntryAssembly();
     if (entryAssembly == null || string.IsNullOrWhiteSpace(entryAssembly.Location))
@@ -825,6 +1503,7 @@ static Process StartJobOwnerHelper(
         "--fake-agent-host", QuoteCommandLineArgument(fakeAgentHost),
         "--descendant-process-id-path", QuoteCommandLineArgument(descendantProcessIdPath),
         "--agenthost-process-id-path", QuoteCommandLineArgument(agentHostProcessIdPath),
+        "--workspace-session-path-file", QuoteCommandLineArgument(workspaceSessionPathFile),
     });
     var usesDotNetHost = string.Equals(
         Path.GetFileNameWithoutExtension(hostExecutable),
@@ -849,6 +1528,70 @@ static Process StartJobOwnerHelper(
     }
 
     return process;
+}
+
+static int RunWorkspaceLeaseOwnerHelper(string[] values)
+{
+    var root = GetRequiredOption(values, "--workspace-root");
+    var sessionId = GetRequiredValue(values, "--session-id");
+    var readyPath = GetRequiredOption(values, "--ready-path");
+    using (var lease = AgentSessionWorkspaceLease.Create(root, sessionId))
+    {
+        File.WriteAllText(
+            readyPath,
+            lease.SessionPath,
+            new System.Text.UTF8Encoding(false));
+        Thread.Sleep(Timeout.Infinite);
+    }
+
+    return 0;
+}
+
+static Process StartWorkspaceLeaseOwnerHelper(
+    string workspaceRoot,
+    string sessionId,
+    string readyPath)
+{
+    var entryAssembly = Assembly.GetEntryAssembly();
+    if (entryAssembly == null || string.IsNullOrWhiteSpace(entryAssembly.Location))
+    {
+        throw new InvalidOperationException("The AgentLauncher Specs entry assembly is unavailable.");
+    }
+
+    string hostExecutable;
+    using (var current = Process.GetCurrentProcess())
+    {
+        hostExecutable = current.MainModule == null
+            ? string.Empty
+            : current.MainModule.FileName;
+    }
+    if (string.IsNullOrWhiteSpace(hostExecutable))
+    {
+        throw new InvalidOperationException("The AgentLauncher Specs process host is unavailable.");
+    }
+
+    var arguments = string.Join(" ", new[]
+    {
+        "--workspace-lease-owner-helper",
+        "--workspace-root", QuoteCommandLineArgument(workspaceRoot),
+        "--session-id", sessionId,
+        "--ready-path", QuoteCommandLineArgument(readyPath),
+    });
+    var usesDotNetHost = string.Equals(
+        Path.GetFileNameWithoutExtension(hostExecutable),
+        "dotnet",
+        StringComparison.OrdinalIgnoreCase);
+    var startInfo = new ProcessStartInfo
+    {
+        FileName = hostExecutable,
+        Arguments = usesDotNetHost
+            ? QuoteCommandLineArgument(entryAssembly.Location) + " " + arguments
+            : arguments,
+        UseShellExecute = false,
+        CreateNoWindow = true,
+    };
+    return Process.Start(startInfo)
+        ?? throw new InvalidOperationException("Starting the workspace lease owner helper failed.");
 }
 
 static void ServiceStopRetriesTermination()
@@ -1718,6 +2461,133 @@ static void DeleteFileIfPresent(string path)
     }
 }
 
+static string CreateWorkspaceTestRoot()
+{
+    var root = Path.Combine(
+        Path.GetTempPath(),
+        "CodexSessionWorkspaceSpecs-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    return Path.GetFullPath(root).TrimEnd(
+        Path.DirectorySeparatorChar,
+        Path.AltDirectorySeparatorChar);
+}
+
+static void DeleteTestDirectory(string path)
+{
+    var deadline = DateTime.UtcNow.AddSeconds(5);
+    Exception? lastFailure = null;
+    do
+    {
+        try
+        {
+            Directory.Delete(path, recursive: true);
+            return;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return;
+        }
+        catch (IOException exception)
+        {
+            lastFailure = exception;
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            lastFailure = exception;
+        }
+
+        Thread.Sleep(50);
+    } while (DateTime.UtcNow < deadline);
+
+    throw new IOException(
+        "Session workspace test directory cleanup exceeded its bounded retry window.",
+        lastFailure);
+}
+
+static void AssertDirectoryMoveDenied(string path)
+{
+    var destination = path + "-moved";
+    try
+    {
+        Directory.Move(path, destination);
+    }
+    catch (IOException)
+    {
+        return;
+    }
+    catch (UnauthorizedAccessException)
+    {
+        return;
+    }
+
+    Directory.Move(destination, path);
+    throw new InvalidOperationException(
+        "Active session directory could be renamed or replaced: " + path);
+}
+
+static string GetDefaultSessionsRoot()
+    => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "OpenAI",
+        "CodexForAutoCAD",
+        "workspace",
+        "sessions");
+
+static string GetDefaultSessionPath(string sessionId)
+    => Path.Combine(GetDefaultSessionsRoot(), sessionId);
+
+static HashSet<string> SnapshotDefaultSessionDirectories()
+{
+    var root = GetDefaultSessionsRoot();
+    return Directory.Exists(root)
+        ? new HashSet<string>(
+            Directory.EnumerateDirectories(root).Select(path => new DirectoryInfo(path).Name),
+            StringComparer.OrdinalIgnoreCase)
+        : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+}
+
+static void CreateJunction(string junctionPath, string targetPath)
+{
+    var commandInterpreter = Environment.GetEnvironmentVariable("ComSpec");
+    if (string.IsNullOrWhiteSpace(commandInterpreter))
+    {
+        commandInterpreter = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "cmd.exe");
+    }
+
+    var startInfo = new ProcessStartInfo
+    {
+        FileName = commandInterpreter,
+        Arguments = "/d /c mklink /J "
+            + QuoteCommandLineArgument(junctionPath)
+            + " "
+            + QuoteCommandLineArgument(targetPath),
+        UseShellExecute = false,
+        CreateNoWindow = true,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+    };
+    using (var process = Process.Start(startInfo)
+        ?? throw new InvalidOperationException("Starting the junction fixture helper failed."))
+    {
+        var standardOutput = process.StandardOutput.ReadToEnd();
+        var standardError = process.StandardError.ReadToEnd();
+        if (!process.WaitForExit(5000) || process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                "Creating the junction fixture failed: "
+                + standardOutput.Trim()
+                + " "
+                + standardError.Trim());
+        }
+    }
+
+    True(
+        (File.GetAttributes(junctionPath) & FileAttributes.ReparsePoint) != 0,
+        "The junction fixture is not a reparse point.");
+}
+
 static Arguments ParseArguments(string[] values)
 {
     string? agentHost = null;
@@ -1757,6 +2627,20 @@ static string GetRequiredOption(string[] values, string option)
     }
 
     throw new ArgumentException("Missing required helper option: " + option);
+}
+
+static string GetRequiredValue(string[] values, string option)
+{
+    for (var index = 0; index < values.Length - 1; index++)
+    {
+        if (string.Equals(values[index], option, StringComparison.Ordinal)
+            && !string.IsNullOrWhiteSpace(values[index + 1]))
+        {
+            return values[index + 1];
+        }
+    }
+
+    throw new ArgumentException("Missing required helper value: " + option);
 }
 
 static string QuoteCommandLineArgument(string value)

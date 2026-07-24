@@ -289,15 +289,33 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   `>=0.144.4 <0.145.0`、启动前版本预检和 `app-server initialize` 健康检查已进入真实
   调用链；正式 M4 候选的 AutoCAD 启停/退出实机仍缺，因此不扩大成 M4.16 完成。
 - M4.3 的可选 session-home、显式环境白名单、空 MCP/插件、租约和安全清理基础已完成；
-  生产默认因空 home 未登录而保持关闭，等待 M4.8 ACL/lease 与 M4.11 凭据 Broker。
+  M4.8 ACL/lease 自动化切口已完成，生产默认仍因空 home 未登录而保持关闭，等待 M4.11
+  凭据 Broker。
 - M4.4/M4.5 已在当前分支受控提交为 `0763022`：公共产品面不暴露实验身份，internal-only
   RestrictedToken 探针跨机器接受结构化结果且绝不回退 CurrentUser。本机探针结果为
   `available/child_exited`，不是认证成功或生产沙箱证据。
-- M4.6 自动化基础完成：`KILL_ON_JOB_CLOSE` 已覆盖 AgentHost 及普通后代，Stop 和拥有者
-  异常退出规格在 net45/net8 各为 `28/28`；真实 Codex、AutoCAD 退出和企业嵌套 Job
-  矩阵仍缺，因此该子目标不能标为完成。
-- 当前专项 AgentLauncher net45/net8 各为 `41/41`，双 Shell Phase 2 均为 `358/358`、
-  Bridge `49/49`、Release `0 warning / 0 error`；R20.1 双 Shell Probe 仍为
+- M4.6 当前切口已通过自动化和双 Shell 阶段门禁：`KILL_ON_JOB_CLOSE` 覆盖 AgentHost 及
+  普通后代，分配前检测任意 Job、分配后反查目标 Job；当前 Windows 已真实通过外层/内层
+  嵌套 Job 分配、Stop/AgentHost 异常/owner 退出回收、资源限制和连续 `500` 次 service
+  启停回收。企业组策略、Windows 版本与宿主 Job 组合矩阵仍缺，且切口尚未提交，因此该
+  子目标不能标为全部完成。
+- M4.8 自动化切口已进入真实启动/停止链：每个系统 session 拥有受保护 ACL 的
+  `workspace`、`audit`、`codex-home`、schema marker 和活动 lease；拒绝 UNC、device path、
+  junction/reparse 根和目录替换，支持并发 session、清理失败重试、`24 h` 过期策略和有界
+  崩溃恢复。无 marker legacy 目录及活动 lease 保持不动。企业/AutoCAD 实机矩阵和独立提交
+  仍缺，`codex-home` 在 M4.11 凭据 Broker 完成前继续禁用。
+- M4.9 当前切口已把 Job 进程数、总提交内存、CPU rate、累计用户时间、服务墙钟和受检的
+  `0–30 s` 停止宽限接入真实默认启动路径；非法配置 fail-closed，配置值真实进入 Stop。
+  Job completion port 与 Host 有界仲裁已让进程数、Job 内存、累计用户时间和墙钟耗尽产生
+  稳定、脱敏、不可自动重试的结构化终态；普通 Bridge fault 不能抢先覆盖资源原因。Job 内存
+  与用户时间组合耗尽遵循首个权威终态。明确不启用默认 working-set hard limit，Job 总提交
+  内存是硬边界，working set 只做性能 telemetry。真实 Codex/AutoCAD 耗尽矩阵和企业配置
+  策略仍缺。
+- 当前专项 AgentLauncher net45/net8 各为 `57/57`，Host MVP 为 `56/56`，双 Shell Phase 2
+  均为 `360/360`、
+  Bridge `49/49`、认证兼容 net45/net8 各 `35/35`、Release `0 warning / 0 error`；
+  阶段证据为 `evidence/agent-bootstrap-verification-20260719.json`；最终 SHA-256 由门禁输出
+  记录，避免文档和证据 manifest 间接自引用。R20.1 双 Shell Probe 仍为
   `29 passed / 8 expected failed`。这只证明当前切口没有破坏 M3/R20.1，只读回归包不是
   M4.16 安全候选。
 
@@ -312,8 +330,8 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   `app-server initialize` 绑定同一可执行文件身份租约；正式候选实机仍属于 M4.16 门禁，
   详见 `M4_2_CODEX_HEALTH_PREFLIGHT_20260724.md`。
 - [ ] 每会话独立 CODEX_HOME：`6d99bb9` 已完成可选配置、32 字节系统 session ID 租约、空 MCP/
-  插件配置、稳定错误和安全清理基础；生产默认仍未启用。不得复制、链接、解析或记录全局 Codex
-  profile，必须先完成 M4.8 ACL/lease 与 M4.11 凭据 Broker。见
+  插件配置、稳定错误和安全清理基础，M4.8 又完成受保护 ACL/lease 自动化切口；生产默认仍未
+  启用。不得复制、链接、解析或记录全局 Codex profile，必须先完成 M4.11 凭据 Broker。见
   `M4_3_CODEX_SESSION_HOME_BASELINE_20260724.md`。
 - [ ] 独立凭据边界：空 MCP/插件已进入隔离 home 基础，但真实隔离登录、恢复、过期和撤销尚未
   验证；全局 profile 不能作为复制来源。
@@ -321,9 +339,10 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   必要 Windows/profile/temp/代理变量和受控 PATH；显式 session `CODEX_HOME` 会覆盖父值。完整
   凭据、身份和企业代理策略仍分别由 M4.7/M4.11/M4.15 验收。
 - [x] AgentHost 启动链在恢复前创建 `KILL_ON_JOB_CLOSE` 的未命名 Windows Job Object 并分配
-  已校验的 AgentHost；普通后代继承该边界。隔离 `bootstrap-serve` 规格已按 PID 验证
-  `StopAsync` 和拥有 Job 的启动器直接退出时均回收父/后代，net45/net8 各 `28/28`。真实
-  Codex/AutoCAD 异常退出、僵尸进程和资源配额仍未验收，详见
+  已校验的 AgentHost；普通后代继承该边界。当前切口还验证任意 Job 成员检测、目标 Job
+  成员反查、当前 Windows 嵌套 Job、Stop/AgentHost 异常/owner 退出回收、资源限制和连续
+  `500` 次 service 启停，AgentLauncher net45/net8 各 `57/57`。企业嵌套 Job 策略矩阵、
+  真实 AutoCAD 退出和完整僵尸进程实机仍未验收，详见
   `M4_PROCESS_ISOLATION_BASELINE_20260723.md`。
 - [x] 收回未成熟 RestrictedToken 公共入口，并将能力探针限制为 internal-only；公共配置、
   结果和 doctor 不暴露实验身份选择或原始 telemetry。
@@ -332,9 +351,14 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   `M4_4_M4_5_RESTRICTED_IDENTITY_PROBE_20260724.md`。
 - [ ] 在 RestrictedToken 或预配置 AppContainer 下实现生产身份隔离；必须完成真实
   AgentHost/Codex bootstrap、Pipe、STOP、最小 DACL 和越权拒绝矩阵。
-- [ ] 设置 CPU、内存、进程数、运行时间和工作目录配额。
-- [ ] 为工作目录增加真实磁盘硬配额；仅限制内存或统计目录大小不能代替 M4.10。
-- [ ] 工作目录使用最小 ACL 并按策略清理。
+- [x] Job CPU rate、总提交内存、进程数、累计用户时间和服务墙钟硬限制已进入真实默认启动
+  路径；停止宽限为受检 `0–30 s` 配置，默认 `1 s`。进程数、Job 内存、累计用户时间和墙钟
+  已有权威结构化终态、Bridge fault 竞态门禁、组合耗尽与错误脱敏。working set 明确只做
+  telemetry，不启用默认硬限制；真实 Codex/AutoCAD 和企业策略仍待 M4.9 收口。见
+  `M4_9_RESOURCE_LIMIT_TERMINALS_20260724.md`。
+- [ ] 工作目录磁盘硬配额属于 M4.10，不能用 Job 内存限制或目录大小统计替代。
+- [x] M4.8 自动化切口：工作目录使用受保护最小 ACL、活动 lease、固定 marker 和有界过期
+  清理；STOP/启动失败/owner 崩溃路径已验证。企业/AutoCAD 实机矩阵和独立提交仍待完成。
 - [ ] 将凭据访问收敛为不向 AgentHost/Codex 暴露原始秘密的 Broker；在获得受支持的认证
   恢复机制前不得复制或解析用户 Codex profile。
 - [ ] 将 AgentRuntime、Bridge、Host、配置和日志导出纳入同一脱敏策略；当前仅完成 Codex

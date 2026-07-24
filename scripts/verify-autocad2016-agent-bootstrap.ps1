@@ -32,12 +32,28 @@ $requiredSpecIds = @(
     "RESTRICTED_TOKEN_BOOTSTRAP_PROBE_PORTABLE",
     "JOB_RESOURCE_LIMITS_APPLIED",
     "JOB_RESOURCE_LIMITS_INVALID",
+    "RESOURCE_LIMIT_ERROR_CODES_STABLE",
+    "NESTED_JOB_ASSIGNMENT_COMPATIBLE",
     "EXPERIMENTAL_IDENTITY_NOT_PUBLIC",
     "JOB_USER_TIME_TERMINATES_TREE",
+    "JOB_PROCESS_LIMIT_STRUCTURED",
+    "JOB_MEMORY_LIMIT_STRUCTURED",
+    "JOB_COMBINED_LIMIT_SINGLE_TERMINAL",
     "SESSION_RUNTIME_TERMINATES_TREE",
     "SESSION_RUNTIME_RETRIES_CLEANUP",
     "SESSION_STOP_PREVENTS_RUNTIME_EXPIRY",
     "SERVICE_STOP_ALLOWS_GRACEFUL_EXIT",
+    "SERVICE_STOP_USES_CONFIGURED_GRACE",
+    "SESSION_WORKSPACE_PROTECTED_LAYOUT",
+    "SESSION_WORKSPACE_DUPLICATE_REJECTED",
+    "SESSION_WORKSPACE_INVALID_ROOTS_REJECTED",
+    "SESSION_WORKSPACE_REPARSE_ROOT_REJECTED",
+    "SESSION_WORKSPACE_ACTIVE_LEASE_PRESERVED",
+    "SESSION_WORKSPACE_CRASH_RECOVERY",
+    "SERVICE_SESSION_WORKSPACE_REMOVED",
+    "SERVICE_START_FAILURE_WORKSPACE_REMOVED",
+    "SERVICE_WORKSPACE_CLEANUP_CAN_RETRY",
+    "SERVICE_START_STOP_REPEAT_500",
     "SERVICE_STOP_KILLS_PROCESS_TREE",
     "AGENTHOST_UNEXPECTED_EXIT_KILLS_PROCESS_TREE",
     "OWNER_EXIT_KILLS_PROCESS_TREE",
@@ -284,7 +300,9 @@ function Assert-SourceBoundary {
         "进程树CPU硬上限" = "JobObjectCpuRateControlHardCap"
         "会话墙钟截止与自动清理重试" = "AutomaticCleanupAttempts"
         "AgentHost异常退出监视" = "WatchForUnexpectedProcessExit"
-        "停止前自然退出宽限" = "GracefulExitWaitMilliseconds"
+        "停止宽限公共配置" = "GracefulStopTimeout"
+        "停止宽限边界校验" = "GetValidatedGracefulStopTimeout"
+        "停止前自然退出宽限" = "_gracefulExitWaitMilliseconds"
         "进程树Job分配" = "AssignProcessToJobObject"
         "进程退出等待" = "WaitForSingleObject"
         "单调绝对截止" = "deadlineTimestamp"
@@ -294,6 +312,11 @@ function Assert-SourceBoundary {
         "终止失败毒化后续启动" = "AgentBootstrapLateFailureRegistry"
         "仅本地驱动路径" = "absolute local-drive path"
         "仅固定本地磁盘" = "DriveType.Fixed"
+        "受保护会话工作区DACL" = "ConvertStringSecurityDescriptorToSecurityDescriptor"
+        "会话目录拒绝删除共享" = "DeleteAccess"
+        "清理不跟随重解析点" = "DeleteTreeWithoutFollowingReparsePoints"
+        "过期lease有界枚举" = "MaximumExpiredCleanupCandidates"
+        "活动lease独占探测" = "FileShare.None"
         "AgentHost标准输入领取" = "OpenStandardInput()"
         "AgentHost标准输出确认" = "OpenStandardOutput()"
     }
@@ -365,6 +388,11 @@ function Assert-SourceBoundary {
         CallerOffloadTokenFound = $true
         AbortableLaunchGateTokenFound = $true
         LateFailurePoisonTokenFound = $true
+        ProtectedSessionWorkspaceDaclTokenFound = $true
+        SessionWorkspaceNoDeleteShareTokenFound = $true
+        ReparseSafeWorkspaceCleanupTokenFound = $true
+        ExpiredWorkspaceCleanupBoundTokenFound = $true
+        ActiveWorkspaceLeaseProbeTokenFound = $true
     }
 }
 
@@ -681,12 +709,28 @@ try {
         ExperimentalProcessIdentityNotPublic = "EXPERIMENTAL_IDENTITY_NOT_PUBLIC"
         ProcessTreeResourceLimitsApplied = "JOB_RESOURCE_LIMITS_APPLIED"
         InvalidProcessTreeResourceLimitsFailClosed = "JOB_RESOURCE_LIMITS_INVALID"
+        ResourceLimitErrorCodesStable = "RESOURCE_LIMIT_ERROR_CODES_STABLE"
+        NestedJobAssignmentCompatible = "NESTED_JOB_ASSIGNMENT_COMPATIBLE"
         JobUserTimeTerminatesProcessTree = "JOB_USER_TIME_TERMINATES_TREE"
+        JobProcessLimitProducesStructuredTerminal = "JOB_PROCESS_LIMIT_STRUCTURED"
+        JobMemoryLimitProducesStructuredTerminal = "JOB_MEMORY_LIMIT_STRUCTURED"
+        CombinedJobLimitsProduceSingleTerminal = "JOB_COMBINED_LIMIT_SINGLE_TERMINAL"
         SessionWallClockTerminatesProcessTree = "SESSION_RUNTIME_TERMINATES_TREE"
         SessionWallClockRetriesCleanup = "SESSION_RUNTIME_RETRIES_CLEANUP"
         SessionStopPreventsRuntimeExpiry = "SESSION_STOP_PREVENTS_RUNTIME_EXPIRY"
         SessionWallClockFailedCleanupPoisonsStart = "SESSION_RUNTIME_FAILURE_POISONS_START"
         ServiceStopAllowsGracefulExitBeforeForcedTermination = "SERVICE_STOP_ALLOWS_GRACEFUL_EXIT"
+        ServiceStopUsesConfiguredGrace = "SERVICE_STOP_USES_CONFIGURED_GRACE"
+        SessionWorkspaceProtectedLayout = "SESSION_WORKSPACE_PROTECTED_LAYOUT"
+        SessionWorkspaceDuplicateRejected = "SESSION_WORKSPACE_DUPLICATE_REJECTED"
+        SessionWorkspaceInvalidRootsRejected = "SESSION_WORKSPACE_INVALID_ROOTS_REJECTED"
+        SessionWorkspaceReparseRootRejected = "SESSION_WORKSPACE_REPARSE_ROOT_REJECTED"
+        SessionWorkspaceActiveLeasePreserved = "SESSION_WORKSPACE_ACTIVE_LEASE_PRESERVED"
+        SessionWorkspaceCrashRecovery = "SESSION_WORKSPACE_CRASH_RECOVERY"
+        ServiceSessionWorkspaceRemoved = "SERVICE_SESSION_WORKSPACE_REMOVED"
+        ServiceStartFailureWorkspaceRemoved = "SERVICE_START_FAILURE_WORKSPACE_REMOVED"
+        ServiceWorkspaceCleanupCanRetry = "SERVICE_WORKSPACE_CLEANUP_CAN_RETRY"
+        ServiceStartStopRepeat500 = "SERVICE_START_STOP_REPEAT_500"
         InvalidExecutablePathsFailClosed = "INVALID_EXECUTABLE_PATHS"
         ApprovedExecutableSha256MismatchRejected = "EXECUTABLE_SHA256_MISMATCH"
         StartupTimeoutTriggersFailClosedAbortAndBoundedCleanup = "TIMEOUT_TERMINATES_UNCONFIRMED"
@@ -711,7 +755,7 @@ try {
     }
 
     $evidence = [ordered]@{
-        SchemaVersion = 9
+        SchemaVersion = 16
         RecordedAtLocal = [DateTimeOffset]::Now.ToString("o")
         Scope = "autocad2016-live-agenthost-inherited-handle-bootstrap-doctor"
         Status = "live-agenthost-bootstrap-doctor-gate-passed"
@@ -754,6 +798,7 @@ try {
             $runtimeEvidence.ConfirmationThenHangTriggersFailClosedAbortAndBoundedCleanup -and
             $runtimeEvidence.CancellationTerminatesUnconfirmedChild)
         ProcessTreeCleanupOnServiceStopLiveVerified = $runtimeEvidence.ServiceStopKillsProcessTree
+        ProcessTreeStartStopRepeat500Verified = $runtimeEvidence.ServiceStartStopRepeat500
         ProcessTreeCleanupOnUnexpectedAgentHostExitLiveVerified =
             $runtimeEvidence.UnexpectedAgentHostExitKillsProcessTree
         ProcessTreeCleanupOnOwnerExitLiveVerified = $runtimeEvidence.ProcessOwnerExitKillsProcessTree
@@ -761,6 +806,16 @@ try {
             $runtimeEvidence.ProcessTreeResourceLimitsApplied -and
             $runtimeEvidence.InvalidProcessTreeResourceLimitsFailClosed -and
             $runtimeEvidence.JobUserTimeTerminatesProcessTree)
+        ResourceLimitTerminalAttributionRuntimeVerified = (
+            $runtimeEvidence.ResourceLimitErrorCodesStable -and
+            $runtimeEvidence.JobUserTimeTerminatesProcessTree -and
+            $runtimeEvidence.JobProcessLimitProducesStructuredTerminal -and
+            $runtimeEvidence.JobMemoryLimitProducesStructuredTerminal -and
+            $runtimeEvidence.CombinedJobLimitsProduceSingleTerminal -and
+            $runtimeEvidence.SessionWallClockTerminatesProcessTree)
+        NestedJobAssignmentCurrentRuntimeVerified =
+            $runtimeEvidence.NestedJobAssignmentCompatible
+        EnterpriseNestedJobMatrixVerified = $false
         SessionWallClockDeadlineRuntimeVerified = (
             $runtimeEvidence.SessionWallClockTerminatesProcessTree -and
             $runtimeEvidence.SessionWallClockRetriesCleanup -and
@@ -768,6 +823,18 @@ try {
             $runtimeEvidence.SessionWallClockFailedCleanupPoisonsStart)
         GracefulServiceExitBeforeForcedTerminationRuntimeVerified =
             $runtimeEvidence.ServiceStopAllowsGracefulExitBeforeForcedTermination
+        ConfiguredGracefulStopTimeoutRuntimeVerified =
+            $runtimeEvidence.ServiceStopUsesConfiguredGrace
+        ProtectedSessionWorkspaceLifecycleRuntimeVerified = (
+            $runtimeEvidence.SessionWorkspaceProtectedLayout -and
+            $runtimeEvidence.SessionWorkspaceDuplicateRejected -and
+            $runtimeEvidence.SessionWorkspaceInvalidRootsRejected -and
+            $runtimeEvidence.SessionWorkspaceReparseRootRejected -and
+            $runtimeEvidence.SessionWorkspaceActiveLeasePreserved -and
+            $runtimeEvidence.SessionWorkspaceCrashRecovery -and
+            $runtimeEvidence.ServiceSessionWorkspaceRemoved -and
+            $runtimeEvidence.ServiceStartFailureWorkspaceRemoved -and
+            $runtimeEvidence.ServiceWorkspaceCleanupCanRetry)
         RestrictedTokenPrimitiveRuntimeVerified =
             $runtimeEvidence.RestrictedTokenPrimitivesFailClosed
         RestrictedTokenPublicProductSurfaceClosed =
@@ -795,7 +862,7 @@ try {
         NetLoadVerified = $false
         AgentHostLiveBridgeVerified = $false
         CadRuntimeIntegrated = $false
-        EvidenceBoundary = "This gate proves the exact mandatory net45/net8 Spec ID set, real out-of-process bootstrap-doctor authentication through restricted inherited standard handles, approved SHA-256 mismatch rejection, PID/creation-time confirmation rejection, startup-deadline fail-closed abort followed by bounded termination cleanup, cancellation cleanup, bounded stderr, handle-allowlist canary exclusion, service and owner process-tree cleanup, Windows-reported Job resource limits, and authenticated-service runtime cleanup. The public product configuration and result surfaces do not expose the experimental process-identity selector or its raw telemetry. The internal restricted-token probe accepts only a Windows-reported restricted success, a structured process-isolation failure, or child failure after a restricted launch; it never falls back to CurrentUser, and the exact sanitized net45/net8 outcomes are recorded separately. A successful primitive or probe result is not production sandbox evidence and does not prove runtime/workspace/pipe ACLs, credentials, real Codex, bootstrap-serve, AutoCAD integration, CAD work, or complete AutoCAD 2016 support. The gate also proves reproducible runnable outputs and an empty relevant-process baseline/final state."
+        EvidenceBoundary = "This gate proves the exact mandatory net45/net8 Spec ID set, real out-of-process bootstrap-doctor authentication through restricted inherited standard handles, approved SHA-256 mismatch rejection, PID/creation-time confirmation rejection, startup-deadline fail-closed abort followed by bounded termination cleanup, cancellation cleanup, bounded stderr, handle-allowlist canary exclusion, service and owner process-tree cleanup, Windows-reported Job resource limits, nested Job assignment on the current Windows runtime, and authenticated-service runtime cleanup. It does not prove the required enterprise nested-Job policy matrix. The public product configuration and result surfaces do not expose the experimental process-identity selector or its raw telemetry. The internal restricted-token probe accepts only a Windows-reported restricted success, a structured process-isolation failure, or child failure after a restricted launch; it never falls back to CurrentUser, and the exact sanitized net45/net8 outcomes are recorded separately. A successful primitive or probe result is not production sandbox evidence and does not prove runtime/workspace/pipe ACLs, credentials, real Codex, bootstrap-serve, AutoCAD integration, CAD work, or complete AutoCAD 2016 support. The gate also proves reproducible runnable outputs and an empty relevant-process baseline/final state."
     }
     $evidence | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $evidencePath -Encoding UTF8
 

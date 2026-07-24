@@ -239,23 +239,54 @@ NETLOAD 证据的能力一律视为未支持。
   仍待验收，详见 `M4_2_CODEX_HEALTH_PREFLIGHT_20260724.md`。
 - M4.3 基础提交 `6d99bb9` 已让真实 Codex transport 使用显式环境白名单，并提供可选、严格验证的
   session `CODEX_HOME` 与活动租约；home 固定为空 MCP、禁用插件，正常清理不跟随重解析点。
-  生产 bootstrap 尚未启用该 home，因为空 home 没有现有 ChatGPT 登录；M4.8 ACL/lease 和 M4.11
-  凭据 Broker 完成前不得复制或解析全局 profile。详见
+  生产 bootstrap 尚未启用该 home，因为空 home 没有现有 ChatGPT 登录；M4.8 ACL/lease 自动化
+  切口已完成，但 M4.11 凭据 Broker 完成前仍不得复制或解析全局 profile。详见
   `M4_3_CODEX_SESSION_HOME_BASELINE_20260724.md`。
 - M4 第三进程树边界已接入真实 AgentHost 启动链：校验后的 AgentHost 会在恢复前进入具有
-  `KILL_ON_JOB_CLOSE` 的未命名 Windows Job Object；普通后代由该 Job 统一回收。隔离
-  bootstrap-serve 规格以真实 PID 验证 `StopAsync` 和拥有 Job 的启动器不调用停止逻辑直接
-  退出后，父/后代均消失，net45/net8 各 `28/28`；这不替代真实 Codex 或 AutoCAD 异常退出
-  矩阵，也不包含资源限制。
+  `KILL_ON_JOB_CLOSE` 的未命名 Windows Job Object；普通后代由该 Job 统一回收。当前未提交
+  M4.6 切口新增分配前任意 Job 成员检测、分配后目标 Job 成员反查和结构化隔离失败；本机
+  Windows 已真实验证外层/内层嵌套 Job 分配。Stop、AgentHost 异常退出和拥有 Job 的启动器
+  退出后进程树回收、资源限制、累计用户时间终止和连续 `500` 次 service 启停回收均进入
+  net45/net8 专项门禁。企业组策略、Windows 版本和宿主 Job 组合矩阵仍未验证，不能据此
+  宣布 M4.6 全部完成。
+- M4.8 自动化切口已接入真实 AgentHost 启动链：系统 session ID 生成后、进程启动前创建
+  `sessions/{sessionId}`，包含 `workspace`、`audit`、`codex-home`、`.active` 和固定 schema
+  marker。根、会话及子目录使用受保护 DACL，只允许当前用户、SYSTEM 和 Administrators；
+  固定本地磁盘、owner、ACL、最终句柄路径和 reparse 边界均在使用前验证。活动租约阻止目录
+  移动/替换，不同 session 可并发；STOP 在进程、stderr 和 I/O 全部收口后删除工作区，失败可由
+  后续 STOP 重试。默认过期阈值 `24 h`、单次最多扫描 `64` 个候选，只清理带合法 marker、
+  合法 ACL、已过期且 `.active` 可独占打开的目录；无 marker legacy 目录和活动 lease 保留。
+  自动化切口已完成，企业/AutoCAD 实机矩阵和独立 Git 提交仍缺；`codex-home` 已创建但 M4.11
+  凭据 Broker 完成前不得作为生产隔离登录入口。
+- M4.9 当前自动化切口已进入真实默认启动路径：Job 默认限制为最多 `16` 个进程、总提交内存
+  `4 GiB`、CPU hard cap `75%`、累计用户时间 `8 h`，认证服务墙钟上限为 `24 h`；停止前自然
+  退出宽限现由 `GracefulStopTimeout` 控制，允许 `0–30 s`、默认 `1 s`，在启动前校验并快照。
+  非法值 fail-closed，配置值实际传入 Stop 等待函数。Windows Job completion port 现对进程数、
+  Job 总提交内存和累计用户时间命中提供权威通知，watchdog 对服务墙钟提供终态；Host 在有界
+  仲裁窗口内优先使用这些原因，不再让普通 Bridge 断线覆盖活动 request。四类终态分别为
+  `agenthost_process_limit_exceeded`、`agenthost_memory_limit_exceeded`、
+  `agenthost_user_time_limit_exceeded` 和 `agenthost_session_runtime_limit_exceeded`，
+  `error_stage=agenthost_runtime`、`retryable=false`。真实 Job 内存与用户时间组合耗尽也只提交
+  第一个权威终态，不伪造固定优先级。当前明确不启用 `JOB_OBJECT_LIMIT_WORKINGSET`：Job 总
+  提交内存继续作为硬边界，working set 只作为外部性能 telemetry 和发布预算。真实
+  Codex/AutoCAD 耗尽矩阵和企业配置策略仍未完成，因此 M4.9 仍是进行中。技术说明见
+  `M4_9_RESOURCE_LIMIT_TERMINALS_20260724.md`。
 - M4.4/M4.5 已在当前集成分支提交为 `0763022`：产品公共配置、导出类型和公开结果不再
   暴露实验身份选择；RestrictedToken 只保留为 internal-only 可移植能力探针，且任何结果
   都禁止回退 CurrentUser。本机 net45/net8 原语均为 `available`，受限 FakeAgentHost
   均在认证前以 `child_exited` 退出；这不是生产受限身份成功。详情见
   `M4_4_M4_5_RESTRICTED_IDENTITY_PROBE_20260724.md`。
-- 当前 `codex/m4-integration@0763022` 的专项 AgentLauncher net45/net8 各为 `41/41`；
-  PowerShell 7 与 Windows PowerShell 5.1 的完整 Phase 2 均为 `358/358`，Bridge 为
-  `49/49`，Release 为 `0 warning / 0 error`。R20.1 双 Shell API Probe 为
+- 当前 `codex/m4-integration@4233b024` 加未提交 M4.6/M4.8/M4.9 切口的专项 AgentLauncher
+  net45/net8 各为 `57/57`，Host MVP 为 `56/56`；
+  PowerShell 7 与 Windows PowerShell 5.1 的完整 Phase 2 均为 `360/360`，Bridge 为
+  `49/49`，认证兼容 net45/net8 各为 `35/35`，Release 为 `0 warning / 0 error`。
+  R20.1 双 Shell API Probe 为
   `29 passed / 8 expected failed`、Autodesk DLL 复制数 `0`。
+- M4 阶段编排器已升级为 bootstrap schema 16、九项目 Phase 2 冻结矩阵和条件锁文件异常
+  路径恢复；Bridge Client 反向查询取消测试不再依赖负载敏感的 200 ms 调度窗口。PowerShell 7
+  与 Windows PowerShell 5.1 最终阶段门禁均通过，正式 evidence 为
+  `evidence/agent-bootstrap-verification-20260719.json`；最终 SHA-256 由门禁输出记录，避免在
+  受该 evidence manifest 约束的文档中形成间接自引用。
 - M4.4/M4.5 脱敏 evidence 为
   `evidence/m4-restricted-identity-probe-verification-20260724.json`。专项原始
   verification SHA-256 为
@@ -271,15 +302,16 @@ NETLOAD 证据的能力一律视为未支持。
   进程树证据。脱敏边界见 `evidence/m4-integration-checkpoint-20260724.json`。
 - 当前 M4.1 配置、M4.2 版本/健康预检和 M4.3 环境/session-home 基础均已进入代码；
   M4.4/M4.5 已完成代码、自动化和当前分支受控提交。M4.2/M4.3 仍缺正式候选实机和生产
-  隔离登录，M4.6 只有 Job Object 自动化回收基础，M4.7 生产身份隔离仍未完成。
-  凭据 Broker、资源/磁盘配额、ACL/lease 强化、JSONL 哈希链审计、统一脱敏和故障/企业实机
-  矩阵仍未完成，因此 M5 CAD 写入继续禁用。
-- 冻结构建哈希：AgentHost EXE `002BBA9D...49706`，AgentHost DLL
-  `852BD92C...86033`，net45 Launcher `597D99E8...F849`，net8 Launcher
-  `84E0E2A7...1FE9`；完整值保存在阶段 evidence。
-- Phase 2 回归为 Release `0` warning / `0` error、七个既有 Specs `145/145`、
+  隔离登录；M4.6/M4.8 当前切口已通过自动化和双 Shell 阶段门禁，但尚未提交，且企业/
+  AutoCAD 实机矩阵仍缺。M4.7 生产身份隔离仍未完成。
+  M4.11 凭据 Broker、组合/实机配额矩阵、磁盘硬配额、JSONL 哈希链审计、统一脱敏和
+  故障/企业实机矩阵仍未完成，因此 M5 CAD 写入继续禁用。
+- 冻结构建哈希：AgentHost EXE `8C39315A...CE2823A`，AgentHost DLL
+  `8E0C3617...6797CF`，net45 Launcher `0DD7DA71...B1B8B`，net8 Launcher
+  `1F5B289E...6904EB`；完整值保存在阶段 evidence。
+- Phase 2 回归为 Release `0` warning / `0` error、九个 Specs `360/360`、
   AgentHost doctor、Host 禁止 API、秘密扫描和 diff 通过；认证兼容回归在两个 PowerShell
-  下均保持 Bridge `29/29`、net45/net8 `35/35` 和固定向量一致。
+  下均保持 Bridge `49/49`、net45/net8 `35/35` 和固定向量一致。
 - 本检查点未启动、重启或操作 AutoCAD。它不证明长运行 `IAgentBridgeClient`、Host.2016
   live handshake、外部进程复制句柄的对抗性、刻意替换 EXE 的 suspended-launch TOCTOU
   动态攻击、CAD 审批/写入或完整 AutoCAD 2016 支持。
@@ -522,6 +554,8 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
    冻结 `0.4.0.0` 候选；等待实机/性能 evidence 后冻结验收预算。
 6. M2 实机/性能 evidence 仍是 M2 完成前提；M3 已开始只读对象语义纵切，但不替代 M2
    验收，也不启用 CAD 写入。随后关闭 M4 沙箱与审计；M4 完成前不启用 M5 CAD 写入。
+7. M4.9 组合耗尽和 working-set 决策已完成自动化；下一切口是真实 Codex/AutoCAD 与企业资源
+   矩阵。M4.10 磁盘硬配额、M4.11 凭据 Broker、M4.12/M4.13 审计和脱敏仍按权威目标顺序推进。
 
 ## 更新纪律
 

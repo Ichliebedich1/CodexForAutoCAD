@@ -189,17 +189,20 @@ internal static class AgentHostProgram
                 shutdown.Cancel();
             };
             Console.CancelKeyPress += cancelHandler;
-            await using var audit = AgentHostAuditLog.CreateForCurrentUser(
+            var sessionRoot = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "OpenAI",
+                "CodexForAutoCAD",
+                "workspace",
+                "sessions",
                 directionKeys!.SessionId);
+            var workspaceRoot = Path.Combine(sessionRoot, "workspace");
+            var auditRoot = Path.Combine(sessionRoot, "audit");
+            await using var audit = AgentHostAuditLog.CreateInSessionDirectory(
+                directionKeys.SessionId,
+                auditRoot);
             try
             {
-                var workspaceRoot = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "OpenAI",
-                    "CodexForAutoCAD",
-                    "workspace",
-                    "sessions",
-                    directionKeys!.SessionId);
                 var workspace = AgentWorkspace.Create(workspaceRoot);
                 var codexConfiguration = CreateCodexConfiguration(null, workspace);
                 using var verifiedLaunch = await CodexVersionPreflight.VerifyAsync(

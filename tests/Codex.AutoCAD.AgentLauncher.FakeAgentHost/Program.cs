@@ -130,16 +130,56 @@ internal static class FakeAgentHostProgram
                 }
 
                 confirmationOutput.Dispose();
-                var burn = 1L;
-                while (true)
+                BurnCpuForever();
+            }
+            if (mode == "serveprocesslimit")
+            {
+                if (!serve)
                 {
-                    for (var index = 0; index < 1000000; index++)
-                    {
-                        burn = unchecked((burn * 6364136223846793005L) + 1442695040888963407L);
-                    }
-
-                    Interlocked.Exchange(ref CpuBurnSink, burn);
+                    throw new ArgumentException(
+                        "serveprocesslimit fake mode requires bootstrap-serve.");
                 }
+
+                confirmationOutput.Dispose();
+                StartDescendantsUntilRejected();
+                Thread.Sleep(Timeout.Infinite);
+                return 99;
+            }
+            if (mode == "servememorylimit")
+            {
+                if (!serve)
+                {
+                    throw new ArgumentException(
+                        "servememorylimit fake mode requires bootstrap-serve.");
+                }
+
+                confirmationOutput.Dispose();
+                ExhaustCommittedMemory();
+                return 99;
+            }
+            if (mode == "servecombinedlimit")
+            {
+                if (!serve)
+                {
+                    throw new ArgumentException(
+                        "servecombinedlimit fake mode requires bootstrap-serve.");
+                }
+
+                confirmationOutput.Dispose();
+                StartCpuBurnThread();
+                ExhaustCommittedMemory(delayMilliseconds: 10);
+                return 99;
+            }
+            if (mode == "serveexit")
+            {
+                if (!serve)
+                {
+                    throw new ArgumentException("serveexit fake mode requires bootstrap-serve.");
+                }
+
+                confirmationOutput.Dispose();
+                Thread.Sleep(10);
+                return 0;
             }
             if (mode == "trailing")
             {
@@ -169,6 +209,30 @@ internal static class FakeAgentHostProgram
     }
 
     private static long CpuBurnSink;
+
+    private static void StartCpuBurnThread()
+    {
+        var thread = new Thread(BurnCpuForever)
+        {
+            IsBackground = true,
+            Name = "FakeAgentHostResourceBurn",
+        };
+        thread.Start();
+    }
+
+    private static void BurnCpuForever()
+    {
+        var burn = 1L;
+        while (true)
+        {
+            for (var index = 0; index < 1000000; index++)
+            {
+                burn = unchecked((burn * 6364136223846793005L) + 1442695040888963407L);
+            }
+
+            Interlocked.Exchange(ref CpuBurnSink, burn);
+        }
+    }
 
     private static string GetMode()
     {
@@ -209,6 +273,73 @@ internal static class FakeAgentHostProgram
             processIdPath,
             descendant.Id.ToString(CultureInfo.InvariantCulture),
             new UTF8Encoding(false));
+    }
+
+    private static void StartDescendantsUntilRejected()
+    {
+        var descendantExecutable = GetDescendantExecutable();
+        for (var index = 0; index < 32; index++)
+        {
+            try
+            {
+                using var descendant = Process.Start(new ProcessStartInfo
+                {
+                    FileName = descendantExecutable,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                });
+            }
+            catch (Win32Exception)
+            {
+                break;
+            }
+        }
+    }
+
+    private static string GetDescendantExecutable()
+    {
+        const string descendantExecutableVariable =
+            "CODEX_AUTOCAD_TEST_DESCENDANT_EXECUTABLE";
+        var descendantExecutable = Environment.GetEnvironmentVariable(
+            descendantExecutableVariable);
+        if (string.IsNullOrWhiteSpace(descendantExecutable)
+            || !Path.IsPathFullyQualified(descendantExecutable))
+        {
+            throw new InvalidOperationException(
+                "Process-tree descendant executable is unavailable.");
+        }
+
+        return descendantExecutable;
+    }
+
+    private static void ExhaustCommittedMemory(int delayMilliseconds = 0)
+    {
+        const uint memoryCommit = 0x00001000;
+        const uint memoryReserve = 0x00002000;
+        const uint pageReadWrite = 0x04;
+        const ulong blockSize = 16UL * 1024 * 1024;
+        var blocks = new List<IntPtr>();
+        while (true)
+        {
+            var block = VirtualAlloc(
+                IntPtr.Zero,
+                new UIntPtr(blockSize),
+                memoryCommit | memoryReserve,
+                pageReadWrite);
+            if (block == IntPtr.Zero)
+            {
+                GC.KeepAlive(blocks);
+                Thread.Sleep(Timeout.Infinite);
+                return;
+            }
+
+            blocks.Add(block);
+            GC.KeepAlive(blocks);
+            if (delayMilliseconds > 0)
+            {
+                Thread.Sleep(delayMilliseconds);
+            }
+        }
     }
 
     private static void WaitForExitSignal()
@@ -331,5 +462,12 @@ internal static class FakeAgentHostProgram
         StringBuilder filePath,
         int filePathLength,
         uint flags);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr VirtualAlloc(
+        IntPtr address,
+        UIntPtr size,
+        uint allocationType,
+        uint protection);
 
 }
