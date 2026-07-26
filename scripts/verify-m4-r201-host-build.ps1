@@ -304,6 +304,7 @@ try {
     $evidence = [ordered]@{
         SchemaVersion = 1
         RecordedAtLocal = [DateTimeOffset]::Now.ToString("o")
+        RunCorrelationId = Get-CodexGateRunCorrelationId
         Scope = "m4-r201-host-build-gate"
         Status = "automated-r201-build-passed"
         PowerShellEdition = [string] $PSVersionTable.PSEdition

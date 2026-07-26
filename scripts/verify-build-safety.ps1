@@ -116,6 +116,36 @@ try {
 
     $env:CODEX_AUTOCAD_ARTIFACT_BASE = $selfTestBase
 
+    # 门禁运行关联标识：未设置时必须返回 $null（调用方据此退回时间窗），
+    # 设置但格式非法时必须失败关闭——静默忽略会让汇总器悄悄失去同一次运行的证明。
+    $previousGateRunId = $env:CODEX_GATE_RUN_ID
+    try {
+        $env:CODEX_GATE_RUN_ID = $null
+        if ($null -ne (Get-CodexGateRunCorrelationId)) {
+            throw "自检失败：未设置运行关联标识时没有返回 null。"
+        }
+        $env:CODEX_GATE_RUN_ID = "   "
+        if ($null -ne (Get-CodexGateRunCorrelationId)) {
+            throw "自检失败：空白运行关联标识没有被视为未设置。"
+        }
+        $env:CODEX_GATE_RUN_ID = "  run-2026a.7_x-1  "
+        if ((Get-CodexGateRunCorrelationId) -cne "run-2026a.7_x-1") {
+            throw "自检失败：合法运行关联标识没有被原样接受。"
+        }
+        $env:CODEX_GATE_RUN_ID = "run id"
+        Assert-Rejected { Get-CodexGateRunCorrelationId } `
+            "自检失败：含空格的运行关联标识没有被拒绝。"
+        $env:CODEX_GATE_RUN_ID = "run/../id"
+        Assert-Rejected { Get-CodexGateRunCorrelationId } `
+            "自检失败：含路径分隔符的运行关联标识没有被拒绝。"
+        $env:CODEX_GATE_RUN_ID = "a" * 65
+        Assert-Rejected { Get-CodexGateRunCorrelationId } `
+            "自检失败：超长运行关联标识没有被拒绝。"
+    }
+    finally {
+        $env:CODEX_GATE_RUN_ID = $previousGateRunId
+    }
+
     # PATH 守卫必须在指纹变化时拒绝，而不是静默接受。
     $tamperedState = [pscustomobject]@{
         Length = $pathBefore.Length

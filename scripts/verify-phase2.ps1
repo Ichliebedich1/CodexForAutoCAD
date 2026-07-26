@@ -724,6 +724,7 @@ try {
         $phase2Evidence = [ordered]@{
             SchemaVersion = 1
             RecordedAtLocal = [DateTimeOffset]::Now.ToString("o")
+            RunCorrelationId = Get-CodexGateRunCorrelationId
             Scope = "phase2-managed-core-gate"
             Status = "automated-gate-passed"
             PowerShellEdition = [string] $PSVersionTable.PSEdition

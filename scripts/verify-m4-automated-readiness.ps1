@@ -6,6 +6,19 @@ param(
     [string] $AuthCompatEvidencePath,
     [string] $R201HostEvidencePath,
     [string] $EvidencePath,
+
+    # 上游门禁失败时通常不写 evidence，于是本汇总器会读到上一次成功遗留的旧文件，
+    # 从而在门禁实际失败的情况下报绿。以下两个窗口用于证明五份输入 evidence 确实
+    # 来自同一次、且是近期的门禁运行。时间窗只是第二层：它拦不住「同一小时内重跑、
+    # 其中一项失败」的情况，那一层由 RunCorrelationId 负责，见 -RequireRunCorrelation。
+    [int] $MaximumEvidenceAgeHours = 24,
+    [int] $MaximumEvidenceSpreadHours = 6,
+
+    # 要求五份输入 evidence 携带同一个 CODEX_GATE_RUN_ID 关联标识。默认关闭以兼容
+    # 不设置该变量的历史调用方；关闭时汇总器只能给出较弱的时间窗保证，并在 evidence
+    # 的 RunCorrelation.Mode 中把 FreshnessOnly 明确记录下来供审计。
+    [switch] $RequireRunCorrelation,
+
     [switch] $SelfTestOnly
 )
 
@@ -40,6 +53,52 @@ function Get-TextSha256 {
     finally {
         [Array]::Clear($bytes, 0, $bytes.Length)
     }
+}
+
+function Resolve-EvidenceRunCorrelation {
+    # 证明五份 evidence 来自同一次门禁运行。缺失或不一致都必须失败关闭：任何一份来自
+    # 别的运行，都意味着对应门禁这次没有真正通过。
+    param(
+        [Parameter(Mandatory = $true)][hashtable] $EvidenceByName,
+        [bool] $Required
+    )
+    $present = New-Object System.Collections.ArrayList
+    $missing = New-Object System.Collections.ArrayList
+    foreach ($evidenceName in ($EvidenceByName.Keys | Sort-Object)) {
+        $evidenceJson = $EvidenceByName[$evidenceName]
+        $correlationId = $null
+        if ($evidenceJson.PSObject.Properties.Name -contains "RunCorrelationId") {
+            $rawCorrelationId = [string] $evidenceJson.RunCorrelationId
+            if (-not [string]::IsNullOrWhiteSpace($rawCorrelationId)) {
+                $correlationId = $rawCorrelationId.Trim()
+            }
+        }
+        if ($null -eq $correlationId) {
+            $null = $missing.Add($evidenceName)
+        }
+        else {
+            $null = $present.Add($correlationId)
+        }
+    }
+
+    if ($present.Count -eq 0) {
+        if ($Required) {
+            throw ("M4 就绪要求运行关联标识，但五份输入 evidence 均无 RunCorrelationId。" +
+                "请在同一次套件运行中设置 CODEX_GATE_RUN_ID 后重跑全部上游门禁。")
+        }
+        return [pscustomobject]@{ Mode = "FreshnessOnly"; Id = $null }
+    }
+    if ($missing.Count -gt 0) {
+        throw ("M4 就绪输入 evidence 的运行关联标识不完整，缺少：" +
+            (@($missing) -join "、") + "。这些 evidence 不是同一次门禁运行产生的。")
+    }
+    $distinctIds = @($present | Sort-Object -Unique -CaseSensitive)
+    if ($distinctIds.Count -ne 1) {
+        throw ("M4 就绪输入 evidence 来自 " + $distinctIds.Count +
+            " 次不同的门禁运行：RunCorrelationId 不一致。" +
+            "上游门禁很可能失败并遗留了上一次成功的旧 evidence。")
+    }
+    return [pscustomobject]@{ Mode = "Correlated"; Id = $distinctIds[0] }
 }
 
 function Read-Evidence {
@@ -357,6 +416,81 @@ if ($SelfTestOnly) {
         throw "自检失败：部分通过的规格摘要未被拒绝。"
     }
 
+    # "(absent)" 表示该份 evidence 完全没有 RunCorrelationId 属性；括号不在合法字符集内，
+    # 因此不会与真实标识混淆。PowerShell 的强制参数绑定不接受全 $null 数组，故用哨兵值。
+    $absentCorrelationId = "(absent)"
+
+    function New-CorrelationSelfTestSet {
+        param([string[]] $Ids)
+        $names = @(
+            "agent-bootstrap",
+            "auth-compat",
+            "phase2-powershell7",
+            "phase2-windowspowershell51",
+            "r201-host-build"
+        )
+        $set = @{}
+        for ($i = 0; $i -lt $names.Count; $i++) {
+            $candidateId = $Ids[$i]
+            if ($candidateId -ceq $absentCorrelationId) {
+                $set[$names[$i]] = [pscustomobject]@{ RecordedAtLocal = "self-test" }
+            }
+            else {
+                $set[$names[$i]] = [pscustomobject]@{
+                    RecordedAtLocal = "self-test"
+                    RunCorrelationId = $candidateId
+                }
+            }
+        }
+        return $set
+    }
+
+    function Assert-CorrelationRejected {
+        param(
+            [string[]] $Ids,
+            [bool] $Required,
+            [string] $Because
+        )
+        $rejected = $false
+        try {
+            $null = Resolve-EvidenceRunCorrelation `
+                -EvidenceByName (New-CorrelationSelfTestSet -Ids $Ids) -Required $Required
+        }
+        catch {
+            $rejected = $true
+        }
+        if (-not $rejected) {
+            throw "自检失败：$Because"
+        }
+    }
+
+    $sameRun = @("run-a", "run-a", "run-a", "run-a", "run-a")
+    $correlated = Resolve-EvidenceRunCorrelation `
+        -EvidenceByName (New-CorrelationSelfTestSet -Ids $sameRun) -Required $true
+    if ($correlated.Mode -cne "Correlated" -or $correlated.Id -cne "run-a") {
+        throw "自检失败：同一运行标识的五份 evidence 未被判定为 Correlated。"
+    }
+
+    # 上游门禁失败时不写 evidence，遗留的旧文件要么没有标识，要么带着上一次的标识。
+    Assert-CorrelationRejected -Ids @("run-a", "run-a", "run-a", "run-a", $absentCorrelationId) `
+        -Required $false -Because "缺少一份运行标识未被拒绝。"
+    Assert-CorrelationRejected -Ids @("run-a", "run-a", "run-a", "run-a", "run-b") `
+        -Required $false -Because "混合两次运行标识未被拒绝。"
+    Assert-CorrelationRejected -Ids @("run-a", "run-a", "run-a", "run-a", "RUN-A") `
+        -Required $false -Because "仅大小写不同的运行标识未被区分。"
+    Assert-CorrelationRejected -Ids @("run-a", "run-a", "run-a", "run-a", "   ") `
+        -Required $false -Because "空白运行标识未被视为缺失。"
+    $allAbsent = @($absentCorrelationId) * 5
+    Assert-CorrelationRejected -Ids $allAbsent `
+        -Required $true -Because "要求关联时全部缺失未被拒绝。"
+
+    $legacy = Resolve-EvidenceRunCorrelation `
+        -EvidenceByName (New-CorrelationSelfTestSet -Ids $allAbsent) `
+        -Required $false
+    if ($legacy.Mode -cne "FreshnessOnly" -or $null -ne $legacy.Id) {
+        throw "自检失败：无关联标识时未退回并标注 FreshnessOnly。"
+    }
+
     Write-Host "M4_AUTOMATED_READINESS_SELF_TEST=passed"
     return
 }
@@ -378,6 +512,57 @@ $phase2Ps51 = Read-Evidence $Phase2WindowsPowerShell51EvidencePath
 $bootstrap = Read-Evidence $AgentBootstrapEvidencePath
 $auth = Read-Evidence $AuthCompatEvidencePath
 $r201 = Read-Evidence $R201HostEvidencePath
+
+# 上游门禁失败时不写 evidence，本汇总器会退回读到上一次成功遗留的旧文件，
+# 于是在门禁实际失败时报绿——这正是 2026-07-26 M4.7 尝试中观察到的现象：
+# Phase 2 与 auth 均失败，但汇总器仍以旧 evidence 输出 469/469 且退出码为 0。
+# 因此在此校验五份 evidence 确实来自同一次、且是近期的运行。
+$evidenceRecordedAt = @{
+    "phase2-powershell7" = $phase2Ps7.Json
+    "phase2-windowspowershell51" = $phase2Ps51.Json
+    "agent-bootstrap" = $bootstrap.Json
+    "auth-compat" = $auth.Json
+    "r201-host-build" = $r201.Json
+}
+$recordedTimes = New-Object System.Collections.ArrayList
+foreach ($evidenceName in ($evidenceRecordedAt.Keys | Sort-Object)) {
+    $evidenceJson = $evidenceRecordedAt[$evidenceName]
+    if (-not ($evidenceJson.PSObject.Properties.Name -contains "RecordedAtLocal")) {
+        throw "M4 就绪输入 evidence 缺少 RecordedAtLocal：$evidenceName。"
+    }
+    $parsedTime = [datetime]::MinValue
+    if (-not [datetime]::TryParse(
+            [string] $evidenceJson.RecordedAtLocal,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::None,
+            [ref] $parsedTime)) {
+        if (-not [datetime]::TryParse([string] $evidenceJson.RecordedAtLocal, [ref] $parsedTime)) {
+            throw "M4 就绪输入 evidence 的 RecordedAtLocal 无法解析：$evidenceName。"
+        }
+    }
+    $null = $recordedTimes.Add($parsedTime)
+}
+
+$oldestEvidence = ($recordedTimes | Sort-Object | Select-Object -First 1)
+$newestEvidence = ($recordedTimes | Sort-Object | Select-Object -Last 1)
+$evidenceAgeHours = [math]::Round(((Get-Date) - $oldestEvidence).TotalHours, 2)
+$evidenceSpreadHours = [math]::Round(($newestEvidence - $oldestEvidence).TotalHours, 2)
+
+if ($evidenceAgeHours -gt $MaximumEvidenceAgeHours) {
+    throw ("M4 就绪输入 evidence 过旧：最早一份为 $evidenceAgeHours 小时前，" +
+        "上限 $MaximumEvidenceAgeHours 小时。上游门禁很可能失败并遗留了旧 evidence。")
+}
+if ($evidenceSpreadHours -gt $MaximumEvidenceSpreadHours) {
+    throw ("M4 就绪输入 evidence 时间跨度过大：$evidenceSpreadHours 小时，" +
+        "上限 $MaximumEvidenceSpreadHours 小时。这些 evidence 不像来自同一次门禁运行。")
+}
+
+# 时间窗只是第二层，拦不住同一小时内的重跑：2026-07-26 R20.1 门禁因构建期间 AutoCAD
+# 进程集合变化而失败，它遗留的 evidence 只有 26 分钟，落在两个窗口内，汇总器再次报绿。
+# 关联标识把「同一次运行」变成可判定的事实，而不是从时间上推测。
+$runCorrelation = Resolve-EvidenceRunCorrelation `
+    -EvidenceByName $evidenceRecordedAt `
+    -Required ([bool] $RequireRunCorrelation)
 
 $phase2Ps7Specs = Assert-Phase2Evidence $phase2Ps7.Json "Core"
 $phase2Ps51Specs = Assert-Phase2Evidence $phase2Ps51.Json "Desktop"
@@ -479,6 +664,22 @@ $readiness = [ordered]@{
         RelevantResidualProcessCount = $relevantProcessCount
         RawPathPersisted = $false
         RawEnvironmentPersisted = $false
+    }
+    # 证明五份输入 evidence 来自同一次近期运行，而不是上游门禁失败后遗留的旧文件。
+    # 只记录相对窗口，不记录具体时刻，避免持久化本机时间线。
+    EvidenceFreshness = [ordered]@{
+        OldestInputAgeHours = $evidenceAgeHours
+        InputSpreadHours = $evidenceSpreadHours
+        MaximumAgeHours = $MaximumEvidenceAgeHours
+        MaximumSpreadHours = $MaximumEvidenceSpreadHours
+    }
+    # Correlated 表示五份 evidence 携带同一个一次性运行标识，这是「同一次运行」的强证据；
+    # FreshnessOnly 表示调用方没有设置 CODEX_GATE_RUN_ID，本次只有上面的时间窗保证，
+    # 拦不住同一时间窗内失败门禁遗留的旧 evidence。审计时必须区分这两种模式。
+    RunCorrelation = [ordered]@{
+        Mode = $runCorrelation.Mode
+        Id = $runCorrelation.Id
+        Required = [bool] $RequireRunCorrelation
     }
     AutomatedGatesPassed = $true
     AutoCadStartedOrCommanded = $false

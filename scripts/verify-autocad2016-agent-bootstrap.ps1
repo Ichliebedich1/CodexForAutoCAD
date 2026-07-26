@@ -808,6 +808,7 @@ try {
     $evidence = [ordered]@{
         SchemaVersion = 16
         RecordedAtLocal = [DateTimeOffset]::Now.ToString("o")
+        RunCorrelationId = Get-CodexGateRunCorrelationId
         Scope = "autocad2016-live-agenthost-inherited-handle-bootstrap-doctor"
         Status = "live-agenthost-bootstrap-doctor-gate-passed"
         PowerShellVersion = $PSVersionTable.PSVersion.ToString()

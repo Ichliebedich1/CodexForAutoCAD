@@ -109,6 +109,25 @@ function Get-CodexDotnetIsolationGuard {
     }
 }
 
+function Get-CodexGateRunCorrelationId {
+    # 上游门禁失败时不写 evidence，汇总器会退回读到上一次成功遗留的旧文件。仅靠时间窗
+    # 识别不了「同一小时内重跑、其中一项失败」：2026-07-26 R20.1 门禁因构建期间 AutoCAD
+    # 进程集合变化而失败，它遗留的 evidence 只有 26 分钟，仍落在 24 小时/6 小时窗口内，
+    # 于是汇总器再次报绿。因此由套件驱动在 CODEX_GATE_RUN_ID 中生成一次性关联标识，各
+    # 门禁把它写进自己的 evidence，由汇总器要求五份 evidence 携带同一个标识。
+    # 未设置时返回 $null，调用方据此退回较弱的时间窗校验并在 evidence 中标注该模式。
+    $raw = [Environment]::GetEnvironmentVariable("CODEX_GATE_RUN_ID", "Process")
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        return $null
+    }
+    $value = $raw.Trim()
+    if ($value -cnotmatch "^[A-Za-z0-9._-]{1,64}$") {
+        # 设置了却格式非法时必须失败关闭：静默忽略会让关联校验悄悄退回时间窗。
+        throw "CODEX_GATE_RUN_ID 格式非法：只允许 1-64 个 [A-Za-z0-9._-] 字符。"
+    }
+    return $value
+}
+
 function Resolve-CodexArtifactRoot {
     param(
         [Parameter(Mandatory = $true)][string] $RepoRoot,

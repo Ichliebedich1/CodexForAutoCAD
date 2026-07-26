@@ -1590,6 +1590,7 @@ try {
     $evidence = [ordered]@{
         SchemaVersion = 3
         RecordedAtLocal = [DateTimeOffset]::Now.ToString("o")
+        RunCorrelationId = Get-CodexGateRunCorrelationId
         Scope = "autocad2016-net45-net8-auth-and-bootstrap-primitive"
         Status = "static-and-cross-runtime-bootstrap-primitive-gate-passed"
         PowerShellVersion = $PSVersionTable.PSVersion.ToString()
