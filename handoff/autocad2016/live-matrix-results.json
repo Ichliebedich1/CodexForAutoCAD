@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "purpose": "User-reported real-machine and enterprise matrix results for M4. This file is the ONLY input channel for the nine real-world flags in the M4 readiness evidence. Automation must never write a 'verified' status here; it records what the user observed on their own machine.",
   "boundCandidate": {
-    "hostSha256": "9827DC321B7D458594B007085C78C54505CBE09CEF1BDEFB616D2ABFDFCFB5E8",
-    "agentHostSha256": "779063EBFA6DF06E0BC65B223AAF0C4E22CA167B6B4B9199B532E12669E43BA8",
-    "sourceCommit": "fdcb4380375adfcaf98ab4470f211057c27f3804",
+    "hostSha256": "BC5DA318042B46DA6C08DA582CEFFAB250D4E2E175AC94EA076461F0CB17EC2D",
+    "agentHostSha256": "EF079C01EF7AEE7482E5F0ED3203C4B45A8EC0FBF857705F9ADC64C3129F7A59",
+    "sourceCommit": "59e2bdc7c2112ae689138086f12aad38d1a491c2",
     "note": "Results only count while these hashes match the candidate the readiness gate measures. Rebuild the candidate and every status below is discarded until re-observed."
   },
   "statusVocabulary": {
