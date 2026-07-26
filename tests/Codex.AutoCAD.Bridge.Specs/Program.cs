@@ -73,6 +73,8 @@ var specs = new (string Name, Func<Task> Run)[]
         AgentHostAuditAnchorMacSpecs.ForeignKeyCannotVerifyAnchor),
     ("AUDIT-M413-010 锚点重写时MAC同步更新",
         AgentHostAuditAnchorMacSpecs.RewritingAnchorRefreshesMac),
+    ("AUDIT-M413-011 只读密钥入口绝不创建密钥",
+        AgentHostAuditAnchorMacSpecs.ReadOnlyKeyLookupNeverCreatesAKey),
     ("AUDIT-M412-001 CAD schema扩展不改变既有事件哈希",
         AgentHostCadAuditSchemaSpecs.ExistingEventHashesAreUnchangedByTheCadExtension),
     ("AUDIT-M412-002 CAD字段全部纳入哈希链",

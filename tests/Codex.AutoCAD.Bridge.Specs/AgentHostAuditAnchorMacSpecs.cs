@@ -174,6 +174,52 @@ internal static class AgentHostAuditAnchorMacSpecs
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// 只读路径必须使用只加载不创建的入口。若只读分类顺手生成密钥，会把"该存储从未启用
+    /// MAC"悄悄变成"已启用"，反而掩盖既有锚点缺少 MAC 的事实。
+    /// </summary>
+    public static Task ReadOnlyKeyLookupNeverCreatesAKey()
+    {
+        var root = CreateTemporaryRoot();
+        try
+        {
+            var keyPath = Path.Combine(root, AgentHostAuditChainKey.KeyFileName);
+
+            // 不存在时返回 null，且绝不落盘。
+            var absent = AgentHostAuditChainKey.TryLoad(root);
+            if (absent != null)
+            {
+                absent.Dispose();
+                throw new InvalidOperationException("TryLoad must return null when absent.");
+            }
+            if (File.Exists(keyPath))
+            {
+                throw new InvalidOperationException("Read-only lookup must not create a key.");
+            }
+
+            // 存在时正常加载。
+            using (var created = AgentHostAuditChainKey.LoadOrCreate(root)) { }
+            using (var loaded = AgentHostAuditChainKey.TryLoad(root))
+            {
+                if (loaded == null)
+                {
+                    throw new InvalidOperationException("TryLoad must load an existing key.");
+                }
+            }
+
+            // 存在但损坏时仍然 fail-closed，而不是当作"未启用"放行。
+            File.WriteAllBytes(keyPath, new byte[8]);
+            ExpectIntegrityFailure(
+                () => AgentHostAuditChainKey.TryLoad(root)?.Dispose(),
+                "corrupt key surfaced through the read-only entry point");
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+        return Task.CompletedTask;
+    }
+
     /// <summary>锚点重写时 MAC 必须同步更新，不能留下上一版的 MAC。</summary>
     public static Task RewritingAnchorRefreshesMac()
     {

@@ -46,6 +46,38 @@ internal sealed class AgentHostAuditChainKey : IDisposable
     /// **抛出异常而不是重新生成**。否则攻击者只要删除或破坏密钥文件，系统就会换一把新密钥，
     /// 旧链随之变得不可验证却不会报警——那正是一次静默降级攻击。
     /// </summary>
+    /// <summary>
+    /// 只加载、绝不创建。只读路径（如审计目录分类与导出）必须使用本入口：
+    /// 在只读分类时生成密钥会把"该存储从未启用 MAC"悄悄变成"已启用"，
+    /// 反而掩盖既有锚点缺少 MAC 的事实。
+    /// 密钥不存在返回 null；存在但无效仍然 fail-closed 抛出。
+    /// </summary>
+    internal static AgentHostAuditChainKey? TryLoad(string protectedAuditRoot)
+    {
+        if (string.IsNullOrWhiteSpace(protectedAuditRoot))
+        {
+            return null;
+        }
+
+        string keyPath;
+        try
+        {
+            keyPath = Path.Combine(protectedAuditRoot, KeyFileName);
+            if (!File.Exists(keyPath))
+            {
+                return null;
+            }
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or PathTooLongException or NotSupportedException)
+        {
+            throw new AgentHostAuditIntegrityException(
+                "Audit chain key path is invalid.", exception);
+        }
+
+        return LoadOrCreate(protectedAuditRoot);
+    }
+
     internal static AgentHostAuditChainKey LoadOrCreate(string protectedAuditRoot)
     {
         if (string.IsNullOrWhiteSpace(protectedAuditRoot))

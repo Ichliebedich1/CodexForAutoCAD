@@ -485,9 +485,14 @@ NETLOAD 证据的能力一律视为未支持。
   删除 `.mac` 无法把存储退回无保护状态；未配置密钥的既有存储保持向后兼容且不写出伴随文件；
   外来密钥不能验证本存储锚点；锚点重写时 MAC 必须同步更新。Bridge 由 `102/102` 增至
   `107/107`。
-  尚缺：`AgentHostAuditCatalog` 的只读分类路径尚未调用 MAC 校验。经复核 Catalog 在
-  `Read` 中已自行解析并验证 segment/anchor 共享的受保护根，可据此自行加载密钥，
-  不需要把密钥贯穿传递，因此该接入的实际难度低于早先评估。
+- M4.13 锚点 MAC 验证侧已接入（本轮新增）。`AgentHostAuditCatalog.ReadCompleteSession` 在
+  链验证之前调用锚点 MAC 校验，受保护根由已验证的 anchor 目录父级推导，因此不需要把密钥
+  贯穿传递。为此新增只加载不创建的 `AgentHostAuditChainKey.TryLoad`：只读分类路径若顺手
+  生成密钥，会把"该存储从未启用 MAC"悄悄变成"已启用"，反而掩盖既有锚点缺少 MAC 的事实；
+  密钥不存在返回 null 并放行以兼容既有存储，存在但损坏仍然 fail-closed。
+  至此 M4.13 的 MAC 写入与验证在生产读写两侧均已接入，Bridge 为 `108/108`。
+  尚缺：同用户篡改边界不变（见上），企业默认保留策略、系统断电与 AutoCAD 实机矩阵未验证，
+  因此 M4.13 继续为进行中。
 - M4.4/M4.5 已在当前集成分支提交为 `0763022`：产品公共配置、导出类型和公开结果不再
   暴露实验身份选择；RestrictedToken 只保留为 internal-only 可移植能力探针，且任何结果
   都禁止回退 CurrentUser。本机 net45/net8 原语均为 `available`，受限 FakeAgentHost

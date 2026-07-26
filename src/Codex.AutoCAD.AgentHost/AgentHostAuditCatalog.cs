@@ -286,7 +286,18 @@ internal static class AgentHostAuditCatalog
             segments.Add(File.ReadAllBytes(path));
         }
 
-        var anchor = ReadAnchor(Path.Combine(anchorDirectory, systemSessionId + ".anchor.json"));
+        var anchorPath = Path.Combine(anchorDirectory, systemSessionId + ".anchor.json");
+        var anchor = ReadAnchor(anchorPath);
+
+        // M4.13：锚点 MAC 校验。使用只加载不创建的入口——在只读分类路径生成密钥会把
+        // "该存储从未启用 MAC"悄悄变成"已启用"，反而掩盖既有锚点缺少 MAC 的事实。
+        // 密钥存在时，缺失或不匹配的 .mac 一律 fail-closed，删除 sidecar 无法降级。
+        using (var chainKey = AgentHostAuditChainKey.TryLoad(
+                   Path.GetDirectoryName(anchorDirectory)!))
+        {
+            AgentHostAuditAnchorMac.Verify(anchorPath, chainKey);
+        }
+
         var verification = AgentHostAuditIntegrity.Verify(segments, anchor);
         if (!string.Equals(verification.FinalSystemSessionId, systemSessionId, StringComparison.Ordinal))
         {
