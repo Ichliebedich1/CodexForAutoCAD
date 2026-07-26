@@ -109,10 +109,36 @@ function Get-CodexDotnetIsolationGuard {
     }
 }
 
+function Get-CodexGateRunCorrelationId {
+    # 上游门禁失败时不写 evidence，汇总器会退回读到上一次成功遗留的旧文件。仅靠时间窗
+    # 识别不了「同一小时内重跑、其中一项失败」：2026-07-26 R20.1 门禁因构建期间 AutoCAD
+    # 进程集合变化而失败，它遗留的 evidence 只有 26 分钟，仍落在 24 小时/6 小时窗口内，
+    # 于是汇总器再次报绿。因此由套件驱动在 CODEX_GATE_RUN_ID 中生成一次性关联标识，各
+    # 门禁把它写进自己的 evidence，由汇总器要求五份 evidence 携带同一个标识。
+    # 未设置时返回 $null，调用方据此退回较弱的时间窗校验并在 evidence 中标注该模式。
+    $raw = [Environment]::GetEnvironmentVariable("CODEX_GATE_RUN_ID", "Process")
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        return $null
+    }
+    $value = $raw.Trim()
+    if ($value -cnotmatch "^[A-Za-z0-9._-]{1,64}$") {
+        # 设置了却格式非法时必须失败关闭：静默忽略会让关联校验悄悄退回时间窗。
+        throw "CODEX_GATE_RUN_ID 格式非法：只允许 1-64 个 [A-Za-z0-9._-] 字符。"
+    }
+    return $value
+}
+
 function Resolve-CodexArtifactRoot {
     param(
         [Parameter(Mandatory = $true)][string] $RepoRoot,
         [double] $MinimumFreeGiB = 40,
+        # 隔离构建会在产物根下生成很深的路径，实测最长约 192 字符，例如
+        # <root>\autocad2016-agent-bootstrap-<32hex>\build-a\out\obj\<长项目名>\release_net45\
+        # <长项目名>.exe.withSupportedRuntime.config。Windows MAX_PATH 为 260 且本机
+        # LongPathsEnabled=0，因此产物根本身必须留出足够预算，否则 net45 隔离构建会以
+        # MSB3030 失败。2026-07-26 把产物根从 C:\tmp 迁到 E 盘时长度增加 23 字符，
+        # 正是这样打断了 agent-bootstrap 与 auth-compat 门禁。
+        [int] $MaximumArtifactRootLength = 60,
         [switch] $NoCreate
     )
 
@@ -150,6 +176,13 @@ function Resolve-CodexArtifactRoot {
     if ($artifactRoot -ieq $driveRoot -or $artifactRoot -ieq $resolvedRepoRoot) {
         throw "产物根目录不能是卷根目录或仓库根目录。"
     }
+    # fail-closed：在任何构建开始前拒绝过长的产物根，而不是等 MSBuild 报 MSB3030。
+    if ($artifactRoot.Length -gt $MaximumArtifactRootLength) {
+        throw ("产物根目录路径过长：$($artifactRoot.Length) 字符，门禁上限 " +
+            "$MaximumArtifactRootLength。隔离 net45 构建会在其下生成约 192 字符的深层路径，" +
+            "超过 Windows MAX_PATH 260 会导致 MSB3030。请改用更短的 " +
+            "CODEX_AUTOCAD_ARTIFACT_BASE。")
+    }
 
     $drive = New-Object IO.DriveInfo([IO.Path]::GetPathRoot($artifactRoot))
     if (-not $drive.IsReady) {
@@ -171,6 +204,9 @@ function Initialize-CodexBuildSafety {
     param(
         [Parameter(Mandatory = $true)][string] $RepoRoot,
         [double] $MinimumFreeGiB = 40,
+        # 见 Resolve-CodexArtifactRoot：生产默认 60。自检使用 GUID 隔离目录，路径天然更长，
+        # 会显式放宽该上限，因为它不执行 net45 隔离构建。
+        [int] $MaximumArtifactRootLength = 60,
         [switch] $NoCreateArtifactRoot
     )
 
@@ -184,7 +220,9 @@ function Initialize-CodexBuildSafety {
     # 各脚本在设置 DOTNET_CLI_HOME 时仍必须在同一作用域重复设置该变量。
     $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "0"
     $artifactRoot = Resolve-CodexArtifactRoot -RepoRoot $RepoRoot `
-        -MinimumFreeGiB $MinimumFreeGiB -NoCreate:$NoCreateArtifactRoot
+        -MinimumFreeGiB $MinimumFreeGiB `
+        -MaximumArtifactRootLength $MaximumArtifactRootLength `
+        -NoCreate:$NoCreateArtifactRoot
 
     return [pscustomobject]@{
         ArtifactRoot = $artifactRoot

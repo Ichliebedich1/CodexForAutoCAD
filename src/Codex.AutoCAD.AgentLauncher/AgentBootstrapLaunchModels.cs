@@ -1,4 +1,5 @@
 using System.Globalization;
+using Codex.AutoCAD.Contracts;
 
 namespace Codex.AutoCAD.AgentLauncher;
 
@@ -12,27 +13,456 @@ public enum AgentBootstrapLaunchFailure
     ChildExitedWithError = 6,
     Timeout = 7,
     Cancellation = 8,
-    ChildTerminationFailed = 9
+    ChildTerminationFailed = 9,
+    InternalError = 10,
+    ProcessIsolationFailed = 11,
+    CredentialUnavailable = 12,
+    ProcessStartBlocked = 13,
+    NestedJobAssignmentFailed = 14
+}
+
+public enum AgentHostResourceLimitFailure
+{
+    None = 0,
+    ProcessCountExceeded = 1,
+    JobMemoryExceeded = 2,
+    JobUserTimeExceeded = 3,
+    SessionRuntimeExceeded = 4
+}
+
+public static class AgentHostResourceLimitFailurePolicy
+{
+    public static string GetErrorCode(AgentHostResourceLimitFailure failure)
+    {
+        switch (failure)
+        {
+            case AgentHostResourceLimitFailure.ProcessCountExceeded:
+                return "agenthost_process_limit_exceeded";
+            case AgentHostResourceLimitFailure.JobMemoryExceeded:
+                return "agenthost_memory_limit_exceeded";
+            case AgentHostResourceLimitFailure.JobUserTimeExceeded:
+                return "agenthost_user_time_limit_exceeded";
+            case AgentHostResourceLimitFailure.SessionRuntimeExceeded:
+                return "agenthost_session_runtime_limit_exceeded";
+            case AgentHostResourceLimitFailure.None:
+            default:
+                return "agenthost_resource_limit_unknown";
+        }
+    }
+
+    public static string GetSafeMessage(AgentHostResourceLimitFailure failure)
+    {
+        switch (failure)
+        {
+            case AgentHostResourceLimitFailure.ProcessCountExceeded:
+                return "The AgentHost process-tree process limit was exceeded.";
+            case AgentHostResourceLimitFailure.JobMemoryExceeded:
+                return "The AgentHost process-tree memory limit was exceeded.";
+            case AgentHostResourceLimitFailure.JobUserTimeExceeded:
+                return "The AgentHost process-tree user-time limit was exceeded.";
+            case AgentHostResourceLimitFailure.SessionRuntimeExceeded:
+                return "The AgentHost session runtime limit was exceeded.";
+            case AgentHostResourceLimitFailure.None:
+            default:
+                return "The AgentHost resource limit failure is unavailable.";
+        }
+    }
+}
+
+public sealed class AgentHostResourceLimitException : Exception
+{
+    public AgentHostResourceLimitException(AgentHostResourceLimitFailure failure)
+        : base(AgentHostResourceLimitFailurePolicy.GetSafeMessage(failure))
+    {
+        if (failure == AgentHostResourceLimitFailure.None)
+        {
+            throw new ArgumentOutOfRangeException(nameof(failure));
+        }
+
+        Failure = failure;
+    }
+
+    public AgentHostResourceLimitFailure Failure { get; }
+
+    public string ErrorCode => AgentHostResourceLimitFailurePolicy.GetErrorCode(Failure);
+
+    public override string ToString()
+    {
+        return nameof(AgentHostResourceLimitException) + ": " + ErrorCode;
+    }
+}
+
+public enum AgentHostProcessExitFailure
+{
+    None = 0,
+    UnexpectedExit = 1
+}
+
+public static class AgentHostProcessExitFailurePolicy
+{
+    public static string GetErrorCode(AgentHostProcessExitFailure failure)
+    {
+        return failure == AgentHostProcessExitFailure.UnexpectedExit
+            ? "agenthost_unexpected_exit"
+            : "agenthost_process_exit_unknown";
+    }
+
+    public static string GetSafeMessage(AgentHostProcessExitFailure failure)
+    {
+        return failure == AgentHostProcessExitFailure.UnexpectedExit
+            ? "The AgentHost process exited unexpectedly."
+            : "The AgentHost process-exit failure is unavailable.";
+    }
+}
+
+public sealed class AgentHostProcessExitException : Exception
+{
+    public AgentHostProcessExitException(AgentHostProcessExitFailure failure)
+        : base(AgentHostProcessExitFailurePolicy.GetSafeMessage(failure))
+    {
+        if (failure == AgentHostProcessExitFailure.None)
+        {
+            throw new ArgumentOutOfRangeException(nameof(failure));
+        }
+
+        Failure = failure;
+    }
+
+    public AgentHostProcessExitFailure Failure { get; }
+
+    public string ErrorCode => AgentHostProcessExitFailurePolicy.GetErrorCode(Failure);
+
+    public override string ToString()
+    {
+        return nameof(AgentHostProcessExitException) + ": " + ErrorCode;
+    }
+}
+
+/// <summary>
+/// Defines the only diagnostics a bootstrap failure may expose outside the launcher.
+/// Callers may supply an unsafe local diagnostic while constructing the exception, but it must never
+/// become the public exception message, error code, or string representation.
+/// </summary>
+public static class AgentBootstrapLaunchFailurePolicy
+{
+    public static AgentBootstrapLaunchFailure Normalize(AgentBootstrapLaunchFailure failure)
+    {
+        switch (failure)
+        {
+            case AgentBootstrapLaunchFailure.InvalidConfiguration:
+            case AgentBootstrapLaunchFailure.ProcessStartFailed:
+            case AgentBootstrapLaunchFailure.BootstrapWriteFailed:
+            case AgentBootstrapLaunchFailure.ConfirmationInvalid:
+            case AgentBootstrapLaunchFailure.IdentityMismatch:
+            case AgentBootstrapLaunchFailure.ChildExitedWithError:
+            case AgentBootstrapLaunchFailure.Timeout:
+            case AgentBootstrapLaunchFailure.Cancellation:
+            case AgentBootstrapLaunchFailure.ChildTerminationFailed:
+            case AgentBootstrapLaunchFailure.InternalError:
+            case AgentBootstrapLaunchFailure.ProcessIsolationFailed:
+            case AgentBootstrapLaunchFailure.CredentialUnavailable:
+            case AgentBootstrapLaunchFailure.ProcessStartBlocked:
+            case AgentBootstrapLaunchFailure.NestedJobAssignmentFailed:
+                return failure;
+            default:
+                return AgentBootstrapLaunchFailure.InternalError;
+        }
+    }
+
+    public static string GetErrorCode(AgentBootstrapLaunchFailure failure)
+    {
+        switch (Normalize(failure))
+        {
+            case AgentBootstrapLaunchFailure.InvalidConfiguration:
+                return "agenthost_invalid_configuration";
+            case AgentBootstrapLaunchFailure.ProcessStartFailed:
+                return "agenthost_process_start_failed";
+            case AgentBootstrapLaunchFailure.BootstrapWriteFailed:
+                return "agenthost_bootstrap_write_failed";
+            case AgentBootstrapLaunchFailure.ConfirmationInvalid:
+                return "agenthost_confirmation_invalid";
+            case AgentBootstrapLaunchFailure.IdentityMismatch:
+                return "agenthost_identity_mismatch";
+            case AgentBootstrapLaunchFailure.ChildExitedWithError:
+                return "agenthost_child_exited";
+            case AgentBootstrapLaunchFailure.Timeout:
+                return "agenthost_timeout";
+            case AgentBootstrapLaunchFailure.Cancellation:
+                return "agenthost_cancelled";
+            case AgentBootstrapLaunchFailure.ChildTerminationFailed:
+                return "agenthost_termination_failed";
+            case AgentBootstrapLaunchFailure.InternalError:
+                return "agenthost_internal_error";
+            case AgentBootstrapLaunchFailure.ProcessIsolationFailed:
+                return "agenthost_process_isolation_failed";
+            case AgentBootstrapLaunchFailure.CredentialUnavailable:
+                return "agenthost_credential_unavailable";
+            case AgentBootstrapLaunchFailure.ProcessStartBlocked:
+                return "agenthost_process_start_blocked";
+            case AgentBootstrapLaunchFailure.NestedJobAssignmentFailed:
+                return "agenthost_nested_job_assignment_failed";
+            default:
+                return "agenthost_internal_error";
+        }
+    }
+
+    public static string GetSafeMessage(AgentBootstrapLaunchFailure failure)
+    {
+        switch (Normalize(failure))
+        {
+            case AgentBootstrapLaunchFailure.InvalidConfiguration:
+                return "The AgentHost bootstrap configuration is invalid.";
+            case AgentBootstrapLaunchFailure.ProcessStartFailed:
+                return "The AgentHost process could not be started.";
+            case AgentBootstrapLaunchFailure.BootstrapWriteFailed:
+                return "The AgentHost bootstrap data could not be delivered.";
+            case AgentBootstrapLaunchFailure.ConfirmationInvalid:
+                return "The AgentHost bootstrap confirmation is invalid.";
+            case AgentBootstrapLaunchFailure.IdentityMismatch:
+                return "The AgentHost identity validation failed.";
+            case AgentBootstrapLaunchFailure.ChildExitedWithError:
+                return "The AgentHost stopped before bootstrap completed.";
+            case AgentBootstrapLaunchFailure.Timeout:
+                return "The AgentHost bootstrap timed out.";
+            case AgentBootstrapLaunchFailure.Cancellation:
+                return "The AgentHost bootstrap was cancelled.";
+            case AgentBootstrapLaunchFailure.ChildTerminationFailed:
+                return "The AgentHost cleanup could not be confirmed.";
+            case AgentBootstrapLaunchFailure.InternalError:
+                return "The AgentHost bootstrap failed.";
+            case AgentBootstrapLaunchFailure.ProcessIsolationFailed:
+                return "The AgentHost process isolation setup failed.";
+            case AgentBootstrapLaunchFailure.CredentialUnavailable:
+                return "The AgentHost credential is unavailable.";
+            case AgentBootstrapLaunchFailure.ProcessStartBlocked:
+                return "The AgentHost process start was blocked by Windows or enterprise policy.";
+            case AgentBootstrapLaunchFailure.NestedJobAssignmentFailed:
+                return "The AgentHost process could not join the required nested Job Object.";
+            default:
+                return "The AgentHost bootstrap failed.";
+        }
+    }
+
+    public static DiagnosticDataClassification GetDiagnosticClassification(
+        AgentBootstrapLaunchFailure failure)
+    {
+        switch (Normalize(failure))
+        {
+            case AgentBootstrapLaunchFailure.InvalidConfiguration:
+            case AgentBootstrapLaunchFailure.CredentialUnavailable:
+                return DiagnosticDataClassification.Configuration;
+            case AgentBootstrapLaunchFailure.ProcessStartFailed:
+            case AgentBootstrapLaunchFailure.ProcessIsolationFailed:
+            case AgentBootstrapLaunchFailure.ProcessStartBlocked:
+            case AgentBootstrapLaunchFailure.NestedJobAssignmentFailed:
+            case AgentBootstrapLaunchFailure.ChildTerminationFailed:
+                return DiagnosticDataClassification.Environment;
+            case AgentBootstrapLaunchFailure.ChildExitedWithError:
+                return DiagnosticDataClassification.StandardError;
+            case AgentBootstrapLaunchFailure.BootstrapWriteFailed:
+            case AgentBootstrapLaunchFailure.ConfirmationInvalid:
+            case AgentBootstrapLaunchFailure.IdentityMismatch:
+            case AgentBootstrapLaunchFailure.Timeout:
+            case AgentBootstrapLaunchFailure.Cancellation:
+            case AgentBootstrapLaunchFailure.InternalError:
+            default:
+                return DiagnosticDataClassification.Exception;
+        }
+    }
+
+    internal static AgentBootstrapLaunchFailure ClassifyProcessCreationFailure(
+        int nativeErrorCode,
+        bool restrictedIdentity)
+    {
+        if (IsExplicitExecutionPolicyError(nativeErrorCode)
+            || (!restrictedIdentity && nativeErrorCode == 5))
+        {
+            return AgentBootstrapLaunchFailure.ProcessStartBlocked;
+        }
+
+        return restrictedIdentity
+            ? AgentBootstrapLaunchFailure.ProcessIsolationFailed
+            : AgentBootstrapLaunchFailure.ProcessStartFailed;
+    }
+
+    internal static AgentBootstrapLaunchFailure ClassifyJobAssignmentFailure(
+        bool processAlreadyInJob)
+    {
+        return processAlreadyInJob
+            ? AgentBootstrapLaunchFailure.NestedJobAssignmentFailed
+            : AgentBootstrapLaunchFailure.ProcessIsolationFailed;
+    }
+
+    private static bool IsExplicitExecutionPolicyError(int nativeErrorCode)
+    {
+        return nativeErrorCode == 577
+            || nativeErrorCode == 1260
+            || (nativeErrorCode >= 4551 && nativeErrorCode <= 4557);
+    }
 }
 
 public sealed class AgentBootstrapLaunchException : Exception
 {
     public AgentBootstrapLaunchException(
         AgentBootstrapLaunchFailure failure,
-        string message,
-        Exception? innerException = null)
-        : base(message, innerException)
+        string unsafeDiagnostic,
+        Exception? unsafeInnerException = null)
+        : base(AgentBootstrapLaunchFailurePolicy.GetSafeMessage(failure))
     {
-        Failure = failure;
+        Failure = AgentBootstrapLaunchFailurePolicy.Normalize(failure);
+        DiagnosticClassification =
+            AgentBootstrapLaunchFailurePolicy.GetDiagnosticClassification(Failure);
+        var directDiagnostic = DiagnosticSanitizer.SanitizeText(
+            DiagnosticClassification,
+            unsafeDiagnostic);
+        var nestedDiagnostic = DiagnosticSanitizer.SanitizeException(
+            DiagnosticClassification,
+            unsafeInnerException);
+        DiagnosticRedactions = directDiagnostic.Redactions | nestedDiagnostic.Redactions;
+        // The sanitized text itself is deliberately discarded. Bootstrap failures expose only a
+        // stable code, fixed safe message, classification, and numeric redaction evidence. They
+        // never retain source diagnostics, exception objects, stack traces, or data dictionaries.
     }
 
     public AgentBootstrapLaunchFailure Failure { get; }
+
+    public string ErrorCode => AgentBootstrapLaunchFailurePolicy.GetErrorCode(Failure);
+
+    public DiagnosticDataClassification DiagnosticClassification { get; }
+
+    public DiagnosticRedactionKinds DiagnosticRedactions { get; }
+
+    public override string ToString()
+    {
+        return nameof(AgentBootstrapLaunchException) + ": " + ErrorCode;
+    }
+}
+
+/// <summary>
+/// Selects the Windows identity used by launcher-internal compatibility probes. Product callers
+/// cannot opt into an experimental identity before its compatibility matrix is complete.
+/// </summary>
+internal enum AgentHostProcessIdentityProfile
+{
+    CurrentUser = 0,
+    RestrictedToken = 1,
+}
+
+public enum AgentHostCredentialMode
+{
+    Disabled = 0,
+    WindowsCredentialManagerAccessToken = 1,
+}
+
+public sealed class AgentHostCredentialOptions
+{
+    public const string ProductCredentialTargetPrefix = "OpenAI/CodexForAutoCAD/credential/";
+    public const int MaximumCredentialTargetNameLength = 256;
+
+    public AgentHostCredentialMode Mode { get; set; } = AgentHostCredentialMode.Disabled;
+
+    public string CredentialTargetName { get; set; } = string.Empty;
+
+    public ValidatedAgentHostCredentialOptions Validate()
+    {
+        switch (Mode)
+        {
+            case AgentHostCredentialMode.Disabled:
+                if (!string.IsNullOrEmpty(CredentialTargetName))
+                {
+                    throw Invalid(
+                        "A Windows credential target cannot be configured while the credential broker is disabled.");
+                }
+
+                return new ValidatedAgentHostCredentialOptions(
+                    AgentHostCredentialMode.Disabled,
+                    string.Empty);
+
+            case AgentHostCredentialMode.WindowsCredentialManagerAccessToken:
+                ValidateProductCredentialTarget(CredentialTargetName);
+                return new ValidatedAgentHostCredentialOptions(Mode, CredentialTargetName);
+
+            default:
+                throw Invalid("The AgentHost credential mode is not supported.");
+        }
+    }
+
+    private static void ValidateProductCredentialTarget(string targetName)
+    {
+        if (string.IsNullOrEmpty(targetName)
+            || targetName.Length > MaximumCredentialTargetNameLength
+            || !targetName.StartsWith(ProductCredentialTargetPrefix, StringComparison.Ordinal))
+        {
+            throw Invalid("The Windows credential target is outside the product namespace.");
+        }
+
+        var suffix = targetName.Substring(ProductCredentialTargetPrefix.Length);
+        if (suffix.Length == 0)
+        {
+            throw Invalid("The Windows credential target name is incomplete.");
+        }
+
+        for (var index = 0; index < suffix.Length; index++)
+        {
+            var character = suffix[index];
+            if ((character >= 'a' && character <= 'z')
+                || (character >= 'A' && character <= 'Z')
+                || (character >= '0' && character <= '9')
+                || character == '-'
+                || character == '_'
+                || character == '.')
+            {
+                continue;
+            }
+
+            throw Invalid("The Windows credential target name contains an unsupported character.");
+        }
+    }
+
+    private static AgentBootstrapLaunchException Invalid(string message)
+    {
+        return new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.InvalidConfiguration,
+            message);
+    }
+}
+
+public sealed class ValidatedAgentHostCredentialOptions
+{
+    internal ValidatedAgentHostCredentialOptions(
+        AgentHostCredentialMode mode,
+        string credentialTargetName)
+    {
+        Mode = mode;
+        CredentialTargetName = credentialTargetName;
+    }
+
+    public AgentHostCredentialMode Mode { get; }
+
+    public string CredentialTargetName { get; }
 }
 
 public sealed class AgentHostBootstrapOptions
 {
     public static readonly TimeSpan DefaultStartupTimeout = TimeSpan.FromSeconds(10);
     public static readonly TimeSpan MaximumStartupTimeout = TimeSpan.FromMinutes(1);
+    public const int DefaultMaximumActiveProcesses = 16;
+    public const int MinimumMaximumActiveProcesses = 2;
+    public const int MaximumMaximumActiveProcesses = 64;
+    public const long DefaultMaximumJobMemoryBytes = 4L * 1024 * 1024 * 1024;
+    public const long MinimumMaximumJobMemoryBytes = 512L * 1024 * 1024;
+    public const long MaximumMaximumJobMemoryBytes = 16L * 1024 * 1024 * 1024;
+    public const int DefaultMaximumCpuRatePercent = 75;
+    public const int MinimumMaximumCpuRatePercent = 1;
+    public const int MaximumMaximumCpuRatePercent = 100;
+    public static readonly TimeSpan DefaultMaximumJobUserTime = TimeSpan.FromHours(8);
+    public static readonly TimeSpan MinimumMaximumJobUserTime = TimeSpan.FromMilliseconds(100);
+    public static readonly TimeSpan MaximumMaximumJobUserTime = TimeSpan.FromDays(7);
+    public static readonly TimeSpan DefaultMaximumSessionRuntime = TimeSpan.FromHours(24);
+    public static readonly TimeSpan MinimumMaximumSessionRuntime = TimeSpan.FromSeconds(1);
+    public static readonly TimeSpan MaximumMaximumSessionRuntime = TimeSpan.FromDays(7);
+    public static readonly TimeSpan DefaultGracefulStopTimeout = TimeSpan.FromSeconds(1);
+    public static readonly TimeSpan MaximumGracefulStopTimeout = TimeSpan.FromSeconds(30);
 
     public AgentHostBootstrapOptions(
         string agentHostExecutablePath,
@@ -46,9 +476,35 @@ public sealed class AgentHostBootstrapOptions
 
     public string ExpectedExecutableSha256 { get; }
 
+    public AgentHostCredentialOptions Credential { get; set; } = new AgentHostCredentialOptions();
+
     public TimeSpan StartupTimeout { get; set; } = DefaultStartupTimeout;
 
     public int MaximumStandardErrorBytes { get; set; } = 16 * 1024;
+
+    /// <summary>
+    /// Maximum number of processes in the AgentHost/Codex Job Object, including AgentHost itself.
+    /// </summary>
+    public int MaximumActiveProcesses { get; set; } = DefaultMaximumActiveProcesses;
+
+    /// <summary>Total committed memory allowed for the complete AgentHost/Codex Job Object.</summary>
+    public long MaximumJobMemoryBytes { get; set; } = DefaultMaximumJobMemoryBytes;
+
+    /// <summary>Aggregate hard CPU-rate cap for the complete AgentHost/Codex Job Object.</summary>
+    public int MaximumCpuRatePercent { get; set; } = DefaultMaximumCpuRatePercent;
+
+    /// <summary>
+    /// Aggregate user-mode CPU time allowed for the Job. This is not elapsed wall-clock time.
+    /// </summary>
+    public TimeSpan MaximumJobUserTime { get; set; } = DefaultMaximumJobUserTime;
+
+    /// <summary>Elapsed runtime allowed after an authenticated AgentHost service session starts.</summary>
+    public TimeSpan MaximumSessionRuntime { get; set; } = DefaultMaximumSessionRuntime;
+
+    /// <summary>
+    /// Time allowed for AgentHost to exit naturally before its process-tree Job is terminated.
+    /// </summary>
+    public TimeSpan GracefulStopTimeout { get; set; } = DefaultGracefulStopTimeout;
 
     internal TimeSpan GetValidatedStartupTimeout()
     {
@@ -65,6 +521,8 @@ public sealed class AgentHostBootstrapOptions
 
     internal AgentHostExecutableIdentity GetValidatedExecutableIdentity()
     {
+        GetValidatedCredential();
+
         if (string.IsNullOrWhiteSpace(AgentHostExecutablePath))
         {
             throw Invalid("AgentHost executable path is required.");
@@ -101,8 +559,103 @@ public sealed class AgentHostBootstrapOptions
             throw Invalid("AgentHost stderr capture limit must be between 0 and 1048576 bytes.");
         }
 
+        GetValidatedProcessTreeLimits();
+        GetValidatedSessionRuntime();
+        GetValidatedGracefulStopTimeout();
+
         var expectedSha256 = NormalizeSha256(ExpectedExecutableSha256);
         return new AgentHostExecutableIdentity(fullPath, expectedSha256);
+    }
+
+    internal ValidatedAgentHostCredentialOptions GetValidatedCredential()
+    {
+        if (Credential == null)
+        {
+            throw Invalid("AgentHost credential configuration is required.");
+        }
+
+        return Credential.Validate();
+    }
+
+    internal AgentHostProcessTreeLimits GetValidatedProcessTreeLimits()
+    {
+        if (MaximumActiveProcesses < MinimumMaximumActiveProcesses
+            || MaximumActiveProcesses > MaximumMaximumActiveProcesses)
+        {
+            throw Invalid(
+                "AgentHost process-tree limit must be between "
+                + MinimumMaximumActiveProcesses.ToString(CultureInfo.InvariantCulture)
+                + " and "
+                + MaximumMaximumActiveProcesses.ToString(CultureInfo.InvariantCulture)
+                + " processes.");
+        }
+
+        if (MaximumJobMemoryBytes < MinimumMaximumJobMemoryBytes
+            || MaximumJobMemoryBytes > MaximumMaximumJobMemoryBytes
+            || (IntPtr.Size == 4 && MaximumJobMemoryBytes > uint.MaxValue))
+        {
+            throw Invalid(
+                "AgentHost process-tree memory limit is outside the supported range for this process architecture.");
+        }
+
+        if (MaximumCpuRatePercent < MinimumMaximumCpuRatePercent
+            || MaximumCpuRatePercent > MaximumMaximumCpuRatePercent)
+        {
+            throw Invalid(
+                "AgentHost process-tree CPU-rate limit must be between "
+                + MinimumMaximumCpuRatePercent.ToString(CultureInfo.InvariantCulture)
+                + " and "
+                + MaximumMaximumCpuRatePercent.ToString(CultureInfo.InvariantCulture)
+                + " percent.");
+        }
+
+        if (MaximumJobUserTime < MinimumMaximumJobUserTime
+            || MaximumJobUserTime > MaximumMaximumJobUserTime)
+        {
+            throw Invalid(
+                "AgentHost process-tree user-time limit must be between "
+                + MinimumMaximumJobUserTime.TotalMilliseconds.ToString(CultureInfo.InvariantCulture)
+                + " milliseconds and "
+                + MaximumMaximumJobUserTime.TotalDays.ToString(CultureInfo.InvariantCulture)
+                + " days.");
+        }
+
+        return new AgentHostProcessTreeLimits(
+            MaximumActiveProcesses,
+            MaximumJobMemoryBytes,
+            MaximumCpuRatePercent,
+            MaximumJobUserTime);
+    }
+
+    internal TimeSpan GetValidatedSessionRuntime()
+    {
+        if (MaximumSessionRuntime < MinimumMaximumSessionRuntime
+            || MaximumSessionRuntime > MaximumMaximumSessionRuntime)
+        {
+            throw Invalid(
+                "AgentHost service runtime limit must be between "
+                + MinimumMaximumSessionRuntime.TotalSeconds.ToString(CultureInfo.InvariantCulture)
+                + " second and "
+                + MaximumMaximumSessionRuntime.TotalDays.ToString(CultureInfo.InvariantCulture)
+                + " days.");
+        }
+
+        return MaximumSessionRuntime;
+    }
+
+    internal TimeSpan GetValidatedGracefulStopTimeout()
+    {
+        if (GracefulStopTimeout < TimeSpan.Zero
+            || GracefulStopTimeout > MaximumGracefulStopTimeout)
+        {
+            throw Invalid(
+                "AgentHost graceful-stop timeout must be between 0 and "
+                + MaximumGracefulStopTimeout.TotalSeconds.ToString(
+                    CultureInfo.InvariantCulture)
+                + " seconds.");
+        }
+
+        return GracefulStopTimeout;
     }
 
     private static DriveType GetDriveType(string path)
@@ -167,6 +720,29 @@ public sealed class AgentHostBootstrapOptions
     }
 }
 
+internal sealed class AgentHostProcessTreeLimits
+{
+    internal AgentHostProcessTreeLimits(
+        int maximumActiveProcesses,
+        long maximumJobMemoryBytes,
+        int maximumCpuRatePercent,
+        TimeSpan maximumJobUserTime)
+    {
+        MaximumActiveProcesses = maximumActiveProcesses;
+        MaximumJobMemoryBytes = maximumJobMemoryBytes;
+        MaximumCpuRatePercent = maximumCpuRatePercent;
+        MaximumJobUserTime = maximumJobUserTime;
+    }
+
+    internal int MaximumActiveProcesses { get; }
+
+    internal long MaximumJobMemoryBytes { get; }
+
+    internal int MaximumCpuRatePercent { get; }
+
+    internal TimeSpan MaximumJobUserTime { get; }
+}
+
 internal sealed class AgentHostExecutableIdentity
 {
     internal AgentHostExecutableIdentity(string fullPath, string expectedSha256)
@@ -190,7 +766,10 @@ public sealed class AgentBootstrapDoctorResult
         string pipeName,
         string executableSha256,
         int standardErrorBytes,
-        bool standardErrorTruncated)
+        bool standardErrorTruncated,
+        AgentHostProcessIdentityProfile processIdentityProfile = AgentHostProcessIdentityProfile.CurrentUser,
+        bool processTokenIsRestricted = false,
+        bool usesPrivateDesktop = false)
     {
         ProcessId = processId;
         ProcessCreationFileTime = processCreationFileTime;
@@ -200,6 +779,9 @@ public sealed class AgentBootstrapDoctorResult
         ExecutableSha256 = executableSha256;
         StandardErrorBytes = standardErrorBytes;
         StandardErrorTruncated = standardErrorTruncated;
+        ProcessIdentityProfile = processIdentityProfile;
+        ProcessTokenIsRestricted = processTokenIsRestricted;
+        UsesPrivateDesktop = usesPrivateDesktop;
     }
 
     public int ProcessId { get; }
@@ -217,6 +799,31 @@ public sealed class AgentBootstrapDoctorResult
     public int StandardErrorBytes { get; }
 
     public bool StandardErrorTruncated { get; }
+
+    internal AgentHostProcessIdentityProfile ProcessIdentityProfile { get; }
+
+    internal bool ProcessTokenIsRestricted { get; }
+
+    internal bool UsesPrivateDesktop { get; }
+
+    internal AgentBootstrapDoctorResult WithProcessIdentity(
+        AgentHostProcessIdentityProfile processIdentityProfile,
+        bool processTokenIsRestricted,
+        bool usesPrivateDesktop)
+    {
+        return new AgentBootstrapDoctorResult(
+            ProcessId,
+            ProcessCreationFileTime,
+            BootstrapId,
+            SessionId,
+            PipeName,
+            ExecutableSha256,
+            StandardErrorBytes,
+            StandardErrorTruncated,
+            processIdentityProfile,
+            processTokenIsRestricted,
+            usesPrivateDesktop);
+    }
 }
 
 public sealed class AgentBootstrapProcessIdentity

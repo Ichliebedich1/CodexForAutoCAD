@@ -15,6 +15,9 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+. (Join-Path $PSScriptRoot "build-safety.ps1")
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $safeRepoRoot = $repoRoot.Replace("\", "/")
 $scriptPath = $MyInvocation.MyCommand.Path
 $dotnetCommand = (Get-Command dotnet -ErrorAction Stop).Source
@@ -26,9 +29,9 @@ $bridgeSpecsProject = Join-Path $repoRoot "tests\Codex.AutoCAD.Bridge.Specs\Code
 $phase2Verifier = Join-Path $repoRoot "scripts\verify-phase2.ps1"
 $nugetConfig = Join-Path $repoRoot "src\Codex.AutoCAD.Host.2016\NuGet.Config"
 $expectedSdk = "8.0.319"
-$expectedClientSpecs = 25
-$expectedBridgeSpecs = 37
-$expectedPhase2Specs = 195
+$expectedClientSpecs = 30
+$expectedBridgeSpecs = 49
+$expectedPhase2Specs = 358
 
 function Get-Sha256 {
     param([Parameter(Mandatory = $true)][string] $Path)
@@ -54,6 +57,32 @@ function Get-TextSha256 {
     }
 }
 
+function Get-PackageLockSnapshots {
+    $snapshots = [ordered]@{}
+    foreach ($root in @(
+        (Join-Path $repoRoot "src"),
+        (Join-Path $repoRoot "tests")
+    )) {
+        foreach ($file in @(Get-ChildItem -LiteralPath $root -Recurse -File `
+            -Filter "packages.lock.json" | Where-Object {
+                $_.FullName -notmatch '\\(?:bin|obj)\\'
+            })) {
+            $snapshots[$file.FullName] = [IO.File]::ReadAllBytes($file.FullName)
+        }
+    }
+    return $snapshots
+}
+
+function Restore-PackageLockSnapshots {
+    param([Parameter(Mandatory = $true)] $Snapshots)
+
+    foreach ($entry in $Snapshots.GetEnumerator()) {
+        [IO.File]::WriteAllBytes(
+            [string]$entry.Key,
+            [byte[]]$entry.Value)
+    }
+}
+
 function Get-RelativePathText {
     param([Parameter(Mandatory = $true)][string] $Path)
 
@@ -67,6 +96,8 @@ function Get-SourceManifest {
     $paths = [System.Collections.Generic.List[string]]::new()
     foreach ($file in @(
         $solutionPath,
+        (Join-Path $repoRoot "global.json"),
+        (Join-Path $repoRoot "Directory.Build.props"),
         $scriptPath,
         $phase2Verifier,
         (Join-Path $repoRoot "scripts\verify-autocad2016-auth-compat.ps1"),
@@ -82,21 +113,29 @@ function Get-SourceManifest {
     }
 
     foreach ($directory in @(
-        (Split-Path -Parent $clientProject),
-        (Split-Path -Parent $clientSpecsProject),
-        (Split-Path -Parent $testServerProject)
+        (Join-Path $repoRoot "src"),
+        (Join-Path $repoRoot "tests"),
+        (Join-Path $repoRoot "scripts")
     )) {
         foreach ($file in @(Get-ChildItem -LiteralPath $directory -Recurse -File | Where-Object {
-            $_.FullName -notmatch '\\(?:bin|obj)\\' -and
-            $_.Extension -in @('.cs', '.csproj')
+            $_.FullName -notmatch '\\(?:bin|obj|artifacts)\\'
         })) {
             $paths.Add($file.FullName)
         }
     }
 
+    $uniquePaths = [System.Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::OrdinalIgnoreCase)
+    foreach ($path in $paths) {
+        [void]$uniquePaths.Add($path)
+    }
+
+    [string[]]$sortedPaths = @($uniquePaths)
+    [Array]::Sort($sortedPaths, [StringComparer]::Ordinal)
+
     $entries = [ordered]@{}
     $lines = [System.Collections.Generic.List[string]]::new()
-    foreach ($path in @($paths | Sort-Object -Unique)) {
+    foreach ($path in $sortedPaths) {
         $relative = Get-RelativePathText -Path $path
         $hash = Get-Sha256 -Path $path
         $entries[$relative] = $hash
@@ -257,10 +296,12 @@ function Invoke-Worker {
     $previousTestServer = $env:CODEX_BRIDGE_TEST_SERVER_EXE
     $cadBefore = @(Get-ProcessIds -Name "acad")
     $testServerBefore = @(Get-ProcessIds -Name "Codex.AutoCAD.Bridge.Client.TestServer")
+    $packageLockSnapshots = Get-PackageLockSnapshots
     $sourceBefore = Get-SourceManifest
 
     try {
         $env:DOTNET_CLI_HOME = $dotnetHome
+        # 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
         $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "0"
         $env:NUGET_PACKAGES = $nugetPackages
         $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
@@ -316,6 +357,9 @@ function Invoke-Worker {
             "-c", "safe.directory=$safeRepoRoot", "-C", $repoRoot, "diff", "--cached", "--check"
         ) -Description "检查已暂存差异格式" | Out-Null
 
+        # Restore lock files before hashing the expanded source manifest. Restore/build may rewrite
+        # them mechanically even when package resolution is unchanged.
+        Restore-PackageLockSnapshots -Snapshots $packageLockSnapshots
         $sourceAfter = Get-SourceManifest
         if ($sourceBefore.Sha256 -cne $sourceAfter.Sha256) {
             throw "Bridge Client阶段验证期间受审源码发生变化。"
@@ -375,6 +419,7 @@ function Invoke-Worker {
         Write-Host "BRIDGE_CLIENT_WORKER_EVIDENCE=$resolvedEvidencePath"
     }
     finally {
+        Restore-PackageLockSnapshots -Snapshots $packageLockSnapshots
         $env:DOTNET_CLI_HOME = $previousDotnetHome
         $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $previousAddGlobalToolsToPath
         $env:NUGET_PACKAGES = $previousNugetPackages
@@ -455,8 +500,8 @@ if ($Worker) {
     exit 0
 }
 
-$stageRoot = Join-Path $repoRoot (
-    "artifacts\autocad2016-bridge-client-stage-" + [Guid]::NewGuid().ToString("N"))
+$stageRoot = Join-Path $artifactsRoot (
+    "autocad2016-bridge-client-stage-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $stageRoot -Force | Out-Null
 $pwshCommand = (Get-Command pwsh -ErrorAction Stop).Source
 $windowsPowerShellCommand = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -512,7 +557,7 @@ $finalEvidence = [ordered]@{
     cadCommandsSent = $false
     netLoadVerified = $false
     autoCadLiveEvidence = $false
-    evidenceBoundary = "PowerShell 7 and Windows PowerShell 5.1 independently passed two isolated deterministic builds, net45/net8 Bridge Client 25/25, Bridge 37/37, and Phase2 195/195. Valid turn terminal events consume the active turn identity, and later events for that turn are rejected fail-closed. This is non-CAD evidence and does not prove unified Host.2016 NETLOAD, a live AgentHost connection from AutoCAD, or a real Codex CAD conversation."
+    evidenceBoundary = "PowerShell 7 and Windows PowerShell 5.1 independently passed two isolated deterministic builds, net45/net8 Bridge Client $expectedClientSpecs/$expectedClientSpecs, Bridge $expectedBridgeSpecs/$expectedBridgeSpecs, and Phase2 $expectedPhase2Specs/$expectedPhase2Specs. Valid turn terminal events consume the active turn identity, and later events for that turn are rejected fail-closed. This is non-CAD evidence and does not prove unified Host.2016 NETLOAD, a live AgentHost connection from AutoCAD, or a real Codex CAD conversation."
 }
 
 $resolvedFinalEvidencePath = if ([string]::IsNullOrWhiteSpace($EvidencePath)) {
@@ -529,3 +574,4 @@ New-Item -ItemType Directory -Path (Split-Path -Parent $resolvedFinalEvidencePat
 )
 Write-Host "Bridge Client双PowerShell阶段门禁通过。" -ForegroundColor Green
 Write-Host "BRIDGE_CLIENT_STAGE_EVIDENCE=$resolvedFinalEvidencePath"
+Complete-CodexBuildSafety -State $buildSafety -Stage "bridge-client-stage" | Out-Null

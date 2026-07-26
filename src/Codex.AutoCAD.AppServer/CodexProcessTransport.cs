@@ -6,10 +6,12 @@ namespace Codex.AutoCAD.AppServer;
 /// <summary>Starts <c>codex app-server --stdio</c> and exposes its standard streams.</summary>
 public sealed class CodexProcessTransport : IAppServerTransport
 {
-    private const int StandardErrorTailLimit = 64;
+    private const int StandardErrorTailLimit = 1;
+    private static readonly TimeSpan ForcedTerminationTimeout = TimeSpan.FromSeconds(2);
     private readonly AppServerClientOptions _options;
+    private readonly CodexExecutableLeaseReference? _executableLeaseReference;
     private readonly object _sync = new();
-    private readonly ConcurrentQueue<string> _standardErrorTail = new();
+    private readonly ConcurrentQueue<AppServerStandardErrorSummary> _standardErrorTail = new();
     private Process? _process;
     private Task? _standardErrorPump;
     private Stream? _readStream;
@@ -22,6 +24,7 @@ public sealed class CodexProcessTransport : IAppServerTransport
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _options = options;
+        _executableLeaseReference = options.ExecutableLease?.AcquireReference();
     }
 
     public Stream ReadStream => _readStream
@@ -48,6 +51,7 @@ public sealed class CodexProcessTransport : IAppServerTransport
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        _executableLeaseReference?.Lease.ValidateCurrentPath(_options.CodexExecutablePath);
 
         lock (_sync)
         {
@@ -81,15 +85,26 @@ public sealed class CodexProcessTransport : IAppServerTransport
                 startInfo.ArgumentList.Add(argument);
             }
 
+            if (!_options.InheritParentEnvironment)
+            {
+                startInfo.Environment.Clear();
+            }
+
             foreach (var (name, value) in _options.Environment)
             {
-                startInfo.Environment[name] = value;
+                if (value is null)
+                {
+                    startInfo.Environment.Remove(name);
+                }
+                else
+                {
+                    startInfo.Environment[name] = value;
+                }
             }
 
             var process = new Process
             {
                 StartInfo = startInfo,
-                EnableRaisingEvents = true,
             };
             process.Exited += OnProcessExited;
             _process = process;
@@ -104,6 +119,10 @@ public sealed class CodexProcessTransport : IAppServerTransport
                 _readStream = process.StandardOutput.BaseStream;
                 _writeStream = process.StandardInput.BaseStream;
                 _standardErrorPump = PumpStandardErrorAsync(process);
+
+                // A fast-failing child can exit before StartAsync returns. Do not enable the exit
+                // callback until the stderr drain task exists, otherwise diagnostics race as empty.
+                process.EnableRaisingEvents = true;
             }
             catch
             {
@@ -144,20 +163,34 @@ public sealed class CodexProcessTransport : IAppServerTransport
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(gracefulTimeout);
+            var callerCancelled = false;
             try
             {
                 await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
-                process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                callerCancelled = cancellationToken.IsCancellationRequested;
+                await TerminateProcessTreeAsync(process).ConfigureAwait(false);
+            }
+
+            if (callerCancelled)
+            {
+                throw new OperationCanceledException(cancellationToken);
             }
         }
 
         if (_standardErrorPump is not null)
         {
-            await _standardErrorPump.ConfigureAwait(false);
+            try
+            {
+                await _standardErrorPump.WaitAsync(ForcedTerminationTimeout).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                throw new AppServerProcessTerminationException(
+                    "The Codex App Server diagnostic stream did not close after process termination.");
+            }
         }
     }
 
@@ -180,35 +213,104 @@ public sealed class CodexProcessTransport : IAppServerTransport
 
                 _readStream = null;
                 _writeStream = null;
+                _executableLeaseReference?.Dispose();
             }
         }
     }
 
     private async Task PumpStandardErrorAsync(Process process)
     {
-        while (true)
+        var summary = await AppServerStandardErrorCapture.DrainAsync(
+                process.StandardError.BaseStream,
+                _options.MaximumStandardErrorBytes)
+            .ConfigureAwait(false);
+        _standardErrorTail.Enqueue(summary);
+        while (_standardErrorTail.Count > StandardErrorTailLimit)
         {
-            var line = await process.StandardError.ReadLineAsync().ConfigureAwait(false);
-            if (line is null)
+            _standardErrorTail.TryDequeue(out _);
+        }
+
+        RaiseStandardError(new AppServerStandardErrorEventArgs(summary));
+    }
+
+    private static async Task TerminateProcessTreeAsync(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            if (process.HasExited)
             {
                 return;
             }
 
-            _standardErrorTail.Enqueue(line);
-            while (_standardErrorTail.Count > StandardErrorTailLimit)
+            throw new AppServerProcessTerminationException(
+                "The Codex App Server process tree could not be terminated safely.");
+        }
+        catch (Exception exception) when (exception is NotSupportedException
+                                          or System.ComponentModel.Win32Exception)
+        {
+            if (process.HasExited)
             {
-                _standardErrorTail.TryDequeue(out _);
+                return;
             }
 
-            StandardErrorReceived?.Invoke(this, new AppServerStandardErrorEventArgs(line));
+            throw new AppServerProcessTerminationException(
+                "The Codex App Server process tree could not be terminated safely.");
+        }
+
+        using var deadline = new CancellationTokenSource(ForcedTerminationTimeout);
+        try
+        {
+            await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw new AppServerProcessTerminationException(
+                "The Codex App Server process tree did not exit before the cleanup deadline.");
+        }
+        catch (InvalidOperationException)
+        {
+            if (!process.HasExited)
+            {
+                throw new AppServerProcessTerminationException(
+                    "The Codex App Server process tree termination could not be verified.");
+            }
+        }
+
+        if (!process.HasExited)
+        {
+            throw new AppServerProcessTerminationException(
+                "The Codex App Server process tree termination could not be verified.");
         }
     }
 
-    private void OnProcessExited(object? sender, EventArgs args)
+    private async void OnProcessExited(object? sender, EventArgs args)
     {
         if (Interlocked.Exchange(ref _exitRaised, 1) != 0 || sender is not Process process)
         {
             return;
+        }
+
+        var standardErrorPump = _standardErrorPump;
+        var expectedExit = _expectedExit;
+        if (standardErrorPump is not null)
+        {
+            try
+            {
+                // The child has exited, so this ordinarily completes at pipe EOF. It runs
+                // asynchronously to avoid blocking the Process event thread.
+                await standardErrorPump.ConfigureAwait(false);
+            }
+            catch
+            {
+                // Stderr is diagnostics only; a drain failure must not strand exit propagation.
+            }
         }
 
         int? exitCode;
@@ -221,8 +323,50 @@ public sealed class CodexProcessTransport : IAppServerTransport
             exitCode = null;
         }
 
-        Exited?.Invoke(
-            this,
-            new AppServerTransportExitedEventArgs(exitCode, _expectedExit, _standardErrorTail.ToArray()));
+        var eventArgs = new AppServerTransportExitedEventArgs(
+            exitCode,
+            expectedExit,
+            _standardErrorTail.ToArray());
+        RaiseExited(eventArgs);
+    }
+
+    private void RaiseExited(AppServerTransportExitedEventArgs eventArgs)
+    {
+        if (Exited is null)
+        {
+            return;
+        }
+
+        foreach (EventHandler<AppServerTransportExitedEventArgs> handler in Exited.GetInvocationList())
+        {
+            try
+            {
+                handler(this, eventArgs);
+            }
+            catch
+            {
+                // Background exit observers cannot fault an async Process event callback.
+            }
+        }
+    }
+
+    private void RaiseStandardError(AppServerStandardErrorEventArgs eventArgs)
+    {
+        if (StandardErrorReceived is null)
+        {
+            return;
+        }
+
+        foreach (EventHandler<AppServerStandardErrorEventArgs> handler in StandardErrorReceived.GetInvocationList())
+        {
+            try
+            {
+                handler(this, eventArgs);
+            }
+            catch
+            {
+                // Stderr is diagnostic-only; observers cannot fault the drain task or block peers.
+            }
+        }
     }
 }

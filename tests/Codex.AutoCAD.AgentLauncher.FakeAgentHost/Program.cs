@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -12,19 +13,19 @@ internal static class FakeAgentHostProgram
     internal static int Run(string[] args)
     {
         var mode = GetMode();
+        var serve = args.Length == 1
+            && string.Equals(args[0], "bootstrap-serve", StringComparison.Ordinal);
         if (mode.StartsWith("hang", StringComparison.Ordinal))
         {
             Thread.Sleep(Timeout.Infinite);
             return 99;
         }
 
-        if (mode == "exit42")
+        if (mode == "exit42" && !serve)
         {
             return 42;
         }
 
-        var serve = args.Length == 1
-            && string.Equals(args[0], "bootstrap-serve", StringComparison.Ordinal);
         if (!serve
             && (args.Length != 1
                 || !string.Equals(args[0], "bootstrap-doctor", StringComparison.Ordinal)))
@@ -63,8 +64,32 @@ internal static class FakeAgentHostProgram
         try
         {
             using var keys = payload.DeriveDirectionKeys();
-            using var authenticator = keys.CreateConfirmationOutboundAuthenticator();
             var identity = AgentBootstrapInheritedChannel.GetCurrentProcessIdentity();
+            if (serve)
+            {
+                using var credentialGuard = keys.CreateConfirmationInboundGuard();
+                using var credentialDelivery = AgentCredentialPipeClient.ReceiveAsync(
+                        payload.PipeName,
+                        payload.SessionId,
+                        bootstrapId,
+                        identity.ProcessId,
+                        identity.ProcessCreationFileTime,
+                        credentialGuard,
+                        TimeSpan.FromSeconds(10),
+                        CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
+                if (credentialDelivery.Mode != AgentCredentialDeliveryMode.Disabled)
+                {
+                    return 45;
+                }
+            }
+            if (mode == "exit42")
+            {
+                return 42;
+            }
+
+            using var authenticator = keys.CreateConfirmationOutboundAuthenticator();
             var processId = mode == "identity" ? checked(identity.ProcessId + 1) : identity.ProcessId;
             var confirmation = AgentBootstrapConfirmationProtocol.CreateAgentConfirmation(
                 payload.SessionId,
@@ -97,6 +122,89 @@ internal static class FakeAgentHostProgram
                 Thread.Sleep(Timeout.Infinite);
                 return 99;
             }
+            if (mode == "servechild")
+            {
+                if (!serve)
+                {
+                    throw new ArgumentException("servechild fake mode requires bootstrap-serve.");
+                }
+
+                StartDescendantAndWriteProcessId();
+                confirmationOutput.Dispose();
+                Thread.Sleep(Timeout.Infinite);
+                return 99;
+            }
+            if (mode == "servechildexit")
+            {
+                if (!serve)
+                {
+                    throw new ArgumentException("servechildexit fake mode requires bootstrap-serve.");
+                }
+
+                StartDescendantAndWriteProcessId();
+                confirmationOutput.Dispose();
+                WaitForExitSignal();
+                return 42;
+            }
+            if (mode == "serveburn")
+            {
+                if (!serve)
+                {
+                    throw new ArgumentException("serveburn fake mode requires bootstrap-serve.");
+                }
+
+                confirmationOutput.Dispose();
+                BurnCpuForever();
+            }
+            if (mode == "serveprocesslimit")
+            {
+                if (!serve)
+                {
+                    throw new ArgumentException(
+                        "serveprocesslimit fake mode requires bootstrap-serve.");
+                }
+
+                confirmationOutput.Dispose();
+                StartDescendantsUntilRejected();
+                Thread.Sleep(Timeout.Infinite);
+                return 99;
+            }
+            if (mode == "servememorylimit")
+            {
+                if (!serve)
+                {
+                    throw new ArgumentException(
+                        "servememorylimit fake mode requires bootstrap-serve.");
+                }
+
+                confirmationOutput.Dispose();
+                ExhaustCommittedMemory();
+                return 99;
+            }
+            if (mode == "servecombinedlimit")
+            {
+                if (!serve)
+                {
+                    throw new ArgumentException(
+                        "servecombinedlimit fake mode requires bootstrap-serve.");
+                }
+
+                confirmationOutput.Dispose();
+                StartCpuBurnThread();
+                ExhaustCommittedMemory(delayMilliseconds: 10);
+                return 99;
+            }
+            if (mode == "serveexit")
+            {
+                if (!serve)
+                {
+                    throw new ArgumentException("serveexit fake mode requires bootstrap-serve.");
+                }
+
+                confirmationOutput.Dispose();
+                Thread.Sleep(10);
+                return 0;
+            }
             if (mode == "trailing")
             {
                 confirmationOutput.WriteByte(0x7f);
@@ -124,12 +232,157 @@ internal static class FakeAgentHostProgram
         }
     }
 
+    private static long CpuBurnSink;
+
+    private static void StartCpuBurnThread()
+    {
+        var thread = new Thread(BurnCpuForever)
+        {
+            IsBackground = true,
+            Name = "FakeAgentHostResourceBurn",
+        };
+        thread.Start();
+    }
+
+    private static void BurnCpuForever()
+    {
+        var burn = 1L;
+        while (true)
+        {
+            for (var index = 0; index < 1000000; index++)
+            {
+                burn = unchecked((burn * 6364136223846793005L) + 1442695040888963407L);
+            }
+
+            Interlocked.Exchange(ref CpuBurnSink, burn);
+        }
+    }
+
     private static string GetMode()
     {
         var executable = Environment.ProcessPath ?? string.Empty;
         var name = Path.GetFileNameWithoutExtension(executable);
         var separator = name.LastIndexOf('-');
         return separator < 0 ? "success" : name.Substring(separator + 1).ToLowerInvariant();
+    }
+
+    private static void StartDescendantAndWriteProcessId()
+    {
+        const string descendantExecutableVariable =
+            "CODEX_AUTOCAD_TEST_DESCENDANT_EXECUTABLE";
+        const string descendantProcessIdPathVariable =
+            "CODEX_AUTOCAD_TEST_DESCENDANT_PROCESS_ID_PATH";
+        var descendantExecutable = Environment.GetEnvironmentVariable(descendantExecutableVariable);
+        var processIdPath = Environment.GetEnvironmentVariable(descendantProcessIdPathVariable);
+        if (string.IsNullOrWhiteSpace(descendantExecutable)
+            || !Path.IsPathFullyQualified(descendantExecutable)
+            || string.IsNullOrWhiteSpace(processIdPath)
+            || !Path.IsPathFullyQualified(processIdPath))
+        {
+            throw new InvalidOperationException("Process-tree test configuration is invalid.");
+        }
+
+        using var descendant = Process.Start(new ProcessStartInfo
+        {
+            FileName = descendantExecutable,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        });
+        if (descendant == null)
+        {
+            throw new InvalidOperationException("Starting the process-tree test descendant failed.");
+        }
+
+        File.WriteAllText(
+            processIdPath,
+            descendant.Id.ToString(CultureInfo.InvariantCulture),
+            new UTF8Encoding(false));
+    }
+
+    private static void StartDescendantsUntilRejected()
+    {
+        var descendantExecutable = GetDescendantExecutable();
+        for (var index = 0; index < 32; index++)
+        {
+            try
+            {
+                using var descendant = Process.Start(new ProcessStartInfo
+                {
+                    FileName = descendantExecutable,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                });
+            }
+            catch (Win32Exception)
+            {
+                break;
+            }
+        }
+    }
+
+    private static string GetDescendantExecutable()
+    {
+        const string descendantExecutableVariable =
+            "CODEX_AUTOCAD_TEST_DESCENDANT_EXECUTABLE";
+        var descendantExecutable = Environment.GetEnvironmentVariable(
+            descendantExecutableVariable);
+        if (string.IsNullOrWhiteSpace(descendantExecutable)
+            || !Path.IsPathFullyQualified(descendantExecutable))
+        {
+            throw new InvalidOperationException(
+                "Process-tree descendant executable is unavailable.");
+        }
+
+        return descendantExecutable;
+    }
+
+    private static void ExhaustCommittedMemory(int delayMilliseconds = 0)
+    {
+        const uint memoryCommit = 0x00001000;
+        const uint memoryReserve = 0x00002000;
+        const uint pageReadWrite = 0x04;
+        const ulong blockSize = 16UL * 1024 * 1024;
+        var blocks = new List<IntPtr>();
+        while (true)
+        {
+            var block = VirtualAlloc(
+                IntPtr.Zero,
+                new UIntPtr(blockSize),
+                memoryCommit | memoryReserve,
+                pageReadWrite);
+            if (block == IntPtr.Zero)
+            {
+                GC.KeepAlive(blocks);
+                Thread.Sleep(Timeout.Infinite);
+                return;
+            }
+
+            blocks.Add(block);
+            GC.KeepAlive(blocks);
+            if (delayMilliseconds > 0)
+            {
+                Thread.Sleep(delayMilliseconds);
+            }
+        }
+    }
+
+    private static void WaitForExitSignal()
+    {
+        const string exitEventNameVariable = "CODEX_AUTOCAD_TEST_AGENTHOST_EXIT_EVENT";
+        var eventName = Environment.GetEnvironmentVariable(exitEventNameVariable);
+        if (string.IsNullOrWhiteSpace(eventName))
+        {
+            throw new InvalidOperationException("Process-tree exit-signal test configuration is invalid.");
+        }
+
+        // This mode runs only under the Windows-only inherited-handle integration gate.
+#pragma warning disable CA1416
+        using var exitSignal = EventWaitHandle.OpenExisting(eventName);
+#pragma warning restore CA1416
+        if (!exitSignal.WaitOne(TimeSpan.FromSeconds(10)))
+        {
+            throw new TimeoutException("Process-tree exit-signal test did not receive its exit request.");
+        }
     }
 
     private static bool IsInheritable(Microsoft.Win32.SafeHandles.SafeFileHandle handle)
@@ -233,5 +486,12 @@ internal static class FakeAgentHostProgram
         StringBuilder filePath,
         int filePathLength,
         uint flags);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr VirtualAlloc(
+        IntPtr address,
+        UIntPtr size,
+        uint allocationType,
+        uint protection);
 
 }

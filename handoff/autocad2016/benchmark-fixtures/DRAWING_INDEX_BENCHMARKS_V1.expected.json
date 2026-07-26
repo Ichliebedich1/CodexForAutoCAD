@@ -1,0 +1,85 @@
+{
+  "schema": "codex.autocad.drawing-index-benchmark/1",
+  "generatorVersion": "1.0.0",
+  "dxfVersion": "AC1009",
+  "units": "millimeters",
+  "sanitized": true,
+  "deterministic": true,
+  "files": [
+    {
+      "fileName": "drawing-index-001000.dxf",
+      "entityCount": 1000,
+      "modelSpaceCount": 1000,
+      "paperSpaceCount": 0,
+      "typeCounts": [
+        { "key": "LINE", "count": 200 },
+        { "key": "CIRCLE", "count": 200 },
+        { "key": "ARC", "count": 200 },
+        { "key": "TEXT", "count": 200 },
+        { "key": "INSERT", "count": 200 }
+      ],
+      "layerCounts": [
+        { "key": "BENCH_L00", "count": 125 },
+        { "key": "BENCH_L01", "count": 126 },
+        { "key": "BENCH_L02", "count": 125 },
+        { "key": "BENCH_L03", "count": 125 },
+        { "key": "BENCH_L04", "count": 125 },
+        { "key": "BENCH_L05", "count": 124 },
+        { "key": "BENCH_L06", "count": 125 },
+        { "key": "BENCH_L07", "count": 125 }
+      ],
+      "bytes": 78907,
+      "sha256": "d14e77f376c454fff2ac2dc0e618c649ca23f24cb1e0797ee711b69a2eeb34c6"
+    },
+    {
+      "fileName": "drawing-index-010000.dxf",
+      "entityCount": 10000,
+      "modelSpaceCount": 10000,
+      "paperSpaceCount": 0,
+      "typeCounts": [
+        { "key": "LINE", "count": 2000 },
+        { "key": "CIRCLE", "count": 2000 },
+        { "key": "ARC", "count": 2000 },
+        { "key": "TEXT", "count": 2000 },
+        { "key": "INSERT", "count": 2000 }
+      ],
+      "layerCounts": [
+        { "key": "BENCH_L00", "count": 1250 },
+        { "key": "BENCH_L01", "count": 1250 },
+        { "key": "BENCH_L02", "count": 1250 },
+        { "key": "BENCH_L03", "count": 1250 },
+        { "key": "BENCH_L04", "count": 1250 },
+        { "key": "BENCH_L05", "count": 1250 },
+        { "key": "BENCH_L06", "count": 1250 },
+        { "key": "BENCH_L07", "count": 1250 }
+      ],
+      "bytes": 789340,
+      "sha256": "bc16feb5539cd1ed9a762a98c345d7a0b791298cc06a1c9d25d42f33cb76508e"
+    },
+    {
+      "fileName": "drawing-index-050000.dxf",
+      "entityCount": 50000,
+      "modelSpaceCount": 50000,
+      "paperSpaceCount": 0,
+      "typeCounts": [
+        { "key": "LINE", "count": 10000 },
+        { "key": "CIRCLE", "count": 10000 },
+        { "key": "ARC", "count": 10000 },
+        { "key": "TEXT", "count": 10000 },
+        { "key": "INSERT", "count": 10000 }
+      ],
+      "layerCounts": [
+        { "key": "BENCH_L00", "count": 6250 },
+        { "key": "BENCH_L01", "count": 6250 },
+        { "key": "BENCH_L02", "count": 6250 },
+        { "key": "BENCH_L03", "count": 6250 },
+        { "key": "BENCH_L04", "count": 6250 },
+        { "key": "BENCH_L05", "count": 6250 },
+        { "key": "BENCH_L06", "count": 6250 },
+        { "key": "BENCH_L07", "count": 6250 }
+      ],
+      "bytes": 3987764,
+      "sha256": "aaa86d4d10e1a86b1d877edf78878a49b250ee9ff87aa31e629bb89afd6c5be0"
+    }
+  ]
+}

@@ -3,20 +3,27 @@ param(
     [ValidateSet("Debug", "Release")]
     [string] $Configuration = "Release",
 
-    [string] $CodexExecutable
+    [string] $CodexExecutable,
+
+    [string] $EvidencePath,
+
+    [switch] $NoRestore
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+. (Join-Path $PSScriptRoot "build-safety.ps1")
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $safeRepoRoot = $repoRoot.Replace("\", "/")
 $solutionPath = Join-Path $repoRoot "Codex.AutoCAD.sln"
-$doctorWorkspace = Join-Path $repoRoot "artifacts\phase2-doctor-workspace"
-$dotnetHome = Join-Path $repoRoot "artifacts\dotnet-cli-home"
-$nugetPackages = Join-Path $repoRoot "packages"
-$nugetHttpCache = Join-Path $repoRoot "artifacts\nuget-http-cache"
-$dotnetCliPathGuard = Join-Path $repoRoot "scripts\verify-dotnet-cli-path-guard.ps1"
+$doctorWorkspace = Join-Path $artifactsRoot "phase2-doctor-workspace"
+$dotnetHome = Join-Path $artifactsRoot "dotnet-cli-home"
+$nugetPackages = Join-Path $artifactsRoot "nuget-packages"
+$nugetHttpCache = Join-Path $artifactsRoot "nuget-http-cache"
+$conditionalLockPath = Join-Path $repoRoot "src\Codex.AutoCAD.Bridge.Client\packages.lock.json"
 
 $env:DOTNET_CLI_HOME = $dotnetHome
 $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "0"
@@ -25,10 +32,13 @@ $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
 $env:NUGET_PACKAGES = $nugetPackages
 $env:NUGET_HTTP_CACHE_PATH = $nugetHttpCache
 $dotnetCommand = (Get-Command dotnet -ErrorAction Stop).Source
-$userPathBefore = @(& $dotnetCliPathGuard -RepositoryRoot $repoRoot | ConvertFrom-Json)
-if ($userPathBefore.Count -ne 1) {
-    throw "DOTNET CLI PATH 防复发门禁未返回唯一快照。"
+
+# The default core build restores Bridge.Client as net8 only. Preserve its dual-target lock
+# file so this verification does not erase the net45 graph required by the AutoCAD host gate.
+if (-not (Test-Path -LiteralPath $conditionalLockPath -PathType Leaf)) {
+    throw "缺少 Bridge.Client 条件化锁文件：$conditionalLockPath"
 }
+$conditionalLockBytes = [IO.File]::ReadAllBytes($conditionalLockPath)
 
 $specProjects = @(
     "tests\Codex.AutoCAD.Contracts.Specs\Codex.AutoCAD.Contracts.Specs.csproj",
@@ -289,6 +299,101 @@ function Resolve-CodexExecutablePath {
     throw "未找到可由 AgentHost 直接启动的 codex.exe；请传入 -CodexExecutable 绝对路径。"
 }
 
+function Assert-NoCadWriteInHost2016 {
+    <#
+    .SYNOPSIS
+        M4.16：保证 Host.2016 的 CAD 写入保持硬禁用。
+    .DESCRIPTION
+        Assert-NoForbiddenHostApi 只扫描 Host.2025，而 M4.16 的完成条件针对的是
+        Host.2016——那才是 AutoCAD 2016 的生产宿主。Host.2016 是真实只读实现，
+        合法需要 Autodesk 类型、文件 IO 和 Assembly.Location，因此这里不照搬
+        Host.2025 的全套规则，只精确禁止会修改图纸或执行命令的调用。
+        规则针对方法调用形态（后跟括号或明确成员访问），避免把 AppendEntitySummary
+        这类纯文本格式化方法误判为 CAD 写入。
+    #>
+    $host2016Root = Join-Path $repoRoot "src\Codex.AutoCAD.Host.2016"
+    if (-not (Test-Path -LiteralPath $host2016Root -PathType Container)) {
+        Write-Host "Host.2016 源码目录不存在，跳过 CAD 写入门禁。" -ForegroundColor Yellow
+        return
+    }
+
+    $cadWriteRules = [ordered]@{
+        "CAD 数据库写入" = "(?i)(?:OpenMode\s*\.\s*ForWrite|\.\s*(?:UpgradeOpen|DowngradeOpen|AppendEntity|AddNewlyCreatedDBObject|Erase|WblockCloneObjects|DeepCloneObjects|TransformBy|SetAt|SwapIdWith)\s*\()"
+        "图纸保存或导出" = "(?i)\.\s*(?:SaveAs|DwgOut|DxfOut|CloseAndSave|Wblock)\s*\("
+        "命令字符串执行" = "(?i)(?:SendStringToExecute|ExecuteInCommandContextAsync|SetSystemVariable|\bAcedCmd\b|\bacedCommand\b)\s*\("
+        "LISP 或脚本" = "(?i)(?:LoadLisp|SendCommand|AcedInvoke|\bacedEval\b)\s*\("
+    }
+
+    # 规则自检：这些写入样例必须全部被识别，否则门禁本身失效。
+    $mustDetect = [ordered]@{
+        "OpenMode.ForWrite" = "transaction.GetObject(id, OpenMode.ForWrite);"
+        "UpgradeOpen" = "layer.UpgradeOpen();"
+        "AppendEntity" = "space.AppendEntity(line);"
+        "AddNewlyCreatedDBObject" = "transaction.AddNewlyCreatedDBObject(line, true);"
+        "Erase" = "entity.Erase();"
+        "TransformBy" = "entity.TransformBy(matrix);"
+        "SaveAs" = "database.SaveAs(path, version);"
+        "DxfOut" = "database.DxfOut(path, 16, version);"
+        "SendStringToExecute" = "document.SendStringToExecute(command, true, false, false);"
+        "SetSystemVariable" = "Application.SetSystemVariable(""FILEDIA"", 0);"
+    }
+    foreach ($sample in $mustDetect.GetEnumerator()) {
+        $detected = $false
+        foreach ($rule in $cadWriteRules.GetEnumerator()) {
+            if ([regex]::IsMatch([string] $sample.Value, [string] $rule.Value)) {
+                $detected = $true
+                break
+            }
+        }
+        if (-not $detected) {
+            throw "Host.2016 CAD 写入规则自检失败，未覆盖：$($sample.Key)"
+        }
+    }
+
+    # 安全样例：只读实现中真实存在的写法不得误报。
+    $mustNotDetect = @(
+        "AppendEntitySummary(builder, entity);",
+        "private static void AppendEntitySummary(StringBuilder builder, CadContextEntityV1 entity)",
+        "transaction.GetObject(id, OpenMode.ForRead);",
+        "builder.Append(entity.Layer);",
+        "var location = Assembly.GetExecutingAssembly().Location;",
+        "// remaining process cleanup stays owned by CODEX16AGENTSTOP."
+    )
+    foreach ($sample in $mustNotDetect) {
+        foreach ($rule in $cadWriteRules.GetEnumerator()) {
+            if ([regex]::IsMatch($sample, [string] $rule.Value)) {
+                throw "Host.2016 CAD 写入规则自检失败，误报只读样例：$sample"
+            }
+        }
+    }
+
+    $scanned = 0
+    $violations = New-Object System.Collections.ArrayList
+    foreach ($file in @(Get-ChildItem -LiteralPath $host2016Root -Recurse -File -Filter "*.cs" |
+            Where-Object { $_.FullName -notmatch "[\\/](?:bin|obj)[\\/]" })) {
+        $scanned++
+        $lines = [IO.File]::ReadAllLines($file.FullName)
+        for ($i = 0; $i -lt $lines.Length; $i++) {
+            $line = $lines[$i]
+            # 跳过纯注释行：注释中的 NETLOAD/process 等词不构成可执行写入路径。
+            if ($line -match '^\s*(?://|\*|/\*)') { continue }
+            foreach ($rule in $cadWriteRules.GetEnumerator()) {
+                if ([regex]::IsMatch($line, [string] $rule.Value)) {
+                    $null = $violations.Add(
+                        "$($rule.Key) $($file.Name):$($i + 1)")
+                }
+            }
+        }
+    }
+
+    if ($violations.Count -ne 0) {
+        $violationSummary = ($violations.ToArray()) -join "; "
+        throw "Host.2016 CAD 写入硬禁用门禁失败（$($violations.Count) 项）：$violationSummary"
+    }
+
+    Write-Host ("Host.2016 CAD 写入硬禁用门禁通过：扫描 $scanned 个源文件，0 处写入调用。") -ForegroundColor Green
+}
+
 function Assert-NoForbiddenHostApi {
     $hostRoot = Join-Path $repoRoot "src\Codex.AutoCAD.Host.2025"
     $hostProject = Join-Path $hostRoot "Codex.AutoCAD.Host.2025.csproj"
@@ -518,13 +623,18 @@ try {
     Assert-PinnedSdk
     $resolvedCodexExecutable = Resolve-CodexExecutablePath -RequestedPath $CodexExecutable
 
+    $solutionBuildArguments = @(
+        "build", $solutionPath,
+        "--configuration", $Configuration,
+        "--nologo", "--disable-build-servers", "-m:1"
+    )
+    if ($NoRestore) {
+        $solutionBuildArguments += "--no-restore"
+    }
+
     Invoke-CheckedCommand `
         -FilePath $dotnetCommand `
-        -ArgumentList @(
-            "build", $solutionPath,
-            "--configuration", $Configuration,
-            "--nologo", "--disable-build-servers", "-m:1"
-        ) `
+        -ArgumentList $solutionBuildArguments `
         -Description "构建托管核心解决方案（CAD Host 按目标版本独立验证，$Configuration）"
 
     $bridgeClientTestServer = Join-Path $repoRoot (
@@ -564,6 +674,10 @@ try {
     Write-Host "`n==> 扫描 AutoCAD Host 禁用 API" -ForegroundColor Cyan
     Assert-NoForbiddenHostApi
 
+    # M4.16：Host.2025 之外，生产宿主 Host.2016 的 CAD 写入也必须保持硬禁用。
+    Write-Host "`n==> 校验 Host.2016 CAD 写入硬禁用" -ForegroundColor Cyan
+    Assert-NoCadWriteInHost2016
+
     New-Item -ItemType Directory -Path $doctorWorkspace -Force | Out-Null
     $doctorArguments = @(
         "run",
@@ -580,7 +694,7 @@ try {
         -FilePath $dotnetCommand `
         -ArgumentList $doctorArguments `
         -Description "执行 AgentHost doctor 活体握手"
-    Write-Warning "doctor 仅证明本机 app-server 活体握手；每会话 CODEX_HOME、MCP/插件、凭据与环境变量隔离仍未完成。"
+    Write-Warning "doctor 仅证明本机 app-server 活体握手；子进程环境白名单已启用，但每会话 CODEX_HOME、空 MCP/插件和凭据隔离尚未进入生产默认。"
 
     Invoke-CheckedCommand `
         -FilePath "git" `
@@ -595,13 +709,64 @@ try {
     Write-Host "`n==> 执行敏感信息基础扫描" -ForegroundColor Cyan
     Assert-NoLikelySecret
 
-    & $dotnetCliPathGuard `
-        -RepositoryRoot $repoRoot `
-        -ExpectedUserPathSha256 $userPathBefore[0].UserPathSha256 | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace($EvidencePath)) {
+        $resolvedEvidencePath = if ([IO.Path]::IsPathRooted($EvidencePath)) {
+            [IO.Path]::GetFullPath($EvidencePath)
+        }
+        else {
+            [IO.Path]::GetFullPath((Join-Path $repoRoot $EvidencePath))
+        }
+        $evidenceParent = Split-Path -Parent $resolvedEvidencePath
+        if (-not [string]::IsNullOrWhiteSpace($evidenceParent)) {
+            New-Item -ItemType Directory -Path $evidenceParent -Force | Out-Null
+        }
+
+        $phase2Evidence = [ordered]@{
+            SchemaVersion = 1
+            RecordedAtLocal = [DateTimeOffset]::Now.ToString("o")
+            RunCorrelationId = Get-CodexGateRunCorrelationId
+            Scope = "phase2-managed-core-gate"
+            Status = "automated-gate-passed"
+            PowerShellEdition = [string] $PSVersionTable.PSEdition
+            PowerShellVersion = $PSVersionTable.PSVersion.ToString()
+            Configuration = $Configuration
+            SpecProjects = @(
+                $specResults | ForEach-Object {
+                    [ordered]@{
+                        Name = [string] $_.Name
+                        Passed = [int] $_.Passed
+                        Total = [int] $_.Total
+                        Failed = 0
+                    }
+                }
+            )
+            TotalSpecs = $totalSpecs
+            SolutionBuildPassed = $true
+            HostForbiddenApiScanPassed = $true
+            AgentHostDoctorPassed = $true
+            GitDiffCheckPassed = $true
+            BasicSecretScanPassed = $true
+            ConditionalLockFileRestored = $true
+            AutoCadStartedOrCommanded = $false
+            CadWriteEnabled = $false
+            PluginInitiatedSaveEnabled = $false
+            EnterpriseMatrixVerified = $false
+            RealMachinePolicyMatrixVerified = $false
+            EvidenceBoundary = "This evidence proves the managed-core Release build, dynamically counted specification projects, the lexical forbidden-API gate for the AutoCAD host boundary, a local AgentHost doctor handshake, Git diff checks, and the bounded basic secret scan. It does not start or command AutoCAD, enable CAD writes or plugin saves, verify enterprise policy behavior, prove real-machine failure matrices, or freeze M4.16."
+        }
+        $encoding = New-Object Text.UTF8Encoding($false)
+        [IO.File]::WriteAllText(
+            $resolvedEvidencePath,
+            ($phase2Evidence | ConvertTo-Json -Depth 10),
+            $encoding)
+        Write-Host ("PHASE2_EVIDENCE=" + $resolvedEvidencePath)
+    }
 
     Write-Host "`n阶段 2 托管核心门禁通过：$Configuration 构建、$($specProjects.Count) 个规格项目（动态汇总 $totalSpecs/$totalSpecs）、Host 禁用 API、AgentHost 活体握手、Git 差异及敏感信息检查均通过。" -ForegroundColor Green
     Write-Warning "该门禁不验证 AutoCAD 2016/2025 Host 实机能力，也不表示每会话 Agent 隔离已经完成。"
 }
 finally {
+    Complete-CodexBuildSafety -State $buildSafety -Stage "phase2" | Out-Null
+    [IO.File]::WriteAllBytes($conditionalLockPath, $conditionalLockBytes)
     Pop-Location
 }

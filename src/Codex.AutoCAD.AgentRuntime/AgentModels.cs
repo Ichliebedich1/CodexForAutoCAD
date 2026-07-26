@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Codex.AutoCAD.Contracts;
 
 namespace Codex.AutoCAD.AgentRuntime;
 
@@ -57,6 +58,13 @@ public sealed record AgentRuntimeOptions
 
     public string? ModelProvider { get; init; }
 
+    /// <summary>
+    /// M4.1 受信策略。非 null 时，模型与思考强度必须通过白名单、管理员锁定和默认值校验，
+    /// 任何越界值 fail-closed。为 null 时仍强制模型标识的安全形态校验，因此 UI 或 Agent
+    /// 提交的任意字符串在任何配置下都不会直接穿透到 AgentHost/Codex。
+    /// </summary>
+    public ResolvedAgentPolicy? AgentPolicy { get; init; }
+
     public int MaximumIdentifierCharacters { get; init; } = 256;
 
     public int MaximumPromptCharacters { get; init; } = 64 * 1024;
@@ -67,6 +75,8 @@ public sealed record AgentRuntimeOptions
 
     public int MaximumConcurrentCadProposals { get; init; } = 1;
 
+    public int MaximumConcurrentCadDrawingQueries { get; init; } = 4;
+
     public int MaximumTrackedCadCalls { get; init; } = 256;
 
     public int MaximumTrackedThreads { get; init; } = 128;
@@ -74,6 +84,30 @@ public sealed record AgentRuntimeOptions
     public int MaximumActiveTurns { get; init; } = 128;
 
     public TimeSpan CadProposalTimeout { get; init; } = TimeSpan.FromSeconds(60);
+
+    public TimeSpan CadDrawingQueryTimeout { get; init; } = TimeSpan.FromSeconds(15);
+
+    public override string ToString()
+        => nameof(AgentRuntimeOptions)
+            + " { Sandbox = "
+            + Sandbox
+            + ", ApprovalPolicy = "
+            + ApprovalPolicy
+            + ", ApprovalsReviewer = "
+            + ApprovalsReviewer
+            + ", WorkingDirectoryConfigured = "
+            + AgentDiagnosticFormatting.Configured(WorkingDirectory)
+            + ", ManagedWorkspaceRootConfigured = "
+            + AgentDiagnosticFormatting.Configured(ManagedWorkspaceRoot)
+            + ", AllowLocalFileInputs = "
+            + AgentDiagnosticFormatting.Boolean(AllowLocalFileInputs)
+            + ", ModelConfigured = "
+            + AgentDiagnosticFormatting.Configured(Model)
+            + ", ModelProviderConfigured = "
+            + AgentDiagnosticFormatting.Configured(ModelProvider)
+            + ", AgentPolicyConfigured = "
+            + AgentDiagnosticFormatting.Boolean(AgentPolicy != null)
+            + " }";
 }
 
 public sealed record AgentThreadOptions
@@ -91,6 +125,31 @@ public sealed record AgentThreadOptions
     public bool? Ephemeral { get; init; }
 
     public bool EnableCadDynamicTools { get; init; } = true;
+
+    /// <summary>
+    /// Exposes the read-only drawing query tool without enabling any CAD write proposal tool.
+    /// </summary>
+    public bool EnableCadDrawingQueryTool { get; init; }
+
+    public override string ToString()
+        => nameof(AgentThreadOptions)
+            + " { WorkingDirectoryConfigured = "
+            + AgentDiagnosticFormatting.Configured(WorkingDirectory)
+            + ", ModelConfigured = "
+            + AgentDiagnosticFormatting.Configured(Model)
+            + ", ModelProviderConfigured = "
+            + AgentDiagnosticFormatting.Configured(ModelProvider)
+            + ", DeveloperInstructionsConfigured = "
+            + AgentDiagnosticFormatting.Configured(DeveloperInstructions)
+            + ", ServiceTierConfigured = "
+            + AgentDiagnosticFormatting.Configured(ServiceTier)
+            + ", Ephemeral = "
+            + AgentDiagnosticFormatting.NullableBoolean(Ephemeral)
+            + ", EnableCadDynamicTools = "
+            + AgentDiagnosticFormatting.Boolean(EnableCadDynamicTools)
+            + ", EnableCadDrawingQueryTool = "
+            + AgentDiagnosticFormatting.Boolean(EnableCadDrawingQueryTool)
+            + " }";
 }
 
 public sealed record AgentTurnOptions
@@ -104,18 +163,56 @@ public sealed record AgentTurnOptions
     public string? ServiceTier { get; init; }
 
     public JsonElement? OutputSchema { get; init; }
+
+    public override string ToString()
+        => nameof(AgentTurnOptions)
+            + " { WorkingDirectoryConfigured = "
+            + AgentDiagnosticFormatting.Configured(WorkingDirectory)
+            + ", ModelConfigured = "
+            + AgentDiagnosticFormatting.Configured(Model)
+            + ", ClientUserMessageIdConfigured = "
+            + AgentDiagnosticFormatting.Configured(ClientUserMessageId)
+            + ", ServiceTierConfigured = "
+            + AgentDiagnosticFormatting.Configured(ServiceTier)
+            + ", OutputSchemaConfigured = "
+            + AgentDiagnosticFormatting.Boolean(OutputSchema.HasValue)
+            + " }";
 }
 
 public sealed record AgentThreadHandle(
     string ThreadId,
     string? WorkingDirectory,
     string? Model,
-    string? ModelProvider);
+    string? ModelProvider)
+{
+    public override string ToString()
+        => nameof(AgentThreadHandle)
+            + " { ThreadIdConfigured = "
+            + AgentDiagnosticFormatting.Configured(ThreadId)
+            + ", WorkingDirectoryConfigured = "
+            + AgentDiagnosticFormatting.Configured(WorkingDirectory)
+            + ", ModelConfigured = "
+            + AgentDiagnosticFormatting.Configured(Model)
+            + ", ModelProviderConfigured = "
+            + AgentDiagnosticFormatting.Configured(ModelProvider)
+            + " }";
+}
 
 public sealed record AgentTurnHandle(
     string ThreadId,
     string TurnId,
-    AgentTurnStatus Status);
+    AgentTurnStatus Status)
+{
+    public override string ToString()
+        => nameof(AgentTurnHandle)
+            + " { ThreadIdConfigured = "
+            + AgentDiagnosticFormatting.Configured(ThreadId)
+            + ", TurnIdConfigured = "
+            + AgentDiagnosticFormatting.Configured(TurnId)
+            + ", Status = "
+            + Status
+            + " }";
+}
 
 public abstract record AgentInput
 {
@@ -124,6 +221,12 @@ public abstract record AgentInput
 
 public sealed record AgentTextInput(string Text) : AgentInput
 {
+    public override string ToString()
+        => nameof(AgentTextInput)
+            + " { TextConfigured = "
+            + AgentDiagnosticFormatting.Configured(Text)
+            + " }";
+
     internal override object ToWire()
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(Text);
@@ -133,6 +236,12 @@ public sealed record AgentTextInput(string Text) : AgentInput
 
 public sealed record AgentLocalImageInput(string Path) : AgentInput
 {
+    public override string ToString()
+        => nameof(AgentLocalImageInput)
+            + " { PathConfigured = "
+            + AgentDiagnosticFormatting.Configured(Path)
+            + " }";
+
     internal override object ToWire()
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(Path);
@@ -142,12 +251,32 @@ public sealed record AgentLocalImageInput(string Path) : AgentInput
 
 public sealed record AgentMentionInput(string Name, string Path) : AgentInput
 {
+    public override string ToString()
+        => nameof(AgentMentionInput)
+            + " { NameConfigured = "
+            + AgentDiagnosticFormatting.Configured(Name)
+            + ", PathConfigured = "
+            + AgentDiagnosticFormatting.Configured(Path)
+            + " }";
+
     internal override object ToWire()
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(Name);
         ArgumentException.ThrowIfNullOrWhiteSpace(Path);
         return new MentionInputWire("mention", Name, Path);
     }
+}
+
+internal static class AgentDiagnosticFormatting
+{
+    internal static string Configured(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "False" : "True";
+
+    internal static string Boolean(bool value)
+        => value ? "True" : "False";
+
+    internal static string NullableBoolean(bool? value)
+        => value.HasValue ? Boolean(value.Value) : "NotSet";
 }
 
 internal sealed record ThreadStartWireParams(

@@ -63,6 +63,17 @@ namespace Codex.AutoCAD.Host2016
 
         internal static async Task AskAsync(string prompt)
         {
+            var context = UnifiedReadOnlyContextRuntime.GetCurrentState();
+            var hasSelectionContext = UnifiedReadOnlyContextRuntime.IsCurrentPublishedState(context);
+            DrawingIndexAgentSnapshot drawingIndexSnapshot;
+            var hasDrawingIndex = DrawingIndexRuntime.TryFreezeAgentSnapshot(
+                out drawingIndexSnapshot);
+            if (!hasSelectionContext && !hasDrawingIndex)
+            {
+                throw new InvalidOperationException(
+                    "请先执行 CODEX16INDEX 建立整图索引，或预选图元并执行 CODEX16CTX。");
+            }
+
             MvpAgentClient current;
             CancellationToken token;
             lock (sync)
@@ -80,16 +91,14 @@ namespace Codex.AutoCAD.Host2016
                 }
             }
 
-            var context = UnifiedReadOnlyContextRuntime.GetCurrentState();
-            if (!UnifiedReadOnlyContextRuntime.IsCurrentPublishedState(context))
-            {
-                throw new InvalidOperationException("请先预选图元并执行 CODEX16CTX。");
-            }
-
             await current.AskAsync(
                     prompt,
-                    context,
-                    () => UnifiedReadOnlyContextRuntime.IsCurrentPublishedState(context),
+                    hasSelectionContext ? context : null,
+                    hasSelectionContext
+                        ? (Func<bool>)(() =>
+                            UnifiedReadOnlyContextRuntime.IsCurrentPublishedState(context))
+                        : null,
+                    hasDrawingIndex ? drawingIndexSnapshot : null,
                     token)
                 .ConfigureAwait(false);
         }
@@ -134,6 +143,14 @@ namespace Codex.AutoCAD.Host2016
                 && context.Context.Document != null
                     ? context.Context.Document.DocumentId
                     : string.Empty;
+            if (string.IsNullOrWhiteSpace(documentId))
+            {
+                DrawingIndexAgentSnapshot drawingIndexSnapshot;
+                if (DrawingIndexRuntime.TryFreezeAgentSnapshot(out drawingIndexSnapshot))
+                {
+                    documentId = drawingIndexSnapshot.DocumentId;
+                }
+            }
             await current.NewConversationAsync(documentId, token)
                 .ConfigureAwait(false);
         }

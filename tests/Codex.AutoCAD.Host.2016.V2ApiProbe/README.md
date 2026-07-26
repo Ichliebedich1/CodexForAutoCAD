@@ -70,8 +70,16 @@ C# 编译器强制验证以下内容（如果任何类型或属性缺失，编�
 - Leader.VertexAt
 - MLeader.GetLeaderIndexes、GetLeaderLineIndexes、VerticesCount、GetVertex
 - Hatch.GetLoopAt
+- AttributeCollection.GetEnumerator、DynamicBlockReferencePropertyCollection.GetEnumerator
+- BlockReference.AttributeCollection、DynamicBlockReferencePropertyCollection、DynamicBlockTableRecord
+- BlockTableRecord.IsFromOverlayReference、HasAttributeDefinitions、LayoutId
+- AttributeReference.IsMTextAttribute、DynamicBlockReferenceProperty.VisibleInCurrentVisibilityState
 - Table.GetTextString、Cells、Rows、Columns
 - 等等
+
+当前 M3 双 Shell 门禁要求精确 `29 passed / 8 expected failed`；聚合脱敏 evidence 为
+`handoff/autocad2016/evidence/v2-api-surface-probe-m3-cross-shell-20260723.json`。这仍只是
+API 表面探针，不证明 AutoCAD 运行时行为。
 
 ## 已知 R20.1 API 差异
 
@@ -85,7 +93,7 @@ C# 编译器强制验证以下内容（如果任何类型或属性缺失，编�
 | Table cellType | `GetCellType` 方法不存在 | 需要运行时调查 |
 | Polyline2d vertices | `VertexObjectIdList` 不存在 | 需要运行时调查 |
 | Polyline3d vertices | `Vertices`/`VertexObjectIdList` 不存在 | 需要运行时调查 |
-| BlockReference xrefStatus | `XrefStatus` 不存在 | 需要运行时调查 |
+| BlockReference xrefStatus | `XrefStatus` 不存在 | 使用定义记录的安全外参/覆盖布尔元数据；不读取外部路径 |
 | Dimension dimensionType | `DimensionType` 不存在 | 需要运行时调查 |
 
 ## 约束

@@ -65,6 +65,13 @@ namespace Codex.AutoCAD.Host2016
             builder.Append("  未解析：")
                 .Append(context.Selection.UnsupportedEntityCount.ToString(CultureInfo.InvariantCulture));
             builder.Append("  完整：").AppendLine(context.Selection.Complete ? "是" : "否");
+            if (context.Selection.UnsupportedEntityCount > 0)
+            {
+                builder.Append("占位明细：").AppendLine(
+                    CadReadTypeStatistics.FormatSummary(
+                        CadReadTypeStatistics.FromSelection(context.Selection),
+                        12));
+            }
             builder.Append("JSON 字节：")
                 .AppendLine(canonicalBytes.ToString(CultureInfo.InvariantCulture));
             builder.Append("上下文 SHA-256：").AppendLine(contextSha256);

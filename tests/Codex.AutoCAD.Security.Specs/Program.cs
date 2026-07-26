@@ -47,7 +47,9 @@ internal static class Program
             }
         }
 
-        Console.WriteLine($"\n规格总数: {specifications.Length}, 通过: {specifications.Length - failed}, 失败: {failed}");
+        // Machine-consumed verification output must remain invariant across redirected
+        // PowerShell hosts and console code pages.
+        Console.WriteLine($"{specifications.Length - failed}/{specifications.Length} specs passed");
         return failed == 0 ? 0 : 1;
     }
 

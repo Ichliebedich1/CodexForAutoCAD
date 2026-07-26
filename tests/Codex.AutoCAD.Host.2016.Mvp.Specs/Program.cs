@@ -2,6 +2,7 @@ using Codex.AutoCAD.Contracts;
 using Codex.AutoCAD.Bridge.Client;
 using Codex.AutoCAD.AgentLauncher;
 using Codex.AutoCAD.Host2016;
+using System.Reflection;
 
 var specs = new[]
 {
@@ -29,6 +30,58 @@ var specs = new[]
         "HOST2016_V2_CAPABILITIES_REJECT_EMPTY_SCHEMA_LIST",
         "empty schema list is rejected",
         V2CapabilitiesRejectEmptySchemaList),
+    new SpecCase(
+        "HOST2016_DRAWING_QUERY_CAPABILITIES_ACCEPT",
+        "drawing query capability is accepted only when explicitly advertised",
+        DrawingQueryCapabilitiesAccept),
+    new SpecCase(
+        "HOST2016_DRAWING_QUERY_CAPABILITIES_REJECT_MISSING",
+        "missing drawing query capability is rejected",
+        DrawingQueryCapabilitiesRejectMissing),
+    new SpecCase(
+        "HOST2016_DRAWING_SNAPSHOT_IS_DEEP_MANAGED",
+        "the Agent drawing snapshot is detached from mutable source contracts",
+        DrawingSnapshotIsDeepManaged),
+    new SpecCase(
+        "HOST2016_DRAWING_SNAPSHOT_TAKES_FROZEN_OWNERSHIP",
+        "runtime publication reuses the already frozen private entity array",
+        DrawingSnapshotTakesFrozenOwnership),
+    new SpecCase(
+        "HOST2016_DRAWING_INDEX_PERFORMANCE_TELEMETRY",
+        "scan slices and both local and Agent queries produce monotonic host-local telemetry",
+        DrawingIndexPerformanceTelemetry),
+    new SpecCase(
+        "HOST2016_DRAWING_SNAPSHOT_CANCEL_AND_STALE",
+        "snapshot queries honor cancellation and reject invalidated generations",
+        DrawingSnapshotCancelAndStale),
+    new SpecCase(
+        "HOST2016_DRAWING_INDEX_ONLY_TURN_AND_QUERY",
+        "a valid DrawingIndex can start a context-free turn and serve a bound query",
+        DrawingIndexOnlyTurnAndQuery),
+    new SpecCase(
+        "HOST2016_DRAWING_QUERY_BEFORE_START_RESPONSE",
+        "an exact early reverse query binds the Provider turn before start returns",
+        DrawingQueryBeforeStartResponse),
+    new SpecCase(
+        "HOST2016_DRAWING_QUERY_IDENTITY_MISMATCH",
+        "request, thread, turn and snapshot identities cannot be mixed",
+        DrawingQueryIdentityMismatch),
+    new SpecCase(
+        "HOST2016_DRAWING_QUERY_REJECTS_STALE_INDEX",
+        "an invalidated DrawingIndex cannot serve an active turn",
+        DrawingQueryRejectsStaleIndex),
+    new SpecCase(
+        "HOST2016_DRAWING_QUERY_REJECTS_TERMINAL_TURN",
+        "a completed turn rejects late drawing queries",
+        DrawingQueryRejectsTerminalTurn),
+    new SpecCase(
+        "HOST2016_SELECTION_AND_INDEX_DOCUMENT_MUST_MATCH",
+        "selection context and DrawingIndex from different drawings fail closed",
+        SelectionAndIndexDocumentMustMatch),
+    new SpecCase(
+        "HOST2016_DRAWING_QUERY_BOUNDARY_HAS_NO_AUTODESK_REFERENCE",
+        "the tested drawing query worker boundary has no Autodesk assembly dependency",
+        DrawingQueryBoundaryHasNoAutodeskReference),
     new SpecCase(
         "HOST2016_STOP_STARTS_BOTH_CLEANUPS",
         "Bridge and AgentHost cleanup begin before either side is awaited",
@@ -78,13 +131,41 @@ var specs = new[]
         "A failing Palette status observer cannot prevent AgentHost cleanup",
         StatusCallbackCannotBlockStop),
     new SpecCase(
+        "HOST2016_STOP_CANCELS_INFLIGHT_START",
+        "STOP cancels an in-flight AgentHost startup and commits only the stopped terminal state",
+        StopCancelsInFlightStart),
+    new SpecCase(
         "HOST2016_BRIDGE_FAULT_TRANSITIONS_OFFLINE",
         "A Bridge fault terminates the active turn and rejects later ASK calls before transport reuse",
         BridgeFaultTransitionsOffline),
     new SpecCase(
+        "HOST2016_BRIDGE_EXCEPTION_PUBLIC_DIAGNOSTIC_IS_SANITIZED",
+        "Bridge client exceptions expose only bounded sanitized diagnostics and discard raw inner exceptions",
+        BridgeClientExceptionPublicDiagnosticIsSanitized),
+    new SpecCase(
         "HOST2016_FAILURE_FORMATTER_SANITIZES_BOOTSTRAP",
         "AgentHost startup failures expose stable structured fields without local exception details",
         FailureFormatterSanitizesBootstrap),
+    new SpecCase(
+        "HOST2016_FAILURE_FORMATTER_ENFORCES_PUBLIC_BOUNDARY",
+        "Host UI errors apply one bounded sanitizer after structured formatting",
+        FailureFormatterEnforcesPublicBoundary),
+    new SpecCase(
+        "HOST2016_COMMAND_FAILURES_ARE_STRUCTURED_AND_SANITIZED",
+        "Host command failures expose stable diagnostics without CLR types or raw exception graphs",
+        HostCommandFailuresAreStructuredAndSanitized),
+    new SpecCase(
+        "HOST2016_RESOURCE_LIMIT_FAILURES_STRUCTURED",
+        "all AgentHost resource limits map to stable non-retryable runtime failures",
+        ResourceLimitFailuresAreStructured),
+    new SpecCase(
+        "HOST2016_RESOURCE_LIMIT_WINS_BRIDGE_FAULT_RACE",
+        "an authoritative AgentHost resource limit wins the Bridge disconnect terminal-state race",
+        ResourceLimitWinsBridgeFaultRace),
+    new SpecCase(
+        "HOST2016_AGENTHOST_EXIT_WINS_BRIDGE_FAULT_RACE",
+        "an unexpected AgentHost exit wins the Bridge disconnect race and commits one terminal",
+        UnexpectedAgentHostExitWinsBridgeFaultRace),
     new SpecCase(
         "HOST2016_TURN_FAILURE_IS_STRUCTURED_AND_SANITIZED",
         "A failed Codex turn publishes stable fields without raw Provider error text",
@@ -237,13 +318,391 @@ static Task V2CapabilitiesRejectEmptySchemaList()
     return Task.CompletedTask;
 }
 
-static AgentCapabilitiesResponse CreateCapabilities(bool includeV2Method, bool includeV2Schema)
+static Task DrawingQueryCapabilitiesAccept()
 {
+    True(
+        MvpAgentCapabilityPolicy.SupportsDrawingQuery(
+            CreateCapabilities(true, true, true)),
+        "drawing query capability should be accepted.");
+    return Task.CompletedTask;
+}
+
+static Task DrawingQueryCapabilitiesRejectMissing()
+{
+    True(
+        !MvpAgentCapabilityPolicy.SupportsDrawingQuery(
+            CreateCapabilities(true, true, false)),
+        "missing drawing query capability should be rejected.");
+    True(
+        !MvpAgentCapabilityPolicy.SupportsDrawingQuery(null),
+        "null drawing query capabilities should be rejected.");
+    return Task.CompletedTask;
+}
+
+static Task DrawingSnapshotIsDeepManaged()
+{
+    var descriptor = CreateReadyDrawingDescriptor("deep-managed-document");
+    var entity = CreateDrawingEntity(1, "Layer-A");
+    var validity = new DrawingIndexSnapshotValidity();
+    var snapshot = new DrawingIndexAgentSnapshot(
+        7,
+        descriptor,
+        new[] { entity },
+        validity);
+
+    descriptor.DocumentId = "mutated-document";
+    descriptor.IndexId = "mutated-index";
+    entity.Layer = "Mutated-Layer";
+    entity.EntityType = "circle";
+
+    var request = CreateDrawingQueryRequest(
+        "request-deep-managed",
+        "thread-deep-managed",
+        "turn-deep-managed",
+        "query-deep-managed");
+    var response = snapshot.Query(request, CancellationToken.None);
+    True(snapshot.Generation == 7, "snapshot generation changed.");
+    True(
+        string.Equals(response.DocumentId, "deep-managed-document", StringComparison.Ordinal),
+        "snapshot document identity was mutated through its source descriptor.");
+    True(
+        string.Equals(response.Entities[0].Layer, "Layer-A", StringComparison.Ordinal),
+        "snapshot entity was mutated through its source contract.");
+    True(
+        string.Equals(response.Entities[0].EntityType, "line", StringComparison.Ordinal),
+        "snapshot entity type was mutated through its source contract.");
+    return Task.CompletedTask;
+}
+
+static Task DrawingSnapshotTakesFrozenOwnership()
+{
+    var descriptor = CreateReadyDrawingDescriptor("owned-frozen-document");
+    var frozenEntities = new[] { CreateDrawingEntity(2, "Layer-A") };
+    var snapshot = DrawingIndexAgentSnapshot.CreateFromOwnedFrozenEntities(
+        19,
+        descriptor,
+        frozenEntities,
+        new DrawingIndexSnapshotValidity());
+    var entitiesField = typeof(DrawingIndexAgentSnapshot).GetField(
+        "entities",
+        BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new InvalidOperationException("snapshot entity storage field was not found.");
+
+    True(
+        ReferenceEquals(frozenEntities, entitiesField.GetValue(snapshot)),
+        "runtime publication cloned the already frozen entity array.");
+    return Task.CompletedTask;
+}
+
+static Task DrawingSnapshotCancelAndStale()
+{
+    DrawingIndexSnapshotValidity validity;
+    var snapshot = CreateDrawingSnapshot("cancel-stale-document", 8, out validity);
+    var request = CreateDrawingQueryRequest(
+        "request-cancel-stale",
+        "thread-cancel-stale",
+        "turn-cancel-stale",
+        "query-cancel-stale");
+
+    var cancellationObserved = false;
+    try
+    {
+        snapshot.Query(request, new CancellationToken(true));
+    }
+    catch (OperationCanceledException)
+    {
+        cancellationObserved = true;
+    }
+    True(cancellationObserved, "snapshot query ignored cancellation.");
+
+    validity.Invalidate();
+    DrawingIndexQueryException? stale = null;
+    try
+    {
+        snapshot.Query(request, CancellationToken.None);
+    }
+    catch (DrawingIndexQueryException exception)
+    {
+        stale = exception;
+    }
+    True(
+        stale != null
+        && string.Equals(stale.Code, "drawing_index_stale", StringComparison.Ordinal),
+        "invalidated snapshot did not return the stable stale code.");
+    return Task.CompletedTask;
+}
+
+static async Task DrawingIndexOnlyTurnAndQuery()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-index-only",
+        "system-session-index-only");
+    DrawingIndexSnapshotValidity validity;
+    var snapshot = CreateDrawingSnapshot("document-index-only", 9, out validity);
+
+    await client.AskAsync(
+            "summarize the indexed drawing",
+            null,
+            null,
+            snapshot,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var turnRequest = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("index-only turn request was not captured.");
+    True(turnRequest.ContextV2 == null, "index-only turn unexpectedly sent selection context.");
+    True(
+        string.IsNullOrEmpty(turnRequest.ContextV2Sha256),
+        "index-only turn unexpectedly sent a selection context hash.");
+
+    var queryRequest = CreateDrawingQueryRequest(
+        turnRequest.ClientTurnId,
+        turnRequest.ThreadId,
+        "fake-turn-1",
+        "query-index-only");
+    var response = await client.HandleDrawingQueryAsync(
+            queryRequest,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    True(
+        AgentBridgeContractValidator.ValidateDrawingQueryResponse(
+            queryRequest,
+            response).Length == 0,
+        "index-only query response violated the Bridge contract.");
+    True(
+        string.Equals(
+            response.Query.DocumentId,
+            "document-index-only",
+            StringComparison.Ordinal),
+        "index-only query was not bound to the Host-owned document.");
+    Equal(1, response.Query.ReturnedCount, "Index-only returned entity count");
+}
+
+static async Task DrawingQueryBeforeStartResponse()
+{
+    var bridge = new FakeAgentBridgeClient
+    {
+        DelayStartTurnResponse = true,
+    };
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-query-before-start-response",
+        "system-session-query-before-start-response");
+    DrawingIndexSnapshotValidity validity;
+    var snapshot = CreateDrawingSnapshot("document-query-before-start-response", 18, out validity);
+
+    var askTask = client.AskAsync(
+        "query before Provider start response",
+        null,
+        null,
+        snapshot,
+        CancellationToken.None);
+    var turnRequest = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("early query turn request was not captured.");
+    var pendingResponse = bridge.PendingStartTurnResponse
+        ?? throw new InvalidOperationException("early query Provider response was not delayed.");
+    var queryRequest = CreateDrawingQueryRequest(
+        turnRequest.ClientTurnId,
+        turnRequest.ThreadId,
+        pendingResponse.TurnId,
+        "query-before-start-response");
+
+    var response = await client.HandleDrawingQueryAsync(
+            queryRequest,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    True(
+        AgentBridgeContractValidator.ValidateDrawingQueryResponse(
+            queryRequest,
+            response).Length == 0,
+        "early drawing query response violated the Bridge contract.");
+    bridge.CompletePendingStartTurn();
+    await askTask.ConfigureAwait(false);
+}
+
+static async Task DrawingQueryIdentityMismatch()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-query-identity",
+        "system-session-query-identity");
+    DrawingIndexSnapshotValidity validity;
+    var snapshot = CreateDrawingSnapshot("document-query-identity", 10, out validity);
+    await client.AskAsync(
+            "query identity",
+            null,
+            null,
+            snapshot,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var turnRequest = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("query identity turn request was not captured.");
+    var mismatched = CreateDrawingQueryRequest(
+        "different-request-id",
+        turnRequest.ThreadId,
+        "fake-turn-1",
+        "query-identity-mismatch");
+
+    var failure = await InvokeAndExpectBridgeClientFailure(
+            () => client.HandleDrawingQueryAsync(mismatched, CancellationToken.None))
+        .ConfigureAwait(false);
+    True(
+        string.Equals(
+            failure.Code,
+            AgentBridgeErrorCodes.ResultIdentityMismatch,
+            StringComparison.Ordinal),
+        "drawing query identity mismatch returned the wrong stable code.");
+}
+
+static async Task DrawingQueryRejectsStaleIndex()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-query-stale",
+        "system-session-query-stale");
+    DrawingIndexSnapshotValidity validity;
+    var snapshot = CreateDrawingSnapshot("document-query-stale", 11, out validity);
+    await client.AskAsync(
+            "stale index",
+            null,
+            null,
+            snapshot,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var turnRequest = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("stale query turn request was not captured.");
+    validity.Invalidate();
+    var queryRequest = CreateDrawingQueryRequest(
+        turnRequest.ClientTurnId,
+        turnRequest.ThreadId,
+        "fake-turn-1",
+        "query-stale-index");
+
+    var failure = await InvokeAndExpectBridgeClientFailure(
+            () => client.HandleDrawingQueryAsync(queryRequest, CancellationToken.None))
+        .ConfigureAwait(false);
+    True(
+        string.Equals(
+            failure.Code,
+            AgentBridgeErrorCodes.DrawingQueryUnavailable,
+            StringComparison.Ordinal),
+        "stale DrawingIndex returned the wrong stable code.");
+}
+
+static async Task DrawingQueryRejectsTerminalTurn()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-query-terminal",
+        "system-session-query-terminal");
+    DrawingIndexSnapshotValidity validity;
+    var snapshot = CreateDrawingSnapshot("document-query-terminal", 12, out validity);
+    await client.AskAsync(
+            "terminal query",
+            null,
+            null,
+            snapshot,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    var turnRequest = bridge.LastStartTurnV2Request
+        ?? throw new InvalidOperationException("terminal query turn request was not captured.");
+    bridge.RaiseEvent(new AgentBridgeEvent
+    {
+        Kind = AgentBridgeEventKinds.TurnCompleted,
+        ThreadId = turnRequest.ThreadId,
+        TurnId = "fake-turn-1",
+    });
+    var queryRequest = CreateDrawingQueryRequest(
+        turnRequest.ClientTurnId,
+        turnRequest.ThreadId,
+        "fake-turn-1",
+        "query-terminal-turn");
+
+    var failure = await InvokeAndExpectBridgeClientFailure(
+            () => client.HandleDrawingQueryAsync(queryRequest, CancellationToken.None))
+        .ConfigureAwait(false);
+    True(
+        string.Equals(
+            failure.Code,
+            AgentBridgeErrorCodes.ResultIdentityMismatch,
+            StringComparison.Ordinal),
+        "late terminal query returned the wrong stable code.");
+}
+
+static async Task SelectionAndIndexDocumentMustMatch()
+{
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-document-mismatch",
+        "system-session-document-mismatch");
+    DrawingIndexSnapshotValidity validity;
+    var snapshot = CreateDrawingSnapshot("index-document", 13, out validity);
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2
+        {
+            Document = new CadContextDocumentV2 { DocumentId = "selection-document" },
+        },
+        ContextSha256 = new string('e', 64),
+    };
+
+    var rejected = false;
+    try
+    {
+        await client.AskAsync(
+                "mismatched drawing inputs",
+                context,
+                () => true,
+                snapshot,
+                CancellationToken.None)
+            .ConfigureAwait(false);
+    }
+    catch (InvalidOperationException)
+    {
+        rejected = true;
+    }
+    True(rejected, "selection context and index from different drawings were mixed.");
+    Equal(0, bridge.StartTurnV2Count, "Mismatched document turn start count");
+}
+
+static Task DrawingQueryBoundaryHasNoAutodeskReference()
+{
+    var references = typeof(DrawingIndexAgentSnapshot).Assembly.GetReferencedAssemblies();
+    True(
+        !references.Any(reference =>
+            string.Equals(reference.Name, "acmgd", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(reference.Name, "acdbmgd", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(reference.Name, "accoremgd", StringComparison.OrdinalIgnoreCase)
+            || (reference.Name ?? string.Empty).StartsWith(
+                "Autodesk.",
+                StringComparison.OrdinalIgnoreCase)),
+        "drawing query boundary acquired an Autodesk assembly dependency.");
+    return Task.CompletedTask;
+}
+
+static AgentCapabilitiesResponse CreateCapabilities(
+    bool includeV2Method,
+    bool includeV2Schema,
+    bool includeDrawingQuery = false)
+{
+    var methods = new List<string> { AgentBridgeMethods.StartTurn };
+    if (includeV2Method)
+    {
+        methods.Add(AgentBridgeMethods.StartTurnV2);
+    }
+    if (includeDrawingQuery)
+    {
+        methods.Add(AgentBridgeMethods.QueryDrawing);
+    }
     return new AgentCapabilitiesResponse
     {
-        Methods = includeV2Method
-            ? new[] { AgentBridgeMethods.StartTurn, AgentBridgeMethods.StartTurnV2 }
-            : new[] { AgentBridgeMethods.StartTurn },
+        Methods = methods.ToArray(),
         SupportedCadContextSchemas = includeV2Schema
             ? new[]
             {
@@ -261,6 +720,124 @@ static AgentCapabilitiesResponse CreateCapabilities(bool includeV2Method, bool i
                     SchemaVersion = CadContextJsonV1Constants.SchemaVersion,
                 },
             },
+    };
+}
+
+static DrawingIndexAgentSnapshot CreateDrawingSnapshot(
+    string documentId,
+    int generation,
+    out DrawingIndexSnapshotValidity validity)
+{
+    validity = new DrawingIndexSnapshotValidity();
+    return new DrawingIndexAgentSnapshot(
+        generation,
+        CreateReadyDrawingDescriptor(documentId),
+        new[] { CreateDrawingEntity(generation, "Layer-A") },
+        validity);
+}
+
+static Task DrawingIndexPerformanceTelemetry()
+{
+    var metrics = new DrawingIndexPerformanceMetrics();
+    metrics.RecordIdleSlice(
+        true,
+        TimeSpan.FromMilliseconds(8.25),
+        TimeSpan.FromMilliseconds(8.25));
+    metrics.RecordIdleSlice(
+        false,
+        TimeSpan.FromMilliseconds(13.5),
+        TimeSpan.FromMilliseconds(25));
+    metrics.CompleteScan(TimeSpan.FromMilliseconds(24));
+
+    var validity = new DrawingIndexSnapshotValidity();
+    var drawingSnapshot = DrawingIndexAgentSnapshot.CreateFromOwnedFrozenEntities(
+        1,
+        CreateReadyDrawingDescriptor("doc-performance"),
+        new[] { CreateDrawingEntity(3, "Layer-A") },
+        validity,
+        metrics);
+    drawingSnapshot.Query(
+        CreateDrawingQueryRequest(
+            "request-performance",
+            "thread-performance",
+            "turn-performance",
+            "query-performance"),
+        CancellationToken.None);
+
+    var snapshot = metrics.Snapshot();
+    Equal(2, snapshot.IdleSliceCount, "Idle slice count");
+    Equal(1, snapshot.PreparationSliceCount, "Preparation slice count");
+    Equal(1, snapshot.ReadSliceCount, "Read slice count");
+    Equal(1, snapshot.QueryCount, "Query count");
+    True(
+        snapshot.MaximumIdleSliceDuration == TimeSpan.FromMilliseconds(13.5),
+        "Maximum idle slice duration was not retained.");
+    True(
+        snapshot.TotalScanDuration == TimeSpan.FromMilliseconds(25),
+        "A shorter completion sample regressed total scan duration.");
+    True(
+        DrawingIndexPerformanceMetrics.FormatMilliseconds(
+            snapshot.MaximumIdleSliceDuration) == "13.500",
+        "Performance milliseconds are not invariant and stable.");
+    return Task.CompletedTask;
+}
+
+static DrawingIndexDescriptor CreateReadyDrawingDescriptor(string documentId)
+{
+    return new DrawingIndexDescriptor
+    {
+        IndexId = "index-" + documentId,
+        DocumentId = documentId,
+        DrawingFingerprint = new string('a', 64),
+        DocumentRevision = 17,
+        Scope = DrawingIndexScopes.Drawing,
+        Status = DrawingIndexStatuses.Ready,
+        Complete = true,
+        Limited = false,
+        EntityCount = 1,
+        IndexedEntityCount = 1,
+        UnsupportedEntityCount = 0,
+        FailedEntityCount = 0,
+        ProgressPercent = 100,
+        EstimatedManagedBytes = 512,
+        StartedAtUtc = "2026-07-22T00:00:00.000Z",
+        CompletedAtUtc = "2026-07-22T00:00:01.000Z",
+        LimitReason = string.Empty,
+    };
+}
+
+static CadQueryEntity CreateDrawingEntity(int ordinal, string layer)
+{
+    return new CadQueryEntity
+    {
+        ObjectId = CadQueryEntityTokens.Create(ordinal),
+        EntityType = "line",
+        ActualType = "Line",
+        Layer = layer,
+        Space = "model_space",
+        BlockName = string.Empty,
+        TextExcerpt = string.Empty,
+        Unsupported = false,
+        ReadStatus = CadQueryReadStatuses.Parsed,
+    };
+}
+
+static AgentDrawingQueryRequest CreateDrawingQueryRequest(
+    string requestId,
+    string threadId,
+    string turnId,
+    string queryId)
+{
+    return new AgentDrawingQueryRequest
+    {
+        RequestId = requestId,
+        ThreadId = threadId,
+        TurnId = turnId,
+        ToolCallId = "tool-" + queryId,
+        QueryId = queryId,
+        Filter = new CadQueryFilter(),
+        PageSize = 20,
+        Cursor = string.Empty,
     };
 }
 
@@ -595,6 +1172,70 @@ static async Task CompletedStopIsIdempotent()
     Equal(1, agentHostStopCount, "Idempotent AgentHost stop count");
 }
 
+static async Task StopCancelsInFlightStart()
+{
+    var startupEntered = new TaskCompletionSource<bool>();
+    var startupCancellationObserved = new TaskCompletionSource<bool>();
+    var stoppedStatusCount = 0;
+    var errors = new List<string>();
+    var client = new MvpAgentClient(async cancellationToken =>
+    {
+        startupEntered.TrySetResult(true);
+        try
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            startupCancellationObserved.TrySetResult(true);
+            throw;
+        }
+    });
+    client.StatusChanged += status =>
+    {
+        if (status.IndexOf("AgentHost 已停止", StringComparison.Ordinal) >= 0)
+        {
+            stoppedStatusCount++;
+        }
+    };
+    client.ErrorChanged += errors.Add;
+
+    try
+    {
+        var startup = client.StartAsync(CancellationToken.None);
+        await startupEntered.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+
+        await client.StopAsync(CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(2))
+            .ConfigureAwait(false);
+        await startupCancellationObserved.Task
+            .WaitAsync(TimeSpan.FromSeconds(2))
+            .ConfigureAwait(false);
+
+        var startupWasCancelled = false;
+        try
+        {
+            await startup.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            startupWasCancelled = true;
+        }
+
+        True(startupWasCancelled, "STOP did not cancel the in-flight startup task.");
+        True(!client.IsStarted, "A cancelled startup incorrectly transitioned online.");
+        Equal(0, errors.Count, "Expected STOP during startup error count");
+        Equal(1, stoppedStatusCount, "Expected stopped terminal status count");
+
+        await client.StopAsync(CancellationToken.None).ConfigureAwait(false);
+        Equal(1, stoppedStatusCount, "Repeated STOP changed the terminal status count");
+    }
+    finally
+    {
+        client.Dispose();
+    }
+}
+
 static async Task StatusCallbackCannotBlockStop()
 {
     var callbackCount = 0;
@@ -699,7 +1340,497 @@ static Task FailureFormatterSanitizesBootstrap()
         && !display.Contains("C:\\Users", StringComparison.OrdinalIgnoreCase)
         && !display.Contains("secret-token", StringComparison.Ordinal),
         "Bootstrap failure user message leaked local exception details.");
+
+    var unknownFailure = MvpAgentFailureFormatter.FromException(
+        new AgentBootstrapLaunchException(
+            (AgentBootstrapLaunchFailure)999,
+            sensitiveDetail,
+            new InvalidOperationException(sensitiveDetail)),
+        MvpAgentFailureStages.StartingAgentHost);
+    True(
+        string.Equals(
+            MvpAgentErrorCodes.InternalError,
+            unknownFailure.ErrorCode,
+            StringComparison.Ordinal)
+        && !unknownFailure.UserMessage.Contains(sensitiveDetail, StringComparison.Ordinal),
+        "Unknown bootstrap failure did not become a sanitized internal error.");
+
+    var isolationFailure = MvpAgentFailureFormatter.FromException(
+        new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+            sensitiveDetail,
+            new InvalidOperationException(sensitiveDetail)),
+        MvpAgentFailureStages.StartingAgentHost);
+    True(
+        string.Equals(
+            MvpAgentErrorCodes.AgentHostProcessIsolationFailed,
+            isolationFailure.ErrorCode,
+            StringComparison.Ordinal)
+        && !isolationFailure.Retryable
+            && !isolationFailure.UserMessage.Contains(sensitiveDetail, StringComparison.Ordinal),
+        "Process isolation failure did not remain structured and sanitized.");
+
+    var policyBlockedFailure = MvpAgentFailureFormatter.FromException(
+        new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.ProcessStartBlocked,
+            sensitiveDetail,
+            new InvalidOperationException(sensitiveDetail)),
+        MvpAgentFailureStages.StartingAgentHost);
+    True(
+        string.Equals(
+            MvpAgentErrorCodes.AgentHostProcessStartBlocked,
+            policyBlockedFailure.ErrorCode,
+            StringComparison.Ordinal)
+        && !policyBlockedFailure.Retryable
+        && policyBlockedFailure.UserMessage.Contains(
+            "Windows 或企业策略",
+            StringComparison.Ordinal)
+        && !policyBlockedFailure.UserMessage.Contains(
+            sensitiveDetail,
+            StringComparison.Ordinal),
+        "Policy-blocked process start did not remain structured, actionable, and sanitized.");
+
+    var nestedJobFailure = MvpAgentFailureFormatter.FromException(
+        new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.NestedJobAssignmentFailed,
+            sensitiveDetail,
+            new InvalidOperationException(sensitiveDetail)),
+        MvpAgentFailureStages.StartingAgentHost);
+    True(
+        string.Equals(
+            MvpAgentErrorCodes.AgentHostNestedJobAssignmentFailed,
+            nestedJobFailure.ErrorCode,
+            StringComparison.Ordinal)
+        && !nestedJobFailure.Retryable
+        && nestedJobFailure.UserMessage.Contains(
+            "嵌套 Job",
+            StringComparison.Ordinal)
+        && !nestedJobFailure.UserMessage.Contains(
+            sensitiveDetail,
+            StringComparison.Ordinal),
+        "Nested Job assignment failure did not remain structured, actionable, and sanitized.");
     return Task.CompletedTask;
+}
+
+static Task BridgeClientExceptionPublicDiagnosticIsSanitized()
+{
+    var bearerMarker = "bridge-bearer-secret-marker";
+    var queryMarker = "bridge-query-secret-marker";
+    var jsonMarker = "bridge-json-secret-marker";
+    var innerMarker = "bridge-inner-secret-marker";
+    var unsafeMessage = string.Join(
+        " ",
+        "Bridge diagnostic",
+        "Bear" + "er " + bearerMarker,
+        @"C:\Users\bridge-user\private\bridge.log",
+        @"\\bridge-server\private\payload.json",
+        "https://bridge-user:bridge-pass@example.invalid/api?access_"
+            + "token="
+            + queryMarker
+            + "#fragment",
+        "{\"api_" + "key\":\"" + jsonMarker + "\"}",
+        @"CONTOSO\bridge-user");
+    var unsafeInner = new InvalidOperationException(
+        innerMarker + " " + @"C:\Users\bridge-user\inner.log");
+
+    var failure = new AgentBridgeClientException(
+        "diagnostic_test",
+        unsafeMessage,
+        unsafeInner);
+
+    EqualString("diagnostic_test", failure.Code, "Bridge diagnostic error code");
+    True(
+        failure.InnerException == null,
+        "Bridge diagnostic retained the raw inner exception.");
+
+    var publicDiagnostic = failure.Message + " " + failure;
+    foreach (var marker in new[]
+             {
+                 bearerMarker,
+                 queryMarker,
+                 jsonMarker,
+                 innerMarker,
+                 "bridge-user",
+                 "bridge-server",
+                 "example.invalid",
+             })
+    {
+        True(
+            publicDiagnostic.IndexOf(marker, StringComparison.OrdinalIgnoreCase) < 0,
+            "Bridge diagnostic leaked a protected marker.");
+    }
+
+    True(
+        publicDiagnostic.Contains("[redacted-token]", StringComparison.Ordinal)
+        && publicDiagnostic.Contains("[redacted-path]", StringComparison.Ordinal)
+        && publicDiagnostic.Contains("[redacted-uri]", StringComparison.Ordinal)
+        && publicDiagnostic.Contains("[redacted-identity]", StringComparison.Ordinal),
+        "Bridge diagnostic did not preserve structured redaction evidence.");
+    True(
+        failure.Message.Length <= DiagnosticSanitizer.MaximumOutputCharacters,
+        "Bridge diagnostic exceeded the public output bound.");
+
+    return Task.CompletedTask;
+}
+
+static Task FailureFormatterEnforcesPublicBoundary()
+{
+    const string tokenMarker = "host-ui-secret-token";
+    const string identityMarker = "private.user@example.invalid";
+    const string pathMarker = @"C:\Users\Private\host-ui-error.log";
+    var failure = new MvpAgentFailure(
+        MvpAgentErrorCodes.InternalError,
+        MvpAgentFailureStages.RunningTurn,
+        false,
+        "password=" + tokenMarker + " at " + pathMarker,
+        "request-" + identityMarker,
+        "state\r\n" + new string('x', 700));
+
+    var display = failure.FormatForUser(
+        "打开 "
+        + pathMarker
+        + " for "
+        + identityMarker
+        + " password="
+        + tokenMarker);
+
+    foreach (var marker in new[] { tokenMarker, identityMarker, pathMarker })
+    {
+        True(
+            !display.Contains(marker, StringComparison.OrdinalIgnoreCase),
+            "Host UI failure leaked a protected marker: " + marker);
+    }
+
+    True(
+        display.Contains("[redacted-token]", StringComparison.Ordinal)
+        && display.Contains("[redacted-path]", StringComparison.Ordinal)
+        && display.Contains("[redacted-identity]", StringComparison.Ordinal),
+        "Host UI failure omitted structured redaction placeholders.");
+    True(
+        display.Length <= DiagnosticSanitizer.MaximumOutputCharacters,
+        "Host UI failure exceeded the public diagnostic limit.");
+    True(
+        !display.Contains('\r') && !display.Contains('\n'),
+        "Host UI failure retained line-breaking control characters.");
+    return Task.CompletedTask;
+}
+
+static Task HostCommandFailuresAreStructuredAndSanitized()
+{
+    const string tokenMarker = "host-command-token-marker";
+    const string identityMarker = "host.command@example.invalid";
+    const string pathMarker = @"C:\Users\Private\host-command.log";
+    var unsafeException = new AggregateException(
+        "Bearer " + tokenMarker + " " + pathMarker,
+        new InvalidOperationException(
+            "https://"
+            + identityMarker
+            + "/diagnostic?api_key="
+            + tokenMarker));
+
+    var failure = HostCommandDiagnosticFormatter.FromUnexpectedException(
+        unsafeException,
+        HostCommandFailureStages.DrawingIndexStart);
+    var display = failure.FormatForUser(
+        "DrawingIndex 启动",
+        "图纸未修改、未保存。");
+
+    True(
+        display.Contains("error_code=internal_error", StringComparison.Ordinal)
+        && display.Contains("error_stage=drawing_index_start", StringComparison.Ordinal)
+        && display.Contains("diagnostic_classification=Exception", StringComparison.Ordinal)
+        && display.Contains("diagnostic_redactions=", StringComparison.Ordinal),
+        "Host command failure omitted stable structured diagnostics.");
+    foreach (var marker in new[]
+             {
+                 tokenMarker,
+                 identityMarker,
+                 pathMarker,
+                 nameof(AggregateException),
+                 nameof(InvalidOperationException),
+             })
+    {
+        True(
+            !display.Contains(marker, StringComparison.OrdinalIgnoreCase),
+            "Host command failure leaked a protected marker: " + marker);
+    }
+
+    True(
+        display.Length <= DiagnosticSanitizer.MaximumOutputCharacters,
+        "Host command failure exceeded the public diagnostic limit.");
+    True(
+        failure.GetType()
+            .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .All(field => !typeof(Exception).IsAssignableFrom(field.FieldType)),
+        "Host command diagnostic retained the raw exception graph.");
+    return Task.CompletedTask;
+}
+
+static Task ResourceLimitFailuresAreStructured()
+{
+    var cases = new[]
+    {
+        new
+        {
+            Failure = AgentHostResourceLimitFailure.ProcessCountExceeded,
+            ErrorCode = MvpAgentErrorCodes.AgentHostProcessLimitExceeded,
+        },
+        new
+        {
+            Failure = AgentHostResourceLimitFailure.JobMemoryExceeded,
+            ErrorCode = MvpAgentErrorCodes.AgentHostMemoryLimitExceeded,
+        },
+        new
+        {
+            Failure = AgentHostResourceLimitFailure.JobUserTimeExceeded,
+            ErrorCode = MvpAgentErrorCodes.AgentHostUserTimeLimitExceeded,
+        },
+        new
+        {
+            Failure = AgentHostResourceLimitFailure.SessionRuntimeExceeded,
+            ErrorCode = MvpAgentErrorCodes.AgentHostSessionRuntimeLimitExceeded,
+        },
+    };
+
+    const string sensitiveMarker = @"C:\Users\Private CODEX_RESOURCE_SECRET";
+    foreach (var item in cases)
+    {
+        var failure = MvpAgentFailureFormatter.FromResourceLimitFailure(
+            item.Failure,
+            MvpAgentFailureStages.AgentHostRuntime);
+        EqualString(item.ErrorCode, failure.ErrorCode, "Resource-limit error code");
+        EqualString(
+            MvpAgentFailureStages.AgentHostRuntime,
+            failure.ErrorStage,
+            "Resource-limit error stage");
+        True(!failure.Retryable, "A resource-limit failure was incorrectly retryable.");
+        var display = failure.FormatForUser("AgentHost resource");
+        True(
+            !display.Contains(sensitiveMarker, StringComparison.Ordinal),
+            "A resource-limit failure exposed an untrusted operation label.");
+        True(
+            display.Contains(item.ErrorCode, StringComparison.Ordinal)
+            && display.Contains("error_stage=agenthost_runtime", StringComparison.Ordinal)
+            && display.Contains("retryable=false", StringComparison.Ordinal),
+            "A resource-limit failure lost its structured fields.");
+    }
+
+    return Task.CompletedTask;
+}
+
+static async Task ResourceLimitWinsBridgeFaultRace()
+{
+    var serviceSession = new AgentHostServiceSession(
+        _ => true,
+        () => null,
+        () => { },
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateResourceServiceResult(),
+        TimeSpan.FromMilliseconds(250));
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-resource-race",
+        "system-session-resource-race",
+        TimeSpan.FromSeconds(5),
+        serviceSession);
+    var errors = new List<string>();
+    var resourceTerminal = new TaskCompletionSource<bool>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    client.ErrorChanged += value =>
+    {
+        lock (errors)
+        {
+            errors.Add(value);
+        }
+
+        if (value.Contains(
+                MvpAgentErrorCodes.AgentHostSessionRuntimeLimitExceeded,
+                StringComparison.Ordinal))
+        {
+            resourceTerminal.TrySetResult(true);
+        }
+    };
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2(),
+        ContextSha256 = new string('9', 64),
+    };
+
+    await client.AskAsync(
+            "resource race turn",
+            context,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    bridge.RaiseFault(new AgentBridgeClientException(
+        AgentBridgeErrorCodes.ConnectionLost,
+        "CODEX_RESOURCE_RACE_SECRET"));
+
+    var completed = await Task.WhenAny(
+            resourceTerminal.Task,
+            Task.Delay(TimeSpan.FromSeconds(5)))
+        .ConfigureAwait(false);
+    True(
+        ReferenceEquals(completed, resourceTerminal.Task),
+        "The AgentHost resource terminal state did not win the Bridge fault race.");
+    True(!client.IsStarted, "The resource terminal state did not transition the client offline.");
+
+    var rejected = await ExpectBridgeClientFailure(
+            client.AskAsync(
+                "must fail closed after resource exhaustion",
+                context,
+                () => true,
+                CancellationToken.None))
+        .ConfigureAwait(false);
+    EqualString(
+        MvpAgentErrorCodes.AgentHostSessionRuntimeLimitExceeded,
+        rejected.Code,
+        "Rejected ASK resource error code");
+    Equal(1, bridge.StartTurnV2Count, "Turn start count after resource exhaustion");
+
+    List<string> snapshot;
+    lock (errors)
+    {
+        snapshot = new List<string>(errors);
+    }
+
+    Equal(
+        1,
+        snapshot.Count(value => value.Contains(
+            MvpAgentErrorCodes.AgentHostSessionRuntimeLimitExceeded,
+            StringComparison.Ordinal)),
+        "Resource terminal notification count");
+    True(
+        snapshot.TrueForAll(value =>
+            !value.Contains("CODEX_RESOURCE_RACE_SECRET", StringComparison.Ordinal)
+            && !value.Contains(AgentBridgeErrorCodes.ConnectionLost, StringComparison.Ordinal)),
+        "The resource terminal state was overwritten by or leaked the Bridge failure.");
+    True(
+        snapshot.Exists(value =>
+            value.Contains("error_stage=agenthost_runtime", StringComparison.Ordinal)
+            && value.Contains("state=failed", StringComparison.Ordinal)
+            && value.Contains("request_id=", StringComparison.Ordinal)),
+        "The resource terminal state lost the active Host request identity.");
+}
+
+static async Task UnexpectedAgentHostExitWinsBridgeFaultRace()
+{
+    var processExitCompletion =
+        new TaskCompletionSource<AgentHostProcessExitFailure>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+    var serviceSession = new AgentHostServiceSession(
+        _ => true,
+        _ => true,
+        () => null,
+        () => { },
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateResourceServiceResult(),
+        AgentHostBootstrapOptions.DefaultGracefulStopTimeout,
+        workspaceLease: null,
+        processExitFailureCompletion: processExitCompletion);
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-agenthost-exit-race",
+        "system-session-agenthost-exit-race",
+        TimeSpan.FromSeconds(5),
+        serviceSession);
+    var errors = new List<string>();
+    var exitTerminal = new TaskCompletionSource<bool>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    client.ErrorChanged += value =>
+    {
+        lock (errors)
+        {
+            errors.Add(value);
+        }
+
+        if (value.Contains(
+                MvpAgentErrorCodes.AgentHostUnexpectedExit,
+                StringComparison.Ordinal))
+        {
+            exitTerminal.TrySetResult(true);
+        }
+    };
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2(),
+        ContextSha256 = new string('8', 64),
+    };
+
+    await client.AskAsync(
+            "unexpected AgentHost exit race",
+            context,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    bridge.RaiseFault(new AgentBridgeClientException(
+        AgentBridgeErrorCodes.ConnectionLost,
+        "CODEX_AGENTHOST_EXIT_RACE_SECRET"));
+    await Task.Delay(TimeSpan.FromMilliseconds(10)).ConfigureAwait(false);
+    processExitCompletion.TrySetResult(AgentHostProcessExitFailure.UnexpectedExit);
+
+    var completed = await Task.WhenAny(
+            exitTerminal.Task,
+            Task.Delay(TimeSpan.FromSeconds(5)))
+        .ConfigureAwait(false);
+    True(
+        ReferenceEquals(completed, exitTerminal.Task),
+        "The AgentHost exit terminal did not win the Bridge fault race.");
+    True(!client.IsStarted, "The AgentHost exit did not transition the client offline.");
+
+    var rejected = await ExpectBridgeClientFailure(
+            client.AskAsync(
+                "must fail closed after AgentHost exit",
+                context,
+                () => true,
+                CancellationToken.None))
+        .ConfigureAwait(false);
+    EqualString(
+        MvpAgentErrorCodes.AgentHostUnexpectedExit,
+        rejected.Code,
+        "Rejected ASK AgentHost-exit error code");
+    Equal(1, bridge.StartTurnV2Count, "Turn start count after AgentHost exit");
+
+    List<string> snapshot;
+    lock (errors)
+    {
+        snapshot = new List<string>(errors);
+    }
+
+    Equal(
+        1,
+        snapshot.Count(value => value.Contains(
+            MvpAgentErrorCodes.AgentHostUnexpectedExit,
+            StringComparison.Ordinal)),
+        "The unexpected AgentHost exit published more than one authoritative terminal.");
+    True(
+        snapshot.All(value => !value.Contains(
+            "CODEX_AGENTHOST_EXIT_RACE_SECRET",
+            StringComparison.Ordinal)),
+        "The AgentHost exit terminal leaked the Bridge diagnostic.");
+    True(
+        snapshot.Exists(value =>
+            value.Contains("error_stage=agenthost_runtime", StringComparison.Ordinal)
+            && value.Contains("state=failed", StringComparison.Ordinal)
+            && value.Contains("request_id=", StringComparison.Ordinal)),
+        "The AgentHost exit terminal lost the active Host request identity.");
+}
+
+static AgentBootstrapDoctorResult CreateResourceServiceResult()
+{
+    return new AgentBootstrapDoctorResult(
+        4321,
+        8765,
+        "0123456789abcdef0123456789abcdef",
+        "fedcba9876543210fedcba9876543210",
+        "codex-autocad-resource-test",
+        new string('B', 64),
+        0,
+        false);
 }
 
 static async Task TurnFailureIsStructuredAndSanitized()
@@ -1727,6 +2858,21 @@ static async Task<AgentBridgeClientException> ExpectBridgeClientFailure(Task tas
     throw new InvalidOperationException("Expected Agent Bridge failure was not observed.");
 }
 
+static async Task<AgentBridgeClientException> InvokeAndExpectBridgeClientFailure(
+    Func<Task> action)
+{
+    try
+    {
+        await action().ConfigureAwait(false);
+    }
+    catch (AgentBridgeClientException exception)
+    {
+        return exception;
+    }
+
+    throw new InvalidOperationException("Expected Agent Bridge failure was not observed.");
+}
+
 static async Task<MvpAgentTurnException> ExpectTurnFailure(Task task)
 {
     try
@@ -1752,6 +2898,15 @@ static void True(bool condition, string message)
 static void Equal(int expected, int actual, string label)
 {
     if (expected != actual)
+    {
+        throw new InvalidOperationException(
+            label + " expected " + expected + " but was " + actual + ".");
+    }
+}
+
+static void EqualString(string expected, string actual, string label)
+{
+    if (!string.Equals(expected, actual, StringComparison.Ordinal))
     {
         throw new InvalidOperationException(
             label + " expected " + expected + " but was " + actual + ".");

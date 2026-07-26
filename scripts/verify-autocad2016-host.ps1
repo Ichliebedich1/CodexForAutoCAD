@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$AutoCad2016Dir,
@@ -13,6 +13,9 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'build-safety.ps1')
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $projectPath = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\Codex.AutoCAD.Host.2016.csproj'
 $solutionPath = Join-Path $repoRoot 'Codex.AutoCAD.2016.sln'
 $mainSolutionPath = Join-Path $repoRoot 'Codex.AutoCAD.sln'
@@ -20,7 +23,7 @@ $nuGetConfigPath = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\NuGet.Config
 $packageLockPath = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\packages.lock.json'
 $vendoredPackagePath = Join-Path $repoRoot 'third_party\nuget\Microsoft.NETFramework.ReferenceAssemblies.net45.1.0.3.nupkg'
 $AutoCad2016Dir = [IO.Path]::GetFullPath($AutoCad2016Dir)
-$verificationRoot = Join-Path $repoRoot ("artifacts\autocad2016-host-verify-{0}" -f [Guid]::NewGuid().ToString('N'))
+$verificationRoot = Join-Path $artifactsRoot ("autocad2016-host-verify-{0}" -f [Guid]::NewGuid().ToString('N'))
 $outputDirectory = Join-Path $verificationRoot 'bin'
 $baseIntermediateDirectory = Join-Path $verificationRoot 'obj-base'
 $intermediateDirectory = Join-Path $verificationRoot 'obj-compile'
@@ -81,6 +84,7 @@ function Invoke-DotNetIsolated {
 
     $isolatedEnvironment = [ordered]@{
         DOTNET_CLI_HOME = $script:dotnetCliHome
+        # 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
         DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
         NUGET_PACKAGES = $script:dotnetNuGetPackages
         NUGET_HTTP_CACHE_PATH = $script:dotnetHttpCache
@@ -1170,7 +1174,7 @@ if ($copiedAutodeskFiles.Count -ne 0) {
     throw "Autodesk managed assemblies were copied to the plugin output:`n$($copiedAutodeskFiles -join [Environment]::NewLine)"
 }
 
-$rebuildRoot = Join-Path $repoRoot ("artifacts\autocad2016-host-rebuild-{0}" -f [Guid]::NewGuid().ToString('N'))
+$rebuildRoot = Join-Path $artifactsRoot ("autocad2016-host-rebuild-{0}" -f [Guid]::NewGuid().ToString('N'))
 $rebuildOutputDirectory = Join-Path $rebuildRoot 'bin'
 $rebuildBaseIntermediateDirectory = Join-Path $rebuildRoot 'obj-base'
 $rebuildIntermediateDirectory = Join-Path $rebuildRoot 'obj-compile'
@@ -1305,3 +1309,4 @@ $methodDefinitionEvidence = @(
     SafeSystemVariableAllowlistVerified = $true
     NetLoadVerified = $false
 } | ConvertTo-Json -Depth 8
+Complete-CodexBuildSafety -State $buildSafety -Stage 'host-verifier' | Out-Null

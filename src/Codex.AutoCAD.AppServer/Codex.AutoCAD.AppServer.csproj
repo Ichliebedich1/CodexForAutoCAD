@@ -7,4 +7,8 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj" />
+  </ItemGroup>
+
 </Project>

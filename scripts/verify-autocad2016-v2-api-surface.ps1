@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$AutoCad2016Dir,
@@ -17,13 +17,16 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'build-safety.ps1')
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $projectPath = Join-Path $repoRoot 'tests\Codex.AutoCAD.Host.2016.V2ApiProbe\Codex.AutoCAD.Host.2016.V2ApiProbe.csproj'
 $nuGetConfigPath = Join-Path $repoRoot 'tests\Codex.AutoCAD.Host.2016.V2ApiProbe\NuGet.Config'
 $packageLockPath = Join-Path $repoRoot 'tests\Codex.AutoCAD.Host.2016.V2ApiProbe\packages.lock.json'
 $vendoredPackagePath = Join-Path $repoRoot 'third_party\nuget\Microsoft.NETFramework.ReferenceAssemblies.net45.1.0.3.nupkg'
 $AutoCad2016Dir = [IO.Path]::GetFullPath($AutoCad2016Dir)
 $effectiveArtifactRoot = if ([string]::IsNullOrWhiteSpace($ArtifactRoot)) {
-    Join-Path $repoRoot ("artifacts\v2api-probe-verify-{0}" -f [Guid]::NewGuid().ToString('N'))
+    Join-Path $artifactsRoot ("v2api-probe-verify-{0}" -f [Guid]::NewGuid().ToString('N'))
 } else {
     [IO.Path]::GetFullPath($ArtifactRoot)
 }
@@ -89,6 +92,7 @@ function Invoke-DotNetIsolated {
 
     $isolatedEnvironment = [ordered]@{
         DOTNET_CLI_HOME = $script:dotnetCliHome
+        # 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
         DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
         DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
         DOTNET_CLI_TELEMETRY_OPTOUT = '1'
@@ -460,3 +464,4 @@ $evidence = [ordered]@{
 $evidenceJson = $evidence | ConvertTo-Json -Depth 4
 [IO.File]::WriteAllText($resolvedEvidencePath, $evidenceJson, $strictUtf8)
 Write-Host "Evidence written to: $resolvedEvidencePath"
+Complete-CodexBuildSafety -State $buildSafety -Stage 'v2-api-surface' | Out-Null

@@ -159,6 +159,12 @@ namespace Codex.AutoCAD.Host2016
                 && candidate.Published;
         }
 
+        internal static CadContextDocumentMetadata CaptureDocumentMetadata(Document document)
+        {
+            Initialize();
+            return Documents.Capture(document);
+        }
+
         internal static void Clear(string reason)
         {
             Initialize();
@@ -175,6 +181,9 @@ namespace Codex.AutoCAD.Host2016
         internal static PaletteContextView GetPaletteView()
         {
             var current = state;
+            var readIssues = current.Context == null
+                ? CadReadIssueSnapshot.Empty()
+                : CadReadTypeStatistics.FromSelection(current.Context.Selection);
             return new PaletteContextView(
                 current.Status,
                 current.Published,
@@ -184,6 +193,9 @@ namespace Codex.AutoCAD.Host2016
                 current.Context == null ? 0 : current.Context.Selection.ParsedEntityCount,
                 current.Context == null ? 0 : current.Context.Selection.UnsupportedEntityCount,
                 current.Context != null && current.Context.Selection.Complete,
+                readIssues.TotalCount == 0
+                    ? string.Empty
+                    : CadReadTypeStatistics.FormatSummary(readIssues, 8),
                 current.ContextSha256,
                 current.CanonicalBytes,
                 current.ReadableSummary,
@@ -206,6 +218,9 @@ namespace Codex.AutoCAD.Host2016
             }
 
             var builder = new StringBuilder();
+            var readIssues = current.Context == null
+                ? CadReadIssueSnapshot.Empty()
+                : CadReadTypeStatistics.FromSelection(current.Context.Selection);
             builder.AppendLine("--- Codex AutoCAD 2016 Unified Read-Only Context ---");
             builder.Append("Module version: ").AppendLine(
                 typeof(UnifiedReadOnlyContextRuntime).Assembly.GetName().Version.ToString());
@@ -215,6 +230,10 @@ namespace Codex.AutoCAD.Host2016
             builder.Append("Generation: ").AppendLine(current.Generation.ToString(CultureInfo.InvariantCulture));
             builder.Append("Selected count: ").AppendLine(current.SelectedCount.ToString(CultureInfo.InvariantCulture));
             builder.Append("Entity types: ").AppendLine(FormatTypeCounts(typeCounts));
+            builder.Append("Placeholder reasons: ").AppendLine(
+                CadReadTypeStatistics.FormatReasonCounts(readIssues));
+            builder.Append("Placeholder actual types: ").AppendLine(
+                CadReadTypeStatistics.FormatActualTypeCounts(readIssues, 64));
             builder.Append("Selection hash: ").AppendLine(
                 current.Snapshot == null ? "unavailable" : current.Snapshot.Selection.SnapshotHash);
             builder.Append("Binary canonical bytes: ").AppendLine(

@@ -8,12 +8,15 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+. (Join-Path $PSScriptRoot 'build-safety.ps1')
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $autoCad2016Dir = 'D:\AutoCAD 2016'
 $dotnet = (Get-Command dotnet -ErrorAction Stop).Source
 $net45ReferencePath = Join-Path $env:USERPROFILE '.nuget\packages\microsoft.netframework.referenceassemblies.net45\1.0.3\build\.NETFramework\v4.5'
 $runId = [Guid]::NewGuid().ToString('N')
-$stageRoot = Join-Path $repoRoot ("artifacts\autocad2016-agent-stop-candidate-" + $runId)
-$candidateRoot = Join-Path $repoRoot 'artifacts\autocad2016-mvp-agent-stop-v032-pkg3-1cc9d294-8e6b26fd'
+$stageRoot = Join-Path $artifactsRoot ("autocad2016-agent-stop-candidate-" + $runId)
+$candidateRoot = Join-Path $artifactsRoot 'autocad2016-mvp-agent-stop-v032-pkg3-1cc9d294-8e6b26fd'
 $evidencePath = Join-Path $repoRoot 'handoff\autocad2016\evidence\agent-stop-build-verification-20260722.json'
 
 function Get-Sha256([string] $Path) {
@@ -173,7 +176,7 @@ $manifest = [ordered]@{
 [IO.File]::WriteAllText((Join-Path $candidateRoot 'manifest.json'), ($manifest | ConvertTo-Json -Depth 20) + "`n", (New-Object Text.UTF8Encoding($false)))
 
 $recordedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
-$bridgeStageEvidence = Get-ChildItem -LiteralPath (Join-Path $repoRoot 'artifacts') -Directory -Filter 'autocad2016-bridge-client-stage-*' |
+$bridgeStageEvidence = Get-ChildItem -LiteralPath $artifactsRoot -Directory -Filter 'autocad2016-bridge-client-stage-*' |
     Sort-Object LastWriteTimeUtc -Descending | ForEach-Object { Join-Path $_.FullName 'verification.json' } |
     Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 $bootstrapStageEvidence = Join-Path $repoRoot 'handoff\autocad2016\evidence\agent-bootstrap-verification-20260719.json'
@@ -213,3 +216,4 @@ Write-Host "CANDIDATE_ROOT=$candidateRoot"
 Write-Host "CANDIDATE_ID=$($manifest.candidateId)"
 Write-Host "HOST_SHA256=$($hostBuilds[0].Sha256)"
 Write-Host "EVIDENCE=$evidencePath"
+Complete-CodexBuildSafety -State $buildSafety -Stage 'agent-stop-candidate' | Out-Null

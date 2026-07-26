@@ -116,6 +116,35 @@ internal static class BridgeClientJsonCodec
         new JsonFieldSpec("decision", JsonFieldKind.String),
     };
 
+    private static readonly JsonFieldSpec[] DrawingQueryRequestShape =
+    {
+        new JsonFieldSpec("contractVersion", JsonFieldKind.Integer),
+        new JsonFieldSpec("requestId", JsonFieldKind.String),
+        new JsonFieldSpec("threadId", JsonFieldKind.String),
+        new JsonFieldSpec("turnId", JsonFieldKind.String),
+        new JsonFieldSpec("toolCallId", JsonFieldKind.String),
+        new JsonFieldSpec("queryId", JsonFieldKind.String),
+        new JsonFieldSpec("filter", JsonFieldKind.Object),
+        new JsonFieldSpec("pageSize", JsonFieldKind.Integer),
+        new JsonFieldSpec("cursor", JsonFieldKind.String),
+    };
+
+    private static readonly JsonFieldSpec[] DrawingQueryResponseShape =
+    {
+        new JsonFieldSpec("contractVersion", JsonFieldKind.Integer),
+        new JsonFieldSpec("requestId", JsonFieldKind.String),
+        new JsonFieldSpec("threadId", JsonFieldKind.String),
+        new JsonFieldSpec("turnId", JsonFieldKind.String),
+        new JsonFieldSpec("toolCallId", JsonFieldKind.String),
+        new JsonFieldSpec("queryId", JsonFieldKind.String),
+        new JsonFieldSpec("query", JsonFieldKind.Object),
+    };
+
+    private static readonly JsonFieldSpec[] CancelPayloadShape =
+    {
+        new JsonFieldSpec("reason", JsonFieldKind.String),
+    };
+
     private static readonly JsonFieldSpec[] AgentEventShape =
     {
         new JsonFieldSpec("contractVersion", JsonFieldKind.Integer),
@@ -214,6 +243,29 @@ internal static class BridgeClientJsonCodec
             RequireString(wire.BodyJson, "bodyJson"),
             RequireString(wire.ErrorCode, "errorCode"),
             RequireString(wire.ErrorMessage, "errorMessage"));
+    }
+
+    public static string SerializeResponsePayload(
+        string bodyJson,
+        string errorCode,
+        string errorMessage)
+    {
+        var utf8 = Serialize(new ResponsePayloadWire
+        {
+            BodyJson = bodyJson ?? throw new ArgumentNullException(nameof(bodyJson)),
+            ErrorCode = errorCode ?? throw new ArgumentNullException(nameof(errorCode)),
+            ErrorMessage = errorMessage ?? throw new ArgumentNullException(nameof(errorMessage)),
+        });
+        StrictJsonShapeValidator.ValidateObject(utf8, ResponsePayloadShape);
+        return StrictUtf8.GetString(utf8);
+    }
+
+    public static string DeserializeCancelReason(string json)
+    {
+        var utf8 = GetStrictUtf8(json, "bridge cancel payload");
+        StrictJsonShapeValidator.ValidateObject(utf8, CancelPayloadShape);
+        var wire = Deserialize<CancelPayloadWire>(utf8);
+        return RequireString(wire.Reason, "reason");
     }
 
     public static string SerializeCapabilitiesRequest(AgentCapabilitiesRequest request)
@@ -512,6 +564,202 @@ internal static class BridgeClientJsonCodec
         StrictJsonShapeValidator.ValidateObject(utf8, ApprovalResolveRequestShape);
         return StrictUtf8.GetString(utf8);
     }
+
+    public static AgentDrawingQueryRequest DeserializeDrawingQueryRequest(string json)
+    {
+        var utf8 = GetStrictUtf8(json, "drawing query request");
+        StrictJsonShapeValidator.ValidateObject(utf8, DrawingQueryRequestShape);
+        var wire = Deserialize<DrawingQueryRequestWire>(utf8);
+        var request = new AgentDrawingQueryRequest
+        {
+            ContractVersion = wire.ContractVersion,
+            RequestId = RequireString(wire.RequestId, "requestId"),
+            ThreadId = RequireString(wire.ThreadId, "threadId"),
+            TurnId = RequireString(wire.TurnId, "turnId"),
+            ToolCallId = RequireString(wire.ToolCallId, "toolCallId"),
+            QueryId = RequireString(wire.QueryId, "queryId"),
+            Filter = FromWire(wire.Filter),
+            PageSize = wire.PageSize,
+            Cursor = RequireString(wire.Cursor, "cursor"),
+        };
+        if (AgentBridgeContractValidator.Validate(request).Length != 0)
+        {
+            throw new AgentBridgeClientException(
+                AgentBridgeErrorCodes.RequestInvalid,
+                "反向整图查询请求不符合冻结契约。");
+        }
+
+        return request;
+    }
+
+    public static string SerializeDrawingQueryResponse(
+        AgentDrawingQueryRequest request,
+        AgentDrawingQueryResponse response)
+    {
+        if (request is null)
+        {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        if (response is null)
+        {
+            throw new ArgumentNullException(nameof(response));
+        }
+
+        if (AgentBridgeContractValidator.ValidateDrawingQueryResponse(request, response).Length != 0)
+        {
+            throw new AgentBridgeClientException(
+                AgentBridgeErrorCodes.ResultIdentityMismatch,
+                "反向整图查询响应未绑定请求身份或CadQuery契约无效。");
+        }
+
+        var utf8 = Serialize(ToWire(response));
+        StrictJsonShapeValidator.ValidateObject(utf8, DrawingQueryResponseShape);
+        return StrictUtf8.GetString(utf8);
+    }
+
+    private static CadQueryFilter FromWire(DrawingQueryFilterWire? wire)
+    {
+        if (wire is null)
+        {
+            throw new AgentBridgeClientException(
+                AgentBridgeErrorCodes.RequestInvalid,
+                "反向整图查询缺少filter。");
+        }
+
+        return new CadQueryFilter
+        {
+            EntityTypes = RequireArray(wire.EntityTypes, "filter.entityTypes"),
+            Layers = RequireArray(wire.Layers, "filter.layers"),
+            Spaces = RequireArray(wire.Spaces, "filter.spaces"),
+            BlockNames = RequireArray(wire.BlockNames, "filter.blockNames"),
+            ObjectIds = RequireArray(wire.ObjectIds, "filter.objectIds"),
+            TextContains = RequireString(wire.TextContains, "filter.textContains"),
+            Bounds = wire.Bounds is null
+                ? null
+                : new CadQueryBounds
+                {
+                    Minimum = FromWire(wire.Bounds.Minimum, "filter.bounds.minimum"),
+                    Maximum = FromWire(wire.Bounds.Maximum, "filter.bounds.maximum"),
+                },
+            IncludeUnsupported = wire.IncludeUnsupported,
+        };
+    }
+
+    private static CadPoint3 FromWire(DrawingQueryPointWire? wire, string field)
+    {
+        if (wire is null)
+        {
+            throw new AgentBridgeClientException(
+                AgentBridgeErrorCodes.RequestInvalid,
+                "反向整图查询缺少JSON字段：" + field + "。");
+        }
+
+        return new CadPoint3(wire.X, wire.Y, wire.Z);
+    }
+
+    private static DrawingQueryResponseWire ToWire(AgentDrawingQueryResponse response)
+    {
+        var query = response.Query;
+        return new DrawingQueryResponseWire
+        {
+            ContractVersion = response.ContractVersion,
+            RequestId = response.RequestId,
+            ThreadId = response.ThreadId,
+            TurnId = response.TurnId,
+            ToolCallId = response.ToolCallId,
+            QueryId = response.QueryId,
+            Query = new CadQueryResponseWire
+            {
+                Schema = query.Schema,
+                SchemaVersion = query.SchemaVersion,
+                IndexId = query.IndexId,
+                DocumentId = query.DocumentId,
+                DocumentRevision = query.DocumentRevision,
+                QueryId = query.QueryId,
+                Status = query.Status,
+                Complete = query.Complete,
+                TotalMatches = query.TotalMatches,
+                ReturnedCount = query.ReturnedCount,
+                Entities = (query.Entities ?? new CadQueryEntity[0])
+                    .Select(ToWire)
+                    .ToArray(),
+                NextCursor = query.NextCursor,
+                Message = query.Message,
+            },
+        };
+    }
+
+    private static CadQueryEntityWire ToWire(CadQueryEntity entity)
+    {
+        return new CadQueryEntityWire
+        {
+            ObjectId = entity.ObjectId,
+            EntityType = entity.EntityType,
+            ActualType = entity.ActualType,
+            Layer = entity.Layer,
+            Space = entity.Space,
+            BlockName = entity.BlockName,
+            BlockDetails = ToWire(entity.BlockDetails),
+            TextExcerpt = entity.TextExcerpt,
+            Bounds = entity.Bounds is null
+                ? null
+                : new CadQueryExtentsWire
+                {
+                    Minimum = ToWire(entity.Bounds.Minimum),
+                    Maximum = ToWire(entity.Bounds.Maximum),
+                },
+            Unsupported = entity.Unsupported,
+            ReadStatus = entity.ReadStatus,
+        };
+    }
+
+    private static CadQueryBlockDetailsWire? ToWire(CadQueryBlockDetails? details)
+    {
+        if (details is null)
+        {
+            return null;
+        }
+
+        return new CadQueryBlockDetailsWire
+        {
+            DetailStatus = details.DetailStatus,
+            IsDynamic = details.IsDynamic,
+            IsExternalReference = details.IsExternalReference,
+            IsOverlayReference = details.IsOverlayReference,
+            IsAnonymousDefinition = details.IsAnonymousDefinition,
+            IsLayoutDefinition = details.IsLayoutDefinition,
+            HasAttributeDefinitions = details.HasAttributeDefinitions,
+            LayoutName = details.LayoutName,
+            LayoutKind = details.LayoutKind,
+            AttributeCount = details.AttributeCount,
+            Attributes = (details.Attributes ?? new CadQueryBlockAttribute[0])
+                .Select(attribute => new CadQueryBlockAttributeWire
+                {
+                    Tag = attribute == null ? string.Empty : attribute.Tag,
+                    Value = attribute == null ? string.Empty : attribute.Value,
+                    IsInvisible = attribute != null && attribute.IsInvisible,
+                    IsMText = attribute != null && attribute.IsMText,
+                })
+                .ToArray(),
+            DynamicPropertyCount = details.DynamicPropertyCount,
+            DynamicProperties = (details.DynamicProperties ?? new CadQueryDynamicBlockProperty[0])
+                .Select(property => new CadQueryDynamicBlockPropertyWire
+                {
+                    Name = property == null ? string.Empty : property.Name,
+                    ValueKind = property == null ? string.Empty : property.ValueKind,
+                    Value = property == null ? string.Empty : property.Value,
+                    IsReadOnly = property != null && property.IsReadOnly,
+                    IsVisible = property != null && property.IsVisible,
+                })
+                .ToArray(),
+            NestedBlockReferenceCount = details.NestedBlockReferenceCount,
+            MaximumNestedBlockDepth = details.MaximumNestedBlockDepth,
+        };
+    }
+
+    private static DrawingQueryPointWire ToWire(CadPoint3 point)
+        => new DrawingQueryPointWire { X = point.X, Y = point.Y, Z = point.Z };
 
     public static void ValidateNullResponse(string json)
     {
@@ -843,6 +1091,13 @@ internal static class BridgeClientJsonCodec
     }
 
     [DataContract]
+    private sealed class CancelPayloadWire
+    {
+        [DataMember(Name = "reason", Order = 1, IsRequired = true)]
+        public string Reason { get; set; } = string.Empty;
+    }
+
+    [DataContract]
     private sealed class CapabilitiesRequestWire
     {
         [DataMember(Name = "contractVersion", Order = 1, IsRequired = true)]
@@ -987,6 +1242,288 @@ internal static class BridgeClientJsonCodec
     }
 
     [DataContract]
+    private sealed class DrawingQueryRequestWire
+    {
+        [DataMember(Name = "contractVersion", Order = 1, IsRequired = true)]
+        public int ContractVersion { get; set; }
+
+        [DataMember(Name = "requestId", Order = 2, IsRequired = true)]
+        public string RequestId { get; set; } = string.Empty;
+
+        [DataMember(Name = "threadId", Order = 3, IsRequired = true)]
+        public string ThreadId { get; set; } = string.Empty;
+
+        [DataMember(Name = "turnId", Order = 4, IsRequired = true)]
+        public string TurnId { get; set; } = string.Empty;
+
+        [DataMember(Name = "toolCallId", Order = 5, IsRequired = true)]
+        public string ToolCallId { get; set; } = string.Empty;
+
+        [DataMember(Name = "queryId", Order = 6, IsRequired = true)]
+        public string QueryId { get; set; } = string.Empty;
+
+        [DataMember(Name = "filter", Order = 7, IsRequired = true)]
+        public DrawingQueryFilterWire? Filter { get; set; }
+
+        [DataMember(Name = "pageSize", Order = 8, IsRequired = true)]
+        public int PageSize { get; set; }
+
+        [DataMember(Name = "cursor", Order = 9, IsRequired = true)]
+        public string Cursor { get; set; } = string.Empty;
+    }
+
+    [DataContract]
+    private sealed class DrawingQueryFilterWire
+    {
+        [DataMember(Name = "entityTypes", Order = 1, IsRequired = true)]
+        public string[] EntityTypes { get; set; } = new string[0];
+
+        [DataMember(Name = "layers", Order = 2, IsRequired = true)]
+        public string[] Layers { get; set; } = new string[0];
+
+        [DataMember(Name = "spaces", Order = 3, IsRequired = true)]
+        public string[] Spaces { get; set; } = new string[0];
+
+        [DataMember(Name = "blockNames", Order = 4, IsRequired = true)]
+        public string[] BlockNames { get; set; } = new string[0];
+
+        [DataMember(Name = "objectIds", Order = 5, IsRequired = true)]
+        public string[] ObjectIds { get; set; } = new string[0];
+
+        [DataMember(Name = "textContains", Order = 6, IsRequired = true)]
+        public string TextContains { get; set; } = string.Empty;
+
+        [DataMember(Name = "bounds", Order = 7, IsRequired = true)]
+        public DrawingQueryBoundsWire? Bounds { get; set; }
+
+        [DataMember(Name = "includeUnsupported", Order = 8, IsRequired = true)]
+        public bool IncludeUnsupported { get; set; }
+    }
+
+    [DataContract]
+    private sealed class DrawingQueryBoundsWire
+    {
+        [DataMember(Name = "minimum", Order = 1, IsRequired = true)]
+        public DrawingQueryPointWire? Minimum { get; set; }
+
+        [DataMember(Name = "maximum", Order = 2, IsRequired = true)]
+        public DrawingQueryPointWire? Maximum { get; set; }
+    }
+
+    [DataContract]
+    private sealed class DrawingQueryPointWire
+    {
+        [DataMember(Name = "x", Order = 1, IsRequired = true)]
+        public double X { get; set; }
+
+        [DataMember(Name = "y", Order = 2, IsRequired = true)]
+        public double Y { get; set; }
+
+        [DataMember(Name = "z", Order = 3, IsRequired = true)]
+        public double Z { get; set; }
+    }
+
+    [DataContract]
+    private sealed class DrawingQueryResponseWire
+    {
+        [DataMember(Name = "contractVersion", Order = 1, IsRequired = true)]
+        public int ContractVersion { get; set; }
+
+        [DataMember(Name = "requestId", Order = 2, IsRequired = true)]
+        public string RequestId { get; set; } = string.Empty;
+
+        [DataMember(Name = "threadId", Order = 3, IsRequired = true)]
+        public string ThreadId { get; set; } = string.Empty;
+
+        [DataMember(Name = "turnId", Order = 4, IsRequired = true)]
+        public string TurnId { get; set; } = string.Empty;
+
+        [DataMember(Name = "toolCallId", Order = 5, IsRequired = true)]
+        public string ToolCallId { get; set; } = string.Empty;
+
+        [DataMember(Name = "queryId", Order = 6, IsRequired = true)]
+        public string QueryId { get; set; } = string.Empty;
+
+        [DataMember(Name = "query", Order = 7, IsRequired = true)]
+        public CadQueryResponseWire Query { get; set; } = new CadQueryResponseWire();
+    }
+
+    [DataContract]
+    private sealed class CadQueryResponseWire
+    {
+        [DataMember(Name = "schema", Order = 1, IsRequired = true)]
+        public string Schema { get; set; } = string.Empty;
+
+        [DataMember(Name = "schemaVersion", Order = 2, IsRequired = true)]
+        public int SchemaVersion { get; set; }
+
+        [DataMember(Name = "indexId", Order = 3, IsRequired = true)]
+        public string IndexId { get; set; } = string.Empty;
+
+        [DataMember(Name = "documentId", Order = 4, IsRequired = true)]
+        public string DocumentId { get; set; } = string.Empty;
+
+        [DataMember(Name = "documentRevision", Order = 5, IsRequired = true)]
+        public long DocumentRevision { get; set; }
+
+        [DataMember(Name = "queryId", Order = 6, IsRequired = true)]
+        public string QueryId { get; set; } = string.Empty;
+
+        [DataMember(Name = "status", Order = 7, IsRequired = true)]
+        public string Status { get; set; } = string.Empty;
+
+        [DataMember(Name = "complete", Order = 8, IsRequired = true)]
+        public bool Complete { get; set; }
+
+        [DataMember(Name = "totalMatches", Order = 9, IsRequired = true)]
+        public int TotalMatches { get; set; }
+
+        [DataMember(Name = "returnedCount", Order = 10, IsRequired = true)]
+        public int ReturnedCount { get; set; }
+
+        [DataMember(Name = "entities", Order = 11, IsRequired = true)]
+        public CadQueryEntityWire[] Entities { get; set; } = new CadQueryEntityWire[0];
+
+        [DataMember(Name = "nextCursor", Order = 12, IsRequired = true)]
+        public string NextCursor { get; set; } = string.Empty;
+
+        [DataMember(Name = "message", Order = 13, IsRequired = true)]
+        public string Message { get; set; } = string.Empty;
+    }
+
+    [DataContract]
+    private sealed class CadQueryEntityWire
+    {
+        [DataMember(Name = "objectId", Order = 1, IsRequired = true)]
+        public string ObjectId { get; set; } = string.Empty;
+
+        [DataMember(Name = "entityType", Order = 2, IsRequired = true)]
+        public string EntityType { get; set; } = string.Empty;
+
+        [DataMember(Name = "actualType", Order = 3, IsRequired = true)]
+        public string ActualType { get; set; } = string.Empty;
+
+        [DataMember(Name = "layer", Order = 4, IsRequired = true)]
+        public string Layer { get; set; } = string.Empty;
+
+        [DataMember(Name = "space", Order = 5, IsRequired = true)]
+        public string Space { get; set; } = string.Empty;
+
+        [DataMember(Name = "blockName", Order = 6, IsRequired = true)]
+        public string BlockName { get; set; } = string.Empty;
+
+        [DataMember(Name = "blockDetails", Order = 7, IsRequired = false)]
+        public CadQueryBlockDetailsWire? BlockDetails { get; set; }
+
+        [DataMember(Name = "textExcerpt", Order = 8, IsRequired = true)]
+        public string TextExcerpt { get; set; } = string.Empty;
+
+        [DataMember(Name = "bounds", Order = 9, IsRequired = true)]
+        public CadQueryExtentsWire? Bounds { get; set; }
+
+        [DataMember(Name = "unsupported", Order = 10, IsRequired = true)]
+        public bool Unsupported { get; set; }
+
+        [DataMember(Name = "readStatus", Order = 11, IsRequired = true)]
+        public string ReadStatus { get; set; } = string.Empty;
+    }
+
+    [DataContract]
+    private sealed class CadQueryBlockDetailsWire
+    {
+        [DataMember(Name = "detailStatus", Order = 1, IsRequired = true)]
+        public string DetailStatus { get; set; } = string.Empty;
+
+        [DataMember(Name = "isDynamic", Order = 2, IsRequired = true)]
+        public bool IsDynamic { get; set; }
+
+        [DataMember(Name = "isExternalReference", Order = 3, IsRequired = true)]
+        public bool IsExternalReference { get; set; }
+
+        [DataMember(Name = "isOverlayReference", Order = 4, IsRequired = true)]
+        public bool IsOverlayReference { get; set; }
+
+        [DataMember(Name = "isAnonymousDefinition", Order = 5, IsRequired = true)]
+        public bool IsAnonymousDefinition { get; set; }
+
+        [DataMember(Name = "isLayoutDefinition", Order = 6, IsRequired = true)]
+        public bool IsLayoutDefinition { get; set; }
+
+        [DataMember(Name = "hasAttributeDefinitions", Order = 7, IsRequired = true)]
+        public bool HasAttributeDefinitions { get; set; }
+
+        [DataMember(Name = "layoutName", Order = 8, IsRequired = true)]
+        public string LayoutName { get; set; } = string.Empty;
+
+        [DataMember(Name = "layoutKind", Order = 9, IsRequired = true)]
+        public string LayoutKind { get; set; } = string.Empty;
+
+        [DataMember(Name = "attributeCount", Order = 10, IsRequired = true)]
+        public int AttributeCount { get; set; }
+
+        [DataMember(Name = "attributes", Order = 11, IsRequired = true)]
+        public CadQueryBlockAttributeWire[] Attributes { get; set; } = new CadQueryBlockAttributeWire[0];
+
+        [DataMember(Name = "dynamicPropertyCount", Order = 12, IsRequired = true)]
+        public int DynamicPropertyCount { get; set; }
+
+        [DataMember(Name = "dynamicProperties", Order = 13, IsRequired = true)]
+        public CadQueryDynamicBlockPropertyWire[] DynamicProperties { get; set; } =
+            new CadQueryDynamicBlockPropertyWire[0];
+
+        [DataMember(Name = "nestedBlockReferenceCount", Order = 14, IsRequired = true)]
+        public int NestedBlockReferenceCount { get; set; }
+
+        [DataMember(Name = "maximumNestedBlockDepth", Order = 15, IsRequired = true)]
+        public int MaximumNestedBlockDepth { get; set; }
+    }
+
+    [DataContract]
+    private sealed class CadQueryBlockAttributeWire
+    {
+        [DataMember(Name = "tag", Order = 1, IsRequired = true)]
+        public string Tag { get; set; } = string.Empty;
+
+        [DataMember(Name = "value", Order = 2, IsRequired = true)]
+        public string Value { get; set; } = string.Empty;
+
+        [DataMember(Name = "isInvisible", Order = 3, IsRequired = true)]
+        public bool IsInvisible { get; set; }
+
+        [DataMember(Name = "isMText", Order = 4, IsRequired = true)]
+        public bool IsMText { get; set; }
+    }
+
+    [DataContract]
+    private sealed class CadQueryDynamicBlockPropertyWire
+    {
+        [DataMember(Name = "name", Order = 1, IsRequired = true)]
+        public string Name { get; set; } = string.Empty;
+
+        [DataMember(Name = "valueKind", Order = 2, IsRequired = true)]
+        public string ValueKind { get; set; } = string.Empty;
+
+        [DataMember(Name = "value", Order = 3, IsRequired = true)]
+        public string Value { get; set; } = string.Empty;
+
+        [DataMember(Name = "isReadOnly", Order = 4, IsRequired = true)]
+        public bool IsReadOnly { get; set; }
+
+        [DataMember(Name = "isVisible", Order = 5, IsRequired = true)]
+        public bool IsVisible { get; set; }
+    }
+
+    [DataContract]
+    private sealed class CadQueryExtentsWire
+    {
+        [DataMember(Name = "minimum", Order = 1, IsRequired = true)]
+        public DrawingQueryPointWire Minimum { get; set; } = new DrawingQueryPointWire();
+
+        [DataMember(Name = "maximum", Order = 2, IsRequired = true)]
+        public DrawingQueryPointWire Maximum { get; set; } = new DrawingQueryPointWire();
+    }
+
+    [DataContract]
     private sealed class AgentEventWire
     {
         [DataMember(Name = "contractVersion", Order = 1, IsRequired = true)]
@@ -1073,6 +1610,7 @@ internal static class BridgeClientJsonCodec
         String,
         Integer,
         Boolean,
+        Object,
         StringArray,
         SchemaArray,
     }
@@ -1340,6 +1878,10 @@ internal static class BridgeClientJsonCodec
                             "JSON布尔字段格式无效：" + field.Name + "。" );
                     }
 
+                    return;
+                case JsonFieldKind.Object:
+                    RequireType(actualType, "object", field.Name);
+                    reader.Skip();
                     return;
                 case JsonFieldKind.StringArray:
                     RequireType(actualType, "array", field.Name);

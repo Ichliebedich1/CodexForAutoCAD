@@ -32,5 +32,14 @@ namespace Codex.AutoCAD.Host2016
 
             return false;
         }
+
+        internal static bool SupportsDrawingQuery(AgentCapabilitiesResponse capabilities)
+        {
+            return capabilities != null
+                   && capabilities.Methods != null
+                   && Array.IndexOf(
+                       capabilities.Methods,
+                       AgentBridgeMethods.QueryDrawing) >= 0;
+        }
     }
 }

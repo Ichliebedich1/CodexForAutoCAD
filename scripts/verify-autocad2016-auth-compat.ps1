@@ -8,6 +8,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+. (Join-Path $PSScriptRoot "build-safety.ps1")
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $safeRepoRoot = $repoRoot.Replace("\", "/")
 $dotnetCommand = (Get-Command dotnet -ErrorAction Stop).Source
 $solutionPath = Join-Path $repoRoot "Codex.AutoCAD.sln"
@@ -20,6 +23,7 @@ $globalJsonPath = Join-Path $repoRoot "global.json"
 $directoryBuildPropsPath = Join-Path $repoRoot "Directory.Build.props"
 $bootstrapSourcePath = Join-Path $repoRoot "src\Codex.AutoCAD.Ipc\AgentBootstrap.cs"
 $nugetConfig = Join-Path $repoRoot "src\Codex.AutoCAD.Host.2016\NuGet.Config"
+$conditionalLockPath = Join-Path $repoRoot "src\Codex.AutoCAD.Bridge.Client\packages.lock.json"
 $offlinePackage = Join-Path $repoRoot "third_party\nuget\Microsoft.NETFramework.ReferenceAssemblies.net45.1.0.3.nupkg"
 $expectedSdk = "8.0.319"
 $expectedPackageSha256 = "23A9F94EA3E2CB88CD8341AF75B811C6FB5CB82516FC696E95ED4620279128E3"
@@ -36,8 +40,13 @@ $expectedAgentToHostMac = "548474E515652C3F182AE099DD2DC6EA99FCDE290F12006380E70
 $expectedBootstrapFrameSha256 = "D60FBAFC368EAA86EBFF00AE85DA88D1BE9D1A0B40B4960A5F52E00C82A0B0F4"
 $expectedSpecCount = 35
 $runId = [Guid]::NewGuid().ToString("N")
-$stageRoot = Join-Path $repoRoot ("artifacts\autocad2016-auth-compat-" + $runId)
+$stageRoot = Join-Path $artifactsRoot ("autocad2016-auth-compat-" + $runId)
 $evidencePath = Join-Path $stageRoot "verification.json"
+
+if (-not (Test-Path -LiteralPath $conditionalLockPath -PathType Leaf)) {
+    throw "缺少 Bridge.Client 条件化锁文件：$conditionalLockPath"
+}
+$conditionalLockBytes = [IO.File]::ReadAllBytes($conditionalLockPath)
 
 $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
@@ -1185,6 +1194,7 @@ function Invoke-IsolatedManagedCoreRegression {
     try {
         $env:PathMap = ($regressionRoot + "=/_regression/," + $repoRoot + "=/_/")
         $env:DOTNET_CLI_HOME = $cliHome
+        # 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
         $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "0"
 
         Invoke-Captured -FilePath $dotnetCommand -Arguments @(
@@ -1247,14 +1257,29 @@ function Invoke-IsolatedManagedCoreRegression {
     $bridgeOutput = Invoke-Captured -FilePath $dotnetCommand -Arguments @(
         $bridgeSpecCandidates[0].FullName
     ) -Description "运行隔离 Bridge 规格"
-    if (@($bridgeOutput | Where-Object { $_ -match "^\s*37/37 specs passed\s*$" }).Count -ne 1) {
-        throw "Bridge 回归必须精确通过 37/37。"
+    $bridgeSummaries = @(
+        $bridgeOutput | ForEach-Object {
+            $match = [regex]::Match(
+                $_,
+                "^\s*(?<Passed>[1-9][0-9]*)/(?<Total>[1-9][0-9]*) specs passed\s*$")
+            if ($match.Success) {
+                [pscustomobject]@{
+                    Passed = [int] $match.Groups["Passed"].Value
+                    Total = [int] $match.Groups["Total"].Value
+                }
+            }
+        }
+    )
+    if ($bridgeSummaries.Count -ne 1 -or
+        $bridgeSummaries[0].Passed -ne $bridgeSummaries[0].Total) {
+        throw "Bridge 回归必须包含唯一且全部通过的动态规格摘要。"
     }
 
     return [pscustomobject]@{
         BridgeProjectOutputSha256 = $bridgeProjectOutputSha256
         RuntimeArtifactHashes = $runtimeArtifactHashes
         RuntimeBridgeCopyMatchesProjectOutput = $true
+        BridgeSpecs = "$($bridgeSummaries[0].Passed)/$($bridgeSummaries[0].Total)"
     }
 }
 
@@ -1273,6 +1298,7 @@ function Invoke-IsolatedBuild {
     try {
         $env:PathMap = ($buildRoot + "=/_build/," + $repoRoot + "=/_/")
         $env:DOTNET_CLI_HOME = $cliHome
+        # 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
         $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "0"
 
         Invoke-Captured -FilePath $dotnetCommand -Arguments @(
@@ -1564,6 +1590,7 @@ try {
     $evidence = [ordered]@{
         SchemaVersion = 3
         RecordedAtLocal = [DateTimeOffset]::Now.ToString("o")
+        RunCorrelationId = Get-CodexGateRunCorrelationId
         Scope = "autocad2016-net45-net8-auth-and-bootstrap-primitive"
         Status = "static-and-cross-runtime-bootstrap-primitive-gate-passed"
         PowerShellVersion = $PSVersionTable.PSVersion.ToString()
@@ -1578,7 +1605,7 @@ try {
         ArtifactHashes = $artifactHashes
         Net45Specs = "$expectedSpecCount/$expectedSpecCount"
         Net8Specs = "$expectedSpecCount/$expectedSpecCount"
-        BridgeRegressionSpecs = "37/37"
+        BridgeRegressionSpecs = $managedCoreRegression.BridgeSpecs
         BridgeRegressionRuntimeArtifactHashes = $managedCoreRegression.RuntimeArtifactHashes
         BridgeProjectOutputSha256 = $managedCoreRegression.BridgeProjectOutputSha256
         BridgeRuntimeCopyMatchesProjectOutput = $managedCoreRegression.RuntimeBridgeCopyMatchesProjectOutput
@@ -1658,5 +1685,7 @@ try {
     Write-Host ("AUTH_COMPAT_EVIDENCE=" + $evidencePath)
 }
 finally {
+    Complete-CodexBuildSafety -State $buildSafety -Stage "auth-compat" | Out-Null
+    [IO.File]::WriteAllBytes($conditionalLockPath, $conditionalLockBytes)
     $env:DOTNET_NOLOGO = $previousNoLogo
 }

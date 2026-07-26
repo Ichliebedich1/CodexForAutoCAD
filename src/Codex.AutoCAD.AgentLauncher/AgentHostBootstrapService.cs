@@ -101,9 +101,26 @@ public static class AgentHostBootstrapService
         }
 
         var executableIdentity = options.GetValidatedExecutableIdentity();
+        var credentialOptions = options.GetValidatedCredential();
+        var processTreeLimits = options.GetValidatedProcessTreeLimits();
+        var maximumSessionRuntime = options.GetValidatedSessionRuntime();
+        var gracefulStopTimeout = options.GetValidatedGracefulStopTimeout();
         controller.Checkpoint();
         var sessionId = CreateRandomIdentifier();
         var pipeName = PipeNamePrefix + CreateRandomIdentifier();
+        AgentHostCredentialSecret? credentialSecret = null;
+        if (credentialOptions.Mode == AgentHostCredentialMode.WindowsCredentialManagerAccessToken)
+        {
+            credentialSecret = new WindowsCredentialManagerCredentialReader()
+                .Read(credentialOptions);
+        }
+
+        using (credentialSecret)
+        using (var credentialServer = AgentCredentialPipeServer.Create(pipeName))
+        {
+        AgentSessionWorkspaceLease? workspaceLease =
+            AgentSessionWorkspaceLease.CreateForCurrentUser(sessionId);
+        controller.Checkpoint();
         using (var payload = AgentBootstrapPayload.CreateRandom(sessionId, pipeName))
         {
             var bootstrapId = payload.CopyBootstrapId();
@@ -118,6 +135,8 @@ public static class AgentHostBootstrapService
                     child = WindowsInheritedBootstrapProcess.Start(
                         executableIdentity,
                         AgentHostBootstrapCommand.Serve,
+                        processTreeLimits,
+                        AgentHostProcessIdentityProfile.CurrentUser,
                         controller.Checkpoint);
                     controller.PublishSuspended(child);
                 }
@@ -191,6 +210,24 @@ public static class AgentHostBootstrapService
                 }
 
                 hostKeys = payload.DeriveDirectionKeys();
+                using (var credentialAuthenticator =
+                    hostKeys.CreateConfirmationOutboundAuthenticator())
+                {
+                    await credentialServer.DeliverAsync(
+                            sessionId,
+                            bootstrapId,
+                            child.ProcessId,
+                            child.ProcessCreationFileTime,
+                            credentialOptions.Mode == AgentHostCredentialMode.Disabled
+                                ? AgentCredentialDeliveryMode.Disabled
+                                : AgentCredentialDeliveryMode.AccessToken,
+                            credentialSecret,
+                            credentialAuthenticator,
+                            controller.AbortToken)
+                        .ConfigureAwait(false);
+                }
+                credentialSecret?.Dispose();
+
                 using (var incomingGuard = hostKeys.CreateConfirmationInboundGuard())
                 {
                     var confirmationTask = Task.Run(
@@ -212,6 +249,10 @@ public static class AgentHostBootstrapService
                         child.ExecutableSha256,
                         0,
                         false);
+                    result = result.WithProcessIdentity(
+                        child.ProcessIdentityProfile,
+                        child.ProcessTokenIsRestricted,
+                        child.UsesPrivateDesktop);
 
                     int exitCode;
                     if (child.WaitForExit(0, out exitCode))
@@ -231,10 +272,14 @@ public static class AgentHostBootstrapService
                         child,
                         hostKeys,
                         standardErrorTask,
-                        result);
+                        result,
+                        maximumSessionRuntime,
+                        gracefulStopTimeout,
+                        workspaceLease);
                     child = null;
                     hostKeys = null;
                     standardErrorTask = null;
+                    workspaceLease = null;
                     return serviceSession;
                 }
             }
@@ -293,7 +338,17 @@ public static class AgentHostBootstrapService
                 }
 
                 child?.Dispose();
+                try
+                {
+                    workspaceLease?.Dispose();
+                }
+                catch (AgentBootstrapLaunchException exception)
+                {
+                    AgentBootstrapLateFailureRegistry.Record(exception);
+                    throw;
+                }
             }
+        }
         }
     }
 
@@ -420,12 +475,25 @@ public static class AgentHostBootstrapService
 public sealed class AgentHostServiceSession : IDisposable
 {
     private const int TerminationWaitMilliseconds = 5000;
+    private const int ProcessExitWatcherWaitMilliseconds = int.MaxValue;
+    private const int AutomaticCleanupAttempts = 2;
     private static readonly TimeSpan StandardErrorDrainTimeout = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan AutomaticCleanupRetryDelay = TimeSpan.FromMilliseconds(100);
 
     private readonly object _sync = new object();
+    private readonly Func<int, bool> _waitForExit;
     private readonly Func<int, bool> _terminateAndWait;
     private readonly Func<Exception?> _abortIo;
     private readonly Action _disposeProcess;
+    private readonly Func<int, AgentHostProcessTreeLimitNotification>? _waitForLimitNotification;
+    private readonly Action? _cancelLimitNotificationWait;
+    private readonly int _gracefulExitWaitMilliseconds;
+    private readonly TaskCompletionSource<AgentHostResourceLimitFailure>
+        _resourceLimitFailureCompletion = new TaskCompletionSource<AgentHostResourceLimitFailure>();
+    private readonly TaskCompletionSource<AgentHostProcessExitFailure>
+        _processExitFailureCompletion;
+    private AgentSessionWorkspaceLease? _workspaceLease;
+    private Timer? _runtimeDeadlineTimer;
     private AgentBootstrapDirectionKeys? _directionKeys;
     private Task<AgentHostStandardErrorCapture>? _standardErrorTask;
     private Task? _stopTask;
@@ -437,24 +505,113 @@ public sealed class AgentHostServiceSession : IDisposable
     private bool _processDisposed;
     private int _standardErrorBytes;
     private bool _standardErrorTruncated;
+    private int _runtimeExpired;
 
     internal AgentHostServiceSession(
         WindowsInheritedBootstrapProcess child,
         AgentBootstrapDirectionKeys directionKeys,
         Task<AgentHostStandardErrorCapture> standardErrorTask,
-        AgentBootstrapDoctorResult result)
+        AgentBootstrapDoctorResult result,
+        TimeSpan maximumSessionRuntime,
+        TimeSpan gracefulStopTimeout,
+        AgentSessionWorkspaceLease workspaceLease)
     {
         if (child == null)
         {
             throw new ArgumentNullException(nameof(child));
         }
 
+        _waitForExit = milliseconds => child.WaitForExit(milliseconds, out _);
         _terminateAndWait = child.TerminateAndWait;
         _abortIo = child.AbortIo;
         _disposeProcess = child.Dispose;
+        _waitForLimitNotification = child.WaitForLimitNotification;
+        _cancelLimitNotificationWait = child.CancelLimitNotificationWait;
+        _gracefulExitWaitMilliseconds = ToGracefulStopMilliseconds(gracefulStopTimeout);
+        _processExitFailureCompletion =
+            new TaskCompletionSource<AgentHostProcessExitFailure>();
         _directionKeys = directionKeys ?? throw new ArgumentNullException(nameof(directionKeys));
         _standardErrorTask = standardErrorTask
             ?? throw new ArgumentNullException(nameof(standardErrorTask));
+        _workspaceLease = workspaceLease
+            ?? throw new ArgumentNullException(nameof(workspaceLease));
+        if (result == null)
+        {
+            throw new ArgumentNullException(nameof(result));
+        }
+
+        ProcessId = result.ProcessId;
+        ProcessCreationFileTime = result.ProcessCreationFileTime;
+        BootstrapId = result.BootstrapId;
+        SessionId = result.SessionId;
+        PipeName = result.PipeName;
+        ExecutableSha256 = result.ExecutableSha256;
+        StartRuntimeDeadline(maximumSessionRuntime);
+        StartResourceLimitWatcher();
+        StartProcessExitWatcher();
+    }
+
+    internal AgentHostServiceSession(
+        Func<int, bool> terminateAndWait,
+        Func<Exception?> abortIo,
+        Action disposeProcess,
+        Task<AgentHostStandardErrorCapture> standardErrorTask,
+        AgentBootstrapDoctorResult result)
+        : this(
+            _ => false,
+            terminateAndWait,
+            abortIo,
+            disposeProcess,
+            standardErrorTask,
+            result,
+            AgentHostBootstrapOptions.DefaultGracefulStopTimeout)
+    {
+    }
+
+    internal AgentHostServiceSession(
+        Func<int, bool> waitForExit,
+        Func<int, bool> terminateAndWait,
+        Func<Exception?> abortIo,
+        Action disposeProcess,
+        Task<AgentHostStandardErrorCapture> standardErrorTask,
+        AgentBootstrapDoctorResult result)
+        : this(
+            waitForExit,
+            terminateAndWait,
+            abortIo,
+            disposeProcess,
+            standardErrorTask,
+            result,
+            AgentHostBootstrapOptions.DefaultGracefulStopTimeout)
+    {
+    }
+
+    internal AgentHostServiceSession(
+        Func<int, bool> waitForExit,
+        Func<int, bool> terminateAndWait,
+        Func<Exception?> abortIo,
+        Action disposeProcess,
+        Task<AgentHostStandardErrorCapture> standardErrorTask,
+        AgentBootstrapDoctorResult result,
+        TimeSpan gracefulStopTimeout,
+        AgentSessionWorkspaceLease? workspaceLease = null,
+        TaskCompletionSource<AgentHostProcessExitFailure>? processExitFailureCompletion = null)
+    {
+        _waitForExit = waitForExit
+            ?? throw new ArgumentNullException(nameof(waitForExit));
+        _terminateAndWait = terminateAndWait
+            ?? throw new ArgumentNullException(nameof(terminateAndWait));
+        _abortIo = abortIo ?? throw new ArgumentNullException(nameof(abortIo));
+        _disposeProcess = disposeProcess
+            ?? throw new ArgumentNullException(nameof(disposeProcess));
+        _waitForLimitNotification = null;
+        _cancelLimitNotificationWait = null;
+        _gracefulExitWaitMilliseconds = ToGracefulStopMilliseconds(gracefulStopTimeout);
+        _processExitFailureCompletion = processExitFailureCompletion
+            ?? new TaskCompletionSource<AgentHostProcessExitFailure>();
+        _standardErrorTask = standardErrorTask
+            ?? throw new ArgumentNullException(nameof(standardErrorTask));
+        _workspaceLease = workspaceLease;
         if (result == null)
         {
             throw new ArgumentNullException(nameof(result));
@@ -473,26 +630,18 @@ public sealed class AgentHostServiceSession : IDisposable
         Func<Exception?> abortIo,
         Action disposeProcess,
         Task<AgentHostStandardErrorCapture> standardErrorTask,
-        AgentBootstrapDoctorResult result)
+        AgentBootstrapDoctorResult result,
+        TimeSpan maximumSessionRuntime)
+        : this(
+            _ => false,
+            terminateAndWait,
+            abortIo,
+            disposeProcess,
+            standardErrorTask,
+            result,
+            AgentHostBootstrapOptions.DefaultGracefulStopTimeout)
     {
-        _terminateAndWait = terminateAndWait
-            ?? throw new ArgumentNullException(nameof(terminateAndWait));
-        _abortIo = abortIo ?? throw new ArgumentNullException(nameof(abortIo));
-        _disposeProcess = disposeProcess
-            ?? throw new ArgumentNullException(nameof(disposeProcess));
-        _standardErrorTask = standardErrorTask
-            ?? throw new ArgumentNullException(nameof(standardErrorTask));
-        if (result == null)
-        {
-            throw new ArgumentNullException(nameof(result));
-        }
-
-        ProcessId = result.ProcessId;
-        ProcessCreationFileTime = result.ProcessCreationFileTime;
-        BootstrapId = result.BootstrapId;
-        SessionId = result.SessionId;
-        PipeName = result.PipeName;
-        ExecutableSha256 = result.ExecutableSha256;
+        StartRuntimeDeadline(maximumSessionRuntime);
     }
 
     public int ProcessId { get; }
@@ -527,6 +676,21 @@ public sealed class AgentHostServiceSession : IDisposable
                 return _standardErrorTruncated;
             }
         }
+    }
+
+    public bool RuntimeExpired
+    {
+        get { return Volatile.Read(ref _runtimeExpired) != 0; }
+    }
+
+    public Task<AgentHostResourceLimitFailure> ResourceLimitFailureTask
+    {
+        get { return _resourceLimitFailureCompletion.Task; }
+    }
+
+    public Task<AgentHostProcessExitFailure> ProcessExitFailureTask
+    {
+        get { return _processExitFailureCompletion.Task; }
     }
 
     public AgentBootstrapDirectionKeys ClaimDirectionKeys()
@@ -569,8 +733,10 @@ public sealed class AgentHostServiceSession : IDisposable
         Interlocked.Exchange(ref _disposeSignaled, 1);
     }
 
-    private Task GetOrStartStopTask()
+    private Task GetOrStartStopTask(bool cancelResourceMonitor = true)
     {
+        Task attempt;
+        Action? cancelLimitNotificationWait;
         lock (_sync)
         {
             if (_stopTask != null)
@@ -579,14 +745,38 @@ public sealed class AgentHostServiceSession : IDisposable
             }
 
             _stopping = true;
+            if (cancelResourceMonitor)
+            {
+                _resourceLimitFailureCompletion.TrySetResult(
+                    AgentHostResourceLimitFailure.None);
+                _processExitFailureCompletion.TrySetResult(
+                    AgentHostProcessExitFailure.None);
+            }
+            var runtimeDeadlineTimer = _runtimeDeadlineTimer;
+            _runtimeDeadlineTimer = null;
+            runtimeDeadlineTimer?.Dispose();
             var directionKeys = _directionKeys;
             _directionKeys = null;
             var completion = new TaskCompletionSource<bool>();
-            var attempt = completion.Task;
+            attempt = completion.Task;
             _stopTask = attempt;
+            cancelLimitNotificationWait = cancelResourceMonitor
+                ? _cancelLimitNotificationWait
+                : null;
             _ = CompleteStopAttemptAsync(completion, attempt, directionKeys);
-            return attempt;
         }
+
+        try
+        {
+            cancelLimitNotificationWait?.Invoke();
+        }
+        catch
+        {
+            // Closing the owned Job completion port during process disposal is the final wake-up
+            // boundary. A failed advisory wake-up must not replace the bounded STOP result.
+        }
+
+        return attempt;
     }
 
     private async Task CompleteStopAttemptAsync(
@@ -633,6 +823,26 @@ public sealed class AgentHostServiceSession : IDisposable
             terminationProved = _terminationProved;
         }
 
+        Exception? gracefulWaitFailure = null;
+        if (!terminationProved)
+        {
+            try
+            {
+                terminationProved = _waitForExit(_gracefulExitWaitMilliseconds);
+                if (terminationProved)
+                {
+                    lock (_sync)
+                    {
+                        _terminationProved = true;
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                gracefulWaitFailure = exception;
+            }
+        }
+
         if (!terminationProved)
         {
             try
@@ -659,6 +869,11 @@ public sealed class AgentHostServiceSession : IDisposable
 
         if (!terminationProved)
         {
+            if (gracefulWaitFailure != null)
+            {
+                failures.Insert(0, gracefulWaitFailure);
+            }
+
             throw CreateStopFailure(failures);
         }
 
@@ -776,6 +991,38 @@ public sealed class AgentHostServiceSession : IDisposable
             }
         }
 
+        bool standardErrorSettled;
+        AgentSessionWorkspaceLease? workspaceLease;
+        lock (_sync)
+        {
+            standardErrorSettled = _standardErrorSettled;
+            processDisposed = _processDisposed;
+            workspaceLease = _workspaceLease;
+        }
+
+        if (terminationProved
+            && standardErrorSettled
+            && ioAborted
+            && processDisposed
+            && workspaceLease != null)
+        {
+            try
+            {
+                workspaceLease.Dispose();
+                lock (_sync)
+                {
+                    if (ReferenceEquals(_workspaceLease, workspaceLease))
+                    {
+                        _workspaceLease = null;
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
         if (failures.Count != 0)
         {
             throw CreateStopFailure(failures);
@@ -792,6 +1039,326 @@ public sealed class AgentHostServiceSession : IDisposable
                 ? failures[0]
                 : new AggregateException(failures));
         return failure;
+    }
+
+    private void StartResourceLimitWatcher()
+    {
+        if (_waitForLimitNotification == null)
+        {
+            return;
+        }
+
+        _ = Task.Factory.StartNew(
+            WatchForResourceLimit,
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+    }
+
+    private void WatchForResourceLimit()
+    {
+        try
+        {
+            while (true)
+            {
+                var notification = _waitForLimitNotification!(
+                    ProcessExitWatcherWaitMilliseconds);
+                switch (notification)
+                {
+                    case AgentHostProcessTreeLimitNotification.None:
+                        continue;
+                    case AgentHostProcessTreeLimitNotification.MonitorClosed:
+                        _resourceLimitFailureCompletion.TrySetResult(
+                            AgentHostResourceLimitFailure.None);
+                        return;
+                    case AgentHostProcessTreeLimitNotification.RootProcessExited:
+                        _resourceLimitFailureCompletion.TrySetResult(
+                            AgentHostResourceLimitFailure.None);
+                        return;
+                    case AgentHostProcessTreeLimitNotification.ProcessCountExceeded:
+                        OnResourceLimitFailure(
+                            AgentHostResourceLimitFailure.ProcessCountExceeded);
+                        return;
+                    case AgentHostProcessTreeLimitNotification.JobMemoryExceeded:
+                        OnResourceLimitFailure(
+                            AgentHostResourceLimitFailure.JobMemoryExceeded);
+                        return;
+                    case AgentHostProcessTreeLimitNotification.JobUserTimeExceeded:
+                        OnResourceLimitFailure(
+                            AgentHostResourceLimitFailure.JobUserTimeExceeded);
+                        return;
+                    default:
+                        throw new AgentBootstrapLaunchException(
+                            AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+                            "The AgentHost Job resource monitor returned an unknown notification.");
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            lock (_sync)
+            {
+                if (_stopping || _processDisposed || Volatile.Read(ref _disposeSignaled) != 0)
+                {
+                    return;
+                }
+            }
+
+            var monitorFailure = exception as AgentBootstrapLaunchException
+                ?? new AgentBootstrapLaunchException(
+                    AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+                    "The AgentHost Job resource monitor failed.",
+                    exception);
+            _resourceLimitFailureCompletion.TrySetException(monitorFailure);
+            _processExitFailureCompletion.TrySetResult(
+                AgentHostProcessExitFailure.None);
+            var cleanupTask = CompleteResourceLimitCleanupAsync(
+                "AgentHost Job resource-monitor cleanup failed.");
+            ObserveFault(cleanupTask);
+        }
+    }
+
+    private void OnResourceLimitFailure(AgentHostResourceLimitFailure failure)
+    {
+        if (!_resourceLimitFailureCompletion.TrySetResult(failure))
+        {
+            return;
+        }
+
+        _processExitFailureCompletion.TrySetResult(
+            AgentHostProcessExitFailure.None);
+        var cleanupTask = CompleteResourceLimitCleanupAsync(
+            "AgentHost Job resource-limit cleanup failed.");
+        ObserveFault(cleanupTask);
+    }
+
+    private static void ObserveFault(Task task)
+    {
+        task.ContinueWith(
+            completed =>
+            {
+                var ignored = completed.Exception;
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    // The launcher owns the Job handle. If AgentHost exits by itself, run the normal stop path so
+    // KILL_ON_JOB_CLOSE also collects any descendant that outlived AgentHost.
+    private void StartProcessExitWatcher()
+    {
+        _ = Task.Factory.StartNew(
+            WatchForUnexpectedProcessExit,
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+    }
+
+    private void WatchForUnexpectedProcessExit()
+    {
+        AgentBootstrapLaunchException? processMonitorFailure = null;
+        try
+        {
+            while (!_waitForExit(ProcessExitWatcherWaitMilliseconds))
+            {
+                lock (_sync)
+                {
+                    if (_stopping || _processDisposed || Volatile.Read(ref _disposeSignaled) != 0)
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            processMonitorFailure = exception as AgentBootstrapLaunchException
+                ?? new AgentBootstrapLaunchException(
+                    AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+                    "The AgentHost process-exit monitor failed.",
+                    exception);
+        }
+
+        lock (_sync)
+        {
+            if (_stopping || _processDisposed || Volatile.Read(ref _disposeSignaled) != 0)
+            {
+                return;
+            }
+        }
+
+        if (processMonitorFailure != null)
+        {
+            _resourceLimitFailureCompletion.TrySetResult(
+                AgentHostResourceLimitFailure.None);
+            _processExitFailureCompletion.TrySetException(processMonitorFailure);
+        }
+
+        var cleanupTask = CompleteUnexpectedProcessExitCleanupAsync(
+            processMonitorFailure);
+        cleanupTask.ContinueWith(
+            completed =>
+            {
+                var ignored = completed.Exception;
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private async Task CompleteUnexpectedProcessExitCleanupAsync(
+        AgentBootstrapLaunchException? processMonitorFailure)
+    {
+        Exception? terminalObservationFailure = processMonitorFailure;
+        if (processMonitorFailure == null)
+        {
+            try
+            {
+                var resourceFailure = await _resourceLimitFailureCompletion.Task
+                    .ConfigureAwait(false);
+                _processExitFailureCompletion.TrySetResult(
+                    resourceFailure == AgentHostResourceLimitFailure.None
+                        ? AgentHostProcessExitFailure.UnexpectedExit
+                        : AgentHostProcessExitFailure.None);
+            }
+            catch (Exception exception)
+            {
+                // A resource-monitor exception is already the authoritative runtime terminal.
+                // Do not race it with a second "unexpected exit" classification.
+                _processExitFailureCompletion.TrySetResult(
+                    AgentHostProcessExitFailure.None);
+                terminalObservationFailure = exception;
+            }
+        }
+
+        AgentBootstrapLaunchException? lastFailure = null;
+        for (var attempt = 0; attempt < AutomaticCleanupAttempts; attempt++)
+        {
+            try
+            {
+                await GetOrStartStopTask(cancelResourceMonitor: false).ConfigureAwait(false);
+                return;
+            }
+            catch (AgentBootstrapLaunchException exception)
+            {
+                lastFailure = exception;
+            }
+            catch (Exception exception)
+            {
+                lastFailure = new AgentBootstrapLaunchException(
+                    AgentBootstrapLaunchFailure.ChildTerminationFailed,
+                    "AgentHost unexpected-exit cleanup failed.",
+                    exception);
+            }
+
+            if (attempt + 1 < AutomaticCleanupAttempts)
+            {
+                await Task.Delay(AutomaticCleanupRetryDelay).ConfigureAwait(false);
+            }
+        }
+
+        var cleanupFailure = lastFailure ?? new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.ChildTerminationFailed,
+            "AgentHost unexpected-exit cleanup ended without a terminal failure detail.");
+        AgentBootstrapLateFailureRegistry.Record(
+            new AgentBootstrapLaunchException(
+                AgentBootstrapLaunchFailure.ChildTerminationFailed,
+                "AgentHost exited or its exit monitor failed before complete process-tree cleanup after retry.",
+                terminalObservationFailure == null
+                    ? cleanupFailure
+                    : new AggregateException(terminalObservationFailure, cleanupFailure)));
+    }
+
+    private void StartRuntimeDeadline(TimeSpan maximumSessionRuntime)
+    {
+        if (maximumSessionRuntime <= TimeSpan.Zero
+            || maximumSessionRuntime > AgentHostBootstrapOptions.MaximumMaximumSessionRuntime)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumSessionRuntime));
+        }
+
+        _runtimeDeadlineTimer = new Timer(
+            OnRuntimeDeadline,
+            null,
+            maximumSessionRuntime,
+            Timeout.InfiniteTimeSpan);
+    }
+
+    private static int ToGracefulStopMilliseconds(TimeSpan timeout)
+    {
+        if (timeout < TimeSpan.Zero
+            || timeout > AgentHostBootstrapOptions.MaximumGracefulStopTimeout)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeout));
+        }
+
+        return checked((int)Math.Ceiling(timeout.TotalMilliseconds));
+    }
+
+    private void OnRuntimeDeadline(object? state)
+    {
+        lock (_sync)
+        {
+            if (_stopping
+                || _runtimeDeadlineTimer == null
+                || _runtimeExpired != 0)
+            {
+                return;
+            }
+
+            Volatile.Write(ref _runtimeExpired, 1);
+            var runtimeDeadlineTimer = _runtimeDeadlineTimer;
+            _runtimeDeadlineTimer = null;
+            runtimeDeadlineTimer.Dispose();
+        }
+
+        if (!_resourceLimitFailureCompletion.TrySetResult(
+                AgentHostResourceLimitFailure.SessionRuntimeExceeded))
+        {
+            return;
+        }
+
+        _processExitFailureCompletion.TrySetResult(
+            AgentHostProcessExitFailure.None);
+        var cleanupTask = CompleteResourceLimitCleanupAsync(
+            "AgentHost session-runtime cleanup failed.");
+        ObserveFault(cleanupTask);
+    }
+
+    private async Task CompleteResourceLimitCleanupAsync(string unsafeDiagnostic)
+    {
+        AgentBootstrapLaunchException? lastFailure = null;
+        for (var attempt = 0; attempt < AutomaticCleanupAttempts; attempt++)
+        {
+            try
+            {
+                await GetOrStartStopTask(cancelResourceMonitor: false).ConfigureAwait(false);
+                return;
+            }
+            catch (AgentBootstrapLaunchException exception)
+            {
+                lastFailure = exception;
+            }
+            catch (Exception exception)
+            {
+                lastFailure = new AgentBootstrapLaunchException(
+                    AgentBootstrapLaunchFailure.ChildTerminationFailed,
+                    unsafeDiagnostic,
+                    exception);
+            }
+
+            if (attempt + 1 < AutomaticCleanupAttempts)
+            {
+                await Task.Delay(AutomaticCleanupRetryDelay).ConfigureAwait(false);
+            }
+        }
+
+        AgentBootstrapLateFailureRegistry.Record(
+            new AgentBootstrapLaunchException(
+                AgentBootstrapLaunchFailure.ChildTerminationFailed,
+                "AgentHost resource-limit cleanup could not be proved after retry.",
+                lastFailure));
     }
 
     private static async Task AwaitWithCancellationAsync(

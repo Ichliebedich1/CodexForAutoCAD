@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet('Release')]
     [string] $Configuration = 'Release',
@@ -10,6 +10,9 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+. (Join-Path $PSScriptRoot 'build-safety.ps1')
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $specProject = Join-Path $repoRoot 'tests\Codex.AutoCAD.Contracts.Specs\Codex.AutoCAD.Contracts.Specs.csproj'
 $contractsProject = Join-Path $repoRoot 'src\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj'
 $nugetConfig = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016\NuGet.Config'
@@ -22,7 +25,7 @@ $expectedPhase2Count = 184
 $expectedVectorSha256 = 'c5a03d4cb73f850209a71539fc70ddc2bcd6ec2f7f45627c7285fb53ec424423'
 $expectedVectorBytes = 2225
 $safeRepoRoot = $repoRoot.Replace('\', '/')
-$stageRoot = Join-Path $repoRoot ('artifacts\contract-v1-' + [Guid]::NewGuid().ToString('N'))
+$stageRoot = Join-Path $artifactsRoot ('contract-v1-' + [Guid]::NewGuid().ToString('N'))
 $verifierPath = $MyInvocation.MyCommand.Path
 
 function Get-Sha256 {
@@ -121,6 +124,7 @@ function Invoke-IsolatedBuild {
     $previousPathMap = $env:PathMap
     try {
         $env:DOTNET_CLI_HOME = $cliHome
+        # 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
         $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
         $env:PathMap = ($root + '=/_contract/,' + $repoRoot + '=/_/')
         Invoke-NativeCaptured -FilePath $script:dotnetCommand -Arguments @(
@@ -361,6 +365,7 @@ try {
     Write-Output $json
 }
 finally {
+    Complete-CodexBuildSafety -State $buildSafety -Stage 'contract-v1' | Out-Null
     $env:DOTNET_NOLOGO = $previousNoLogo
     $env:GIT_CONFIG_COUNT = $previousGitConfigCount
     $env:GIT_CONFIG_KEY_0 = $previousGitConfigKey0

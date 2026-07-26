@@ -8,6 +8,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+. (Join-Path $PSScriptRoot "build-safety.ps1")
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $verificationScriptPath = $MyInvocation.MyCommand.Path
 $safeRepoRoot = $repoRoot.Replace("\", "/")
 $dotnetCommand = (Get-Command dotnet -ErrorAction Stop).Source
@@ -23,11 +26,48 @@ $nugetConfig = Join-Path $repoRoot "src\Codex.AutoCAD.Host.2016\NuGet.Config"
 $offlinePackage = Join-Path $repoRoot "third_party\nuget\Microsoft.NETFramework.ReferenceAssemblies.net45.1.0.3.nupkg"
 $expectedSdk = "8.0.319"
 $runId = [Guid]::NewGuid().ToString("N")
-$stageRoot = Join-Path $repoRoot ("artifacts\autocad2016-agent-bootstrap-" + $runId)
+$stageRoot = Join-Path $artifactsRoot ("autocad2016-agent-bootstrap-" + $runId)
 $evidencePath = Join-Path $stageRoot "verification.json"
 $requiredSpecIds = @(
     "REAL_AGENTHOST_SUCCESS",
     "REAL_AGENTHOST_REPEAT_5",
+    "RESTRICTED_TOKEN_PRIMITIVES_FAIL_CLOSED",
+    "RESTRICTED_TOKEN_BOOTSTRAP_PROBE_PORTABLE",
+    "PROCESS_POLICY_BLOCK_CLASSIFIED",
+    "JOB_RESOURCE_LIMITS_APPLIED",
+    "JOB_RESOURCE_LIMITS_INVALID",
+    "RESOURCE_LIMIT_ERROR_CODES_STABLE",
+    "CREDENTIAL_BROKER_CONFIGURATION_FAILS_CLOSED",
+    "CREDENTIAL_MANAGER_READ_FAILS_CLOSED",
+    "CREDENTIAL_SECRET_DISPOSE_ZEROES",
+    "CREDENTIAL_DELIVERY_DISABLED",
+    "CREDENTIAL_DELIVERY_AUTHENTICATED",
+    "CREDENTIAL_DELIVERY_ATTACKS_FAIL_CLOSED",
+    "NESTED_JOB_ASSIGNMENT_COMPATIBLE",
+    "NESTED_JOB_ASSIGNMENT_FAILURE_CLASSIFIED",
+    "EXPERIMENTAL_IDENTITY_NOT_PUBLIC",
+    "JOB_USER_TIME_TERMINATES_TREE",
+    "JOB_PROCESS_LIMIT_STRUCTURED",
+    "JOB_MEMORY_LIMIT_STRUCTURED",
+    "JOB_COMBINED_LIMIT_SINGLE_TERMINAL",
+    "SESSION_RUNTIME_TERMINATES_TREE",
+    "SESSION_RUNTIME_RETRIES_CLEANUP",
+    "SESSION_STOP_PREVENTS_RUNTIME_EXPIRY",
+    "SERVICE_STOP_ALLOWS_GRACEFUL_EXIT",
+    "SERVICE_STOP_USES_CONFIGURED_GRACE",
+    "SESSION_WORKSPACE_PROTECTED_LAYOUT",
+    "SESSION_WORKSPACE_DUPLICATE_REJECTED",
+    "SESSION_WORKSPACE_INVALID_ROOTS_REJECTED",
+    "SESSION_WORKSPACE_REPARSE_ROOT_REJECTED",
+    "SESSION_WORKSPACE_ACTIVE_LEASE_PRESERVED",
+    "SESSION_WORKSPACE_CRASH_RECOVERY",
+    "SERVICE_SESSION_WORKSPACE_REMOVED",
+    "SERVICE_START_FAILURE_WORKSPACE_REMOVED",
+    "SERVICE_WORKSPACE_CLEANUP_CAN_RETRY",
+    "SERVICE_START_STOP_REPEAT_500",
+    "SERVICE_STOP_KILLS_PROCESS_TREE",
+    "AGENTHOST_UNEXPECTED_EXIT_KILLS_PROCESS_TREE",
+    "OWNER_EXIT_KILLS_PROCESS_TREE",
     "INVALID_EXECUTABLE_PATHS",
     "EXECUTABLE_SHA256_MISMATCH",
     "TIMEOUT_TERMINATES_UNCONFIRMED",
@@ -37,6 +77,7 @@ $requiredSpecIds = @(
     "EARLY_EXIT_REJECTED",
     "MALFORMED_CONFIRMATION_REJECTED",
     "IDENTITY_MISMATCH_REJECTED",
+    "BOOTSTRAP_FAILURE_DIAGNOSTICS_SANITIZED",
     "TRAILING_DUPLICATE_REJECTED",
     "CHILD_CLEARS_INHERITANCE",
     "HANDLE_ALLOWLIST_CANARY",
@@ -51,7 +92,8 @@ $requiredSpecIds = @(
     "SERVICE_STOP_RETRY_DOES_NOT_POISON_START",
     "SERVICE_DISPOSE_FAILURE_CAN_RETRY",
     "SERVICE_STOP_CONCURRENT_CALLERS",
-    "SERVICE_STOP_CONCURRENT_FAILURE_SHARED"
+    "SERVICE_STOP_CONCURRENT_FAILURE_SHARED",
+    "SESSION_RUNTIME_FAILURE_POISONS_START"
 )
 
 $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
@@ -236,11 +278,26 @@ function Assert-SolutionMembership {
 }
 
 function Assert-SourceBoundary {
-    $launcherText = @(
+    $launcherSources = @(
         Get-ChildItem -LiteralPath (Split-Path -Parent $launcherProject) -Filter "*.cs" -File |
-            Sort-Object FullName |
+            Sort-Object FullName
+    )
+    $launcherText = @(
+        $launcherSources |
             ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8 }
     ) -join "`n"
+    $bootstrapLauncherText = @(
+        $launcherSources |
+            Where-Object { $_.Name -cne "AgentCredentialNamedPipeChannel.cs" } |
+            ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8 }
+    ) -join "`n"
+    $credentialChannelPath = Join-Path `
+        (Split-Path -Parent $launcherProject) `
+        "AgentCredentialNamedPipeChannel.cs"
+    $credentialChannelText = Get-Content `
+        -LiteralPath $credentialChannelPath `
+        -Raw `
+        -Encoding UTF8
     $agentHostText = Get-Content -LiteralPath $agentHostSource -Raw -Encoding UTF8
     $combined = $launcherText + "`n" + $agentHostText
 
@@ -262,6 +319,17 @@ function Assert-SourceBoundary {
         "批准SHA-256绑定" = "ExpectedSha256"
         "挂起创建" = "CreateSuspended"
         "硬终止" = "TerminateProcess"
+        "进程树Job Object" = "JobObjectLimitKillOnJobClose"
+        "进程树数量上限" = "JobObjectLimitActiveProcess"
+        "进程树内存上限" = "JobObjectLimitJobMemory"
+        "进程树累计用户时间上限" = "JobObjectLimitJobTime"
+        "进程树CPU硬上限" = "JobObjectCpuRateControlHardCap"
+        "会话墙钟截止与自动清理重试" = "AutomaticCleanupAttempts"
+        "AgentHost异常退出监视" = "WatchForUnexpectedProcessExit"
+        "停止宽限公共配置" = "GracefulStopTimeout"
+        "停止宽限边界校验" = "GetValidatedGracefulStopTimeout"
+        "停止前自然退出宽限" = "_gracefulExitWaitMilliseconds"
+        "进程树Job分配" = "AssignProcessToJobObject"
         "进程退出等待" = "WaitForSingleObject"
         "单调绝对截止" = "deadlineTimestamp"
         "专用截止监督线程" = "RunSupervisor"
@@ -270,6 +338,11 @@ function Assert-SourceBoundary {
         "终止失败毒化后续启动" = "AgentBootstrapLateFailureRegistry"
         "仅本地驱动路径" = "absolute local-drive path"
         "仅固定本地磁盘" = "DriveType.Fixed"
+        "受保护会话工作区DACL" = "ConvertStringSecurityDescriptorToSecurityDescriptor"
+        "会话目录拒绝删除共享" = "DeleteAccess"
+        "清理不跟随重解析点" = "DeleteTreeWithoutFollowingReparsePoints"
+        "过期lease有界枚举" = "MaximumExpiredCleanupCandidates"
+        "活动lease独占探测" = "FileShare.None"
         "AgentHost标准输入领取" = "OpenStandardInput()"
         "AgentHost标准输出确认" = "OpenStandardOutput()"
     }
@@ -285,7 +358,6 @@ function Assert-SourceBoundary {
         "原始字符串句柄入口" = "OpenReadHandle"
         "原始字符串写句柄入口" = "OpenWriteHandle"
         "环境变量交付秘密" = "SetEnvironmentVariable"
-        "命名管道交付 bootstrap" = "NamedPipe"
         "内存映射交付 bootstrap" = "MemoryMappedFile"
         "ShellExecute" = "ShellExecute"
         "AutoCAD 托管 API" = "Autodesk.AutoCAD"
@@ -294,6 +366,25 @@ function Assert-SourceBoundary {
     foreach ($entry in $forbidden.GetEnumerator()) {
         if ($combined.IndexOf([string]$entry.Value, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
             throw "Agent bootstrap 源码出现禁止边界：$($entry.Key)"
+        }
+    }
+
+    if ($bootstrapLauncherText.IndexOf("NamedPipe", [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        throw "冻结 bootstrap 核心仍禁止命名管道；仅凭据通道文件可使用认证命名管道。"
+    }
+    foreach ($requiredCredentialBoundary in @(
+        "PipeOptions.CurrentUserOnly",
+        "WindowsIdentity.GetCurrent",
+        "PipeSecurity",
+        "PipeAccessRights.ReadWrite",
+        "PipeDirection.Out",
+        "PipeDirection.In",
+        "MaximumCredentialBytes",
+        "CreateConfirmationOutboundAuthenticator",
+        "CreateConfirmationInboundGuard"
+    )) {
+        if ($combined.IndexOf($requiredCredentialBoundary, [StringComparison]::Ordinal) -lt 0) {
+            throw "凭据认证通道缺少边界：$requiredCredentialBoundary"
         }
     }
 
@@ -326,12 +417,26 @@ function Assert-SourceBoundary {
         ExecutableVolumeAndFileIdTokenFound = $true
         ExecutableSha256TokenFound = $true
         CreateSuspendedTokenFound = $true
+        ProcessTreeJobObjectTokenFound = $true
+        ProcessTreeActiveProcessLimitTokenFound = $true
+        ProcessTreeMemoryLimitTokenFound = $true
+        ProcessTreeJobUserTimeLimitTokenFound = $true
+        ProcessTreeCpuHardCapTokenFound = $true
+        SessionWallClockDeadlineTokenFound = $true
+        UnexpectedAgentHostExitWatcherTokenFound = $true
+        GracefulExitWaitTokenFound = $true
+        ProcessTreeJobAssignmentTokenFound = $true
         LocalFixedDriveChecksFound = $true
         MonotonicDeadlineTokenFound = $true
         DedicatedSupervisorTokenFound = $true
         CallerOffloadTokenFound = $true
         AbortableLaunchGateTokenFound = $true
         LateFailurePoisonTokenFound = $true
+        ProtectedSessionWorkspaceDaclTokenFound = $true
+        SessionWorkspaceNoDeleteShareTokenFound = $true
+        ReparseSafeWorkspaceCleanupTokenFound = $true
+        ExpiredWorkspaceCleanupBoundTokenFound = $true
+        ActiveWorkspaceLeaseProbeTokenFound = $true
     }
 }
 
@@ -342,6 +447,9 @@ function Invoke-IsolatedBuild {
     $outputRoot = Join-Path $buildRoot "out"
     $packageRoot = Join-Path $buildRoot "packages"
     $cliHome = Join-Path $buildRoot "dotnet-home"
+    $net45ReferencePath = Join-Path `
+        $packageRoot `
+        "microsoft.netframework.referenceassemblies.net45\1.0.3\build\.NETFramework\v4.5"
     New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 
     $previousPathMap = $env:PathMap
@@ -381,7 +489,8 @@ function Invoke-IsolatedBuild {
                 "-m:1", "-p:UseSharedCompilation=false",
                 "-p:UseArtifactsOutput=true",
                 ("-p:ArtifactsPath=" + $outputRoot),
-                "-p:ContinuousIntegrationBuild=true"
+                "-p:ContinuousIntegrationBuild=true",
+                ("-p:FrameworkPathOverride=" + $net45ReferencePath)
             ) + @($build.Extra)
             Invoke-Captured -FilePath $dotnetCommand -Arguments $arguments `
                 -Description ("隔离构建 " + $Name + " " + (Split-Path -Leaf $build.Project)) | Out-Null
@@ -476,6 +585,28 @@ function Test-SpecPassed {
     return @($SpecResult.Ids | Where-Object { $_ -ceq $Id }).Count -eq 1
 }
 
+function Get-ProbeOutcome {
+    param(
+        [Parameter(Mandatory = $true)][string[]] $Lines,
+        [Parameter(Mandatory = $true)][string] $Name,
+        [Parameter(Mandatory = $true)][string[]] $AllowedValues,
+        [Parameter(Mandatory = $true)][string] $RuntimeLabel
+    )
+
+    $prefix = $Name + "="
+    $matches = @($Lines | Where-Object { $_.StartsWith($prefix, [StringComparison]::Ordinal) })
+    if ($matches.Count -ne 1) {
+        throw "$RuntimeLabel 必须且只能输出一个 $Name；实际：$($matches.Count)。"
+    }
+
+    $outcome = $matches[0].Substring($prefix.Length)
+    if (-not ($AllowedValues -ccontains $outcome)) {
+        throw "$RuntimeLabel 输出了未知 $Name：$outcome。"
+    }
+
+    return $outcome
+}
+
 function Get-ProcessSnapshot {
     return @(
         Get-Process -ErrorAction SilentlyContinue |
@@ -553,6 +684,32 @@ try {
         -Arguments $specArguments `
         -Description "运行 net45 AgentHost bootstrap Specs"
     $net45Specs = Assert-SpecOutput -Lines $net45Output -RuntimeLabel "net45"
+    $primitiveOutcomes = @("available", "process_isolation_failed")
+    $bootstrapOutcomes = @(
+        "authenticated_success",
+        "process_isolation_failed",
+        "child_exited"
+    )
+    $net8RestrictedPrimitiveOutcome = Get-ProbeOutcome `
+        -Lines $net8Output `
+        -Name "RESTRICTED_TOKEN_PRIMITIVES_OUTCOME" `
+        -AllowedValues $primitiveOutcomes `
+        -RuntimeLabel "net8"
+    $net45RestrictedPrimitiveOutcome = Get-ProbeOutcome `
+        -Lines $net45Output `
+        -Name "RESTRICTED_TOKEN_PRIMITIVES_OUTCOME" `
+        -AllowedValues $primitiveOutcomes `
+        -RuntimeLabel "net45"
+    $net8RestrictedBootstrapOutcome = Get-ProbeOutcome `
+        -Lines $net8Output `
+        -Name "RESTRICTED_TOKEN_BOOTSTRAP_OUTCOME" `
+        -AllowedValues $bootstrapOutcomes `
+        -RuntimeLabel "net8"
+    $net45RestrictedBootstrapOutcome = Get-ProbeOutcome `
+        -Lines $net45Output `
+        -Name "RESTRICTED_TOKEN_BOOTSTRAP_OUTCOME" `
+        -AllowedValues $bootstrapOutcomes `
+        -RuntimeLabel "net45"
     if ($net45Specs.Total -ne $net8Specs.Total -or
         (($net45Specs.Ids | ConvertTo-Json -Compress) -cne
          ($net8Specs.Ids | ConvertTo-Json -Compress))) {
@@ -598,6 +755,33 @@ try {
     $runtimeEvidenceSpecMap = [ordered]@{
         RealAgentHostBootstrapDoctorCompleted = "REAL_AGENTHOST_SUCCESS"
         RepeatedRealAgentHostBootstrapCompleted = "REAL_AGENTHOST_REPEAT_5"
+        RestrictedTokenPrimitivesFailClosed = "RESTRICTED_TOKEN_PRIMITIVES_FAIL_CLOSED"
+        RestrictedTokenBootstrapProbePortable = "RESTRICTED_TOKEN_BOOTSTRAP_PROBE_PORTABLE"
+        ExperimentalProcessIdentityNotPublic = "EXPERIMENTAL_IDENTITY_NOT_PUBLIC"
+        ProcessTreeResourceLimitsApplied = "JOB_RESOURCE_LIMITS_APPLIED"
+        InvalidProcessTreeResourceLimitsFailClosed = "JOB_RESOURCE_LIMITS_INVALID"
+        ResourceLimitErrorCodesStable = "RESOURCE_LIMIT_ERROR_CODES_STABLE"
+        NestedJobAssignmentCompatible = "NESTED_JOB_ASSIGNMENT_COMPATIBLE"
+        JobUserTimeTerminatesProcessTree = "JOB_USER_TIME_TERMINATES_TREE"
+        JobProcessLimitProducesStructuredTerminal = "JOB_PROCESS_LIMIT_STRUCTURED"
+        JobMemoryLimitProducesStructuredTerminal = "JOB_MEMORY_LIMIT_STRUCTURED"
+        CombinedJobLimitsProduceSingleTerminal = "JOB_COMBINED_LIMIT_SINGLE_TERMINAL"
+        SessionWallClockTerminatesProcessTree = "SESSION_RUNTIME_TERMINATES_TREE"
+        SessionWallClockRetriesCleanup = "SESSION_RUNTIME_RETRIES_CLEANUP"
+        SessionStopPreventsRuntimeExpiry = "SESSION_STOP_PREVENTS_RUNTIME_EXPIRY"
+        SessionWallClockFailedCleanupPoisonsStart = "SESSION_RUNTIME_FAILURE_POISONS_START"
+        ServiceStopAllowsGracefulExitBeforeForcedTermination = "SERVICE_STOP_ALLOWS_GRACEFUL_EXIT"
+        ServiceStopUsesConfiguredGrace = "SERVICE_STOP_USES_CONFIGURED_GRACE"
+        SessionWorkspaceProtectedLayout = "SESSION_WORKSPACE_PROTECTED_LAYOUT"
+        SessionWorkspaceDuplicateRejected = "SESSION_WORKSPACE_DUPLICATE_REJECTED"
+        SessionWorkspaceInvalidRootsRejected = "SESSION_WORKSPACE_INVALID_ROOTS_REJECTED"
+        SessionWorkspaceReparseRootRejected = "SESSION_WORKSPACE_REPARSE_ROOT_REJECTED"
+        SessionWorkspaceActiveLeasePreserved = "SESSION_WORKSPACE_ACTIVE_LEASE_PRESERVED"
+        SessionWorkspaceCrashRecovery = "SESSION_WORKSPACE_CRASH_RECOVERY"
+        ServiceSessionWorkspaceRemoved = "SERVICE_SESSION_WORKSPACE_REMOVED"
+        ServiceStartFailureWorkspaceRemoved = "SERVICE_START_FAILURE_WORKSPACE_REMOVED"
+        ServiceWorkspaceCleanupCanRetry = "SERVICE_WORKSPACE_CLEANUP_CAN_RETRY"
+        ServiceStartStopRepeat500 = "SERVICE_START_STOP_REPEAT_500"
         InvalidExecutablePathsFailClosed = "INVALID_EXECUTABLE_PATHS"
         ApprovedExecutableSha256MismatchRejected = "EXECUTABLE_SHA256_MISMATCH"
         StartupTimeoutTriggersFailClosedAbortAndBoundedCleanup = "TIMEOUT_TERMINATES_UNCONFIRMED"
@@ -611,6 +795,9 @@ try {
         ChildClearsInheritedFlags = "CHILD_CLEARS_INHERITANCE"
         HandleAllowlistCanaryVerified = "HANDLE_ALLOWLIST_CANARY"
         StandardErrorSeparateAndBounded = "STDERR_BOUNDED"
+        ServiceStopKillsProcessTree = "SERVICE_STOP_KILLS_PROCESS_TREE"
+        UnexpectedAgentHostExitKillsProcessTree = "AGENTHOST_UNEXPECTED_EXIT_KILLS_PROCESS_TREE"
+        ProcessOwnerExitKillsProcessTree = "OWNER_EXIT_KILLS_PROCESS_TREE"
     }
     $runtimeEvidence = [ordered]@{}
     foreach ($entry in $runtimeEvidenceSpecMap.GetEnumerator()) {
@@ -619,8 +806,9 @@ try {
     }
 
     $evidence = [ordered]@{
-        SchemaVersion = 3
+        SchemaVersion = 16
         RecordedAtLocal = [DateTimeOffset]::Now.ToString("o")
+        RunCorrelationId = Get-CodexGateRunCorrelationId
         Scope = "autocad2016-live-agenthost-inherited-handle-bootstrap-doctor"
         Status = "live-agenthost-bootstrap-doctor-gate-passed"
         PowerShellVersion = $PSVersionTable.PSVersion.ToString()
@@ -661,6 +849,62 @@ try {
             $runtimeEvidence.StartupTimeoutTriggersFailClosedAbortAndBoundedCleanup -and
             $runtimeEvidence.ConfirmationThenHangTriggersFailClosedAbortAndBoundedCleanup -and
             $runtimeEvidence.CancellationTerminatesUnconfirmedChild)
+        ProcessTreeCleanupOnServiceStopLiveVerified = $runtimeEvidence.ServiceStopKillsProcessTree
+        ProcessTreeStartStopRepeat500Verified = $runtimeEvidence.ServiceStartStopRepeat500
+        ProcessTreeCleanupOnUnexpectedAgentHostExitLiveVerified =
+            $runtimeEvidence.UnexpectedAgentHostExitKillsProcessTree
+        ProcessTreeCleanupOnOwnerExitLiveVerified = $runtimeEvidence.ProcessOwnerExitKillsProcessTree
+        ProcessTreeResourceLimitsRuntimeVerified = (
+            $runtimeEvidence.ProcessTreeResourceLimitsApplied -and
+            $runtimeEvidence.InvalidProcessTreeResourceLimitsFailClosed -and
+            $runtimeEvidence.JobUserTimeTerminatesProcessTree)
+        ResourceLimitTerminalAttributionRuntimeVerified = (
+            $runtimeEvidence.ResourceLimitErrorCodesStable -and
+            $runtimeEvidence.JobUserTimeTerminatesProcessTree -and
+            $runtimeEvidence.JobProcessLimitProducesStructuredTerminal -and
+            $runtimeEvidence.JobMemoryLimitProducesStructuredTerminal -and
+            $runtimeEvidence.CombinedJobLimitsProduceSingleTerminal -and
+            $runtimeEvidence.SessionWallClockTerminatesProcessTree)
+        NestedJobAssignmentCurrentRuntimeVerified =
+            $runtimeEvidence.NestedJobAssignmentCompatible
+        EnterpriseNestedJobMatrixVerified = $false
+        SessionWallClockDeadlineRuntimeVerified = (
+            $runtimeEvidence.SessionWallClockTerminatesProcessTree -and
+            $runtimeEvidence.SessionWallClockRetriesCleanup -and
+            $runtimeEvidence.SessionStopPreventsRuntimeExpiry -and
+            $runtimeEvidence.SessionWallClockFailedCleanupPoisonsStart)
+        GracefulServiceExitBeforeForcedTerminationRuntimeVerified =
+            $runtimeEvidence.ServiceStopAllowsGracefulExitBeforeForcedTermination
+        ConfiguredGracefulStopTimeoutRuntimeVerified =
+            $runtimeEvidence.ServiceStopUsesConfiguredGrace
+        ProtectedSessionWorkspaceLifecycleRuntimeVerified = (
+            $runtimeEvidence.SessionWorkspaceProtectedLayout -and
+            $runtimeEvidence.SessionWorkspaceDuplicateRejected -and
+            $runtimeEvidence.SessionWorkspaceInvalidRootsRejected -and
+            $runtimeEvidence.SessionWorkspaceReparseRootRejected -and
+            $runtimeEvidence.SessionWorkspaceActiveLeasePreserved -and
+            $runtimeEvidence.SessionWorkspaceCrashRecovery -and
+            $runtimeEvidence.ServiceSessionWorkspaceRemoved -and
+            $runtimeEvidence.ServiceStartFailureWorkspaceRemoved -and
+            $runtimeEvidence.ServiceWorkspaceCleanupCanRetry)
+        RestrictedTokenPrimitiveRuntimeVerified =
+            $runtimeEvidence.RestrictedTokenPrimitivesFailClosed
+        RestrictedTokenPublicProductSurfaceClosed =
+            $runtimeEvidence.ExperimentalProcessIdentityNotPublic
+        RestrictedTokenCompatibilityProbePortable =
+            $runtimeEvidence.RestrictedTokenBootstrapProbePortable
+        RestrictedTokenProbeOutcomes = [ordered]@{
+            Net8Primitives = $net8RestrictedPrimitiveOutcome
+            Net45Primitives = $net45RestrictedPrimitiveOutcome
+            Net8Bootstrap = $net8RestrictedBootstrapOutcome
+            Net45Bootstrap = $net45RestrictedBootstrapOutcome
+        }
+        RestrictedTokenCurrentRuntimeFailsClosed =
+            ($net8RestrictedBootstrapOutcome -ne "authenticated_success" -and
+             $net45RestrictedBootstrapOutcome -ne "authenticated_success")
+        RestrictedTokenSuccessfulAuthenticatedBootstrapVerified =
+            ($net8RestrictedBootstrapOutcome -eq "authenticated_success" -and
+             $net45RestrictedBootstrapOutcome -eq "authenticated_success")
         PendingBootstrapAtomicConsumptionLiveVerified = $false
         SourceTreeBinOrObjModified = $false
         AutoCadProcessSetChanged = $false
@@ -670,7 +914,7 @@ try {
         NetLoadVerified = $false
         AgentHostLiveBridgeVerified = $false
         CadRuntimeIntegrated = $false
-        EvidenceBoundary = "This gate proves the exact mandatory net45/net8 Spec ID set, real out-of-process bootstrap-doctor authentication through restricted inherited standard handles, approved SHA-256 mismatch rejection, PID/creation-time confirmation rejection, startup-deadline fail-closed abort followed by at most five seconds of bounded termination cleanup (including confirmation-then-hang), cancellation cleanup, bounded stderr, handle-allowlist canary exclusion, complete runnable-output reproducibility before and after execution, and an empty relevant-process baseline/final state. It does not claim that termination finishes inside the configured startup deadline itself. Static source observations are not runtime proof. Deliberate executable replacement during the suspended-launch window, external handle-duplication resistance, the long-running authenticated Bridge, Host.2016/AutoCAD integration, CAD work, and complete AutoCAD 2016 support remain outside this evidence."
+        EvidenceBoundary = "This gate proves the exact mandatory net45/net8 Spec ID set, real out-of-process bootstrap-doctor authentication through restricted inherited standard handles, approved SHA-256 mismatch rejection, PID/creation-time confirmation rejection, startup-deadline fail-closed abort followed by bounded termination cleanup, cancellation cleanup, bounded stderr, handle-allowlist canary exclusion, service and owner process-tree cleanup, Windows-reported Job resource limits, nested Job assignment on the current Windows runtime, and authenticated-service runtime cleanup. It does not prove the required enterprise nested-Job policy matrix. The public product configuration and result surfaces do not expose the experimental process-identity selector or its raw telemetry. The internal restricted-token probe accepts only a Windows-reported restricted success, a structured process-isolation failure, or child failure after a restricted launch; it never falls back to CurrentUser, and the exact sanitized net45/net8 outcomes are recorded separately. A successful primitive or probe result is not production sandbox evidence and does not prove runtime/workspace/pipe ACLs, credentials, real Codex, bootstrap-serve, AutoCAD integration, CAD work, or complete AutoCAD 2016 support. The gate also proves reproducible runnable outputs and an empty relevant-process baseline/final state."
     }
     $evidence | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $evidencePath -Encoding UTF8
 
@@ -678,5 +922,6 @@ try {
     Write-Host ("AGENT_BOOTSTRAP_EVIDENCE=" + $evidencePath)
 }
 finally {
+    Complete-CodexBuildSafety -State $buildSafety -Stage "agent-bootstrap" | Out-Null
     $env:DOTNET_NOLOGO = $previousNoLogo
 }

@@ -13,6 +13,7 @@ namespace Codex.AutoCAD.Host2016
             int parsedEntityCount,
             int unsupportedEntityCount,
             bool complete,
+            string readIssueSummary,
             string contextSha256,
             int canonicalBytes,
             string readableSummary,
@@ -26,6 +27,7 @@ namespace Codex.AutoCAD.Host2016
             ParsedEntityCount = parsedEntityCount;
             UnsupportedEntityCount = unsupportedEntityCount;
             Complete = complete;
+            ReadIssueSummary = readIssueSummary ?? string.Empty;
             ContextSha256 = contextSha256 ?? string.Empty;
             CanonicalBytes = canonicalBytes;
             ReadableSummary = readableSummary ?? string.Empty;
@@ -48,6 +50,8 @@ namespace Codex.AutoCAD.Host2016
 
         internal bool Complete { get; private set; }
 
+        internal string ReadIssueSummary { get; private set; }
+
         internal string ContextSha256 { get; private set; }
 
         internal int CanonicalBytes { get; private set; }
@@ -60,6 +64,7 @@ namespace Codex.AutoCAD.Host2016
     internal static class UnifiedPaletteRuntime
     {
         private static UnifiedPaletteController controller;
+        private static string latestDrawingIndexStatus = "整图索引：not_built";
         private static PaletteContextView latestContext = new PaletteContextView(
             "not-captured",
             false,
@@ -69,6 +74,7 @@ namespace Codex.AutoCAD.Host2016
             0,
             0,
             false,
+            string.Empty,
             string.Empty,
             0,
             "尚未捕获选择上下文。先预选对象，再执行 CODEX16CTX。",
@@ -117,6 +123,16 @@ namespace Codex.AutoCAD.Host2016
             }
         }
 
+        internal static void UpdateDrawingIndexStatus(string value)
+        {
+            latestDrawingIndexStatus = value ?? latestDrawingIndexStatus;
+            var current = controller;
+            if (current != null)
+            {
+                current.UpdateDrawingIndexStatus(latestDrawingIndexStatus);
+            }
+        }
+
         internal static void Terminate()
         {
             var current = controller;
@@ -132,6 +148,7 @@ namespace Codex.AutoCAD.Host2016
             if (controller == null)
             {
                 controller = new UnifiedPaletteController(latestContext);
+                controller.UpdateDrawingIndexStatus(latestDrawingIndexStatus);
             }
 
             return controller;

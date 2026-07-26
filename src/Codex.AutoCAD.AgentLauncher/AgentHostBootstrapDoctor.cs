@@ -19,11 +19,34 @@ public static class AgentHostBootstrapDoctor
             throw new ArgumentNullException(nameof(options));
         }
 
-        return RunSupervisedAsync(options, cancellationToken);
+        return RunSupervisedAsync(
+            options,
+            AgentHostProcessIdentityProfile.CurrentUser,
+            cancellationToken);
+    }
+
+    internal static Task<AgentBootstrapDoctorResult> RunProcessIdentityProbeAsync(
+        AgentHostBootstrapOptions options,
+        AgentHostProcessIdentityProfile processIdentityProfile,
+        CancellationToken cancellationToken = default(CancellationToken))
+    {
+        if (options == null)
+        {
+            throw new ArgumentNullException(nameof(options));
+        }
+        if (processIdentityProfile != AgentHostProcessIdentityProfile.RestrictedToken)
+        {
+            throw new AgentBootstrapLaunchException(
+                AgentBootstrapLaunchFailure.InvalidConfiguration,
+                "Only the restricted-token compatibility profile is available to the internal probe.");
+        }
+
+        return RunSupervisedAsync(options, processIdentityProfile, cancellationToken);
     }
 
     private static async Task<AgentBootstrapDoctorResult> RunSupervisedAsync(
         AgentHostBootstrapOptions options,
+        AgentHostProcessIdentityProfile processIdentityProfile,
         CancellationToken cancellationToken)
     {
         var controller = new AgentBootstrapDeadlineController(
@@ -32,7 +55,8 @@ public static class AgentHostBootstrapDoctor
         Task<AgentBootstrapDoctorResult> workerTask;
         try
         {
-            workerTask = Task.Run(() => RunWorkerAsync(options, controller));
+            workerTask = Task.Run(
+                () => RunWorkerAsync(options, processIdentityProfile, controller));
         }
         catch
         {
@@ -53,6 +77,7 @@ public static class AgentHostBootstrapDoctor
 
     private static async Task<AgentBootstrapDoctorResult> RunWorkerAsync(
         AgentHostBootstrapOptions options,
+        AgentHostProcessIdentityProfile processIdentityProfile,
         AgentBootstrapDeadlineController controller)
     {
         var gateHeld = false;
@@ -70,7 +95,8 @@ public static class AgentHostBootstrapDoctor
             gateHeld = true;
             controller.Checkpoint();
             AgentBootstrapLateFailureRegistry.ThrowIfPoisoned();
-            return await RunCoreAsync(options, controller).ConfigureAwait(false);
+            return await RunCoreAsync(options, processIdentityProfile, controller)
+                .ConfigureAwait(false);
         }
         finally
         {
@@ -90,6 +116,7 @@ public static class AgentHostBootstrapDoctor
 
     private static async Task<AgentBootstrapDoctorResult> RunCoreAsync(
         AgentHostBootstrapOptions options,
+        AgentHostProcessIdentityProfile processIdentityProfile,
         AgentBootstrapDeadlineController controller)
     {
         controller.Checkpoint();
@@ -101,6 +128,7 @@ public static class AgentHostBootstrapDoctor
         }
 
         var executableIdentity = options.GetValidatedExecutableIdentity();
+        var processTreeLimits = options.GetValidatedProcessTreeLimits();
         controller.Checkpoint();
         var sessionId = CreateRandomIdentifier();
         var pipeName = PipeNamePrefix + CreateRandomIdentifier();
@@ -116,6 +144,8 @@ public static class AgentHostBootstrapDoctor
                     controller.BeginStartAttempt();
                     child = WindowsInheritedBootstrapProcess.Start(
                         executableIdentity,
+                        processTreeLimits,
+                        processIdentityProfile,
                         controller.Checkpoint);
                     controller.PublishSuspended(child);
                 }
@@ -225,6 +255,10 @@ public static class AgentHostBootstrapDoctor
                         child.ExecutableSha256,
                         standardError.Bytes,
                         standardError.Truncated);
+                    result = result.WithProcessIdentity(
+                        child.ProcessIdentityProfile,
+                        child.ProcessTokenIsRestricted,
+                        child.UsesPrivateDesktop);
                     child.MarkConfirmed();
                     controller.CommitSuccess(child);
                     return result;

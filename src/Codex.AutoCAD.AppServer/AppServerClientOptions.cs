@@ -14,6 +14,19 @@ public sealed record AppServerClientOptions
     public IReadOnlyDictionary<string, string?> Environment { get; init; }
         = new Dictionary<string, string?>();
 
+    /// <summary>
+    /// Whether the child starts with the current process environment before applying
+    /// <see cref="Environment"/>. Generic transports preserve the compatible default; the
+    /// AgentHost-owned Codex configuration disables inheritance and supplies a fixed allowlist.
+    /// </summary>
+    public bool InheritParentEnvironment { get; init; } = true;
+
+    /// <summary>
+    /// Maximum number of Codex stderr bytes counted in bounded diagnostics. The stream is still
+    /// fully drained after this limit, but its text is never retained or forwarded.
+    /// </summary>
+    public int MaximumStandardErrorBytes { get; init; } = 16 * 1024;
+
     public AppServerClientInfo ClientInfo { get; init; }
         = new("codex_autocad", "Codex for AutoCAD", "0.1.0");
 
@@ -25,6 +38,43 @@ public sealed record AppServerClientOptions
     public int MaximumJsonDepth { get; init; } = 64;
 
     public TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(5);
+
+    internal CodexExecutableLease? ExecutableLease { get; init; }
+
+    /// <summary>
+    /// Returns a bounded configuration summary without executable paths, arguments, environment
+    /// names or values, client metadata, or capability payloads.
+    /// </summary>
+    public override string ToString()
+        => nameof(AppServerClientOptions)
+            + " { CodexExecutableConfigured = "
+            + FormatConfigured(CodexExecutablePath)
+            + ", WorkingDirectoryConfigured = "
+            + FormatConfigured(WorkingDirectory)
+            + ", AdditionalArgumentCount = "
+            + (AdditionalArguments?.Count ?? 0).ToString(
+                System.Globalization.CultureInfo.InvariantCulture)
+            + ", EnvironmentEntryCount = "
+            + (Environment?.Count ?? 0).ToString(
+                System.Globalization.CultureInfo.InvariantCulture)
+            + ", InheritParentEnvironment = "
+            + FormatBoolean(InheritParentEnvironment)
+            + ", MaximumStandardErrorBytes = "
+            + MaximumStandardErrorBytes.ToString(
+                System.Globalization.CultureInfo.InvariantCulture)
+            + ", MaximumFrameBytes = "
+            + MaximumFrameBytes.ToString(
+                System.Globalization.CultureInfo.InvariantCulture)
+            + ", MaximumJsonDepth = "
+            + MaximumJsonDepth.ToString(
+                System.Globalization.CultureInfo.InvariantCulture)
+            + ", ShutdownTimeoutSeconds = "
+            + ShutdownTimeout.TotalSeconds.ToString(
+                "0.###",
+                System.Globalization.CultureInfo.InvariantCulture)
+            + ", ExecutableLeaseConfigured = "
+            + FormatBoolean(ExecutableLease is not null)
+            + " }";
 
     internal void Validate()
     {
@@ -43,9 +93,48 @@ public sealed record AppServerClientOptions
             throw new ArgumentOutOfRangeException(nameof(MaximumJsonDepth), "JSON depth must be between 8 and 256.");
         }
 
+        if (MaximumStandardErrorBytes is < 1_024 or > 1_048_576)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(MaximumStandardErrorBytes),
+                "Standard error limit must be between 1024 and 1048576 bytes.");
+        }
+
         if (ShutdownTimeout <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(ShutdownTimeout));
         }
+
+        if (Environment is null)
+        {
+            throw new ArgumentNullException(nameof(Environment));
+        }
+
+        ExecutableLease?.ValidateCurrentPath(CodexExecutablePath);
+
+        foreach (var (name, value) in Environment)
+        {
+            if (string.IsNullOrWhiteSpace(name)
+                || name.IndexOf('=') >= 0
+                || name.IndexOf('\0') >= 0)
+            {
+                throw new ArgumentException(
+                    "Environment variable names must be non-empty and cannot contain '=' or NUL.",
+                    nameof(Environment));
+            }
+
+            if (value?.IndexOf('\0') >= 0)
+            {
+                throw new ArgumentException(
+                    "Environment variable values cannot contain NUL.",
+                    nameof(Environment));
+            }
+        }
     }
+
+    private static string FormatConfigured(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "False" : "True";
+
+    private static string FormatBoolean(bool value)
+        => value ? "True" : "False";
 }

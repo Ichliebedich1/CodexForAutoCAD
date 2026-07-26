@@ -39,10 +39,16 @@ public static class V2ApiSurfaceProbe
         var types = new Type[]
         {
             typeof(Line), typeof(Circle), typeof(Polyline), typeof(DBText), typeof(MText),
-            typeof(BlockReference), typeof(Arc), typeof(Ellipse), typeof(Spline), typeof(DBPoint),
+            typeof(BlockReference), typeof(BlockTableRecord), typeof(AttributeCollection),
+            typeof(AttributeReference), typeof(DynamicBlockReferencePropertyCollection),
+            typeof(DynamicBlockReferenceProperty), typeof(Layout), typeof(Arc), typeof(Ellipse), typeof(Spline), typeof(DBPoint),
             typeof(Ray), typeof(Xline), typeof(Polyline2d), typeof(Vertex2d), typeof(Polyline3d),
             typeof(PolylineVertex3d), typeof(Dimension), typeof(Hatch), typeof(Leader),
             typeof(MLeader), typeof(Table), typeof(HatchLoop),
+            typeof(Region), typeof(Solid), typeof(Solid3d), typeof(SubDMesh),
+            typeof(PolyFaceMesh), typeof(PolygonMesh), typeof(Autodesk.AutoCAD.DatabaseServices.Surface),
+            typeof(RasterImage), typeof(UnderlayReference), typeof(ProxyEntity), typeof(Wipeout),
+            typeof(Face),
             typeof(ObjectId), typeof(ObjectIdCollection), typeof(ResultBuffer),
             typeof(IExtensionApplication), typeof(CommandClassAttribute),
             typeof(ExtensionApplicationAttribute),
@@ -68,6 +74,28 @@ public static class V2ApiSurfaceProbe
             default(BlockReference).Position, default(BlockReference).Rotation,
             (object)default(BlockReference).ScaleFactors, (object)default(BlockReference).Name,
             default(BlockReference).IsDynamicBlock,
+            (object)default(BlockReference).BlockTableRecord,
+            (object)default(BlockReference).DynamicBlockTableRecord,
+            (object)default(BlockReference).AttributeCollection,
+            (object)default(BlockReference).DynamicBlockReferencePropertyCollection,
+            // Block definition, attribute and dynamic property metadata
+            default(BlockTableRecord).IsFromExternalReference,
+            default(BlockTableRecord).IsFromOverlayReference,
+            default(BlockTableRecord).IsAnonymous,
+            default(BlockTableRecord).IsLayout,
+            default(BlockTableRecord).HasAttributeDefinitions,
+            (object)default(BlockTableRecord).LayoutId,
+            (object)default(AttributeReference).Tag,
+            (object)default(AttributeReference).TextString,
+            default(AttributeReference).Invisible,
+            default(AttributeReference).IsMTextAttribute,
+            (object)default(DynamicBlockReferenceProperty).PropertyName,
+            (object)default(DynamicBlockReferenceProperty).Value,
+            default(DynamicBlockReferenceProperty).ReadOnly,
+            default(DynamicBlockReferenceProperty).VisibleInCurrentVisibilityState,
+            (object)default(Layout).LayoutName,
+            default(Layout).ModelType,
+            (object)default(Layout).BlockTableRecordId,
             // Arc
             default(Arc).Center, default(Arc).Radius, default(Arc).StartAngle, default(Arc).EndAngle,
             (object)default(Arc).Normal,
@@ -118,8 +146,8 @@ public static class V2ApiSurfaceProbe
         var failed = new List<string>();
 
         // Compile-time verification summary (types and properties compiled successfully)
-        int compileTimeTypes = 33;  // number of typeof() checks in CompileTimeVerify
-        int compileTimeProperties = 66;  // number of property-access checks in CompileTimeVerify
+        int compileTimeTypes = 51;  // number of typeof() checks in CompileTimeVerify
+        int compileTimeProperties = 87;  // number of property-access checks in CompileTimeVerify
 
         // Runtime method checks
         CheckMember(typeof(Spline), "GetControlPointAt", MemberKind.Method, passed, failed);
@@ -131,6 +159,8 @@ public static class V2ApiSurfaceProbe
         CheckMember(typeof(MLeader), "VerticesCount", MemberKind.Method, passed, failed);
         CheckMember(typeof(MLeader), "GetVertex", MemberKind.Method, passed, failed);
         CheckMember(typeof(Hatch), "GetLoopAt", MemberKind.Method, passed, failed);
+        CheckMember(typeof(AttributeCollection), "GetEnumerator", MemberKind.Method, passed, failed);
+        CheckMember(typeof(DynamicBlockReferencePropertyCollection), "GetEnumerator", MemberKind.Method, passed, failed);
 
         // Members that might be methods OR properties in R20.1
         CheckMember(typeof(MLeader), "MText", MemberKind.Any, passed, failed);
@@ -153,6 +183,14 @@ public static class V2ApiSurfaceProbe
         CheckMember(typeof(BlockReference), "XrefStatus", MemberKind.Property, passed, failed);
         CheckMember(typeof(Dimension), "DimensionType", MemberKind.Property, passed, failed);
         CheckMember(typeof(Spline), "NurbsData", MemberKind.Property, passed, failed);
+        CheckMember(typeof(BlockReference), "AttributeCollection", MemberKind.Property, passed, failed);
+        CheckMember(typeof(BlockReference), "DynamicBlockReferencePropertyCollection", MemberKind.Property, passed, failed);
+        CheckMember(typeof(BlockReference), "DynamicBlockTableRecord", MemberKind.Property, passed, failed);
+        CheckMember(typeof(BlockTableRecord), "IsFromOverlayReference", MemberKind.Property, passed, failed);
+        CheckMember(typeof(BlockTableRecord), "HasAttributeDefinitions", MemberKind.Property, passed, failed);
+        CheckMember(typeof(BlockTableRecord), "LayoutId", MemberKind.Property, passed, failed);
+        CheckMember(typeof(AttributeReference), "IsMTextAttribute", MemberKind.Property, passed, failed);
+        CheckMember(typeof(DynamicBlockReferenceProperty), "VisibleInCurrentVisibilityState", MemberKind.Property, passed, failed);
 
         // Emit JSON
         var sb = new StringBuilder();

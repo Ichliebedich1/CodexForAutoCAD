@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$AutoCad2016Dir,
@@ -13,6 +13,9 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'build-safety.ps1')
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $projectRoot = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016'
 $projectPath = Join-Path $projectRoot 'Codex.AutoCAD.Host.2016.csproj'
 $solutionPath = Join-Path $repoRoot 'Codex.AutoCAD.2016.sln'
@@ -23,7 +26,7 @@ $offlinePackagePath = Join-Path $repoRoot 'third_party\nuget\Microsoft.NETFramew
 $phase2Script = Join-Path $repoRoot 'scripts\verify-phase2.ps1'
 $readOnlyContextScript = Join-Path $repoRoot 'scripts\verify-autocad2016-readonly-context.ps1'
 $AutoCad2016Dir = [IO.Path]::GetFullPath($AutoCad2016Dir)
-$stageRoot = Join-Path $repoRoot ('artifacts\u16-' + [Guid]::NewGuid().ToString('N').Substring(0, 12))
+$stageRoot = Join-Path $artifactsRoot ('u16-' + [Guid]::NewGuid().ToString('N').Substring(0, 12))
 $lf = [string][char]10
 $cr = [string][char]13
 
@@ -531,6 +534,7 @@ function Invoke-HostBuild {
     }
     try {
         $env:DOTNET_CLI_HOME = $cliHome
+        # 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
         $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
         $env:NUGET_PACKAGES = $packages
         $env:NUGET_HTTP_CACHE_PATH = $httpCache
@@ -647,6 +651,7 @@ function Invoke-ContractSpecs {
     $savedPathMap = $env:PathMap
     try {
         $env:DOTNET_CLI_HOME = $cliHome
+        # 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
         $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
         $env:PathMap = ($root + '=/_unified_contract/,' + $repoRoot + '=/_/')
         Invoke-Captured -FilePath $DotNetPath -Arguments @(
@@ -771,6 +776,7 @@ try {
     }
     try {
         $env:DOTNET_CLI_HOME = $subGateHome
+        # 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
         $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
         $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
         $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
@@ -906,5 +912,6 @@ try {
     Write-Host '--- End Verification ---'
 }
 finally {
+    Complete-CodexBuildSafety -State $buildSafety -Stage 'unified-host' | Out-Null
     Pop-Location
 }

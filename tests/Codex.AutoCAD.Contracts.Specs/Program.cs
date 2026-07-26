@@ -19,6 +19,28 @@ var specs = new[]
     new SpecCase("计划字符串拒绝控制字符危险格式和超长值", PlanStringsRejectUnsafeCharactersAndLength),
     new SpecCase("桥接直线提案拒绝受信边界外输入", BridgeLineProposalFailsClosed),
     new SpecCase("桥接回合限制提示词和上下文数量", BridgeTurnRequestIsBounded),
+    new SpecCase("POLICY-M41-001 配置层从机器到用户逐层收窄", AgentPolicySpecs.LayerPrecedenceNarrowsFromMachineToUser),
+    new SpecCase("POLICY-M41-002 低优先级层不得扩大白名单", AgentPolicySpecs.LowerLayerCannotWidenAllowList),
+    new SpecCase("POLICY-M41-003 白名单去重且顺序确定", AgentPolicySpecs.AllowListIsDeterministicallyOrdered),
+    new SpecCase("POLICY-M41-004 管理员锁定阻止用户改模型", AgentPolicySpecs.AdministratorLockBlocksUserModelOverride),
+    new SpecCase("POLICY-M41-005 管理员锁定阻止用户改思考强度", AgentPolicySpecs.AdministratorLockBlocksUserEffortOverride),
+    new SpecCase("POLICY-M41-006 同层可同时赋值并锁定", AgentPolicySpecs.SameLayerMaySetValueAndLockIt),
+    new SpecCase("POLICY-M41-007 缺失全部配置层fail-closed", AgentPolicySpecs.MissingEveryLayerFailsClosed),
+    new SpecCase("POLICY-M41-008 空白名单fail-closed", AgentPolicySpecs.EmptyAllowListFailsClosed),
+    new SpecCase("POLICY-M41-009 损坏schema fail-closed", AgentPolicySpecs.CorruptSchemaFailsClosed),
+    new SpecCase("POLICY-M41-010 旧schema版本fail-closed", AgentPolicySpecs.OutdatedSchemaVersionFailsClosed),
+    new SpecCase("POLICY-M41-011 默认值不在白名单内fail-closed", AgentPolicySpecs.DefaultOutsideAllowListFailsClosed),
+    new SpecCase("POLICY-M41-012 缺失默认值fail-closed", AgentPolicySpecs.MissingDefaultFailsClosed),
+    new SpecCase("POLICY-M41-013 白名单超限fail-closed", AgentPolicySpecs.OversizedAllowListFailsClosed),
+    new SpecCase("POLICY-M41-014 非法模型形态全部拒绝", AgentPolicySpecs.InvalidModelShapesFailClosed),
+    new SpecCase("POLICY-M41-015 非法思考强度拒绝", AgentPolicySpecs.InvalidReasoningEffortFailsClosed),
+    new SpecCase("POLICY-M41-016 空请求回落到受信默认值", AgentPolicySpecs.EmptyRequestFallsBackToDefaults),
+    new SpecCase("POLICY-M41-017 任意请求字符串不得穿透", AgentPolicySpecs.ArbitraryRequestStringCannotPassThrough),
+    new SpecCase("POLICY-M41-018 白名单内请求按实际接受值返回", AgentPolicySpecs.AllowedRequestIsReturnedAsAcceptedValue),
+    new SpecCase("POLICY-M41-019 锁定后偏离默认值的请求被拒绝", AgentPolicySpecs.LockedPolicyRejectsDivergentRequest),
+    new SpecCase("统一诊断脱敏按分类清除令牌路径URI和用户名", DiagnosticSanitizerRedactsMixedSensitiveText),
+    new SpecCase("统一诊断脱敏覆盖设备路径转义JSON和完整URI变体", DiagnosticSanitizerRedactsDiagnosticVariants),
+    new SpecCase("统一诊断脱敏有界遍历嵌套和聚合异常", DiagnosticSanitizerBoundsExceptionGraph),
     new SpecCase("CTX-V1-001 六类上下文通过并产生冻结规范向量", CadContextV1CanonicalVectorIsFrozen),
     new SpecCase("CTX-V1-002 图元输入顺序不改变规范JSON和哈希", CadContextV1SortsEntitiesByNumericHandle),
     new SpecCase("CTX-V1-003 schema版本独立于IPC版本并严格拒绝漂移", CadContextV1SchemaVersionIsIndependent),
@@ -70,11 +92,36 @@ var specs = new[]
     new SpecCase("BRIDGE-V2-003 能力响应列出支持的CadContext schema版本", BridgeCapabilitiesListSupportedSchemas),
     new SpecCase("BRIDGE-V2-004 v1客户端在v2-capable AgentHost仍可协商", BridgeV1ClientNegotiatesWithV2CapableHost),
     new SpecCase("BRIDGE-V2-005 重复CadContext schema版本被拒绝", BridgeCapabilitiesRejectDuplicateSchemas),
+    new SpecCase("BRIDGE-QUERY-001 反向整图查询绑定请求和回合且模型不能提供图纸身份", BridgeDrawingQueryBindsTrustedIdentity),
     new SpecCase("HOST16-V1-001 六类只读快照映射为精确公共契约字段", UnifiedHostMapsSixEntityTypes),
     new SpecCase("HOST16-V1-002 binary-v1选择和实体状态哈希保持绑定", UnifiedHostPreservesSelectionIdentity),
     new SpecCase("HOST16-V1-003 映射后canonical JSON确定且不含图名路径", UnifiedHostCanonicalJsonIsPrivateAndDeterministic),
     new SpecCase("HOST16-V1-004 可读摘要展示坐标图层文字半径顶点块名", UnifiedHostSummaryShowsRequiredFields),
     new SpecCase("HOST16-V1-005 不透明文档元数据不合规则fail-closed", UnifiedHostRejectsUnsafeDocumentMetadata),
+    new SpecCase("INDEX-V1-001 五万对象DrawingIndex描述通过冻结契约", DrawingIndexContractsSpecs.FiftyThousandEntityDescriptorPasses),
+    new SpecCase("INDEX-V1-002 DrawingIndex计数与终态不一致被拒绝", DrawingIndexContractsSpecs.DescriptorInvariantsFailClosed),
+    new SpecCase("QUERY-V1-001 类型图层块文字范围和对象ID过滤正确", DrawingIndexContractsSpecs.FiltersAreCombined),
+    new SpecCase("QUERY-V1-002 游标分页稳定且不重复不遗漏", DrawingIndexContractsSpecs.CursorPaginationIsStable),
+    new SpecCase("QUERY-V1-003 游标绑定索引与查询形状但允许跨请求分页", DrawingIndexContractsSpecs.CursorIsBoundToQueryShapeAcrossRequestIdentities),
+    new SpecCase("QUERY-V1-010 游标不能跨索引或revision使用", DrawingIndexContractsSpecs.CursorCannotCrossIndexOrRevision),
+    new SpecCase("QUERY-V1-008 篡改游标偏移量被拒绝", DrawingIndexContractsSpecs.ForgedCursorOffsetIsRejected),
+    new SpecCase("QUERY-V1-009 过期游标被拒绝", DrawingIndexContractsSpecs.ExpiredCursorIsRejected),
+    new SpecCase("QUERY-V1-004 图纸revision变化返回stale而非旧结果", DrawingIndexContractsSpecs.RevisionMismatchReturnsStale),
+    new SpecCase("QUERY-V1-005 partial与limited完整性不被伪装", DrawingIndexContractsSpecs.PartialAndLimitedStayExplicit),
+    new SpecCase("QUERY-V1-006 内存预算在加入实体前fail-closed", DrawingIndexContractsSpecs.AccumulatorHonorsMemoryBudget),
+    new SpecCase("QUERY-V1-007 五万对象索引可过滤并分页", DrawingIndexContractsSpecs.FiftyThousandEntitiesCanBeQueried),
+    new SpecCase("INDEX-V1-003 完成状态不会把占位或预算超限伪装为完整", DrawingIndexContractsSpecs.CompletionPolicyIsFailClosed),
+    new SpecCase("INDEX-V1-004 图纸身份或revision变化使索引失效", DrawingIndexContractsSpecs.IdentityPolicyRejectsStaleIndex),
+    new SpecCase("INDEX-V1-005 重复实体令牌在累积与响应层均fail-closed", DrawingIndexContractsSpecs.DuplicateObjectTokensFailClosed),
+    new SpecCase("INDEX-V1-006 原始Handle形状不能作为查询实体令牌", DrawingIndexContractsSpecs.RawHandleShapedObjectTokensFailClosed),
+    new SpecCase("INDEX-M3-001 占位原因和实际类型统计有界且不混入实体数据", DrawingIndexContractsSpecs.ReadIssueStatisticsStayStructuredAndBounded),
+    new SpecCase("INDEX-M3-002 块详情有界深拷贝且不定义Xref路径字段", DrawingIndexContractsSpecs.BlockDetailsAreBoundedDeepCopiedAndPathFree),
+    new SpecCase("INDEX-M3-003 重复块定义按实例路径计数且循环受限", DrawingIndexContractsSpecs.RepeatedBlockDefinitionsPreserveInstancePaths),
+    new SpecCase("INDEX-M3-004 块定义摘要缓存仅保存托管快照并隔离实例结果", DrawingIndexContractsSpecs.BlockDefinitionSummaryCacheIsCloneSafe),
+    new SpecCase("INDEX-M3-005 动态属性保留前八项但统计真实总数", DrawingIndexContractsSpecs.DynamicPropertyCountContinuesPastRetainedLimit),
+    new SpecCase("INDEX-M3-006 单实体读取遵守Idle切片预算", DrawingIndexContractsSpecs.BlockReadBudgetExpiresAtSliceBoundary),
+    new SpecCase("INDEX-M3-007 预算过期的块定义摘要不会污染会话缓存", DrawingIndexContractsSpecs.BudgetExpiredBlockDefinitionSummaryIsNotCached),
+    new SpecCase("INDEX-M3-008 高价值对象保持可查询且明确受限", DrawingIndexContractsSpecs.HighValueLimitedTypesStayQueryableAndExplicit),
 };
 
 var failed = 0;
@@ -815,6 +862,89 @@ static void BridgeCapabilitiesRejectDuplicateSchemas()
         "capabilities_schema_duplicate");
 }
 
+static void BridgeDrawingQueryBindsTrustedIdentity()
+{
+    var request = new AgentDrawingQueryRequest
+    {
+        RequestId = "request-query-1",
+        ThreadId = "thread-query-1",
+        TurnId = "turn-query-1",
+        ToolCallId = "call-query-1",
+        QueryId = "query-host-1",
+        Filter = new CadQueryFilter
+        {
+            Layers = new[] { "AI" },
+            IncludeUnsupported = false,
+        },
+        PageSize = 25,
+    };
+    Equal(0, AgentBridgeContractValidator.Validate(request).Length,
+        "合法反向整图查询应通过Bridge契约。");
+    Equal(null, typeof(AgentDrawingQueryRequest).GetProperty("IndexId"),
+        "模型侧Bridge请求不得暴露indexId。");
+    Equal(null, typeof(AgentDrawingQueryRequest).GetProperty("DocumentId"),
+        "模型侧Bridge请求不得暴露documentId。");
+    Equal(null, typeof(AgentDrawingQueryRequest).GetProperty("DocumentRevision"),
+        "模型侧Bridge请求不得暴露documentRevision。");
+
+    var response = new AgentDrawingQueryResponse
+    {
+        RequestId = request.RequestId,
+        ThreadId = request.ThreadId,
+        TurnId = request.TurnId,
+        ToolCallId = request.ToolCallId,
+        QueryId = request.QueryId,
+        Query = new CadQueryResponse
+        {
+            IndexId = "idx-host-1",
+            DocumentId = "doc-host-1",
+            DocumentRevision = 9,
+            QueryId = request.QueryId,
+            Status = CadQueryStatuses.Ok,
+            Complete = true,
+            TotalMatches = 0,
+            ReturnedCount = 0,
+        },
+    };
+    Equal(0, AgentBridgeContractValidator.ValidateDrawingQueryResponse(request, response).Length,
+        "合法反向查询响应应绑定全部请求身份。");
+
+    response.RequestId = "request-other";
+    Contains(
+        AgentBridgeContractValidator.ValidateDrawingQueryResponse(request, response),
+        "drawing_query_response_request_mismatch");
+
+    response.RequestId = request.RequestId;
+    response.ThreadId = "thread-other";
+    Contains(
+        AgentBridgeContractValidator.ValidateDrawingQueryResponse(request, response),
+        "drawing_query_response_thread_mismatch");
+
+    response.ThreadId = request.ThreadId;
+    response.TurnId = "turn-other";
+    Contains(
+        AgentBridgeContractValidator.ValidateDrawingQueryResponse(request, response),
+        "drawing_query_response_turn_mismatch");
+
+    response.TurnId = request.TurnId;
+    response.ToolCallId = "call-other";
+    Contains(
+        AgentBridgeContractValidator.ValidateDrawingQueryResponse(request, response),
+        "drawing_query_response_tool_call_mismatch");
+
+    response.ToolCallId = request.ToolCallId;
+    response.QueryId = "query-other";
+    Contains(
+        AgentBridgeContractValidator.ValidateDrawingQueryResponse(request, response),
+        "drawing_query_response_query_mismatch");
+
+    response.QueryId = request.QueryId;
+    response.Query.QueryId = "query-payload-other";
+    Contains(
+        AgentBridgeContractValidator.ValidateDrawingQueryResponse(request, response),
+        "drawing_query_response_payload_mismatch");
+}
+
 static void UnifiedHostMapsSixEntityTypes()
 {
     var context = CreateUnifiedHostContext();
@@ -1222,6 +1352,108 @@ static CadContextEntityV1 CreateLineContextEntity(
             End = new CadPoint3(endX, 7.125, 0),
         },
     };
+}
+
+static void DiagnosticSanitizerRedactsMixedSensitiveText()
+{
+    const string unsafeText =
+        "remote failure Bearer sk-live-SECRET at C:\\Users\\alice\\drawing.dwg "
+        + "via https://alice:password@example.invalid/api?access_token=QUERYSECRET "
+        + "for CONTOSO\\alice";
+    var result = DiagnosticSanitizer.SanitizeText(
+        DiagnosticDataClassification.RemoteError,
+        unsafeText);
+
+    Equal(
+        DiagnosticDataClassification.RemoteError,
+        result.Classification,
+        "Diagnostic classification drifted.");
+    ContainsText(result.SafeText, "[redacted-token]");
+    ContainsText(result.SafeText, "[redacted-path]");
+    ContainsText(result.SafeText, "[redacted-uri]");
+    ContainsText(result.SafeText, "[redacted-identity]");
+    DoesNotContainText(result.SafeText, "sk-live-SECRET");
+    DoesNotContainText(result.SafeText, "C:\\Users\\alice");
+    DoesNotContainText(result.SafeText, "example.invalid");
+    DoesNotContainText(result.SafeText, "CONTOSO\\alice");
+    if ((result.Redactions & DiagnosticRedactionKinds.Token) == 0
+        || (result.Redactions & DiagnosticRedactionKinds.Path) == 0
+        || (result.Redactions & DiagnosticRedactionKinds.Uri) == 0
+        || (result.Redactions & DiagnosticRedactionKinds.Identity) == 0)
+    {
+        throw new InvalidOperationException("Expected diagnostic redaction flags were not set.");
+    }
+}
+
+static void DiagnosticSanitizerRedactsDiagnosticVariants()
+{
+    const string unsafeText =
+        "open \"\\\\?\\C:\\Users\\alice smith\\private drawing.dwg\" "
+        + "pipe \\\\.\\pipe\\codex-secret-pipe "
+        + "native \\??\\C:\\Users\\alice\\secret.cfg "
+        + "payload {\\\"access_token\\\":\\\"ESCAPED-TOKEN-731\\\","
+        + "\\\"client_secret\\\":\\\"CLIENT-SECRET-732\\\"} "
+        + "at x://bob:pass@example.invalid/api?q=private#fragment";
+    var result = DiagnosticSanitizer.SanitizeText(
+        DiagnosticDataClassification.Exception,
+        unsafeText);
+
+    ContainsText(result.SafeText, "[redacted-path]");
+    ContainsText(result.SafeText, "[redacted-token]");
+    ContainsText(result.SafeText, "[redacted-uri]");
+    DoesNotContainText(result.SafeText, "alice smith");
+    DoesNotContainText(result.SafeText, "private drawing");
+    DoesNotContainText(result.SafeText, "codex-secret-pipe");
+    DoesNotContainText(result.SafeText, "secret.cfg");
+    DoesNotContainText(result.SafeText, "ESCAPED-TOKEN-731");
+    DoesNotContainText(result.SafeText, "CLIENT-SECRET-732");
+    DoesNotContainText(result.SafeText, "example.invalid");
+    if ((result.Redactions & DiagnosticRedactionKinds.Token) == 0
+        || (result.Redactions & DiagnosticRedactionKinds.Path) == 0
+        || (result.Redactions & DiagnosticRedactionKinds.Uri) == 0)
+    {
+        throw new InvalidOperationException("Expected variant diagnostic redaction flags were not set.");
+    }
+}
+
+static void DiagnosticSanitizerBoundsExceptionGraph()
+{
+    var nested = new AggregateException(
+        "aggregate failed",
+        new InvalidOperationException(
+            "Bearer NESTED-TOKEN-731 at \\\\?\\C:\\Users\\alice\\secret.dwg",
+            new InvalidDataException(
+                "remote x://alice:password@example.invalid/private#fragment")),
+        new Exception("client_secret=INNER-SECRET-732"));
+    var result = DiagnosticSanitizer.SanitizeException(
+        DiagnosticDataClassification.Exception,
+        nested);
+
+    ContainsText(result.SafeText, "[redacted-token]");
+    ContainsText(result.SafeText, "[redacted-path]");
+    ContainsText(result.SafeText, "[redacted-uri]");
+    DoesNotContainText(result.SafeText, "NESTED-TOKEN-731");
+    DoesNotContainText(result.SafeText, "INNER-SECRET-732");
+    DoesNotContainText(result.SafeText, "secret.dwg");
+    DoesNotContainText(result.SafeText, "example.invalid");
+    if (result.SafeText.Length > DiagnosticSanitizer.MaximumOutputCharacters)
+    {
+        throw new InvalidOperationException("Nested diagnostic exceeded the public output bound.");
+    }
+
+    Exception tooDeep = new Exception("leaf");
+    for (var depth = 0; depth <= DiagnosticSanitizer.MaximumExceptionDepth; depth++)
+    {
+        tooDeep = new Exception("layer-" + depth, tooDeep);
+    }
+
+    var bounded = DiagnosticSanitizer.SanitizeException(
+        DiagnosticDataClassification.Exception,
+        tooDeep);
+    if (!bounded.Truncated)
+    {
+        throw new InvalidOperationException("Deep exception graph was not marked truncated.");
+    }
 }
 
 static CadContextEntityV1 FindEntity(CadContextJsonV1 context, string entityType)

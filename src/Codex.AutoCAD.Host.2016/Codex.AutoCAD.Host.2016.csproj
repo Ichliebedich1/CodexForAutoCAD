@@ -107,6 +107,14 @@
     <Compile Include="CanonicalSelectionHashV2.cs" />
     <Compile Include="ReadOnlySelectionCaptureV2.cs" />
     <Compile Include="DocumentContextRegistry.cs" />
+    <Compile Include="DrawingIndexCore.cs" />
+    <Compile Include="DrawingIndexBlockReadCore.cs" />
+    <Compile Include="DrawingIndexAgentSnapshot.cs" />
+    <Compile Include="DrawingIndexPerformanceMetrics.cs" />
+    <Compile Include="CadReadTypeStatistics.cs" />
+    <Compile Include="DrawingIndexEntityReader.cs" />
+    <Compile Include="DrawingIndexRuntime.cs" />
+    <Compile Include="HostCommandDiagnostic.cs" />
     <Compile Include="UnifiedReadOnlyContextRuntime.cs" />
     <Compile Include="UnifiedPaletteRuntime.cs" />
     <Compile Include="UnifiedPaletteController.cs" />

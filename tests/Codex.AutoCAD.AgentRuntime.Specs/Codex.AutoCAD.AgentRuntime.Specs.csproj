@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Codex.AutoCAD.AgentRuntime\Codex.AutoCAD.AgentRuntime.csproj" />
+    <ProjectReference Include="..\..\src\Codex.AutoCAD.Contracts\Codex.AutoCAD.Contracts.csproj" />
   </ItemGroup>
 </Project>

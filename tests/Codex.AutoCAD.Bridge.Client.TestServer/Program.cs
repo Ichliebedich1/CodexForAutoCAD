@@ -26,7 +26,12 @@ if (mode != "happy"
     && mode != "trailing-json"
     && mode != "invalid-utf8"
     && mode != "oversized-frame"
-    && mode != "terminal-late-event")
+    && mode != "terminal-late-event"
+    && mode != "reverse-query"
+    && mode != "reverse-query-error"
+    && mode != "reverse-query-before-start-response"
+    && mode != "reverse-query-cancel"
+    && mode != "reverse-query-stop")
 {
     Console.Error.WriteLine("invalid test mode");
     return 2;
@@ -56,7 +61,12 @@ var serializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web)
 try
 {
     if (mode != "happy" && mode != "disconnect" && mode != "timeout"
-        && mode != "terminal-late-event")
+        && mode != "terminal-late-event"
+        && mode != "reverse-query"
+        && mode != "reverse-query-error"
+        && mode != "reverse-query-before-start-response"
+        && mode != "reverse-query-cancel"
+        && mode != "reverse-query-stop")
     {
         return await RunRawFaultServerAsync(
             pipeName,
@@ -79,8 +89,10 @@ try
     var emitAssistantEvents = false;
     var activeThreadId = string.Empty;
     var activeTurnId = string.Empty;
+    var activeRequestId = string.Empty;
     var activeContextSha256 = string.Empty;
     var emitTerminalLateEvents = false;
+    var emitReverseDrawingQuery = false;
     connection.Start(async (request, cancellationToken) =>
     {
         await Task.Yield();
@@ -177,6 +189,135 @@ try
                     cancellationToken);
             }
 
+            if (emitReverseDrawingQuery)
+            {
+                emitReverseDrawingQuery = false;
+                var drawingRequest = new AgentDrawingQueryRequest
+                {
+                    RequestId = activeRequestId,
+                    ThreadId = activeThreadId,
+                    TurnId = activeTurnId,
+                    ToolCallId = "tool-call-query-1",
+                    QueryId = "query-host-1",
+                    Filter = new CadQueryFilter
+                    {
+                        Layers = new[] { "AI" },
+                        IncludeUnsupported = false,
+                    },
+                    PageSize = 25,
+                };
+                if (mode == "reverse-query-error")
+                {
+                    try
+                    {
+                        _ = await connection.RequestAsync(
+                                AgentBridgeMethods.QueryDrawing,
+                                JsonSerializer.Serialize(drawingRequest, serializerOptions),
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                        throw new InvalidOperationException(
+                            "reverse drawing query error unexpectedly succeeded");
+                    }
+                    catch (BridgeRemoteException exception)
+                    {
+                        if (!string.Equals(
+                                exception.Code,
+                                "diagnostic_test",
+                                StringComparison.Ordinal))
+                        {
+                            throw new InvalidOperationException(
+                                "reverse drawing query error code was not preserved");
+                        }
+
+                        var publicDiagnostic = exception.Message;
+                        foreach (var marker in new[]
+                                 {
+                                     "bridge-bearer-secret-marker",
+                                     "bridge-query-secret-marker",
+                                     "bridge-json-secret-marker",
+                                     "bridge-inner-secret-marker",
+                                     "bridge-user",
+                                     "bridge-server",
+                                     "example.invalid",
+                                 })
+                        {
+                            if (publicDiagnostic.IndexOf(
+                                    marker,
+                                    StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                throw new InvalidOperationException(
+                                    "reverse drawing query error leaked a protected marker");
+                            }
+                        }
+
+                        if (!publicDiagnostic.Contains(
+                                "[redacted-token]",
+                                StringComparison.Ordinal)
+                            || !publicDiagnostic.Contains(
+                                "[redacted-path]",
+                                StringComparison.Ordinal)
+                            || !publicDiagnostic.Contains(
+                                "[redacted-uri]",
+                                StringComparison.Ordinal)
+                            || !publicDiagnostic.Contains(
+                                "[redacted-identity]",
+                                StringComparison.Ordinal)
+                            || publicDiagnostic.Length > DiagnosticSanitizer.MaximumOutputCharacters)
+                        {
+                            throw new InvalidOperationException(
+                                "reverse drawing query error was not bounded and sanitized");
+                        }
+                    }
+                }
+                else if (mode == "reverse-query-cancel")
+                {
+                    using var queryCancellation = new CancellationTokenSource(
+                        TimeSpan.FromSeconds(2));
+                    try
+                    {
+                        _ = await connection.RequestAsync(
+                            AgentBridgeMethods.QueryDrawing,
+                            JsonSerializer.Serialize(drawingRequest, serializerOptions),
+                            queryCancellation.Token).ConfigureAwait(false);
+                        throw new InvalidOperationException("reverse drawing query was not cancelled");
+                    }
+                    catch (OperationCanceledException) when (queryCancellation.IsCancellationRequested)
+                    {
+                    }
+                    catch (BridgeRemoteException exception)
+                        when (string.Equals(
+                            exception.Code,
+                            AgentBridgeErrorCodes.RequestCancelled,
+                            StringComparison.Ordinal))
+                    {
+                        // The peer's stable cancellation result can arrive before this thread
+                        // observes the timer-backed token. No other remote error is accepted.
+                    }
+                }
+                else
+                {
+                    var drawingResponseJson = await connection.RequestAsync(
+                            AgentBridgeMethods.QueryDrawing,
+                            JsonSerializer.Serialize(drawingRequest, serializerOptions),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    var drawingResponse = JsonSerializer.Deserialize<AgentDrawingQueryResponse>(
+                        drawingResponseJson,
+                        serializerOptions);
+                    if (AgentBridgeContractValidator.ValidateDrawingQueryResponse(
+                            drawingRequest,
+                            drawingResponse).Length != 0
+                        || drawingResponse!.Query.IndexId != "index-host-1"
+                        || drawingResponse.Query.DocumentId != "document-host-1"
+                        || drawingResponse.Query.DocumentRevision != 7
+                        || drawingResponse.Query.ReturnedCount != 1
+                        || !HasExpectedBlockQueryDetails(drawingResponse))
+                    {
+                        throw new InvalidOperationException("invalid reverse drawing query response");
+                    }
+                }
+            }
+
             var response = new AgentCapabilitiesResponse
             {
                 AgentInstanceId = "test-agent-instance",
@@ -242,9 +383,52 @@ try
 
             activeThreadId = turnRequest!.ThreadId;
             activeTurnId = "turn-test-1";
+            activeRequestId = turnRequest.ClientTurnId;
             activeContextSha256 = turnRequest.ContextSha256;
             emitAssistantEvents = mode == "happy";
             emitTerminalLateEvents = mode == "terminal-late-event";
+            emitReverseDrawingQuery = mode == "reverse-query"
+                || mode == "reverse-query-error"
+                || mode == "reverse-query-cancel"
+                || mode == "reverse-query-stop";
+
+            if (mode == "reverse-query-before-start-response")
+            {
+                var drawingRequest = new AgentDrawingQueryRequest
+                {
+                    RequestId = activeRequestId,
+                    ThreadId = activeThreadId,
+                    TurnId = activeTurnId,
+                    ToolCallId = "tool-call-early-query-1",
+                    QueryId = "query-host-early-1",
+                    Filter = new CadQueryFilter
+                    {
+                        Layers = new[] { "AI" },
+                        IncludeUnsupported = false,
+                    },
+                    PageSize = 25,
+                };
+                var drawingResponseJson = await connection.RequestAsync(
+                        AgentBridgeMethods.QueryDrawing,
+                        JsonSerializer.Serialize(drawingRequest, serializerOptions),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                var drawingResponse = JsonSerializer.Deserialize<AgentDrawingQueryResponse>(
+                    drawingResponseJson,
+                    serializerOptions);
+                if (AgentBridgeContractValidator.ValidateDrawingQueryResponse(
+                        drawingRequest,
+                        drawingResponse).Length != 0
+                    || drawingResponse!.Query.IndexId != "index-host-1"
+                    || drawingResponse.Query.DocumentId != "document-host-1"
+                    || drawingResponse.Query.DocumentRevision != 7
+                    || drawingResponse.Query.ReturnedCount != 1
+                    || !HasExpectedBlockQueryDetails(drawingResponse))
+                {
+                    throw new InvalidOperationException(
+                        "invalid early reverse drawing query response");
+                }
+            }
 
             return JsonSerializer.Serialize(
                 new AgentTurnStartResponse
@@ -392,6 +576,37 @@ static async Task<int> RunRawFaultServerAsync(
     }
 
     return 0;
+}
+
+static bool HasExpectedBlockQueryDetails(AgentDrawingQueryResponse? response)
+{
+    var entities = response?.Query.Entities;
+    if (entities is null || entities.Length != 1)
+    {
+        return false;
+    }
+
+    var entity = entities[0];
+    var details = entity.BlockDetails;
+    return entity.EntityType == CadContextEntityTypesV2.BlockReference
+           && entity.ActualType == "AcDbBlockReference"
+           && entity.Layer == "A-BLOCK"
+           && entity.BlockName == "Door"
+           && details is not null
+           && details.DetailStatus == CadQueryBlockDetailStatuses.Complete
+           && details.IsDynamic
+           && details.HasAttributeDefinitions
+           && details.AttributeCount == 1
+           && details.Attributes.Length == 1
+           && details.Attributes[0].Tag == "DOOR_ID"
+           && details.Attributes[0].Value == "D-01"
+           && details.DynamicPropertyCount == 1
+           && details.DynamicProperties.Length == 1
+           && details.DynamicProperties[0].Name == "Width"
+           && details.DynamicProperties[0].ValueKind == CadQueryDynamicValueKinds.Number
+           && details.DynamicProperties[0].Value == "900"
+           && details.NestedBlockReferenceCount == 2
+           && details.MaximumNestedBlockDepth == 1;
 }
 
 static byte[] MutateEnvelopePayload(byte[] payload, string mode)

@@ -3,6 +3,11 @@ using System.Text;
 using System.Text.Json;
 using Codex.AutoCAD.AppServer;
 using Codex.AutoCAD.AppServer.Protocol;
+using AgentPolicyErrorCodes = Codex.AutoCAD.Contracts.AgentPolicyErrorCodes;
+using AgentPolicyResolver = Codex.AutoCAD.Contracts.AgentPolicyResolver;
+using DiagnosticDataClassification = Codex.AutoCAD.Contracts.DiagnosticDataClassification;
+using DiagnosticSanitizer = Codex.AutoCAD.Contracts.DiagnosticSanitizer;
+using DrawingIndexContractValidator = Codex.AutoCAD.Contracts.DrawingIndexContractValidator;
 
 namespace Codex.AutoCAD.AgentRuntime;
 
@@ -14,6 +19,7 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
 {
     private readonly IAgentAppServer _appServer;
     private readonly IAgentCadProposalBroker? _cadProposalBroker;
+    private readonly IAgentCadDrawingQueryBroker? _cadDrawingQueryBroker;
     private readonly AgentRuntimeOptions _options;
     private readonly bool _ownsAppServer;
     private readonly string? _managedWorkspaceRoot;
@@ -21,6 +27,7 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
     private readonly IReadOnlyList<string>? _runtimeWorkspaceRoots;
     private readonly SemaphoreSlim _startGate = new(1, 1);
     private readonly SemaphoreSlim _cadProposalConcurrency;
+    private readonly SemaphoreSlim _cadDrawingQueryConcurrency;
     private readonly object _conversationSync = new();
     private readonly HashSet<string> _activeThreads = new(StringComparer.Ordinal);
     private readonly HashSet<AgentTurnKey> _activeTurns = new();
@@ -34,26 +41,30 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
 
     public CodexAgentRuntime(
         AgentRuntimeOptions? options = null,
-        IAgentCadProposalBroker? cadProposalBroker = null)
+        IAgentCadProposalBroker? cadProposalBroker = null,
+        IAgentCadDrawingQueryBroker? cadDrawingQueryBroker = null)
         : this(
             new CodexAppServerAdapter(new CodexAppServerClient(), ownsClient: true),
             options,
             ownsAppServer: true,
-            cadProposalBroker)
+            cadProposalBroker,
+            cadDrawingQueryBroker)
     {
     }
 
     public CodexAgentRuntime(
         AppServerClientOptions clientOptions,
         AgentRuntimeOptions? options,
-        IAgentCadProposalBroker? cadProposalBroker = null)
+        IAgentCadProposalBroker? cadProposalBroker = null,
+        IAgentCadDrawingQueryBroker? cadDrawingQueryBroker = null)
         : this(
             new CodexAppServerAdapter(
                 new CodexAppServerClient(EnableExperimentalApi(clientOptions)),
                 ownsClient: true),
             options,
             ownsAppServer: true,
-            cadProposalBroker)
+            cadProposalBroker,
+            cadDrawingQueryBroker)
     {
         ArgumentNullException.ThrowIfNull(clientOptions);
     }
@@ -62,13 +73,15 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
         IAgentAppServer appServer,
         AgentRuntimeOptions? options = null,
         bool ownsAppServer = false,
-        IAgentCadProposalBroker? cadProposalBroker = null)
+        IAgentCadProposalBroker? cadProposalBroker = null,
+        IAgentCadDrawingQueryBroker? cadDrawingQueryBroker = null)
     {
         ArgumentNullException.ThrowIfNull(appServer);
         _appServer = appServer;
         _options = ValidateOptions(options ?? new AgentRuntimeOptions());
         _ownsAppServer = ownsAppServer;
         _cadProposalBroker = cadProposalBroker;
+        _cadDrawingQueryBroker = cadDrawingQueryBroker;
         _managedWorkspaceRoot = NormalizeManagedRoot(
             _options.ManagedWorkspaceRoot,
             _options.MaximumPathCharacters);
@@ -88,6 +101,9 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
         _cadProposalConcurrency = new SemaphoreSlim(
             _options.MaximumConcurrentCadProposals,
             _options.MaximumConcurrentCadProposals);
+        _cadDrawingQueryConcurrency = new SemaphoreSlim(
+            _options.MaximumConcurrentCadDrawingQueries,
+            _options.MaximumConcurrentCadDrawingQueries);
 
         _appServer.NotificationReceived += OnNotificationReceived;
         _appServer.CommandApprovalRequested += OnCommandApprovalRequestedAsync;
@@ -150,15 +166,15 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
             _options.ApprovalPolicy.ToWire(),
             _options.ApprovalsReviewer.ToWire(),
             workingDirectory,
-            options.Model ?? _options.Model,
+            ResolveModelForWire(options.Model),
             options.ModelProvider ?? _options.ModelProvider,
             options.DeveloperInstructions,
             options.ServiceTier,
             options.Ephemeral,
             _runtimeWorkspaceRoots,
-            options.EnableCadDynamicTools
-                ? CadDynamicToolCatalog.CreateWireTools()
-                : Array.Empty<DynamicToolNamespaceWire>());
+            CadDynamicToolCatalog.CreateWireTools(
+                includeProposalTool: options.EnableCadDynamicTools,
+                includeDrawingQueryTool: options.EnableCadDrawingQueryTool));
 
         var response = await _appServer.SendRequestAsync<JsonElement>(
             "thread/start",
@@ -186,7 +202,7 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
             _options.ApprovalPolicy.ToWire(),
             _options.ApprovalsReviewer.ToWire(),
             workingDirectory,
-            options.Model ?? _options.Model,
+            ResolveModelForWire(options.Model),
             options.ModelProvider ?? _options.ModelProvider,
             options.DeveloperInstructions,
             options.ServiceTier,
@@ -271,7 +287,7 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
             _options.ApprovalsReviewer.ToWire(),
             _options.Sandbox.ToSandboxPolicyWire(_runtimeWorkspaceRoots),
             workingDirectory,
-            options.Model ?? _options.Model,
+            ResolveModelForWire(options.Model),
             options.ClientUserMessageId,
             options.ServiceTier,
             options.OutputSchema,
@@ -285,7 +301,7 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
         ValidateIdentifier(handle.TurnId, nameof(handle.TurnId));
         if (handle.Status is AgentTurnStatus.Unknown or AgentTurnStatus.InProgress)
         {
-            RegisterTurn(handle.ThreadId, handle.TurnId);
+            RegisterTurn(handle.ThreadId, handle.TurnId, options.ClientUserMessageId);
         }
         return handle;
     }
@@ -477,9 +493,11 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
         }
 
         if (!string.Equals(toolNamespace, CadDynamicToolCatalog.Namespace, StringComparison.Ordinal)
-            || !string.Equals(tool, CadDynamicToolCatalog.ProposeOperations, StringComparison.Ordinal))
+            || (!string.Equals(tool, CadDynamicToolCatalog.ProposeOperations, StringComparison.Ordinal)
+                && !string.Equals(tool, CadDynamicToolCatalog.QueryDrawing, StringComparison.Ordinal)))
         {
-            const string reason = "Only cad.propose_operations is supported.";
+            const string reason =
+                "Only explicitly enabled cad.query_drawing and cad.propose_operations calls are supported.";
             Publish(new AgentDynamicToolRejectedEvent(
                 threadId,
                 turnId,
@@ -510,6 +528,19 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
             return DynamicToolResult(success: false, reason);
         }
 
+        if (string.Equals(tool, CadDynamicToolCatalog.QueryDrawing, StringComparison.Ordinal))
+        {
+            return await HandleCadDrawingQueryCallAsync(
+                    threadId,
+                    turnId,
+                    callId,
+                    toolNamespace,
+                    tool,
+                    arguments,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         try
         {
             var proposal = CadDynamicToolCatalog.ParseProposal(
@@ -519,7 +550,7 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
                 turnId,
                 arguments);
             var key = new AgentCadCallKey(threadId, turnId, callId);
-            var fingerprint = ComputeArgumentsFingerprint(arguments);
+            var fingerprint = ComputeArgumentsFingerprint(toolNamespace, tool, arguments);
             var execution = GetOrAddCadCall(
                 key,
                 fingerprint,
@@ -546,14 +577,15 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
         }
         catch (CadProposalValidationException exception)
         {
+            var safeReason = SanitizeDynamicToolValidation(exception);
             PublishDynamicToolRejection(
                 threadId,
                 turnId,
                 callId,
                 toolNamespace,
                 tool,
-                exception.Message);
-            return DynamicToolResult(success: false, exception.Message);
+                safeReason);
+            return DynamicToolResult(success: false, safeReason);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -729,6 +761,232 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
         }
     }
 
+    private async Task<ServerRequestResolution> HandleCadDrawingQueryCallAsync(
+        string threadId,
+        string turnId,
+        string callId,
+        string? toolNamespace,
+        string tool,
+        JsonElement arguments,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var key = new AgentCadCallKey(threadId, turnId, callId);
+            var fingerprint = ComputeArgumentsFingerprint(toolNamespace, tool, arguments);
+            var execution = GetOrAddCadCall(
+                key,
+                fingerprint,
+                turnLifecycle =>
+                {
+                    var query = CadDynamicToolCatalog.ParseDrawingQuery(
+                        turnLifecycle.RequestId,
+                        CreateCadQueryId(callId),
+                        callId,
+                        threadId,
+                        turnId,
+                        arguments);
+                    return ExecuteCadDrawingQueryAsync(
+                        query,
+                        toolNamespace,
+                        tool,
+                        cancellationToken,
+                        turnLifecycle);
+                },
+                out var cacheRejection);
+            if (execution is null)
+            {
+                PublishDynamicToolRejection(
+                    threadId,
+                    turnId,
+                    callId,
+                    toolNamespace,
+                    tool,
+                    cacheRejection!);
+                return DynamicToolResult(success: false, cacheRejection!);
+            }
+
+            return await execution.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is CadDrawingQueryValidationException
+            or CadProposalValidationException)
+        {
+            var safeReason = SanitizeDynamicToolValidation(exception);
+            PublishDynamicToolRejection(
+                threadId,
+                turnId,
+                callId,
+                toolNamespace,
+                tool,
+                safeReason);
+            return DynamicToolResult(success: false, safeReason);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            const string reason = "Drawing query arguments were invalid.";
+            PublishDynamicToolRejection(
+                threadId,
+                turnId,
+                callId,
+                toolNamespace,
+                tool,
+                reason);
+            return DynamicToolResult(success: false, reason);
+        }
+    }
+
+    private async Task<ServerRequestResolution> ExecuteCadDrawingQueryAsync(
+        AgentCadDrawingQuery query,
+        string? toolNamespace,
+        string tool,
+        CancellationToken cancellationToken,
+        CadTurnLifecycle turnLifecycle)
+    {
+        if (_cadDrawingQueryBroker is null)
+        {
+            const string reason = "No trusted AutoCAD drawing-query broker is connected.";
+            PublishDynamicToolRejection(
+                query.ThreadId,
+                query.TurnId,
+                query.CallId,
+                toolNamespace,
+                tool,
+                reason);
+            return DynamicToolResult(success: false, reason);
+        }
+
+        if (!_cadDrawingQueryConcurrency.Wait(0))
+        {
+            const string reason = "The trusted AutoCAD drawing-query broker is busy.";
+            PublishDynamicToolRejection(
+                query.ThreadId,
+                query.TurnId,
+                query.CallId,
+                toolNamespace,
+                tool,
+                reason);
+            return DynamicToolResult(success: false, reason);
+        }
+
+        var releaseConcurrency = true;
+        try
+        {
+            using var brokerCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                _lifetimeCancellation.Token,
+                turnLifecycle.CancellationToken);
+            AgentCadDrawingQueryResult? result = null;
+            try
+            {
+                var brokerExecution = _cadDrawingQueryBroker.ExecuteAsync(
+                    query.DeepClone(),
+                    brokerCancellation.Token).AsTask();
+                var deadline = Task.Delay(
+                    _options.CadDrawingQueryTimeout,
+                    brokerCancellation.Token);
+                var completed = await Task.WhenAny(brokerExecution, deadline).ConfigureAwait(false);
+                if (completed != brokerExecution)
+                {
+                    brokerCancellation.Cancel();
+                    ReleaseCadDrawingQueryConcurrencyAfterCompletion(brokerExecution);
+                    releaseConcurrency = false;
+                }
+                else
+                {
+                    result = await brokerExecution.ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch
+            {
+            }
+
+            if (!turnLifecycle.TryAcceptBrokerResult())
+            {
+                const string reason =
+                    "The trusted AutoCAD drawing-query result arrived after the runtime turn ended.";
+                PublishDynamicToolRejection(
+                    query.ThreadId,
+                    query.TurnId,
+                    query.CallId,
+                    toolNamespace,
+                    tool,
+                    reason);
+                return DynamicToolResult(success: false, reason);
+            }
+
+            if (result is null)
+            {
+                const string reason = "The trusted AutoCAD drawing-query broker failed or timed out.";
+                PublishDynamicToolRejection(
+                    query.ThreadId,
+                    query.TurnId,
+                    query.CallId,
+                    toolNamespace,
+                    tool,
+                    reason);
+                return DynamicToolResult(success: false, reason);
+            }
+
+            var response = result.Response;
+            if (!string.Equals(result.ThreadId, query.ThreadId, StringComparison.Ordinal)
+                || !string.Equals(result.TurnId, query.TurnId, StringComparison.Ordinal)
+                || !string.Equals(result.CallId, query.CallId, StringComparison.Ordinal)
+                || !string.Equals(result.QueryId, query.QueryId, StringComparison.Ordinal)
+                || !string.Equals(response.QueryId, query.QueryId, StringComparison.Ordinal)
+                || DrawingIndexContractValidator.Validate(response).Length != 0)
+            {
+                const string reason =
+                    "The trusted AutoCAD drawing-query result identity or contract was invalid.";
+                PublishDynamicToolRejection(
+                    query.ThreadId,
+                    query.TurnId,
+                    query.CallId,
+                    toolNamespace,
+                    tool,
+                    reason);
+                return DynamicToolResult(success: false, reason);
+            }
+
+            return DynamicToolResult(
+                success: true,
+                CadDrawingQueryToolResultCodec.Serialize(response));
+        }
+        finally
+        {
+            if (releaseConcurrency)
+            {
+                _cadDrawingQueryConcurrency.Release();
+            }
+        }
+    }
+
+    private void ReleaseCadDrawingQueryConcurrencyAfterCompletion(
+        Task<AgentCadDrawingQueryResult> brokerExecution)
+    {
+        _ = brokerExecution.ContinueWith(
+            static (completed, state) =>
+            {
+                if (completed.IsFaulted)
+                {
+                    _ = completed.Exception;
+                }
+
+                ((SemaphoreSlim)state!).Release();
+            },
+            _cadDrawingQueryConcurrency,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
     private void ReleaseCadProposalConcurrencyAfterCompletion(
         Task<AgentCadProposalResult> brokerExecution)
     {
@@ -753,6 +1011,13 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
             new DynamicToolCallResponseWire(
                 new[] { new DynamicToolTextContentWire("inputText", text) },
                 success));
+
+    private static string SanitizeDynamicToolValidation(Exception exception)
+        => DiagnosticSanitizer
+            .SanitizeText(
+                DiagnosticDataClassification.RemoteError,
+                exception.Message)
+            .SafeText;
 
     private void Publish(AgentEvent agentEvent)
     {
@@ -879,6 +1144,11 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
         RequireRange(options.MaximumInputItems, 1, 256, nameof(options.MaximumInputItems));
         RequireRange(options.MaximumPathCharacters, 32, 32_767, nameof(options.MaximumPathCharacters));
         RequireRange(options.MaximumConcurrentCadProposals, 1, 16, nameof(options.MaximumConcurrentCadProposals));
+        RequireRange(
+            options.MaximumConcurrentCadDrawingQueries,
+            1,
+            16,
+            nameof(options.MaximumConcurrentCadDrawingQueries));
         RequireRange(options.MaximumTrackedCadCalls, 1, 16_384, nameof(options.MaximumTrackedCadCalls));
         RequireRange(options.MaximumTrackedThreads, 1, 4_096, nameof(options.MaximumTrackedThreads));
         RequireRange(options.MaximumActiveTurns, 1, 4_096, nameof(options.MaximumActiveTurns));
@@ -888,6 +1158,14 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
             throw new ArgumentOutOfRangeException(
                 nameof(options.CadProposalTimeout),
                 "CAD proposal timeout must be between zero and ten minutes.");
+        }
+
+        if (options.CadDrawingQueryTimeout <= TimeSpan.Zero
+            || options.CadDrawingQueryTimeout > TimeSpan.FromMinutes(10))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options.CadDrawingQueryTimeout),
+                "CAD drawing query timeout must be between zero and ten minutes.");
         }
 
         if (options.AllowLocalFileInputs && string.IsNullOrWhiteSpace(options.ManagedWorkspaceRoot))
@@ -924,6 +1202,34 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
         }
 
         return NormalizeExistingDirectory(value, maximumPathCharacters, "managed workspace root");
+    }
+
+    /// <summary>
+    /// M4.1 唯一模型出站边界。所有送往 App Server 的模型标识都必须经过这里，
+    /// 使 UI 或 Agent 提交的任意字符串无法直接穿透到 AgentHost/Codex。
+    /// 配置了受信策略时按白名单、管理员锁定和默认值 fail-closed；未配置策略时仍拒绝
+    /// 危险形态（空白、引号、控制字符、路径分隔符、超长值）。返回值即实际被接受的模型。
+    /// </summary>
+    private string? ResolveModelForWire(string? requestedModel)
+    {
+        var effective = requestedModel ?? _options.Model;
+        var policy = _options.AgentPolicy;
+
+        if (policy != null)
+        {
+            var selection = AgentPolicyResolver.Select(policy, effective, null);
+            if (!selection.Accepted)
+            {
+                throw new AgentPolicyViolationException(selection.ErrorCode);
+            }
+            return selection.AcceptedModel;
+        }
+
+        if (!string.IsNullOrEmpty(effective) && !AgentPolicyResolver.IsValidModel(effective!))
+        {
+            throw new AgentPolicyViolationException(AgentPolicyErrorCodes.ModelInvalid);
+        }
+        return effective;
     }
 
     private string? ResolveWorkingDirectory(string? requestedDirectory)
@@ -1184,7 +1490,7 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
         }
     }
 
-    private void RegisterTurn(string threadId, string turnId)
+    private void RegisterTurn(string threadId, string turnId, string? requestId)
     {
         lock (_conversationSync)
         {
@@ -1205,7 +1511,7 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
             }
 
             _activeTurns.Add(key);
-            _cadTurnLifecycles.Add(key, new CadTurnLifecycle());
+            _cadTurnLifecycles.Add(key, new CadTurnLifecycle(requestId));
         }
     }
 
@@ -1241,9 +1547,17 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
         }
     }
 
-    private static string ComputeArgumentsFingerprint(JsonElement arguments)
+    private static string ComputeArgumentsFingerprint(
+        string? toolNamespace,
+        string tool,
+        JsonElement arguments)
     {
-        var bytes = Encoding.UTF8.GetBytes(arguments.GetRawText());
+        var bytes = Encoding.UTF8.GetBytes(
+            (toolNamespace ?? string.Empty)
+            + "\n"
+            + tool
+            + "\n"
+            + arguments.GetRawText());
         return Convert.ToHexString(SHA256.HashData(bytes));
     }
 
@@ -1257,6 +1571,18 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
         while (string.Equals(proposalId, callId, StringComparison.Ordinal));
 
         return proposalId;
+    }
+
+    private static string CreateCadQueryId(string callId)
+    {
+        string queryId;
+        do
+        {
+            queryId = "cad-query-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        }
+        while (string.Equals(queryId, callId, StringComparison.Ordinal));
+
+        return queryId;
     }
 
     private Task<ServerRequestResolution>? GetOrAddCadCall(
@@ -1462,6 +1788,13 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
         private bool _terminal;
         private bool _cancellationCompleted;
         private bool _disposed;
+
+        public CadTurnLifecycle(string? requestId)
+        {
+            RequestId = requestId ?? string.Empty;
+        }
+
+        public string RequestId { get; }
 
         public CancellationToken CancellationToken => _cancellation.Token;
 

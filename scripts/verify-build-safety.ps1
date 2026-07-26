@@ -72,7 +72,10 @@ $selfTestBase = Join-Path (Join-Path $productionArtifactRoot "build-safety-selft
 $createdArtifactPaths = @()
 try {
     $env:CODEX_AUTOCAD_ARTIFACT_BASE = $selfTestBase
-    $state = Initialize-CodexBuildSafety -RepoRoot $repoRoot -MinimumFreeGiB 0
+    # 自检目录包含 GUID，路径天然超过生产 60 字符上限；自检不执行 net45 隔离构建，
+    # 因此在此显式放宽，生产默认值仍由下方负向用例守住。
+    $state = Initialize-CodexBuildSafety -RepoRoot $repoRoot -MinimumFreeGiB 0 `
+        -MaximumArtifactRootLength 512
     $createdArtifactPaths += $state.ArtifactRoot
 
     Assert-True ($state.ArtifactRoot.StartsWith(
@@ -99,7 +102,49 @@ try {
     $env:CODEX_AUTOCAD_ARTIFACT_BASE = "\\server\share\artifacts"
     Assert-Rejected { Resolve-CodexArtifactRoot -RepoRoot $repoRoot -MinimumFreeGiB 0 -NoCreate } `
         "自检失败：UNC 产物基目录没有被拒绝。"
+
+    # MAX_PATH fail-closed：过长产物根必须在构建前被拒绝。
+    # 2026-07-26 产物根迁到 E 盘后长度增加 23 字符，使 net45 隔离构建路径达到 267 字符并以
+    # MSB3030 失败；该用例保证同类回归以后在构建开始前就被拦下。
+    $env:CODEX_AUTOCAD_ARTIFACT_BASE = "E:\" + ("d" * 200)
+    Assert-Rejected { Resolve-CodexArtifactRoot -RepoRoot $repoRoot -MinimumFreeGiB 0 -NoCreate } `
+        "自检失败：超长产物根没有被 fail-closed 拒绝。"
+    # 生产默认上限必须真实生效，而不是只在显式传参时生效。
+    $env:CODEX_AUTOCAD_ARTIFACT_BASE = "E:\" + ("d" * 64)
+    Assert-Rejected { Resolve-CodexArtifactRoot -RepoRoot $repoRoot -MinimumFreeGiB 0 -NoCreate } `
+        "自检失败：默认产物根长度上限没有生效。"
+
     $env:CODEX_AUTOCAD_ARTIFACT_BASE = $selfTestBase
+
+    # 门禁运行关联标识：未设置时必须返回 $null（调用方据此退回时间窗），
+    # 设置但格式非法时必须失败关闭——静默忽略会让汇总器悄悄失去同一次运行的证明。
+    $previousGateRunId = $env:CODEX_GATE_RUN_ID
+    try {
+        $env:CODEX_GATE_RUN_ID = $null
+        if ($null -ne (Get-CodexGateRunCorrelationId)) {
+            throw "自检失败：未设置运行关联标识时没有返回 null。"
+        }
+        $env:CODEX_GATE_RUN_ID = "   "
+        if ($null -ne (Get-CodexGateRunCorrelationId)) {
+            throw "自检失败：空白运行关联标识没有被视为未设置。"
+        }
+        $env:CODEX_GATE_RUN_ID = "  run-2026a.7_x-1  "
+        if ((Get-CodexGateRunCorrelationId) -cne "run-2026a.7_x-1") {
+            throw "自检失败：合法运行关联标识没有被原样接受。"
+        }
+        $env:CODEX_GATE_RUN_ID = "run id"
+        Assert-Rejected { Get-CodexGateRunCorrelationId } `
+            "自检失败：含空格的运行关联标识没有被拒绝。"
+        $env:CODEX_GATE_RUN_ID = "run/../id"
+        Assert-Rejected { Get-CodexGateRunCorrelationId } `
+            "自检失败：含路径分隔符的运行关联标识没有被拒绝。"
+        $env:CODEX_GATE_RUN_ID = "a" * 65
+        Assert-Rejected { Get-CodexGateRunCorrelationId } `
+            "自检失败：超长运行关联标识没有被拒绝。"
+    }
+    finally {
+        $env:CODEX_GATE_RUN_ID = $previousGateRunId
+    }
 
     # PATH 守卫必须在指纹变化时拒绝，而不是静默接受。
     $tamperedState = [pscustomobject]@{
