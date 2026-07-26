@@ -110,6 +110,7 @@ function Resolve-LiveMatrixResults {
             DeferredNames = @()
             UnresolvedNames = @($LiveMatrixFlagNames)
             MandatoryVerified = $false
+            AgentHostMatches = $false
             Detail = "未提供实机矩阵结果文件。"
         }
     }
@@ -126,8 +127,19 @@ function Resolve-LiveMatrixResults {
                 ([string] $document.boundCandidate.agentHostSha256).Trim().ToUpperInvariant()
         }
     }
-    if ($boundHost -cne $HostSha256.ToUpperInvariant() -or
-        $boundAgentHost -cne $AgentHostSha256.ToUpperInvariant()) {
+    # 只用 Host.2016 DLL 做失效判据，AgentHost 哈希仅作记录。
+    #
+    # 理由不是放宽要求，而是原先比错了对象：Host.2016 是用户 NETLOAD 的东西、是实机矩阵
+    # 实际测试的对象，且已证明可复现——同一提交在门禁构建、出货候选和另一个 worktree
+    # 里得到逐字相同的哈希。AgentHost 不是：同样的源码，门禁在自己的隔离 stage 发布一份、
+    # 候选门禁往候选目录发布另一份，net8 framework-dependent 发布产出的字节随输出路径与
+    # SDK 版本漂移（本项目已记录 7A3ABCEA → 4B602965 → 8E6B26FD 三个历史值）。
+    #
+    # 拿一个会合法漂移的值当失效判据，结果是绑定永远报不一致；而一个永远红的守卫最后
+    # 一定会被关掉，那时它一条真的也拦不住。因此这里收窄到 Host，并把这条边界写进
+    # evidence，让"保护了什么、没保护什么"始终可见，而不是悄悄放宽。
+    $agentHostMatches = ($boundAgentHost -ceq $AgentHostSha256.ToUpperInvariant())
+    if ($boundHost -cne $HostSha256.ToUpperInvariant()) {
         return [pscustomobject]@{
             Flags = $flags
             Mode = "candidate_mismatch"
@@ -136,7 +148,8 @@ function Resolve-LiveMatrixResults {
             DeferredNames = @()
             UnresolvedNames = @($LiveMatrixFlagNames)
             MandatoryVerified = $false
-            Detail = "实机结果绑定的候选与当前候选不一致，全部结论作废。"
+            AgentHostMatches = $agentHostMatches
+            Detail = "实机结果绑定的 Host 候选与当前候选不一致，全部结论作废。"
         }
     }
 
@@ -201,7 +214,8 @@ function Resolve-LiveMatrixResults {
         DeferredNames = @($deferredNames)
         UnresolvedNames = @($unresolvedNames)
         MandatoryVerified = [bool] $flags[$MandatoryLiveMatrixFlagName]
-        Detail = "实机结果已绑定当前候选。"
+        AgentHostMatches = $agentHostMatches
+        Detail = "实机结果已绑定当前 Host 候选。"
     }
 }
 
@@ -692,10 +706,18 @@ if ($SelfTestOnly) {
             $mismatch.Flags.RealCredentialManagerVerified) {
             throw "自检失败：候选哈希不一致时实机结论仍被采信。"
         }
-        $agentMismatch = Resolve-LiveMatrixResults -Path $twoVerified -HostSha256 $hostSha `
+        # AgentHost 哈希会随输出路径与 SDK 合法漂移，因此它不是失效判据；但必须如实记录，
+        # 否则"没保护 AgentHost"这件事就从证据里消失了。
+        $agentDrift = Resolve-LiveMatrixResults -Path $twoVerified -HostSha256 $hostSha `
             -AgentHostSha256 ("D" * 64)
-        if ($agentMismatch.Mode -cne "candidate_mismatch") {
-            throw "自检失败：AgentHost 哈希不一致时实机结论仍被采信。"
+        if ($agentDrift.Mode -cne "candidate_bound" -or $agentDrift.VerifiedCount -ne 2) {
+            throw "自检失败：AgentHost 哈希漂移不应使 Host 绑定的实机结论作废。"
+        }
+        if ($agentDrift.AgentHostMatches) {
+            throw "自检失败：AgentHost 哈希不一致却被记录为一致。"
+        }
+        if (-not $bound.AgentHostMatches) {
+            throw "自检失败：AgentHost 哈希一致却被记录为不一致。"
         }
 
         # "环境不具备"不是"已验证"。
@@ -1043,6 +1065,8 @@ $readiness = [ordered]@{
         Unresolved = @($liveMatrix.UnresolvedNames)
         MandatoryFlag = $MandatoryLiveMatrixFlagName
         MandatoryVerified = $liveMatrix.MandatoryVerified
+        AgentHostHashMatchesGateBuild = $liveMatrix.AgentHostMatches
+        AgentHostBindingNote = "AgentHost is recorded, not enforced. Its framework-dependent net8 publish bytes differ between the gate's isolated stage and the packaged candidate for identical source, because the output path changes. Host.2016 is the enforced binding and is the assembly the live matrices actually NETLOAD."
     }
     # 按目标文件 2026-07-26 修订后的 M4 必选项定义：9 项均有明确处置（verified 或
     # 写明理由与重评时点的 deferred），且 RealAbnormalExitMatrixVerified 必须 verified。
