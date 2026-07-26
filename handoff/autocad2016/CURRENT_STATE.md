@@ -408,6 +408,14 @@ NETLOAD 证据的能力一律视为未支持。
   bootstrap/Bridge/thread 启动，再等待并清理已建立资源；预期中断不误报“启动失败”，不能在
   STOP 后上线，重复 STOP 不增加第二终态。真实 AutoCAD/Codex 分阶段启动中断仍未验证。详见
   `M4_15_STARTUP_INTERRUPTION_20260726.md`。
+- M4.15.4 此前是 M4.15 中唯一没有交接文件的子项，实机范围、预期错误码和证据要求都没有
+  落到纸面；现已补齐执行入口。该子项**没有可先做的自动化部分**：分类映射、`Retryable=false`
+  和脱敏边界已由 M4.15.1 覆盖，M4.15.4 要验证的是真实 AppLocker/WDAC/代码签名/EDR 拦截
+  是否确实落进那些已分类的 Win32 错误，只能由用户在具备相应策略的机器上执行。文件同时
+  记下一个必须由实机回答的设计问题：当前用户身份下的普通错误 `5` 被归入
+  `ProcessStartBlocked`，因此纯 NTFS ACL 拒绝也会显示“请让管理员检查 AppLocker、WDAC……”，
+  可能把排查引向错误方向；在实机结论出来前不得凭猜测调整分类。详见
+  `M4_15_RESTRICTED_ACCOUNT_EXECUTION_CONTROL_20260726.md`。
 - M4.15.5a 已把 `retention-control` 顶层 inventory 纳入只读计划状态：合法中断文件报告
   `recovery_required`；未知文件/目录、reparse、超限/不可读或严格 schema 无效的控制 artifact
   报告 `manual_review_required`。计划只输出计数、闭集原因和必要 plan hash，不输出文件名、路径
