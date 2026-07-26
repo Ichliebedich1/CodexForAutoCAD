@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "purpose": "User-reported real-machine and enterprise matrix results for M4. This file is the ONLY input channel for the nine real-world flags in the M4 readiness evidence. Automation must never write a 'verified' status here; it records what the user observed on their own machine.",
+  "boundCandidate": {
+    "hostSha256": "9827DC321B7D458594B007085C78C54505CBE09CEF1BDEFB616D2ABFDFCFB5E8",
+    "agentHostSha256": "779063EBFA6DF06E0BC65B223AAF0C4E22CA167B6B4B9199B532E12669E43BA8",
+    "sourceCommit": "fdcb4380375adfcaf98ab4470f211057c27f3804",
+    "note": "Results only count while these hashes match the candidate the readiness gate measures. Rebuild the candidate and every status below is discarded until re-observed."
+  },
+  "statusVocabulary": {
+    "not_run": "Not attempted yet.",
+    "verified": "Executed on a real machine against the bound candidate and passed. The ONLY status that counts.",
+    "failed": "Executed and did not pass. Records the failure; never counts as verified.",
+    "skipped_environment_unavailable": "The environment cannot run this matrix. Recorded for audit; does NOT count as verified and does NOT complete M4. Formally removing an item from scope requires editing the goal file, which only the user may do."
+  },
+  "matrices": {
+    "RealCredentialManagerVerified": {
+      "status": "not_run",
+      "runbook": "M4_REAL_ENVIRONMENT_FIRST_THREE_20260726.md matrix A",
+      "note": ""
+    },
+    "RealCodexLoginAndKeyringVerified": {
+      "status": "not_run",
+      "runbook": "M4_REAL_ENVIRONMENT_FIRST_THREE_20260726.md matrix B",
+      "note": ""
+    },
+    "RealAbnormalExitMatrixVerified": {
+      "status": "not_run",
+      "runbook": "M4_REAL_ENVIRONMENT_FIRST_THREE_20260726.md matrix C",
+      "note": ""
+    },
+    "RealRestrictedTokenProductChainVerified": {
+      "status": "not_run",
+      "runbook": "",
+      "note": "Blocked in code, not by environment: M4.7 production identity isolation is not finished."
+    },
+    "RealFixedCapacityVolumeVerified": {
+      "status": "not_run",
+      "runbook": "",
+      "note": "Needs an administrator-provisioned dedicated fixed-capacity volume."
+    },
+    "RealDiskFullVerified": {
+      "status": "not_run",
+      "runbook": "",
+      "note": "Depends on the fixed-capacity volume above existing first."
+    },
+    "RealPowerLossVerified": {
+      "status": "not_run",
+      "runbook": "",
+      "note": "Normally needs a virtual machine or a spare test box."
+    },
+    "EnterpriseAppLockerWacEdRMatrixVerified": {
+      "status": "not_run",
+      "runbook": "M4_15_RESTRICTED_ACCOUNT_EXECUTION_CONTROL_20260726.md",
+      "note": "AppLocker support is limited on Windows 10 Pro."
+    },
+    "EnterpriseRetentionArchiveMatrixVerified": {
+      "status": "not_run",
+      "runbook": "",
+      "note": "Organisational process rather than a technical step."
+    }
+  }
+}

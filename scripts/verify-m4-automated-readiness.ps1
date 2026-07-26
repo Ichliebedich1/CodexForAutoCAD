@@ -19,6 +19,9 @@ param(
     # 的 RunCorrelation.Mode 中把 FreshnessOnly 明确记录下来供审计。
     [switch] $RequireRunCorrelation,
 
+    # 用户回报的实机矩阵结果。留空时取仓库内的默认位置；文件不存在则 9 项全部保持 false。
+    [string] $LiveMatrixResultsPath,
+
     [switch] $SelfTestOnly
 )
 
@@ -52,6 +55,101 @@ function Get-TextSha256 {
     }
     finally {
         [Array]::Clear($bytes, 0, $bytes.Length)
+    }
+}
+
+$LiveMatrixFlagNames = @(
+    "RealCredentialManagerVerified",
+    "RealCodexLoginAndKeyringVerified",
+    "RealRestrictedTokenProductChainVerified",
+    "RealFixedCapacityVolumeVerified",
+    "RealDiskFullVerified",
+    "RealPowerLossVerified",
+    "RealAbnormalExitMatrixVerified",
+    "EnterpriseAppLockerWacEdRMatrixVerified",
+    "EnterpriseRetentionArchiveMatrixVerified"
+)
+
+function Resolve-LiveMatrixResults {
+    <#
+    .SYNOPSIS
+        把用户回报的实机矩阵结果解析成 9 个布尔标志。
+    .DESCRIPTION
+        这 9 个标志此前在本脚本里硬编码为 $false，没有任何输入通道——也就是说实机做完了
+        也无处记录，M4Complete 永远为 false。本函数补上这条通道，但**结果必须绑定到它被
+        观察到的那个候选**：只要当前候选哈希与记录中的不一致，全部标志强制回落为 false。
+
+        没有这条绑定，重建候选后旧结论会被无声继承，那就是 2026-07-26 早上"失败门禁遗留
+        的旧 evidence 被当成本次结果"的同一类错误，只是换到了实机侧，后果更严重。
+
+        只有 status 为 "verified" 才计入。"skipped"/"not_run" 等状态照实记录但不置 true：
+        把"环境不具备"当成"已验证"，正是这份证据最不该做的事。
+    #>
+    param(
+        [string] $Path,
+        [Parameter(Mandatory = $true)][string] $HostSha256,
+        [Parameter(Mandatory = $true)][string] $AgentHostSha256
+    )
+
+    $flags = [ordered]@{}
+    foreach ($name in $LiveMatrixFlagNames) {
+        $flags[$name] = $false
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return [pscustomobject]@{
+            Flags = $flags
+            Mode = "no_live_results"
+            VerifiedCount = 0
+            Detail = "未提供实机矩阵结果文件。"
+        }
+    }
+
+    $document = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    $boundHost = ""
+    $boundAgentHost = ""
+    if ($document.PSObject.Properties.Name -contains "boundCandidate") {
+        if ($document.boundCandidate.PSObject.Properties.Name -contains "hostSha256") {
+            $boundHost = ([string] $document.boundCandidate.hostSha256).Trim().ToUpperInvariant()
+        }
+        if ($document.boundCandidate.PSObject.Properties.Name -contains "agentHostSha256") {
+            $boundAgentHost =
+                ([string] $document.boundCandidate.agentHostSha256).Trim().ToUpperInvariant()
+        }
+    }
+    if ($boundHost -cne $HostSha256.ToUpperInvariant() -or
+        $boundAgentHost -cne $AgentHostSha256.ToUpperInvariant()) {
+        return [pscustomobject]@{
+            Flags = $flags
+            Mode = "candidate_mismatch"
+            VerifiedCount = 0
+            Detail = "实机结果绑定的候选与当前候选不一致，全部结论作废。"
+        }
+    }
+
+    $verified = 0
+    if ($document.PSObject.Properties.Name -contains "matrices") {
+        foreach ($name in $LiveMatrixFlagNames) {
+            if (-not ($document.matrices.PSObject.Properties.Name -contains $name)) {
+                continue
+            }
+            $entry = $document.matrices.$name
+            $status = ""
+            if ($null -ne $entry -and ($entry.PSObject.Properties.Name -contains "status")) {
+                $status = ([string] $entry.status).Trim()
+            }
+            if ($status -ceq "verified") {
+                $flags[$name] = $true
+                $verified++
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        Flags = $flags
+        Mode = "candidate_bound"
+        VerifiedCount = $verified
+        Detail = "实机结果已绑定当前候选。"
     }
 }
 
@@ -491,6 +589,99 @@ if ($SelfTestOnly) {
         throw "自检失败：无关联标识时未退回并标注 FreshnessOnly。"
     }
 
+    # --- 实机矩阵结果通道 ---
+    $liveTestRoot = Join-Path ([IO.Path]::GetTempPath()) ("m4-live-" + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $liveTestRoot -Force | Out-Null
+    try {
+        $hostSha = "A" * 64
+        $agentSha = "B" * 64
+
+        $absent = Resolve-LiveMatrixResults -Path (Join-Path $liveTestRoot "missing.json") `
+            -HostSha256 $hostSha -AgentHostSha256 $agentSha
+        if ($absent.Mode -cne "no_live_results" -or $absent.VerifiedCount -ne 0) {
+            throw "自检失败：缺少实机结果文件时没有回落为全 false。"
+        }
+
+        function Write-LiveMatrixProbe {
+            param([string] $File, [string] $BoundHost, [string] $BoundAgent, [hashtable] $Statuses)
+            $matrices = [ordered]@{}
+            foreach ($name in $LiveMatrixFlagNames) {
+                $status = if ($Statuses.ContainsKey($name)) { $Statuses[$name] } else { "not_run" }
+                $matrices[$name] = [ordered]@{ status = $status }
+            }
+            $document = [ordered]@{
+                schemaVersion = 1
+                boundCandidate = [ordered]@{ hostSha256 = $BoundHost; agentHostSha256 = $BoundAgent }
+                matrices = $matrices
+            }
+            $path = Join-Path $liveTestRoot $File
+            [IO.File]::WriteAllText($path, ($document | ConvertTo-Json -Depth 6),
+                (New-Object Text.UTF8Encoding($false)))
+            return $path
+        }
+
+        $twoVerified = Write-LiveMatrixProbe -File "two.json" -BoundHost $hostSha `
+            -BoundAgent $agentSha -Statuses @{
+                "RealCredentialManagerVerified" = "verified"
+                "RealAbnormalExitMatrixVerified" = "verified"
+            }
+        $bound = Resolve-LiveMatrixResults -Path $twoVerified -HostSha256 $hostSha `
+            -AgentHostSha256 $agentSha
+        if ($bound.Mode -cne "candidate_bound" -or $bound.VerifiedCount -ne 2 -or
+            -not $bound.Flags.RealCredentialManagerVerified -or
+            $bound.Flags.RealDiskFullVerified) {
+            throw "自检失败：绑定候选的实机结果没有被正确计入。"
+        }
+
+        # 候选一变，实机结论必须全部作废——否则重建后旧结论会被无声继承。
+        $mismatch = Resolve-LiveMatrixResults -Path $twoVerified -HostSha256 ("C" * 64) `
+            -AgentHostSha256 $agentSha
+        if ($mismatch.Mode -cne "candidate_mismatch" -or $mismatch.VerifiedCount -ne 0 -or
+            $mismatch.Flags.RealCredentialManagerVerified) {
+            throw "自检失败：候选哈希不一致时实机结论仍被采信。"
+        }
+        $agentMismatch = Resolve-LiveMatrixResults -Path $twoVerified -HostSha256 $hostSha `
+            -AgentHostSha256 ("D" * 64)
+        if ($agentMismatch.Mode -cne "candidate_mismatch") {
+            throw "自检失败：AgentHost 哈希不一致时实机结论仍被采信。"
+        }
+
+        # "环境不具备"不是"已验证"。
+        $skipped = Write-LiveMatrixProbe -File "skipped.json" -BoundHost $hostSha `
+            -BoundAgent $agentSha -Statuses @{
+                "RealPowerLossVerified" = "skipped_environment_unavailable"
+                "EnterpriseAppLockerWacEdRMatrixVerified" = "skipped"
+            }
+        $skipResult = Resolve-LiveMatrixResults -Path $skipped -HostSha256 $hostSha `
+            -AgentHostSha256 $agentSha
+        if ($skipResult.VerifiedCount -ne 0 -or $skipResult.Flags.RealPowerLossVerified) {
+            throw "自检失败：跳过的矩阵被当成已验证。"
+        }
+
+        # 大小写不同的状态不是 verified；宽松匹配会让笔误变成通过。
+        $casing = Write-LiveMatrixProbe -File "casing.json" -BoundHost $hostSha `
+            -BoundAgent $agentSha -Statuses @{ "RealDiskFullVerified" = "Verified" }
+        if ((Resolve-LiveMatrixResults -Path $casing -HostSha256 $hostSha `
+                -AgentHostSha256 $agentSha).VerifiedCount -ne 0) {
+            throw "自检失败：status 按大小写不敏感匹配。"
+        }
+
+        $allNine = @{}
+        foreach ($name in $LiveMatrixFlagNames) { $allNine[$name] = "verified" }
+        $full = Write-LiveMatrixProbe -File "all.json" -BoundHost $hostSha -BoundAgent $agentSha `
+            -Statuses $allNine
+        $fullResult = Resolve-LiveMatrixResults -Path $full -HostSha256 $hostSha `
+            -AgentHostSha256 $agentSha
+        if ($fullResult.VerifiedCount -ne $LiveMatrixFlagNames.Count) {
+            throw "自检失败：9 项全部 verified 时计数不正确。"
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $liveTestRoot) {
+            [IO.Directory]::Delete($liveTestRoot, $true)
+        }
+    }
+
     Write-Host "M4_AUTOMATED_READINESS_SELF_TEST=passed"
     return
 }
@@ -576,6 +767,12 @@ if ([int] $phase2Ps7.Json.TotalSpecs -ne [int] $phase2Ps51.Json.TotalSpecs) {
 $agentHostCandidateSha256 = Assert-BootstrapEvidence $bootstrap.Json
 Assert-AuthEvidence $auth.Json
 $hostCandidateSha256 = Assert-R201Evidence $r201.Json
+
+if ([string]::IsNullOrWhiteSpace($LiveMatrixResultsPath)) {
+    $LiveMatrixResultsPath = Join-Path $repoRoot "handoff\autocad2016\live-matrix-results.json"
+}
+$liveMatrix = Resolve-LiveMatrixResults -Path $LiveMatrixResultsPath `
+    -HostSha256 $hostCandidateSha256 -AgentHostSha256 $agentHostCandidateSha256
 
 if (-not (Test-Path -LiteralPath $bridgeLockPath -PathType Leaf)) {
     throw "缺少当前 Bridge.Client packages.lock.json。"
@@ -694,18 +891,29 @@ $readiness = [ordered]@{
     NetLoadVerified = $false
     CadWriteEnabled = $false
     PluginInitiatedSaveEnabled = $false
-    RealCredentialManagerVerified = $false
-    RealCodexLoginAndKeyringVerified = $false
-    RealRestrictedTokenProductChainVerified = $false
-    RealFixedCapacityVolumeVerified = $false
-    RealDiskFullVerified = $false
-    RealPowerLossVerified = $false
-    RealAbnormalExitMatrixVerified = $false
-    EnterpriseAppLockerWacEdRMatrixVerified = $false
-    EnterpriseRetentionArchiveMatrixVerified = $false
-    M4Complete = $false
+    # 这些不再是硬编码的 false，而是来自绑定当前候选的实机结果；候选一变即全部作废。
+    RealCredentialManagerVerified = $liveMatrix.Flags.RealCredentialManagerVerified
+    RealCodexLoginAndKeyringVerified = $liveMatrix.Flags.RealCodexLoginAndKeyringVerified
+    RealRestrictedTokenProductChainVerified =
+        $liveMatrix.Flags.RealRestrictedTokenProductChainVerified
+    RealFixedCapacityVolumeVerified = $liveMatrix.Flags.RealFixedCapacityVolumeVerified
+    RealDiskFullVerified = $liveMatrix.Flags.RealDiskFullVerified
+    RealPowerLossVerified = $liveMatrix.Flags.RealPowerLossVerified
+    RealAbnormalExitMatrixVerified = $liveMatrix.Flags.RealAbnormalExitMatrixVerified
+    EnterpriseAppLockerWacEdRMatrixVerified =
+        $liveMatrix.Flags.EnterpriseAppLockerWacEdRMatrixVerified
+    EnterpriseRetentionArchiveMatrixVerified =
+        $liveMatrix.Flags.EnterpriseRetentionArchiveMatrixVerified
+    LiveMatrix = [ordered]@{
+        Mode = $liveMatrix.Mode
+        VerifiedCount = $liveMatrix.VerifiedCount
+        TotalCount = $LiveMatrixFlagNames.Count
+    }
+    # M4Complete 只有在 9 项全部为 verified 时才为 true。"环境不具备"不算已验证；
+    # 要把某一项正式划出范围，必须由用户修改目标文件，不能由本脚本推断。
+    M4Complete = ($liveMatrix.VerifiedCount -eq $LiveMatrixFlagNames.Count)
     M416Frozen = $false
-    EvidenceBoundary = "This is a machine-readable binding of automated M4 readiness only. It binds dual-shell Phase 2 results, current R20.1 Host and AgentHost candidate hashes, authentication/bootstrap evidence, the current source manifest, the tracked Bridge.Client lock file, a hashed user-PATH fingerprint, secret/API checks, and an empty relevant-process state. Every real-machine, credential, restricted-token, disk-full, power-loss, abnormal-exit, enterprise execution-control, and enterprise retention item remains explicitly false. It does not start or command AutoCAD, verify NETLOAD, enable CAD writes or saves, complete M4, or freeze M4.16."
+    EvidenceBoundary = "This is a machine-readable binding of automated M4 readiness. It binds dual-shell Phase 2 results, current R20.1 Host and AgentHost candidate hashes, authentication/bootstrap evidence, the current source manifest, the tracked Bridge.Client lock file, a hashed user-PATH fingerprint, secret/API checks, and an empty relevant-process state. The nine real-machine and enterprise flags are NOT produced by this gate: they are user-reported live results, admitted only when bound to these exact candidate hashes, and forced back to false the moment the candidate changes. A flag is true only for status 'verified' - an environment that could not run a matrix is recorded but never counted as verified. This gate does not start or command AutoCAD, verify NETLOAD, enable CAD writes or saves, or freeze M4.16."
 }
 
 $encoding = New-Object Text.UTF8Encoding($false)
