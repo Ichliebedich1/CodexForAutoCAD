@@ -1226,8 +1226,13 @@ namespace Codex.AutoCAD.Host2016
                 ResolveAgentHostConfiguration(out executablePath, out executableSha256);
 
                 PublishSafely(StatusChanged, "正在启动并验证 AgentHost……");
+                var bootstrapOptions =
+                    new AgentHostBootstrapOptions(executablePath, executableSha256);
+                // 缺少配置文件时返回默认的禁用配置，因此这一行不改变现有生产行为；
+                // 配置存在但非法时在这里就抛出，不会带着半个配置去启动 AgentHost。
+                bootstrapOptions.Credential = MvpAgentCredentialConfig.Load();
                 newServiceSession = await AgentHostBootstrapService.StartAsync(
-                        new AgentHostBootstrapOptions(executablePath, executableSha256),
+                        bootstrapOptions,
                         cancellationToken)
                     .ConfigureAwait(false);
                 var directionKeys = newServiceSession.ClaimDirectionKeys();

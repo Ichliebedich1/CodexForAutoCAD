@@ -7,6 +7,22 @@ using System.Reflection;
 var specs = new[]
 {
     new SpecCase(
+        "HOST2016_CREDENTIAL_CONFIG_ABSENT_IS_DISABLED",
+        "A missing credential config leaves the broker disabled rather than failing",
+        CredentialConfigAbsentIsDisabled),
+    new SpecCase(
+        "HOST2016_CREDENTIAL_CONFIG_ACCEPTS_PRODUCT_TARGET",
+        "A well-formed config enables the Windows Credential Manager mode",
+        CredentialConfigAcceptsProductTarget),
+    new SpecCase(
+        "HOST2016_CREDENTIAL_CONFIG_FAILS_CLOSED",
+        "Unknown keys, duplicates, bad mode casing, foreign targets and oversize all fail closed",
+        CredentialConfigFailsClosed),
+    new SpecCase(
+        "HOST2016_CREDENTIAL_CONFIG_DIAGNOSTIC_HIDES_TARGET",
+        "The credential diagnostic line never prints the target name",
+        CredentialConfigDiagnosticHidesTarget),
+    new SpecCase(
         "HOST2016_CAPABILITIES_IDENTITY",
         "Host.2016 capability request satisfies v1",
         CapabilitiesIdentityIsValid),
@@ -2885,6 +2901,135 @@ static async Task<MvpAgentTurnException> ExpectTurnFailure(Task task)
     }
 
     throw new InvalidOperationException("Expected Host turn failure was not observed.");
+}
+
+static string WriteCredentialConfig(string directory, string content)
+{
+    Directory.CreateDirectory(directory);
+    var path = Path.Combine(directory, "agenthost-credential.config");
+    File.WriteAllText(path, content);
+    return path;
+}
+
+static void AssertCredentialConfigRejected(string directory, string content, string because)
+{
+    var path = WriteCredentialConfig(directory, content);
+    var rejected = false;
+    try
+    {
+        MvpAgentCredentialConfig.LoadFrom(path);
+    }
+    catch (Exception)
+    {
+        rejected = true;
+    }
+    True(rejected, because);
+}
+
+static Task CredentialConfigAbsentIsDisabled()
+{
+    // 未配置就是禁用，而不是错误：这是生产默认状态，任何一次误报都会挡住正常启动。
+    var options = MvpAgentCredentialConfig.LoadFrom(
+        Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "absent.config"));
+    True(
+        options.Mode == AgentHostCredentialMode.Disabled
+        && options.CredentialTargetName.Length == 0,
+        "A missing credential config did not fall back to the disabled default.");
+    return Task.CompletedTask;
+}
+
+static Task CredentialConfigAcceptsProductTarget()
+{
+    var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+    try
+    {
+        var target = AgentHostCredentialOptions.ProductCredentialTargetPrefix + "spec-token";
+        var path = WriteCredentialConfig(
+            root,
+            "# comment line\r\nmode=windows-credential-manager-access-token\r\ntarget=" + target + "\r\n");
+        var options = MvpAgentCredentialConfig.LoadFrom(path);
+        True(
+            options.Mode == AgentHostCredentialMode.WindowsCredentialManagerAccessToken,
+            "A well-formed credential config did not enable the Windows Credential Manager mode.");
+        EqualString(target, options.CredentialTargetName, "credential target");
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, true);
+        }
+    }
+    return Task.CompletedTask;
+}
+
+static Task CredentialConfigFailsClosed()
+{
+    var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+    try
+    {
+        var target = AgentHostCredentialOptions.ProductCredentialTargetPrefix + "spec-token";
+        var valid = "mode=windows-credential-manager-access-token\r\ntarget=" + target + "\r\n";
+
+        AssertCredentialConfigRejected(
+            root,
+            valid + "unexpected=1\r\n",
+            "An unknown configuration key was ignored instead of rejected.");
+        AssertCredentialConfigRejected(
+            root,
+            valid + "target=" + target + "\r\n",
+            "A duplicate configuration key was accepted.");
+        // 大小写不同的 mode 是笔误，不是另一种写法。
+        AssertCredentialConfigRejected(
+            root,
+            "mode=Windows-Credential-Manager-Access-Token\r\ntarget=" + target + "\r\n",
+            "A differently cased mode value was accepted.");
+        AssertCredentialConfigRejected(
+            root,
+            "mode=windows-credential-manager-access-token\r\n",
+            "A config without a target was accepted.");
+        AssertCredentialConfigRejected(
+            root,
+            "target=" + target + "\r\n",
+            "A config without a mode was accepted.");
+        AssertCredentialConfigRejected(
+            root,
+            "mode=windows-credential-manager-access-token\r\ntarget=Contoso/other/credential/x\r\n",
+            "A credential target outside the product namespace was accepted.");
+        AssertCredentialConfigRejected(
+            root,
+            "this line has no separator\r\n",
+            "An unparsable line was ignored instead of rejected.");
+        AssertCredentialConfigRejected(
+            root,
+            valid + new string('#', MvpAgentCredentialConfig.MaximumConfigBytes + 64) + "\r\n",
+            "An oversized credential config was accepted.");
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, true);
+        }
+    }
+    return Task.CompletedTask;
+}
+
+static Task CredentialConfigDiagnosticHidesTarget()
+{
+    var options = new AgentHostCredentialOptions();
+    options.Mode = AgentHostCredentialMode.WindowsCredentialManagerAccessToken;
+    options.CredentialTargetName =
+        AgentHostCredentialOptions.ProductCredentialTargetPrefix + "secret-name";
+    var described = MvpAgentCredentialConfig.DescribeForDiagnostics(options);
+    True(
+        described.IndexOf("secret-name", StringComparison.Ordinal) < 0,
+        "The credential diagnostic leaked the target name.");
+    True(
+        MvpAgentCredentialConfig.DescribeForDiagnostics(new AgentHostCredentialOptions())
+            .IndexOf("disabled", StringComparison.Ordinal) >= 0,
+        "The disabled credential diagnostic did not say so.");
+    return Task.CompletedTask;
 }
 
 static void True(bool condition, string message)
