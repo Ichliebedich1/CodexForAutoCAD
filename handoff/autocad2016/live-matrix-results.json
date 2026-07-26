@@ -17,7 +17,7 @@
     "RealCredentialManagerVerified": {
       "status": "not_run",
       "runbook": "M4_REAL_ENVIRONMENT_FIRST_THREE_20260726.md matrix A",
-      "note": ""
+      "note": "Code-blocked, not environment-blocked: Host.2016 exposes no credential configuration surface, so credential mode is always Disabled and matrix A cannot be executed. Needs that surface before the runbook applies."
     },
     "RealCodexLoginAndKeyringVerified": {
       "status": "not_run",
@@ -32,32 +32,32 @@
     "RealRestrictedTokenProductChainVerified": {
       "status": "not_run",
       "runbook": "",
-      "note": "Blocked in code, not by environment: M4.7 production identity isolation is not finished."
+      "note": "Deferred by the user on 2026-07-26. Deferral is recorded here for audit only - it is NOT a scope change and does NOT count toward M4Complete. Formally narrowing M4 requires editing the goal file. Blocked in code, not by environment: M4.7 production identity isolation is not finished."
     },
     "RealFixedCapacityVolumeVerified": {
       "status": "not_run",
       "runbook": "",
-      "note": "Needs an administrator-provisioned dedicated fixed-capacity volume."
+      "note": "Deferred by the user on 2026-07-26. Deferral is recorded here for audit only - it is NOT a scope change and does NOT count toward M4Complete. Formally narrowing M4 requires editing the goal file. Needs an administrator-provisioned dedicated fixed-capacity volume."
     },
     "RealDiskFullVerified": {
       "status": "not_run",
       "runbook": "",
-      "note": "Depends on the fixed-capacity volume above existing first."
+      "note": "Deferred by the user on 2026-07-26. Deferral is recorded here for audit only - it is NOT a scope change and does NOT count toward M4Complete. Formally narrowing M4 requires editing the goal file. Depends on the fixed-capacity volume above existing first."
     },
     "RealPowerLossVerified": {
       "status": "not_run",
       "runbook": "",
-      "note": "Normally needs a virtual machine or a spare test box."
+      "note": "Deferred by the user on 2026-07-26. Deferral is recorded here for audit only - it is NOT a scope change and does NOT count toward M4Complete. Formally narrowing M4 requires editing the goal file. Normally needs a virtual machine or a spare test box."
     },
     "EnterpriseAppLockerWacEdRMatrixVerified": {
       "status": "not_run",
       "runbook": "M4_15_RESTRICTED_ACCOUNT_EXECUTION_CONTROL_20260726.md",
-      "note": "AppLocker support is limited on Windows 10 Pro."
+      "note": "Deferred by the user on 2026-07-26. Deferral is recorded here for audit only - it is NOT a scope change and does NOT count toward M4Complete. Formally narrowing M4 requires editing the goal file. AppLocker support is limited on Windows 10 Pro."
     },
     "EnterpriseRetentionArchiveMatrixVerified": {
       "status": "not_run",
       "runbook": "",
-      "note": "Organisational process rather than a technical step."
+      "note": "Deferred by the user on 2026-07-26. Deferral is recorded here for audit only - it is NOT a scope change and does NOT count toward M4Complete. Formally narrowing M4 requires editing the goal file. Organisational process rather than a technical step."
     }
   }
 }
