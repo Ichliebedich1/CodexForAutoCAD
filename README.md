@@ -12,10 +12,10 @@
 
 以上是目标边界，不代表当前全部能力已经接通。实际完成状态和真机证据以 `handoff/autocad2016/CURRENT_STATE.md`、`handoff/autocad2016/README_FIRST.md` 及对应阶段证据为准。
 
-## 当前状态（2026-07-22）
+## 当前状态（2026-07-24）
 
 当前已在原版 AutoCAD 2016 R20.1 中建立 `0.3.2.0` 的 CadContextJson v2 只读 AI
-实机基线：
+实机基线，并已冻结等待实机验证的 `0.3.3.0` M1 只读稳定化候选：
 
 - Host/Doctor、Palette 和 v2 schema 已人工 `NETLOAD` 运行。
 - 100% DPI 下的打开、停靠、浮动、隐藏重开、重建、中文输入和布局由用户确认通过。
@@ -24,13 +24,20 @@
 - 本机 Codex 使用当前 v2 CAD 上下文完成两轮连续对话。
 - 显式 CAD 上下文清除和文档激活清除旧缓存通过；CAD 写入和插件保存仍禁用。
 - P0 停止生命周期已有独立实机证据：重复 STOP、DBMOD 不变和 AgentHost 残留为零。
-- M0 已在 `c96e9a3` 冻结新的统一自动化候选：Host SHA-256 前缀 `37C1953D`、
-  AgentHost 前缀 `AB1CE675`；Phase 2 `259/259`、Host MVP `24/24`、真实本机 Codex v2
-  两轮 `2/2`、R20.1 双 Shell API Probe、manifest 和候选 doctor 均通过。
+- M1 已实现 Bridge 断线 fail-closed、结构化脱敏错误、request_id/唯一终态、幂等取消、
+  覆盖 Provider 启动阶段的 10 分钟总超时、新建对话、清除全部和按图纸隔离对话；
+  图纸切换会立即清空旧回答。
+- `0.3.3.0` 冻结候选为
+  `artifacts/autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3/`；Host SHA-256
+  前缀 `E6701A77`、AgentHost 前缀 `4B602965`、manifest 前缀 `B081B93A`。
+- 该候选通过 Host MVP `41/41`、完整 Phase 2 `276/276`、Host.2016 只读 Compile 闭包、
+  R20.1/net45/x64 双构建位级一致、敏感信息扫描和候选包自身 AgentHost doctor。
 
-脱敏范围证据见
-`handoff/autocad2016/evidence/cad-context-v2-live-observation-20260722.json`。该证据不证明
-19 类对象均已逐类核对，也不证明 AutoCAD 正常退出、125%/150% DPI、断线、超时和取消。
+`0.3.2.0` 脱敏实机范围证据见
+`handoff/autocad2016/evidence/cad-context-v2-live-observation-20260722.json`；`0.3.3.0`
+自动化冻结证据见
+`handoff/autocad2016/evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3.json`。
+后者尚未在 AutoCAD 中按精确哈希 `NETLOAD`，不能继承前者的实机结论。
 
 当前选择快照仍有明确的 `64` 实体和 `256 KiB` canonical JSON 上限。下一阶段不会
 简单放大常量，而是保留 v2 兼容快照并新增整图扫描、索引、分页和按需查询能力。
@@ -39,8 +46,8 @@
 
 1. M0 已完成 P0/P1 受控集成、自动化复验和统一候选冻结；精确结果见
    `handoff/autocad2016/M0_BASELINE_RELEASE_20260722.md`。
-2. M1 修复 Bridge 断线离线化、请求取消/超时/迟到事件、上下文与对话清除语义。
-3. M2 建设 1k/10k/50k 对象级整图上下文和结构化查询。
+2. M1 代码、自动化和 `0.3.3.0` 候选冻结已完成，当前只等待用户执行 M1 实机矩阵。
+3. M1 实机通过后进入 M2，建设 1k/10k/50k 对象级整图上下文和结构化查询。
 4. 完成进程沙箱与审计基础后，才启用 AutoCAD 2016 强类型安全写入。
 5. 随后完成长期记忆、安装签名、企业部署和 AutoCAD 2025 适配。
 

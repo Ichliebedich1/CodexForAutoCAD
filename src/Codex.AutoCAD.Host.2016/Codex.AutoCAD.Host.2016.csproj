@@ -113,6 +113,8 @@
     <Compile Include="UnifiedPalettePanel.cs" />
     <Compile Include="MvpAgentProtocolIdentity.cs" />
     <Compile Include="MvpAgentCapabilityPolicy.cs" />
+    <Compile Include="MvpAgentFailure.cs" />
+    <Compile Include="MvpAgentTurnState.cs" />
     <Compile Include="MvpAgentClient.cs" />
     <Compile Include="MvpAgentStopCoordinator.cs" />
     <Compile Include="MvpAgentTerminationCoordinator.cs" />

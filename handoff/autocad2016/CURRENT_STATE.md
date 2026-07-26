@@ -1,6 +1,6 @@
 # AutoCAD 2016 当前状态索引
 
-最后更新：2026-07-25（北京时间）
+最后更新：2026-07-26（北京时间）
 
 本文件是项目的长期“当前状态索引”。它不替代 `README_FIRST.md`、
 `COMPANY_PC_RUNBOOK.md`、测试报告、证据 JSON 或 Git 历史；只把当前成立的结论、
@@ -16,7 +16,7 @@
 若摘要与原始证据冲突，以更具体、更新且可复现的原始证据为准。没有真实编译和
 NETLOAD 证据的能力一律视为未支持。
 
-## 当前活动快照（2026-07-25）
+## 当前活动快照（2026-07-26）
 
 - P0 `codex/bridge-client-net45` 的 0.3.2 停止生命周期候选已由用户在 AutoCAD 2016
   中完成人工启停、重复 STOP、DBMOD 和残留检查；独立提交为 `8a4ee57`，实机证据为
@@ -70,13 +70,28 @@ NETLOAD 证据的能力一律视为未支持。
   自动化复验和候选冻结；本地 `main` 已安全快进并吸收冻结提交 `4833e76`。主工作树中的
   Host.2025 UI/选择/写入原型不属于本阶段，仍保留且未被清理、覆盖或误提交；远端尚未
   因本次收尾自动推送。
-- 生命周期审计补上了一个窄边界：`MvpAgentRuntime` 保存上下文引用后，在 Agent 启动完成
-  以及发送 v2 turn 前都会执行 generation/reference fail-closed 重校验；文档切换或清除
-  若在竞态窗口发生，旧上下文会被拒绝。文档激活清缓存已实测，但用户在 post-switch
-  `CODEX16ASK` 提示阶段取消，没有真正提交问题，因此实际发送拒绝仍未验证。
-- `CODEX16CTXCLEAR` 当前只清除 CAD 上下文，不创建新 Codex thread；用户观察到清除后
-  仍记得旧对话标记。这不是 CAD 缓存未清，而是产品尚未提供“新建对话/清除全部”的明确
-  语义，列入 M1。
+- M1 已在干净 `codex/m1-integration` Worktree 从 `main@9edc83e` 受控吸收 10 个提交；
+  集成树与来源 `codex/m1-readonly-stability@88c0a29` 完全一致，且未夹带 Host.2025、
+  Kimi UI、M4 或主工作区补丁。该线已完成 Bridge 断线 fail-closed、结构化脱敏错误、Host
+  自有 request_id、唯一终态、幂等取消、10 分钟回合超时和迟到事件拒绝；相关运行时代码
+  提交为 `eb4e36c`、`9f1ffb6`、`8455000`、`41d184b`。
+- M1 已新增 `CODEX16NEWCHAT` 和 `CODEX16CLEARALL`；`CODEX16CTXCLEAR` 明确只清 CAD
+  上下文。系统 conversation ID 与 Provider thread ID 分离，活动回合期间新建/清除返回
+  结构化 `busy`。相关提交为 `ba84047`、`924cab2`。
+- 对话现按图纸隔离；图纸切换会终止旧活动回合、清空旧可见回答，并使下一次 ASK 建立新
+  Provider thread。图 A 的迟到事件不能更新图 B，即使 Provider turn ID 碰撞。相关提交为
+  `621b057`、`8b695fb`。
+- M1 已冻结 `0.3.3.0` 集成候选
+  `artifacts/autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3/`。Host SHA-256 为
+  `E6701A771D17EC3EC8B2CA7DA78B553E27897639DC48B3BC0435F07249C9B5F6`，AgentHost EXE 为
+  `4B60296581224ADCDF1E8B0C8F1C766AE896796DA2DCF0B73E5EEFE6BBFE6966`，manifest 为
+  `B081B93A6BE99D8D16304A3A1B2EABD93D352E92613F370C5450E448E8507E40`。
+- 该候选通过 Host MVP `41/41`、PowerShell 7 与 Windows PowerShell 5.1 各自
+  Phase 2 `276/276`、25 文件 Host.2016 只读 Compile
+  闭包、R20.1/net45/x64 双构建位级一致、敏感信息扫描、diff 和候选包自身 AgentHost
+  doctor。证据为
+  `evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3.json`。
+  它尚未按精确哈希在 AutoCAD 内 NETLOAD，不能继承 `0.3.2.0` 的实机结论。
 - 当前 v2 选择快照仍有 `64` 实体和 `256 KiB` canonical JSON 硬上限。用户已明确要求
   整图数量级支持；M2 将保留 v2 兼容快照，新增 DrawingIndex、分页和按需 CadQuery，
   不通过简单放大常量实现。
@@ -390,21 +405,34 @@ NETLOAD 证据的能力一律视为未支持。
 
 ## 待实机验证队列
 
-P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 冻结新候选后，按
-`READONLY_MVP_REMAINING_LIVE_TESTS_20260722.md` 依次验证：
+P0 与 P1 happy path 已通过，不再重复请求相同测试。当前使用 M1 `0.3.3.0` 精确候选，按
+`M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 依次验证：
 
-1. 使用精确 M1 `0.3.3.0` 候选完成文档切换、Reset、退出、DPI 和故障矩阵。
-2. 使用精确 M2 候选完成 1k/10k/50k 扫描、分页查询、取消、stale/partial/limited 和 DBMOD 观察。
-3. 使用精确 M3 候选完成 19 类对象字段、实际类型统计、placeholder 和块详情核对。
-4. 未完成实机证据前，不把 M1/M2/M3 候选标记为产品完成。
+M1 实机矩阵已于 2026-07-26 由用户在真实 AutoCAD 2016 上完成（runbook 第 3–12 节全部
+回报通过，Host 候选 `E6701A77…`）：新建对话、只清 CAD 上下文、清除全部、活动回合
+`busy`、图 A/图 B 隔离、取消与重复取消、Palette Reset 后保留已发布上下文、不先 STOP
+正常退出后无残留、125%/150% DPI。回报为分块整体通过，未逐项拆分，因此残留进程具体
+计数和各 DPI 逐项目视检查没有单独数值记录。第 13 节（启动失败、Bridge 断线、超时和
+迟到事件）按设计只在故障自然发生时记录，不构成阻塞项。
+
+仍待实机的队列：
+
+1. 使用精确 M2 候选完成 1k/10k/50k 扫描、分页查询、取消、stale/partial/limited 和
+   DBMOD 观察。
+2. 使用精确 M3 候选完成 19 类对象字段、实际类型统计、placeholder 和块详情核对。
+3. 未完成实机证据前，不把 M2/M3 候选标记为产品完成；且当前 M2/M3 冻结候选哈希在与
+   M1/M4 线汇合后必然失效，届时必须重新构建候选再测。
 
 ## 下一步顺序
 
 1. 核心 Agent MVP、P0 停止生命周期已分别提交：`7f10d60`、`8a4ee57`。
 2. P1 已完成自动化、冻结和 AutoCAD 2016 live 基线。
 3. M0 自动化、候选冻结和本地 `main` 收拢均已完成。
-4. M1 自动化候选已冻结，等待精确候选实机绑定；M2/M3 已完成自动化候选，可在 M1 实机通过后受控整合。
-5. M4 沙箱与审计基础完成前，不启用 M5 CAD 写入。
+4. M1 代码、自动化、`0.3.3.0` 候选冻结和实机矩阵均已完成，并已受控吸收进 `main`。
+5. 下一步是让 M2/M3 线与 M1/M4 线汇合。当前 M2/M3 的实际内容位于
+   `codex/m3-highvalue-limited`（不是名字更像的 `codex/m3-integration`），其中 9 个提交
+   不在任何主线分支上；详见 `M2_M3_CONVERGENCE_AUDIT_20260726.md`。
+6. M4 沙箱与审计基础完成前，不启用 M5 CAD 写入。
 
 ## 更新纪律
 

@@ -4,52 +4,56 @@
 
 本手册用于复验已成立的 AutoCAD 2016 诊断候选，并继续完成 Palette、只读上下文、Agent/Bridge 和审批写入阶段。
 
-## 2026-07-22 当前操作入口
+## 2026-07-24 当前操作入口
 
-P0 停止生命周期和 P1 v2 happy path 已完成，不需要重复加载旧 P0 候选。当前已验证 P1
-候选为：
-
-```text
-C:\tmp\CodexForAutoCAD-context-v2\artifacts\autocad2016-mvp-context-v2-v032-0d72edc3-10bea363-af580c30\Codex.AutoCAD.Host.2016.dll
-Host SHA-256:
-0D72EDC38A30E7BF33AAEE4DCB1D50D341C4C883146677537C4BB5E7551D0AD7
-AgentHost SHA-256:
-10BEA363AC80C856FA513F4312B60410DB62BBF4917CE634B589CBA59DA65442
-```
-
-该候选已经取得以下实机基线：
-
-- `0.3.2.0` Host/Doctor 和 CadContextJson v2。
-- 100% DPI Palette 全部人工交互。
-- 50 对象混合选择、6 个 placeholder、`DBMOD 21 -> 21`。
-- 本机 Codex 使用真实 v2 上下文完成两轮对话。
-- 显式上下文清除和文档激活清除旧缓存。
-- P0 AgentHost 停止残留为 0。
-
-权威范围证据：
-`evidence/cad-context-v2-live-observation-20260722.json`。
-
-M0 已另外冻结统一自动化候选：
+P0 停止生命周期和 P1 v2 happy path 已完成，不需要重复加载旧 P0 候选。已经取得
+AutoCAD 实机证据的 P1 `0.3.2.0` 候选仍记录在
+`evidence/cad-context-v2-live-observation-20260722.json`，但当前下一次操作必须使用 M1
+`0.3.3.0` 精确候选：
 
 ```text
-C:\tmp\CodexForAutoCAD-m0-baseline\artifacts\autocad2016-mvp-context-v2-v032-37c1953d-ab1ce675-8926ed54\Codex.AutoCAD.Host.2016.dll
+Candidate directory:
+C:\tmp\CodexForAutoCAD-m1-integration\artifacts\autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3
+
+NETLOAD only:
+Codex.AutoCAD.Host.2016.dll
+
 Host SHA-256:
-37C1953D9AD996F9892486300295E69043F8E020D506E0683FC1301F8FC4C532
+E6701A771D17EC3EC8B2CA7DA78B553E27897639DC48B3BC0435F07249C9B5F6
+
 AgentHost SHA-256:
-AB1CE675EF48947F670E0A4FC013E09108AF9A91D5D14F49874039F42018CD3A
+4B60296581224ADCDF1E8B0C8F1C766AE896796DA2DCF0B73E5EEFE6BBFE6966
+
+Manifest SHA-256:
+B081B93A6BE99D8D16304A3A1B2EABD93D352E92613F370C5450E448E8507E40
 ```
 
-该 M0 候选已通过完整自动化、真实本机 Codex v2 两轮和候选 doctor，但尚未按精确哈希
-人工 NETLOAD。不要把 P1 的 AutoCAD live 记录自动绑定到 M0 二进制；详见
-`M0_BASELINE_RELEASE_20260722.md`。
+只对根目录 `Codex.AutoCAD.Host.2016.dll` 执行 `NETLOAD`；其他依赖 DLL、`AgentHost`
+子目录和 `.sha256` sidecar 保持候选原布局。若当前 AutoCAD 进程已经加载旧 Host，先正常
+关闭并新开进程。
 
-当前不要求重复上述 happy path。只在 M1 冻结新候选后执行
-`READONLY_MVP_REMAINING_LIVE_TESTS_20260722.md` 中的文档切换实际发送、Palette Reset、
-正常退出、高 DPI、断线、超时和取消测试。
+M1 候选已完成：
+
+- Bridge 断线 fail-closed、结构化脱敏错误、Host request_id 和唯一终态。
+- 幂等取消、覆盖 Provider 启动阶段的 10 分钟总超时和迟到事件拒绝。
+- `CODEX16NEWCHAT`、`CODEX16CLEARALL` 和明确的 `CODEX16CTXCLEAR` 语义。
+- 图纸切换后对话隔离和旧回答立即清空。
+- Host MVP `41/41`、PowerShell 7 与 Windows PowerShell 5.1 各自 Phase 2 `276/276`、
+  R20.1 双构建一致和候选 AgentHost doctor。
+- CAD 写入和插件发起的保存继续禁用。
+
+自动化冻结证据：
+`evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3.json`。
+该证据尚未绑定 AutoCAD `NETLOAD`，不能继承旧 P1 实机结果。
+
+当前按 `M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md` 验证新建对话、只清 CAD 上下文、
+清除全部、图纸隔离、取消/重复取消、活动回合 busy、Palette Reset、正常退出和高 DPI。
 
 注意：
 
 - `CODEX16CTXCLEAR` 只清 CAD 上下文，不清除当前 Codex 对话。
+- `CODEX16NEWCHAT` 保留 CAD 上下文但建立新对话。
+- `CODEX16CLEARALL` 清除 CAD 上下文、回答文本和当前对话。
 - 当前选择快照仍有 64 实体限制；不要为测试通过而简单放大常量。
 - CAD 写入和插件发起的保存保持禁用。
 - 不得混用不同 Worktree 或不同候选目录的 Host 与 AgentHost。
@@ -58,12 +62,11 @@ AB1CE675EF48947F670E0A4FC013E09108AF9A91D5D14F49874039F42018CD3A
 ## 当前已知状态
 
 - 目标机为 AutoCAD 2016 R20.1 x64，托管 API `20.1.0.0`。
-- P1 自动化历史门禁为 Host.2016 MVP `24/24`、Phase 2 `259/259`、
-  AgentHost/Codex v2 live `2/2` 和 R20.1 Release 0 warning/error。
+- M1 当前自动化门禁为 Host.2016 MVP `41/41`、双 Shell Phase 2 `276/276`、25 文件只读闭包和
+  R20.1/net45/x64 双构建位级一致。
 - P1 实机只证明已观察范围，不证明 19 类对象全部字段、AutoCAD 正常退出、
   125%/150% DPI 或故障矩阵。
-- M0 已在独立集成 Worktree 中完成 P0/P1、实机 evidence、文档、完整门禁和统一候选
-  冻结；当前只剩安全推进 `main`。
+- M1 代码与候选冻结已完成；当前只剩精确候选实机矩阵和脱敏 evidence 绑定。
 - 主工作树的 Host.2025 UI、选择和写入原型归用户所有，不属于本阶段。
 
 ## 1. 源码与交接包校验
