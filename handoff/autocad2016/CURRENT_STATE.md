@@ -1,6 +1,6 @@
 # AutoCAD 2016 当前状态索引
 
-最后更新：2026-07-22（北京时间）
+最后更新：2026-07-25（北京时间）
 
 本文件是项目的长期“当前状态索引”。它不替代 `README_FIRST.md`、
 `COMPANY_PC_RUNBOOK.md`、测试报告、证据 JSON 或 Git 历史；只把当前成立的结论、
@@ -16,7 +16,7 @@
 若摘要与原始证据冲突，以更具体、更新且可复现的原始证据为准。没有真实编译和
 NETLOAD 证据的能力一律视为未支持。
 
-## 当前活动快照（2026-07-22）
+## 当前活动快照（2026-07-25）
 
 - P0 `codex/bridge-client-net45` 的 0.3.2 停止生命周期候选已由用户在 AutoCAD 2016
   中完成人工启停、重复 STOP、DBMOD 和残留检查；独立提交为 `8a4ee57`，实机证据为
@@ -80,6 +80,31 @@ NETLOAD 证据的能力一律视为未支持。
 - 当前 v2 选择快照仍有 `64` 实体和 `256 KiB` canonical JSON 硬上限。用户已明确要求
   整图数量级支持；M2 将保留 v2 兼容快照，新增 DrawingIndex、分页和按需 CadQuery，
   不通过简单放大常量实现。
+- M1 已冻结包含启动阶段总超时修复的 `0.3.3.0` 候选：
+  `C:\tmp\CodexForAutoCAD-m1-readonly-stability\artifacts\autocad2016-m1-readonly-v033-e6701a77-7a3abcea-ed93a77c`。
+  Host SHA-256 为 `E6701A771D17EC3EC8B2CA7DA78B553E27897639DC48B3BC0435F07249C9B5F6`，
+  AgentHost SHA-256 为 `7A3ABCEABA0E590839DEC344FA68755A213D8716CDA777EC9D891EABB055E50D`，
+  manifest SHA-256 为 `AFB4016B0E8941187C3EC324AB8732B7D724A68A61886E787C5DA5732CDEC767`。
+  自动化为 Host MVP `41/41`、Phase 2 `276/276`；精确候选仍待 AutoCAD 实机绑定。
+- M2 DrawingIndex 自动化候选已通过 Phase 2 `308/308`、benchmark `6/6`：
+  `C:\tmp\CodexForAutoCAD-m2-benchmark\artifacts\autocad2016-m2-drawing-index-v040-e85d97ec-8e6b26fd-7614b6b2`。
+  Host SHA-256 `E85D97EC02505EF69C67F710EAD5D35D18481B7D2DBB4C3D87195FCDE4156B7E`，
+  AgentHost SHA-256 `8E6B26FD7B20925A1CE53CAB0DBEE093C58B9AF0935219DF75FC8A7CB5C4FA2A`，
+  manifest SHA-256 `BF20A62F8CC71AB3B6A7AA6F329DF8520E136EE7A0B1ED6283AEFAFE343BFCD3`。
+  尚未受控集成或实机 `NETLOAD`。
+- M3 读取语义自动化候选已通过 Phase 2 `310/310`、benchmark `6/6` 和 R20.1 双 Shell
+  API stage（29 个运行时成员通过、8 个冻结的 R20.1 unavailable 成员）：
+  `C:\tmp\CodexForAutoCAD-m3-read-semantics\artifacts\autocad2016-m3-read-semantics-v041-fb18d959-8e6b26fd-7fd527a7`。
+  Host SHA-256 `FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673`，
+  AgentHost SHA-256 `8E6B26FD7B20925A1CE53CAB0DBEE093C58B9AF0935219DF75FC8A7CB5C4FA2A`，
+  manifest SHA-256 `4B3B710F3773D10F0B30A31B357CB7D3D35445BA294F1F1ABEDDC8C378B1ED00`。
+  尚未完成 19/19 对象实机字段矩阵。
+- 2026-07-25 已第二次确认隔离 `DOTNET_CLI_HOME` 在未关闭 .NET 全局工具 PATH 自动写入时，
+  会把临时 `.dotnet/tools` 永久追加到用户 PATH，导致 Windows Shell 不稳定。当前 PATH
+  已恢复到 661 字符、13 项，临时项目项为 0；用户级和当前进程防护变量均为 `0`。主仓
+  脚本已补显式防护，新增 `verify-dotnet-cli-path-guard.ps1`；该修改尚未重跑完整 Phase 2，
+  但静态守卫、PowerShell 解析、diff 检查和受保护的新 CLI Home 运行时回归已通过。历史
+  Worktree 不批量改写。详见 `DOTNET_CLI_PATH_INCIDENT_20260725.md`。
 
 ## 已验证检查点
 
@@ -368,19 +393,17 @@ NETLOAD 证据的能力一律视为未支持。
 P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 冻结新候选后，按
 `READONLY_MVP_REMAINING_LIVE_TESTS_20260722.md` 依次验证：
 
-1. 文档切换后不重新捕获，实际提交问题并确认 fail-closed。
-2. 已发布 v2 上下文时 Palette Reset 后仍保留上下文。
-3. 不先 STOP，正常退出 AutoCAD 后 AgentHost/Codex 残留为 0。
-4. 125%/150% DPI。
-5. 启动失败、Bridge 断线、超时、取消、重复取消和迟到事件。
-6. 19 类对象逐类字段核对放在 M3；超过 64 对象和整图规模放在 M2。
+1. 使用精确 M1 `0.3.3.0` 候选完成文档切换、Reset、退出、DPI 和故障矩阵。
+2. 使用精确 M2 候选完成 1k/10k/50k 扫描、分页查询、取消、stale/partial/limited 和 DBMOD 观察。
+3. 使用精确 M3 候选完成 19 类对象字段、实际类型统计、placeholder 和块详情核对。
+4. 未完成实机证据前，不把 M1/M2/M3 候选标记为产品完成。
 
 ## 下一步顺序
 
 1. 核心 Agent MVP、P0 停止生命周期已分别提交：`7f10d60`、`8a4ee57`。
 2. P1 已完成自动化、冻结和 AutoCAD 2016 live 基线。
 3. M0 自动化、候选冻结和本地 `main` 收拢均已完成。
-4. 当前进入 M1 只读稳定化；M1 冻结稳定候选后再进入 M2 整图扫描/索引/查询。
+4. M1 自动化候选已冻结，等待精确候选实机绑定；M2/M3 已完成自动化候选，可在 M1 实机通过后受控整合。
 5. M4 沙箱与审计基础完成前，不启用 M5 CAD 写入。
 
 ## 更新纪律

@@ -1,6 +1,6 @@
 # Codex for AutoCAD 2016：先读这里
 
-最后更新：2026-07-22（北京时间）
+最后更新：2026-07-25（北京时间）
 
 长期目标与完整 M0-M12 队列见 `LONG_TERM_MEMORY_TODO.md`；当前证据边界见
 `CURRENT_STATE.md`。本文件只提供当前基线、候选身份、操作入口和下一步验证顺序。
@@ -22,12 +22,14 @@ AutoCAD 2016 R20.1 已建立一个真实运行的 CadContextJson v2 只读 AI �
 脱敏实机范围证据：
 `evidence/cad-context-v2-live-observation-20260722.json`。
 
+当前 M1 自动化候选已经包含启动阶段总超时修复，Host MVP 为 `41/41`，完整 Phase 2 为
+`276/276`；但尚未按精确哈希在 AutoCAD 2016 中 NETLOAD。
+
 这仍不是完整产品：
 
 - 当前选择快照最多 64 个实体、canonical JSON 最多 256 KiB。
 - 19 类对象尚未逐类完成字段实机核对。
-- Bridge 断线后客户端离线化、超时、取消和迟到事件尚未收口。
-- 文档切换后真正提交问题的 fail-closed 尚未实测。
+- M1 精确候选的 Bridge 断线、超时、取消、文档切换和退出矩阵尚未实测。
 - AutoCAD 正常退出、125%/150% DPI 和故障矩阵尚未完成。
 - CAD 写入、完整 OS 沙箱、长期记忆、签名安装和企业部署尚未完成。
 
@@ -59,6 +61,25 @@ FF11069F766A055D3F2DEA7D9D320CB1B4A5D874260FB4E47EE083D42E12F8BD
 候选 doctor 已通过。它尚未按精确哈希在 AutoCAD 内人工 NETLOAD，因此保持
 `NetLoadVerified=false`。已完成实机绑定的 P1 候选仍是 Host `0D72EDC3...`、AgentHost
 `10BEA363...`；两份证据不能互相替代。详见 `M0_BASELINE_RELEASE_20260722.md`。
+
+M1/M2/M3 当前自动化候选（均未完成精确实机绑定）：
+
+```text
+M1 0.3.3.0
+C:\tmp\CodexForAutoCAD-m1-readonly-stability\artifacts\autocad2016-m1-readonly-v033-e6701a77-7a3abcea-ed93a77c
+Host E6701A771D17EC3EC8B2CA7DA78B553E27897639DC48B3BC0435F07249C9B5F6
+AgentHost 7A3ABCEABA0E590839DEC344FA68755A213D8716CDA777EC9D891EABB055E50D
+
+M2 0.4.0.0
+C:\tmp\CodexForAutoCAD-m2-benchmark\artifacts\autocad2016-m2-drawing-index-v040-e85d97ec-8e6b26fd-7614b6b2
+Host E85D97EC02505EF69C67F710EAD5D35D18481B7D2DBB4C3D87195FCDE4156B7E
+AgentHost 8E6B26FD7B20925A1CE53CAB0DBEE093C58B9AF0935219DF75FC8A7CB5C4FA2A
+
+M3 0.4.1.0
+C:\tmp\CodexForAutoCAD-m3-read-semantics\artifacts\autocad2016-m3-read-semantics-v041-fb18d959-8e6b26fd-7fd527a7
+Host FB18D95981F607B22D8C023BF63915614DFF8964BF985BE6CB0ABEA26D9B3673
+AgentHost 8E6B26FD7B20925A1CE53CAB0DBEE093C58B9AF0935219DF75FC8A7CB5C4FA2A
+```
 
 ## 3. 当前架构
 
@@ -102,7 +123,8 @@ CODEX16PALRESET
 
 - `CODEX16CTXCLEAR` 只清除内存中的 CAD 上下文，不创建新 Codex thread。
 - 因此清除 CAD 上下文后，当前会话仍可能记得先前聊天内容。
-- M1 将增加“新建对话”和“全部清除”，并按图纸隔离会话。
+- `CODEX16NEWCHAT` 保留 CAD 上下文并建立新对话；`CODEX16CLEARALL` 清除上下文、回答和会话。
+- M1 的新建/清除/按图隔离自动化已完成，但精确候选实机仍待执行。
 - `CODEX16ASK` 能弹出输入提示不代表旧上下文可发送；必须实际提交后才算 fail-closed
   验证。
 
@@ -133,19 +155,30 @@ CODEX16PALRESET
 ## 7. 当前开发顺序
 
 1. M0：已完成 P0/P1 集成、evidence/文档收拢、门禁复跑和统一候选冻结。
-2. M1：当前下一阶段；Bridge offline、请求状态/取消/超时、对话清除语义和剩余生命周期。
-3. M2：整图扫描、索引、分页、按需查询和 1k/10k/50k 基准。
-4. M3：读取对象语义与覆盖。
+2. M1：自动化候选冻结，等待精确候选实机矩阵。
+3. M2：自动化候选冻结，等待实机扫描、分页和性能矩阵。
+4. M3：自动化候选冻结，等待 19/19 对象实机字段矩阵。
 5. M4：进程沙箱、配置和审计基础。
 6. M5：AutoCAD 2016 `create_line` 安全写入最小闭环。
 7. 后续阶段见 `LONG_TERM_MEMORY_TODO.md`。
 
 ## 8. 构建与自动化边界
 
-M0 已从精确源码提交 `c96e9a3` 重跑以下门禁：
+运行任何 `dotnet` 验证前，必须保留 `DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=0`。项目的隔离
+`DOTNET_CLI_HOME` 若缺少该值，会污染用户 PATH 并影响 Windows Shell；先执行：
 
-- Host.2016 MVP：`24/24`。
-- 完整 Phase 2：`259/259`。
+```powershell
+pwsh -NoLogo -NoProfile -File .\scripts\verify-dotnet-cli-path-guard.ps1
+```
+
+该守卫只读取环境和脚本，不启动 AutoCAD、不加载 DLL。事故和恢复规则见
+`DOTNET_CLI_PATH_INCIDENT_20260725.md`。
+
+当前已验证的自动化门禁：
+
+- M1 Host.2016 MVP：`41/41`，Phase 2：`276/276`。
+- M2 Phase 2：`308/308`，benchmark：`6/6`。
+- M3 Phase 2：`310/310`，benchmark：`6/6`，R20.1 API stage：29/8（8 个为冻结 unavailable）。
 - AgentHost -> 本机 Codex v2 两轮 live：`2/2`。
 - R20.1 Host Release：0 warning / 0 error。
 - PowerShell 7 与 Windows PowerShell 5.1 v2 API Probe。
@@ -175,6 +208,12 @@ M0 必须从集成提交重新运行这些门禁。历史绿色结果不能自�
 - `evidence/host2016-terminate-exit-retry-20260722.json`：退出清理重试自动化 `24/24`。
 - `evidence/m0-baseline-verification-20260722.json`：M0 聚合门禁、候选身份和实机边界。
 - `M0_BASELINE_RELEASE_20260722.md`：M0 冻结记录与下一阶段入口。
+- `evidence/cad-context-v2-candidate-build-autocad2016-m1-readonly-v033-e6701a77-7a3abcea-ed93a77c.json`：
+  M1 启动总超时修复候选。
+- `evidence/m2-drawing-index-candidate-autocad2016-m2-drawing-index-v040-e85d97ec-8e6b26fd-7614b6b2.json`：
+  M2 DrawingIndex 候选。
+- `evidence/m3-read-semantics-candidate-autocad2016-m3-read-semantics-v041-fb18d959-8e6b26fd-7fd527a7.json`：
+  M3 读取语义候选。
 
 ## 11. 支持声明
 
