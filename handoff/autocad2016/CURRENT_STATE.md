@@ -16,9 +16,46 @@
 若摘要与原始证据冲突，以更具体、更新且可复现的原始证据为准。没有真实编译和
 NETLOAD 证据的能力一律视为未支持。
 
-## 主线汇合与门禁状态（2026-07-26 收口）
+## 当前候选与剩余阻塞（2026-07-26 收口后）
 
-本节是当前最新结论，优先于本文件其余按时间累积的记录。
+本节与下一节是当前最新结论，优先于本文件其余按时间累积的记录。
+
+### 可实机加载的候选
+
+```text
+E:\cxb\CodexForAutoCAD-main-cand\autocad2016-m1-readonly-v042-bc5da318-ef079c01-31233295
+NETLOAD 仅：Codex.AutoCAD.Host.2016.dll
+Host SHA-256      BC5DA318042B46DA6C08DA582CEFFAB250D4E2E175AC94EA076461F0CB17EC2D
+AgentHost SHA-256 EF079C01EF7AEE7482E5F0ED3203C4B45A8EC0FBF857705F9ADC64C3129F7A59
+```
+
+目录名里的 `m1-readonly` 是候选构建门禁的历史命名，**不代表这是 M1 候选**；看版本
+`v042` 与哈希。它从干净 detached worktree 的已提交源码构建，包含 M2 整图索引、M3 读取
+语义、M4 沙箱与凭据配置面。
+
+### 全部自动化门禁通过
+
+`verify-all-gates.ps1` 在 `main` 的干净 worktree 上 **7/7**，动态规格 **480/480**，
+相关进程残留 `0`，用户 PATH 指纹未变，运行期间 AutoCAD 进程集合未变。
+
+### M4 剩余阻塞只有一项
+
+按目标文件 2026-07-26 修订的 M4 必选项定义，9 项实机矩阵中 8 项可 `deferred`，
+唯有 `RealAbnormalExitMatrixVerified`（真实异常退出）为 M5 硬前置、不得延后。该项尚未
+执行，因此 `M4Complete=false`、`M416Frozen=false`，M5 保持阻断。
+
+### 首次加载超时是预期行为，不是缺陷
+
+`AgentHostBootstrapOptions.DefaultStartupTimeout` 为 **10 秒**，Host.2016 不设置它，
+生产即走该默认值。新构建候选首次在 AutoCAD 内启动需冷加载 net45 宿主、首次 JIT 未运行过
+的 .NET 8 可执行文件、并等待 Windows Defender 对全新二进制的首次扫描，叠加后超过 10 秒
+属常见情况。2026-07-26 实测：首次加载得到
+`agenthost_timeout / starting_agenthost / retryable=true`，随后同一 AgentHost 独立执行
+`doctor` 仅耗时 `1.3` 秒，且失败后相关进程残留为 `0`——失败清理路径正确。
+**处理方式是 STOP 后重试**；把启动超时做成可配置项属于后续工作，且不应在实机矩阵进行
+期间改动（会改变 Host 字节，使候选哈希与实机结果绑定同时失效）。
+
+## 主线汇合与门禁状态（2026-07-26 收口）
 
 `main` 现在同时包含 M0、M1、M2、M3 和 M4 沙箱线：
 
