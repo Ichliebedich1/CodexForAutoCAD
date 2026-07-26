@@ -26,6 +26,39 @@ public static class AgentHostAuditEventTypes
     public const string TurnCancelled = "turn_cancelled";
     public const string TurnFailed = "turn_failed";
 
+    // M4.12：CAD 执行事件类型在本里程碑冻结，覆盖 M5.13 要求的提案、验证、预览、审批展示、
+    // 用户决定、能力 token 消费、锁内重验、事务与终态全链。真实接线归 M5.13；在写入链启用
+    // 之前这些类型不会由生产路径产生，但 schema、字段白名单与哈希链纳入方式已经固定。
+    public const string CadProposalReceived = "cad_proposal_received";
+    public const string CadValidationFailed = "cad_validation_failed";
+    public const string CadPreviewGenerated = "cad_preview_generated";
+    public const string CadApprovalPresented = "cad_approval_presented";
+    public const string CadApprovalDecided = "cad_approval_decided";
+    public const string CadCapabilityConsumed = "cad_capability_consumed";
+    public const string CadLockRevalidated = "cad_lock_revalidated";
+    public const string CadLockRevalidationFailed = "cad_lock_revalidation_failed";
+    public const string CadTransactionCommitted = "cad_transaction_committed";
+    public const string CadTransactionAborted = "cad_transaction_aborted";
+    public const string CadExecutionCompleted = "cad_execution_completed";
+    public const string CadExecutionFailed = "cad_execution_failed";
+    public const string CadExecutionUnknown = "cad_execution_unknown";
+
+    /// <summary>CAD 执行事件闭集。CAD 专属字段只允许出现在这些事件上。</summary>
+    internal static bool IsCadExecution(string value)
+        => value is CadProposalReceived
+            or CadValidationFailed
+            or CadPreviewGenerated
+            or CadApprovalPresented
+            or CadApprovalDecided
+            or CadCapabilityConsumed
+            or CadLockRevalidated
+            or CadLockRevalidationFailed
+            or CadTransactionCommitted
+            or CadTransactionAborted
+            or CadExecutionCompleted
+            or CadExecutionFailed
+            or CadExecutionUnknown;
+
     internal static bool IsKnown(string value)
         => value is SessionStarted
             or SessionStopped
@@ -42,7 +75,40 @@ public static class AgentHostAuditEventTypes
             or ApprovalRequested
             or TurnCompleted
             or TurnCancelled
-            or TurnFailed;
+            or TurnFailed
+            or CadProposalReceived
+            or CadValidationFailed
+            or CadPreviewGenerated
+            or CadApprovalPresented
+            or CadApprovalDecided
+            or CadCapabilityConsumed
+            or CadLockRevalidated
+            or CadLockRevalidationFailed
+            or CadTransactionCommitted
+            or CadTransactionAborted
+            or CadExecutionCompleted
+            or CadExecutionFailed
+            or CadExecutionUnknown;
+}
+
+/// <summary>
+/// M4.12：CAD 执行事件的操作类型闭集。M5 第一版只开放 create_line，扩展属于 M6。
+/// </summary>
+public static class AgentHostAuditCadOperationKinds
+{
+    public const string CreateLine = "create_line";
+
+    internal static bool IsKnown(string value) => value is CreateLine;
+}
+
+/// <summary>M4.12：CAD 执行事件的风险等级闭集。</summary>
+public static class AgentHostAuditCadRiskLevels
+{
+    public const string Low = "low";
+    public const string Medium = "medium";
+    public const string High = "high";
+
+    internal static bool IsKnown(string value) => value is Low or Medium or High;
 }
 
 public static class AgentHostAuditOutcomeCodes
@@ -194,6 +260,41 @@ public sealed class AgentHostAuditEvent
     public string? OutcomeCode { get; init; }
 
     public string? ErrorCode { get; init; }
+
+    // ---- M4.12 CAD 执行事件字段白名单（schema 已冻结，接线归 M5.13）----
+    //
+    // 隐私边界：这里刻意只保留可证明"谁在何时批准了哪个摘要"的最小集合。
+    // 禁止新增坐标、图层名、实体 Handle、文件路径、选择哈希、审批 token 或任何完整
+    // CAD JSON —— M4.12 技术要求"不记录完整 CAD JSON"，M5.13 完成条件要求"无法从日志
+    // 复现 token 或敏感图纸"。CadPlanHash 是规范化计划的摘要，可用于事后证明批准对象，
+    // 但无法据此还原图纸内容。
+
+    /// <summary>操作类型，取值限于 <see cref="AgentHostAuditCadOperationKinds"/>。</summary>
+    public string? CadOperationKind { get; init; }
+
+    /// <summary>本批操作数量。</summary>
+    public int? CadOperationCount { get; init; }
+
+    /// <summary>风险等级，取值限于 <see cref="AgentHostAuditCadRiskLevels"/>。</summary>
+    public string? CadRiskLevel { get; init; }
+
+    /// <summary>产生该判定的验证规则版本，便于事后复核当时生效的策略。</summary>
+    public string? CadRuleVersion { get; init; }
+
+    /// <summary>规范化计划的 SHA-256 摘要，64 位小写十六进制。不是审批 token。</summary>
+    public string? CadPlanHash { get; init; }
+
+    /// <summary>审批与锁内重验所绑定的文档 revision。</summary>
+    public long? CadDocumentRevision { get; init; }
+
+    /// <summary>是否携带任一 CAD 专属字段；用于哈希段的条件纳入与字段白名单校验。</summary>
+    internal bool HasCadExecutionFields
+        => CadOperationKind is not null
+            || CadOperationCount is not null
+            || CadRiskLevel is not null
+            || CadRuleVersion is not null
+            || CadPlanHash is not null
+            || CadDocumentRevision is not null;
 }
 
 public sealed class AgentHostAuditException : Exception
@@ -690,6 +791,12 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
             Resolution = auditEvent.Resolution,
             OutcomeCode = auditEvent.OutcomeCode,
             ErrorCode = auditEvent.ErrorCode,
+            CadOperationKind = auditEvent.CadOperationKind,
+            CadOperationCount = auditEvent.CadOperationCount,
+            CadRiskLevel = auditEvent.CadRiskLevel,
+            CadRuleVersion = auditEvent.CadRuleVersion,
+            CadPlanHash = auditEvent.CadPlanHash,
+            CadDocumentRevision = auditEvent.CadDocumentRevision,
         };
         envelope.RecordHash = AgentHostAuditIntegrity.ComputeRecordHash(envelope);
         return envelope;
@@ -772,7 +879,60 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
         ValidateOptionalCode(auditEvent.Resolution, "resolution");
         ValidateOptionalCode(auditEvent.OutcomeCode, "outcomeCode");
         ValidateOptionalCode(auditEvent.ErrorCode, "errorCode");
+        ValidateCadExecutionFields(auditEvent);
     }
+
+    /// <summary>
+    /// M4.12：CAD 执行字段白名单校验。两个方向都必须拒绝：
+    /// 非 CAD 事件不得携带 CAD 字段（否则可绕过事件类型闭集夹带数据），
+    /// 取值也必须落在冻结的闭集与格式内。
+    /// </summary>
+    private static void ValidateCadExecutionFields(AgentHostAuditEvent auditEvent)
+    {
+        var hasCadFields = auditEvent.CadOperationKind is not null
+            || auditEvent.CadOperationCount is not null
+            || auditEvent.CadRiskLevel is not null
+            || auditEvent.CadRuleVersion is not null
+            || auditEvent.CadPlanHash is not null
+            || auditEvent.CadDocumentRevision is not null;
+
+        if (hasCadFields && !AgentHostAuditEventTypes.IsCadExecution(auditEvent.EventType))
+        {
+            throw new ArgumentException(
+                "CAD execution fields are only allowed on CAD execution events.",
+                nameof(auditEvent));
+        }
+
+        if (auditEvent.CadOperationKind is not null
+            && !AgentHostAuditCadOperationKinds.IsKnown(auditEvent.CadOperationKind))
+        {
+            throw new ArgumentException("Unknown CAD operation kind.", nameof(auditEvent));
+        }
+        if (auditEvent.CadRiskLevel is not null
+            && !AgentHostAuditCadRiskLevels.IsKnown(auditEvent.CadRiskLevel))
+        {
+            throw new ArgumentException("Unknown CAD risk level.", nameof(auditEvent));
+        }
+        if (auditEvent.CadOperationCount is < 0 or > 4096)
+        {
+            throw new ArgumentException("CAD operation count is out of range.", nameof(auditEvent));
+        }
+        if (auditEvent.CadDocumentRevision is < 0)
+        {
+            throw new ArgumentException(
+                "CAD document revision cannot be negative.", nameof(auditEvent));
+        }
+        if (auditEvent.CadPlanHash is not null && !IsSha256Hex(auditEvent.CadPlanHash))
+        {
+            throw new ArgumentException(
+                "CAD plan hash must be 64 lowercase hex characters.", nameof(auditEvent));
+        }
+        ValidateOptionalCode(auditEvent.CadRuleVersion, "cadRuleVersion");
+    }
+
+    private static bool IsSha256Hex(string value)
+        => value.Length == 64
+            && value.All(static character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
 
     private static void ValidateBootstrapSessionId(string sessionId)
     {
@@ -899,5 +1059,30 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
         public string? OutcomeCode { get; init; }
 
         public string? ErrorCode { get; init; }
+
+        // ---- M4.12 CAD 执行事件字段（与 AgentHostAuditEvent 的白名单一一对应）----
+        // 这些字段参与哈希链，但只在记录确实携带它们时才进入哈希输入，
+        // 见 AgentHostAuditIntegrity.ComputeRecordHash 的 "cad/1:" 段。
+
+        public string? CadOperationKind { get; init; }
+
+        public int? CadOperationCount { get; init; }
+
+        public string? CadRiskLevel { get; init; }
+
+        public string? CadRuleVersion { get; init; }
+
+        public string? CadPlanHash { get; init; }
+
+        public long? CadDocumentRevision { get; init; }
+
+        /// <summary>是否携带任一 CAD 专属字段；决定哈希链中 CAD 段是否纳入。</summary>
+        internal bool HasCadExecutionFields
+            => CadOperationKind is not null
+                || CadOperationCount is not null
+                || CadRiskLevel is not null
+                || CadRuleVersion is not null
+                || CadPlanHash is not null
+                || CadDocumentRevision is not null;
     }
 }

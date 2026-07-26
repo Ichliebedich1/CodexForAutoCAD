@@ -91,6 +91,25 @@ internal static class AgentHostAuditIntegrity
         Append(builder, envelope.Resolution);
         Append(builder, envelope.OutcomeCode);
         Append(builder, envelope.ErrorCode);
+
+        // M4.12：CAD 执行事件段。只有记录确实携带 CAD 字段时才追加，因此既有的八类事件
+        // 记录哈希逐字节不变，已持久化的生产链不会因本次 schema 扩展而失效。
+        // 段内沿用同样的长度前缀编码，并以显式段标记开头，避免与其他字段产生歧义拼接。
+        if (envelope.HasCadExecutionFields)
+        {
+            builder.Append("cad/1:");
+            Append(builder, envelope.CadOperationKind);
+            Append(
+                builder,
+                envelope.CadOperationCount?.ToString(CultureInfo.InvariantCulture));
+            Append(builder, envelope.CadRiskLevel);
+            Append(builder, envelope.CadRuleVersion);
+            Append(builder, envelope.CadPlanHash);
+            Append(
+                builder,
+                envelope.CadDocumentRevision?.ToString(CultureInfo.InvariantCulture));
+        }
+
         return Convert.ToHexString(
                 SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString())))
             .ToLowerInvariant();
