@@ -594,9 +594,17 @@ $sourceHead = (& git -c "safe.directory=$safeRepoRoot" -C $repoRoot rev-parse HE
 if ($LASTEXITCODE -ne 0 -or $sourceHead -cnotmatch "^[0-9a-f]{40}$") {
     throw "无法绑定当前 Git HEAD。"
 }
-$sourceBranch = (& git -c "safe.directory=$safeRepoRoot" -C $repoRoot branch --show-current).Trim()
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($sourceBranch)) {
-    throw "无法绑定当前 Git 分支。"
+# detached HEAD 时 `git branch --show-current` 不输出任何内容，直接 .Trim() 会在 null 上
+# 调用方法。这不是异常情况：M4.16 要求候选从已提交源码构建，而干净的 detached worktree
+# 正是做这件事最正确的地方——2026-07-26 首次在这样的 worktree 上跑汇总器时就撞上了。
+# 身份由上面的 HeadCommit 绑定，分支名只是补充信息，因此 detached 允许通过。
+$sourceBranchRaw = (& git -c "safe.directory=$safeRepoRoot" -C $repoRoot branch --show-current)
+if ($LASTEXITCODE -ne 0) {
+    throw "无法读取当前 Git 分支。"
+}
+$sourceBranch = if ($null -eq $sourceBranchRaw) { "" } else { ([string] $sourceBranchRaw).Trim() }
+if ([string]::IsNullOrWhiteSpace($sourceBranch)) {
+    $sourceBranch = "(detached)"
 }
 $workingTreeDirty = @(& git -c "safe.directory=$safeRepoRoot" -C $repoRoot status --porcelain).Count -gt 0
 if ($LASTEXITCODE -ne 0) {
