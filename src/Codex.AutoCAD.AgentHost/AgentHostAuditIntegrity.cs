@@ -361,10 +361,15 @@ internal sealed class AgentHostAuditFileAnchorSink : IAgentHostAuditAnchorSink
     };
 
     private readonly string _path;
+    private readonly AgentHostAuditChainKey? _chainKey;
     private int _hasWritten;
     private int _disposed;
 
-    internal AgentHostAuditFileAnchorSink(string path)
+    /// <param name="chainKey">
+    /// M4.13：非 null 时为锚点写出同名 <c>.mac</c> 伴随文件。传 null 表示该存储未启用 MAC，
+    /// 用于既有无密钥审计存储的向后兼容。
+    /// </param>
+    internal AgentHostAuditFileAnchorSink(string path, AgentHostAuditChainKey? chainKey = null)
     {
         if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path))
         {
@@ -377,7 +382,15 @@ internal sealed class AgentHostAuditFileAnchorSink : IAgentHostAuditAnchorSink
                 "AgentHost audit anchor already exists.");
         }
 
+        var macPath = AgentHostAuditAnchorMac.GetMacPath(path);
+        if (File.Exists(macPath) || Directory.Exists(macPath))
+        {
+            throw new AgentHostAuditException(
+                "AgentHost audit anchor MAC already exists.");
+        }
+
         _path = path;
+        _chainKey = chainKey;
     }
 
     public void Write(AgentHostAuditAnchor anchor)
@@ -385,6 +398,21 @@ internal sealed class AgentHostAuditFileAnchorSink : IAgentHostAuditAnchorSink
         ArgumentNullException.ThrowIfNull(anchor);
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         var bytes = JsonSerializer.SerializeToUtf8Bytes(anchor, SerializerOptions);
+
+        // 落盘内容含结尾换行。MAC 覆盖完整文件字节，验证时直接读原始字节重算，
+        // 因此不依赖 JSON 序列化属性顺序在未来版本中保持稳定。
+        var content = new byte[bytes.Length + 1];
+        Buffer.BlockCopy(bytes, 0, content, 0, bytes.Length);
+        content[bytes.Length] = (byte)'\n';
+
+        // 先提交 MAC 再提交锚点：锚点是完成标志，它就位即代表 MAC 已在位。
+        // 崩溃留下的中间态（新 MAC + 旧锚点）会验证失败，属于可检测的 fail-closed，
+        // 而不是被误判为有效。
+        if (_chainKey != null)
+        {
+            AgentHostAuditAnchorMac.Write(_path, content, _chainKey);
+        }
+
         var temporaryPath = _path + ".tmp-" + Guid.NewGuid().ToString("N");
         try
         {
@@ -396,8 +424,7 @@ internal sealed class AgentHostAuditFileAnchorSink : IAgentHostAuditAnchorSink
                        4096,
                        FileOptions.WriteThrough))
             {
-                stream.Write(bytes, 0, bytes.Length);
-                stream.WriteByte((byte)'\n');
+                stream.Write(content, 0, content.Length);
                 stream.Flush(flushToDisk: true);
             }
 
