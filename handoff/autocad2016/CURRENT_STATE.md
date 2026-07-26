@@ -16,6 +16,61 @@
 若摘要与原始证据冲突，以更具体、更新且可复现的原始证据为准。没有真实编译和
 NETLOAD 证据的能力一律视为未支持。
 
+## 主线汇合与门禁状态（2026-07-26 收口）
+
+本节是当前最新结论，优先于本文件其余按时间累积的记录。
+
+`main` 现在同时包含 M0、M1、M2、M3 和 M4 沙箱线：
+
+- `eb23d17` 吸收 `codex/m1-integration`（M1，实机矩阵已由用户完成）。
+- `77a6cdf` 吸收 `codex/m4-credential-broker`（43 个提交，含最新 M2 DrawingIndex/
+  CadQuery、最新 M3 读取语义和整条 M4 沙箱/配置/资源限制/审计线）。
+- `f3ff925`、`72ddf77` 是两次合并前保留工作区既有文件的提交，不是新功能。
+- 主工作区的 Host.2025 与 Kimi UI 改动**从未进入任何一次合并 footprint**，两次合并后
+  均已复查确认未被触碰。
+
+一次分支拓扑判断的更正：`M2_M3_CONVERGENCE_AUDIT_20260726.md` 曾报告
+`codex/m3-highvalue-limited` 上有 9 个提交不属于任何主线分支。那是 **patch-id 假象**
+——`git cherry` 判等看的是补丁身份，不是内容。按内容核对，该分支 178 个源码/测试文件
+在 `codex/m4-credential-broker` 上缺失数为 `0`，而后者有 214 个。走错的路线产生 51 个
+文件、318 个冲突块；直接吸收 M4 线产生 13 个文件、28 个冲突块且源码零冲突。
+**结论：判断分支是否遗漏工作，必须比对文件内容，不能只看 `git cherry`。**
+
+### 门禁现状
+
+| 门禁 | 结果 |
+|---|---|
+| Phase 2（双 Shell） | 规格 `469/469` 全过；**禁用 API 扫描失败** |
+| agent-bootstrap | 通过 |
+| auth-compat | 通过 |
+| R20.1 Host A/B | 通过，逐字节一致 |
+| M9.8 SBOM 与许可证 | 通过，1 个外部依赖、0 违规 |
+| M4 readiness 汇总 | 未运行——上游 Phase 2 未通过 |
+
+Phase 2 的唯一失败原因是禁用 API 扫描在**未提交**的
+`src/Codex.AutoCAD.Host.2025/Execution/LineWriteWorkflow.cs` 中发现 8 处 CAD 数据库
+写入（`OpenMode.ForWrite`、`AppendEntity`、`AddNewlyCreatedDBObject`、`UpgradeOpen`）。
+Host.2025 使用 SDK 默认通配，未跟踪文件同样会被编译，因此扫描到它是正确行为。
+
+**Host.2016——AutoCAD 2016 的生产宿主——是干净的，0 处 CAD 写入。**
+
+该文件属于 M5 写入闭环，而目标文件规定 M4 全部完成前 M5 保持阻断。处理方式属于用户
+决策，不得为让构建变绿而放宽扫描范围；Host.2025 是否应按 M11 阶段划出 M4 扫描范围，
+留待 M4 真正收口后作为独立决定讨论。
+
+### M4.16 冻结前置条件
+
+`verify-m4-16-freeze-preconditions.ps1` 在当前 `main` 上报告 6 项未满足：工作树不干净、
+缺回滚点、readiness evidence 未绑定当前 HEAD、`RunCorrelation.Mode` 不是 `Correlated`、
+`M4Complete` 不为 true、真实机器/企业矩阵 9 项未验证。最后一项只能由用户在真实环境
+完成，不是代码能补掉的缺口。
+
+### 汇合后的候选身份
+
+**汇合前冻结的全部候选哈希均已失效**：M1 `0.3.3.0`、M2 `0.4.0.0`、M3 `0.4.2.0` 三组都
+不再描述 `main` 上的代码。M2/M3 实机测试必须先在 `main` 上重新构建候选并重新绑定
+evidence，不得使用旧哈希。
+
 ## 当前活动快照（2026-07-26）
 
 - P0 `codex/bridge-client-net45` 的 0.3.2 停止生命周期候选已由用户在 AutoCAD 2016
