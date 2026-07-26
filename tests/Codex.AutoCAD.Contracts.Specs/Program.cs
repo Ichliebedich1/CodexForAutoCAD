@@ -4,6 +4,20 @@ using Codex.AutoCAD.Host2016.ReadOnlyContext;
 
 var specs = new[]
 {
+    new SpecCase("FUZZ-M95-001 回合启动请求在畸形输入下不抛出且有界",
+        ContractFuzzSpecs.TurnStartV2RequestSurvivesHostileInput),
+    new SpecCase("FUZZ-M95-002 整图查询请求在畸形输入下不抛出且有界",
+        ContractFuzzSpecs.DrawingQueryRequestSurvivesHostileInput),
+    new SpecCase("FUZZ-M95-003 直线提案在畸形坐标下不抛出且有界",
+        ContractFuzzSpecs.LineProposalSurvivesHostileInput),
+    new SpecCase("FUZZ-M95-004 审批解析在畸形输入下不抛出且有界",
+        ContractFuzzSpecs.ApprovalResolveSurvivesHostileInput),
+    new SpecCase("FUZZ-M95-005 能力协商在畸形输入下不抛出且有界",
+        ContractFuzzSpecs.CapabilitiesSurviveHostileInput),
+    new SpecCase("FUZZ-M95-006 同一种子产生同一结论",
+        ContractFuzzSpecs.FuzzCampaignIsReproducible),
+    new SpecCase("FUZZ-M95-007 null 请求失败关闭而不是抛出",
+        ContractFuzzSpecs.NullRequestsFailClosedWithoutThrowing),
     new SpecCase("有效直线计划通过", ValidLineBatchPasses),
     new SpecCase("零长度直线被拒绝", ZeroLengthLineFails),
     new SpecCase("NaN坐标被拒绝", NonFiniteCoordinateFails),
