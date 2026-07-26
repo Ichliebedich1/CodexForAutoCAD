@@ -346,9 +346,11 @@ function Invoke-IsolatedBuild {
 
     $previousPathMap = $env:PathMap
     $previousCliHome = $env:DOTNET_CLI_HOME
+    $previousAddGlobalToolsToPath = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
     try {
         $env:PathMap = ($buildRoot + "=/_build/," + $repoRoot + "=/_/")
         $env:DOTNET_CLI_HOME = $cliHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "0"
 
         foreach ($restore in @(
             [pscustomobject]@{ Project = $agentHostProject; Extra = @() },
@@ -388,6 +390,7 @@ function Invoke-IsolatedBuild {
     finally {
         $env:PathMap = $previousPathMap
         $env:DOTNET_CLI_HOME = $previousCliHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $previousAddGlobalToolsToPath
     }
 
     return [pscustomobject]@{

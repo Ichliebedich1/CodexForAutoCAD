@@ -1181,9 +1181,11 @@ function Invoke-IsolatedManagedCoreRegression {
 
     $previousPathMap = $env:PathMap
     $previousCliHome = $env:DOTNET_CLI_HOME
+    $previousAddGlobalToolsToPath = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
     try {
         $env:PathMap = ($regressionRoot + "=/_regression/," + $repoRoot + "=/_/")
         $env:DOTNET_CLI_HOME = $cliHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "0"
 
         Invoke-Captured -FilePath $dotnetCommand -Arguments @(
             "restore", $solutionPath,
@@ -1203,6 +1205,7 @@ function Invoke-IsolatedManagedCoreRegression {
     finally {
         $env:PathMap = $previousPathMap
         $env:DOTNET_CLI_HOME = $previousCliHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $previousAddGlobalToolsToPath
     }
 
     $bridgeSpecRoot = Join-Path $outputRoot "bin\Codex.AutoCAD.Bridge.Specs"
@@ -1266,9 +1269,11 @@ function Invoke-IsolatedBuild {
 
     $previousPathMap = $env:PathMap
     $previousCliHome = $env:DOTNET_CLI_HOME
+    $previousAddGlobalToolsToPath = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
     try {
         $env:PathMap = ($buildRoot + "=/_build/," + $repoRoot + "=/_/")
         $env:DOTNET_CLI_HOME = $cliHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "0"
 
         Invoke-Captured -FilePath $dotnetCommand -Arguments @(
             "restore", $specProject,
@@ -1293,6 +1298,7 @@ function Invoke-IsolatedBuild {
     finally {
         $env:PathMap = $previousPathMap
         $env:DOTNET_CLI_HOME = $previousCliHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $previousAddGlobalToolsToPath
     }
 
     return [pscustomobject]@{

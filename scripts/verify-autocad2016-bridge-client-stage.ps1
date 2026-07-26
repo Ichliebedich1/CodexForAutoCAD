@@ -252,6 +252,7 @@ function Invoke-Worker {
     New-Item -ItemType Directory -Path $nugetPackages -Force | Out-Null
 
     $previousDotnetHome = $env:DOTNET_CLI_HOME
+    $previousAddGlobalToolsToPath = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
     $previousNugetPackages = $env:NUGET_PACKAGES
     $previousTestServer = $env:CODEX_BRIDGE_TEST_SERVER_EXE
     $cadBefore = @(Get-ProcessIds -Name "acad")
@@ -260,6 +261,7 @@ function Invoke-Worker {
 
     try {
         $env:DOTNET_CLI_HOME = $dotnetHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "0"
         $env:NUGET_PACKAGES = $nugetPackages
         $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
         $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
@@ -374,6 +376,7 @@ function Invoke-Worker {
     }
     finally {
         $env:DOTNET_CLI_HOME = $previousDotnetHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $previousAddGlobalToolsToPath
         $env:NUGET_PACKAGES = $previousNugetPackages
         $env:CODEX_BRIDGE_TEST_SERVER_EXE = $previousTestServer
     }

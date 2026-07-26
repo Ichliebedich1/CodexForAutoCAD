@@ -522,6 +522,7 @@ function Invoke-HostBuild {
     New-Item -ItemType Directory -Force -Path $out, $objBase, $obj, $objExt, $packages, $cliHome, $httpCache | Out-Null
     $saved = @{
         DOTNET_CLI_HOME = $env:DOTNET_CLI_HOME
+        DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
         NUGET_PACKAGES = $env:NUGET_PACKAGES
         NUGET_HTTP_CACHE_PATH = $env:NUGET_HTTP_CACHE_PATH
         DOTNET_SKIP_FIRST_TIME_EXPERIENCE = $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE
@@ -530,6 +531,7 @@ function Invoke-HostBuild {
     }
     try {
         $env:DOTNET_CLI_HOME = $cliHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
         $env:NUGET_PACKAGES = $packages
         $env:NUGET_HTTP_CACHE_PATH = $httpCache
         $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
@@ -641,9 +643,11 @@ function Invoke-ContractSpecs {
     $cliHome = Join-Path $root 'dotnet-home'
     New-Item -ItemType Directory -Force -Path $root, $out, $packages, $cliHome | Out-Null
     $savedHome = $env:DOTNET_CLI_HOME
+    $savedAddGlobalToolsToPath = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
     $savedPathMap = $env:PathMap
     try {
         $env:DOTNET_CLI_HOME = $cliHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
         $env:PathMap = ($root + '=/_unified_contract/,' + $repoRoot + '=/_/')
         Invoke-Captured -FilePath $DotNetPath -Arguments @(
             'restore', $specProjectPath, '--configfile', $nuGetConfigPath,
@@ -660,6 +664,7 @@ function Invoke-ContractSpecs {
     }
     finally {
         $env:DOTNET_CLI_HOME = $savedHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $savedAddGlobalToolsToPath
         $env:PathMap = $savedPathMap
     }
     $net45 = Join-Path $out 'bin\Codex.AutoCAD.Contracts.Specs\release_net45\Codex.AutoCAD.Contracts.Specs.exe'
@@ -759,12 +764,14 @@ try {
     New-Item -ItemType Directory -Force -Path $subGateHome | Out-Null
     $savedSubGateEnvironment = @{
         DOTNET_CLI_HOME = $env:DOTNET_CLI_HOME
+        DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
         DOTNET_SKIP_FIRST_TIME_EXPERIENCE = $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE
         DOTNET_CLI_TELEMETRY_OPTOUT = $env:DOTNET_CLI_TELEMETRY_OPTOUT
         DOTNET_NOLOGO = $env:DOTNET_NOLOGO
     }
     try {
         $env:DOTNET_CLI_HOME = $subGateHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
         $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
         $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
         $env:DOTNET_NOLOGO = '1'

@@ -16,13 +16,19 @@ $doctorWorkspace = Join-Path $repoRoot "artifacts\phase2-doctor-workspace"
 $dotnetHome = Join-Path $repoRoot "artifacts\dotnet-cli-home"
 $nugetPackages = Join-Path $repoRoot "packages"
 $nugetHttpCache = Join-Path $repoRoot "artifacts\nuget-http-cache"
+$dotnetCliPathGuard = Join-Path $repoRoot "scripts\verify-dotnet-cli-path-guard.ps1"
 
 $env:DOTNET_CLI_HOME = $dotnetHome
+$env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "0"
 $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
 $env:NUGET_PACKAGES = $nugetPackages
 $env:NUGET_HTTP_CACHE_PATH = $nugetHttpCache
 $dotnetCommand = (Get-Command dotnet -ErrorAction Stop).Source
+$userPathBefore = @(& $dotnetCliPathGuard -RepositoryRoot $repoRoot | ConvertFrom-Json)
+if ($userPathBefore.Count -ne 1) {
+    throw "DOTNET CLI PATH 防复发门禁未返回唯一快照。"
+}
 
 $specProjects = @(
     "tests\Codex.AutoCAD.Contracts.Specs\Codex.AutoCAD.Contracts.Specs.csproj",
@@ -588,6 +594,10 @@ try {
 
     Write-Host "`n==> 执行敏感信息基础扫描" -ForegroundColor Cyan
     Assert-NoLikelySecret
+
+    & $dotnetCliPathGuard `
+        -RepositoryRoot $repoRoot `
+        -ExpectedUserPathSha256 $userPathBefore[0].UserPathSha256 | Out-Null
 
     Write-Host "`n阶段 2 托管核心门禁通过：$Configuration 构建、$($specProjects.Count) 个规格项目（动态汇总 $totalSpecs/$totalSpecs）、Host 禁用 API、AgentHost 活体握手、Git 差异及敏感信息检查均通过。" -ForegroundColor Green
     Write-Warning "该门禁不验证 AutoCAD 2016/2025 Host 实机能力，也不表示每会话 Agent 隔离已经完成。"

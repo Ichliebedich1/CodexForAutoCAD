@@ -284,6 +284,7 @@ function Invoke-DotNetIsolated {
 
     $isolatedEnvironment = [ordered]@{
         DOTNET_CLI_HOME = $script:dotnetCliHome
+        DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
         NUGET_PACKAGES = $script:dotnetNuGetPackages
         NUGET_HTTP_CACHE_PATH = $script:dotnetHttpCache
         DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'

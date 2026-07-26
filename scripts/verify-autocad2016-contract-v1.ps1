@@ -117,9 +117,11 @@ function Invoke-IsolatedBuild {
     New-Item -ItemType Directory -Path $root -Force | Out-Null
 
     $previousCliHome = $env:DOTNET_CLI_HOME
+    $previousAddGlobalToolsToPath = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
     $previousPathMap = $env:PathMap
     try {
         $env:DOTNET_CLI_HOME = $cliHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
         $env:PathMap = ($root + '=/_contract/,' + $repoRoot + '=/_/')
         Invoke-NativeCaptured -FilePath $script:dotnetCommand -Arguments @(
             'restore', $specProject,
@@ -143,6 +145,7 @@ function Invoke-IsolatedBuild {
     }
     finally {
         $env:DOTNET_CLI_HOME = $previousCliHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $previousAddGlobalToolsToPath
         $env:PathMap = $previousPathMap
     }
 
