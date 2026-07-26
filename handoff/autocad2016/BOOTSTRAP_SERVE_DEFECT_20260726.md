@@ -74,18 +74,45 @@ if (child.WaitForExit(1000, out exitCode) && exitCode != 0) {
 初始化慢、子进程从未创建。**四次都是在证据不足时下的结论。**记录于此是为了让后来者
 不要重复它们，也不要把它们当作线索。
 
-## 3. 下一步（唯一）
+## 3. 根本原因：子进程没有被许可的失败上报渠道
 
-**让子进程的 stderr 浮出来。**
+> 本节更正了本文件先前写的「下一步是把 stderr 带进失败信息」。那个方向是错的，
+> 它等于推翻 M4.14 的脱敏边界。
 
-AgentHost 的 `bootstrap-serve` 在失败时执行
-`Console.Error.WriteLine(FormatBootstrapFailureForStandardError(command, exception))`，
-必定写出结构化错误码。Launcher 已经通过 `CaptureStandardErrorAsync` 捕获了这份 stderr，
-但 abort 路径没有把它带进异常。
+`CaptureStandardErrorAsync` 读取子进程 stderr 后**立即清零并丢弃内容**，只保留字节数：
 
-因此正确的下一步既是诊断手段也是**真正要做的修复**：在超时/abort 路径上，把已捕获的
-有界 stderr 摘要与子进程退出码一并纳入失败信息（保持既有脱敏规则，不输出原始路径）。
-做完之后根因会自己显现，不需要再从目录痕迹反推。
+```csharp
+while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+{
+    capturedBytes += Math.Min(read, remaining);
+    Array.Clear(buffer, 0, read);          // 内容丢弃
+}
+return new AgentHostStandardErrorCapture(capturedBytes, truncated);
+```
+
+`AgentHostStandardErrorCapture` 只有 `Bytes` 与 `Truncated` 两个字段。这是 M4.14 的
+有意设计（「stderr 仍为无文本摘要」），用于防止子进程原始错误文本把路径或令牌带给父进程。
+**该决定本身是正确的，不应推翻。**
+
+但它的直接后果是：
+
+> **AgentHost 在送出确认帧之前失败时，没有任何被许可的渠道说明失败原因。**
+> stderr 按设计被丢弃，确认通道尚未建立，进程只是退出。
+
+因此当前这个生产缺陷**通过产品自身的通道不可诊断**——所缺的信息在设计上就不存在，
+不是没找对地方。
+
+### 正确的修复方向
+
+让子进程通过**本就安全的通道**上报失败，而不是放宽 stderr。
+
+`FormatBootstrapFailureForStandardError` 产出的是稳定错误码、阶段、诊断分类和数值脱敏
+标志——**闭集，无自由文本**。这类内容完全可以走继承的确认通道（或一个受保护的、
+定长的状态字段）回传，既保持 M4.14 的边界，又让早期失败可诊断。
+
+这是协议层的缺口，不是加一行日志能解决的。修改需要同时改动 AgentHost 的
+`bootstrap-serve` 失败路径与 Launcher 的确认读取，并配套一条覆盖 `bootstrap-serve`
+的门禁（当前门禁只覆盖 `bootstrap-doctor`，见 1.2）。
 
 在此之前，不要再靠进程采样猜测机制。
 
