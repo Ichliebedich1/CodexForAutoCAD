@@ -4,14 +4,25 @@ using Codex.AutoCAD.Contracts;
 
 namespace Codex.AutoCAD.AgentRuntime;
 
-public readonly record struct AgentCadPoint3d(double X, double Y, double Z);
+public readonly record struct AgentCadPoint3d(double X, double Y, double Z)
+{
+    public override string ToString()
+        => nameof(AgentCadPoint3d) + " { CoordinatesPresent = True }";
+}
 
 public abstract record AgentCadOperationProposal(string Type);
 
 public sealed record AgentCadCreateLineProposal(
     AgentCadPoint3d Start,
     AgentCadPoint3d End,
-    string? Layer) : AgentCadOperationProposal("create_line");
+    string? Layer) : AgentCadOperationProposal("create_line")
+{
+    public override string ToString()
+        => nameof(AgentCadCreateLineProposal)
+            + " { StartPresent = True, EndPresent = True, LayerConfigured = "
+            + AgentDiagnosticFormatting.Configured(Layer)
+            + " }";
+}
 
 /// <summary>
 /// Unbound CAD proposal emitted for the trusted AutoCAD host. Document identity, revision and
@@ -46,6 +57,20 @@ public sealed record AgentCadOperationBatchProposal
 
     internal AgentCadOperationBatchProposal DeepClone()
         => new(ProposalId, CallId, ThreadId, TurnId, Operations);
+
+    public override string ToString()
+        => nameof(AgentCadOperationBatchProposal)
+            + " { ProposalIdConfigured = "
+            + AgentDiagnosticFormatting.Configured(ProposalId)
+            + ", CallIdConfigured = "
+            + AgentDiagnosticFormatting.Configured(CallId)
+            + ", ThreadIdConfigured = "
+            + AgentDiagnosticFormatting.Configured(ThreadId)
+            + ", TurnIdConfigured = "
+            + AgentDiagnosticFormatting.Configured(TurnId)
+            + ", OperationCount = "
+            + Operations.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            + " }";
 
     private static ReadOnlyCollection<AgentCadOperationProposal> CloneOperations(
         IReadOnlyList<AgentCadOperationProposal> operations)

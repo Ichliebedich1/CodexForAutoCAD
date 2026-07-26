@@ -230,9 +230,7 @@ public sealed class CodexProcessTransport : IAppServerTransport
             _standardErrorTail.TryDequeue(out _);
         }
 
-        StandardErrorReceived?.Invoke(
-            this,
-            new AppServerStandardErrorEventArgs(summary));
+        RaiseStandardError(new AppServerStandardErrorEventArgs(summary));
     }
 
     private static async Task TerminateProcessTreeAsync(Process process)
@@ -348,6 +346,26 @@ public sealed class CodexProcessTransport : IAppServerTransport
             catch
             {
                 // Background exit observers cannot fault an async Process event callback.
+            }
+        }
+    }
+
+    private void RaiseStandardError(AppServerStandardErrorEventArgs eventArgs)
+    {
+        if (StandardErrorReceived is null)
+        {
+            return;
+        }
+
+        foreach (EventHandler<AppServerStandardErrorEventArgs> handler in StandardErrorReceived.GetInvocationList())
+        {
+            try
+            {
+                handler(this, eventArgs);
+            }
+            catch
+            {
+                // Stderr is diagnostic-only; observers cannot fault the drain task or block peers.
             }
         }
     }

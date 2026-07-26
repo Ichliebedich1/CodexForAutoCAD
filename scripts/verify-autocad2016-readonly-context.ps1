@@ -15,6 +15,9 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'build-safety.ps1')
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $projectRoot = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016.ReadOnlyContext'
 $projectPath = Join-Path $projectRoot 'Codex.AutoCAD.Host.2016.ReadOnlyContext.csproj'
 $solutionPath = Join-Path $repoRoot 'Codex.AutoCAD.2016.ReadOnlyContext.sln'
@@ -486,7 +489,7 @@ try {
         throw "ReadOnlyContext Specs 失败：$LASTEXITCODE"
     }
 
-    $verificationRoot = Join-Path $repoRoot ('artifacts\autocad2016-readonly-context-verify-' + [guid]::NewGuid().ToString('N'))
+    $verificationRoot = Join-Path $artifactsRoot ('autocad2016-readonly-context-verify-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $verificationRoot | Out-Null
     $builds = @()
     foreach ($label in @('first', 'second')) {
@@ -536,5 +539,6 @@ try {
     Write-Host '--- End Verification ---' -ForegroundColor Cyan
 }
 finally {
+    Complete-CodexBuildSafety -State $buildSafety -Stage 'readonly-context' | Out-Null
     Pop-Location
 }

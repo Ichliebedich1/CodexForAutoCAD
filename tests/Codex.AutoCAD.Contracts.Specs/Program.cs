@@ -19,6 +19,28 @@ var specs = new[]
     new SpecCase("计划字符串拒绝控制字符危险格式和超长值", PlanStringsRejectUnsafeCharactersAndLength),
     new SpecCase("桥接直线提案拒绝受信边界外输入", BridgeLineProposalFailsClosed),
     new SpecCase("桥接回合限制提示词和上下文数量", BridgeTurnRequestIsBounded),
+    new SpecCase("POLICY-M41-001 配置层从机器到用户逐层收窄", AgentPolicySpecs.LayerPrecedenceNarrowsFromMachineToUser),
+    new SpecCase("POLICY-M41-002 低优先级层不得扩大白名单", AgentPolicySpecs.LowerLayerCannotWidenAllowList),
+    new SpecCase("POLICY-M41-003 白名单去重且顺序确定", AgentPolicySpecs.AllowListIsDeterministicallyOrdered),
+    new SpecCase("POLICY-M41-004 管理员锁定阻止用户改模型", AgentPolicySpecs.AdministratorLockBlocksUserModelOverride),
+    new SpecCase("POLICY-M41-005 管理员锁定阻止用户改思考强度", AgentPolicySpecs.AdministratorLockBlocksUserEffortOverride),
+    new SpecCase("POLICY-M41-006 同层可同时赋值并锁定", AgentPolicySpecs.SameLayerMaySetValueAndLockIt),
+    new SpecCase("POLICY-M41-007 缺失全部配置层fail-closed", AgentPolicySpecs.MissingEveryLayerFailsClosed),
+    new SpecCase("POLICY-M41-008 空白名单fail-closed", AgentPolicySpecs.EmptyAllowListFailsClosed),
+    new SpecCase("POLICY-M41-009 损坏schema fail-closed", AgentPolicySpecs.CorruptSchemaFailsClosed),
+    new SpecCase("POLICY-M41-010 旧schema版本fail-closed", AgentPolicySpecs.OutdatedSchemaVersionFailsClosed),
+    new SpecCase("POLICY-M41-011 默认值不在白名单内fail-closed", AgentPolicySpecs.DefaultOutsideAllowListFailsClosed),
+    new SpecCase("POLICY-M41-012 缺失默认值fail-closed", AgentPolicySpecs.MissingDefaultFailsClosed),
+    new SpecCase("POLICY-M41-013 白名单超限fail-closed", AgentPolicySpecs.OversizedAllowListFailsClosed),
+    new SpecCase("POLICY-M41-014 非法模型形态全部拒绝", AgentPolicySpecs.InvalidModelShapesFailClosed),
+    new SpecCase("POLICY-M41-015 非法思考强度拒绝", AgentPolicySpecs.InvalidReasoningEffortFailsClosed),
+    new SpecCase("POLICY-M41-016 空请求回落到受信默认值", AgentPolicySpecs.EmptyRequestFallsBackToDefaults),
+    new SpecCase("POLICY-M41-017 任意请求字符串不得穿透", AgentPolicySpecs.ArbitraryRequestStringCannotPassThrough),
+    new SpecCase("POLICY-M41-018 白名单内请求按实际接受值返回", AgentPolicySpecs.AllowedRequestIsReturnedAsAcceptedValue),
+    new SpecCase("POLICY-M41-019 锁定后偏离默认值的请求被拒绝", AgentPolicySpecs.LockedPolicyRejectsDivergentRequest),
+    new SpecCase("统一诊断脱敏按分类清除令牌路径URI和用户名", DiagnosticSanitizerRedactsMixedSensitiveText),
+    new SpecCase("统一诊断脱敏覆盖设备路径转义JSON和完整URI变体", DiagnosticSanitizerRedactsDiagnosticVariants),
+    new SpecCase("统一诊断脱敏有界遍历嵌套和聚合异常", DiagnosticSanitizerBoundsExceptionGraph),
     new SpecCase("CTX-V1-001 六类上下文通过并产生冻结规范向量", CadContextV1CanonicalVectorIsFrozen),
     new SpecCase("CTX-V1-002 图元输入顺序不改变规范JSON和哈希", CadContextV1SortsEntitiesByNumericHandle),
     new SpecCase("CTX-V1-003 schema版本独立于IPC版本并严格拒绝漂移", CadContextV1SchemaVersionIsIndependent),
@@ -1330,6 +1352,108 @@ static CadContextEntityV1 CreateLineContextEntity(
             End = new CadPoint3(endX, 7.125, 0),
         },
     };
+}
+
+static void DiagnosticSanitizerRedactsMixedSensitiveText()
+{
+    const string unsafeText =
+        "remote failure Bearer sk-live-SECRET at C:\\Users\\alice\\drawing.dwg "
+        + "via https://alice:password@example.invalid/api?access_token=QUERYSECRET "
+        + "for CONTOSO\\alice";
+    var result = DiagnosticSanitizer.SanitizeText(
+        DiagnosticDataClassification.RemoteError,
+        unsafeText);
+
+    Equal(
+        DiagnosticDataClassification.RemoteError,
+        result.Classification,
+        "Diagnostic classification drifted.");
+    ContainsText(result.SafeText, "[redacted-token]");
+    ContainsText(result.SafeText, "[redacted-path]");
+    ContainsText(result.SafeText, "[redacted-uri]");
+    ContainsText(result.SafeText, "[redacted-identity]");
+    DoesNotContainText(result.SafeText, "sk-live-SECRET");
+    DoesNotContainText(result.SafeText, "C:\\Users\\alice");
+    DoesNotContainText(result.SafeText, "example.invalid");
+    DoesNotContainText(result.SafeText, "CONTOSO\\alice");
+    if ((result.Redactions & DiagnosticRedactionKinds.Token) == 0
+        || (result.Redactions & DiagnosticRedactionKinds.Path) == 0
+        || (result.Redactions & DiagnosticRedactionKinds.Uri) == 0
+        || (result.Redactions & DiagnosticRedactionKinds.Identity) == 0)
+    {
+        throw new InvalidOperationException("Expected diagnostic redaction flags were not set.");
+    }
+}
+
+static void DiagnosticSanitizerRedactsDiagnosticVariants()
+{
+    const string unsafeText =
+        "open \"\\\\?\\C:\\Users\\alice smith\\private drawing.dwg\" "
+        + "pipe \\\\.\\pipe\\codex-secret-pipe "
+        + "native \\??\\C:\\Users\\alice\\secret.cfg "
+        + "payload {\\\"access_token\\\":\\\"ESCAPED-TOKEN-731\\\","
+        + "\\\"client_secret\\\":\\\"CLIENT-SECRET-732\\\"} "
+        + "at x://bob:pass@example.invalid/api?q=private#fragment";
+    var result = DiagnosticSanitizer.SanitizeText(
+        DiagnosticDataClassification.Exception,
+        unsafeText);
+
+    ContainsText(result.SafeText, "[redacted-path]");
+    ContainsText(result.SafeText, "[redacted-token]");
+    ContainsText(result.SafeText, "[redacted-uri]");
+    DoesNotContainText(result.SafeText, "alice smith");
+    DoesNotContainText(result.SafeText, "private drawing");
+    DoesNotContainText(result.SafeText, "codex-secret-pipe");
+    DoesNotContainText(result.SafeText, "secret.cfg");
+    DoesNotContainText(result.SafeText, "ESCAPED-TOKEN-731");
+    DoesNotContainText(result.SafeText, "CLIENT-SECRET-732");
+    DoesNotContainText(result.SafeText, "example.invalid");
+    if ((result.Redactions & DiagnosticRedactionKinds.Token) == 0
+        || (result.Redactions & DiagnosticRedactionKinds.Path) == 0
+        || (result.Redactions & DiagnosticRedactionKinds.Uri) == 0)
+    {
+        throw new InvalidOperationException("Expected variant diagnostic redaction flags were not set.");
+    }
+}
+
+static void DiagnosticSanitizerBoundsExceptionGraph()
+{
+    var nested = new AggregateException(
+        "aggregate failed",
+        new InvalidOperationException(
+            "Bearer NESTED-TOKEN-731 at \\\\?\\C:\\Users\\alice\\secret.dwg",
+            new InvalidDataException(
+                "remote x://alice:password@example.invalid/private#fragment")),
+        new Exception("client_secret=INNER-SECRET-732"));
+    var result = DiagnosticSanitizer.SanitizeException(
+        DiagnosticDataClassification.Exception,
+        nested);
+
+    ContainsText(result.SafeText, "[redacted-token]");
+    ContainsText(result.SafeText, "[redacted-path]");
+    ContainsText(result.SafeText, "[redacted-uri]");
+    DoesNotContainText(result.SafeText, "NESTED-TOKEN-731");
+    DoesNotContainText(result.SafeText, "INNER-SECRET-732");
+    DoesNotContainText(result.SafeText, "secret.dwg");
+    DoesNotContainText(result.SafeText, "example.invalid");
+    if (result.SafeText.Length > DiagnosticSanitizer.MaximumOutputCharacters)
+    {
+        throw new InvalidOperationException("Nested diagnostic exceeded the public output bound.");
+    }
+
+    Exception tooDeep = new Exception("leaf");
+    for (var depth = 0; depth <= DiagnosticSanitizer.MaximumExceptionDepth; depth++)
+    {
+        tooDeep = new Exception("layer-" + depth, tooDeep);
+    }
+
+    var bounded = DiagnosticSanitizer.SanitizeException(
+        DiagnosticDataClassification.Exception,
+        tooDeep);
+    if (!bounded.Truncated)
+    {
+        throw new InvalidOperationException("Deep exception graph was not marked truncated.");
+    }
 }
 
 static CadContextEntityV1 FindEntity(CadContextJsonV1 context, string entityType)

@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Codex.AutoCAD.AppServer.Protocol;
+using DiagnosticDataClassification = Codex.AutoCAD.Contracts.DiagnosticDataClassification;
+using DiagnosticSanitizer = Codex.AutoCAD.Contracts.DiagnosticSanitizer;
 
 namespace Codex.AutoCAD.AgentRuntime;
 
@@ -142,7 +144,8 @@ internal static class AgentEventProjector
         var threadId = RequiredString(parameters, "threadId", notification.Method);
         var turn = RequiredObject(parameters, "turn", notification.Method);
         var turnId = RequiredString(turn, "id", notification.Method);
-        var status = ToTurnStatus(RequiredString(turn, "status", notification.Method));
+        var wireStatus = RequiredString(turn, "status", notification.Method);
+        var status = ToTurnStatus(wireStatus);
         string? errorMessage = null;
         if (turn.TryGetProperty("error", out var error)
             && error.ValueKind == JsonValueKind.Object)
@@ -150,12 +153,44 @@ internal static class AgentEventProjector
             errorMessage = OptionalString(error, "message");
         }
 
+        var errorDiagnostic = errorMessage is null
+            ? null
+            : DiagnosticSanitizer
+                .SanitizeText(
+                    DiagnosticDataClassification.RemoteError,
+                    errorMessage);
+        var safeErrorMessage = errorDiagnostic?.SafeText;
         return new AgentTurnStateChangedEvent(
             threadId,
             turnId,
             status,
-            errorMessage,
-            turn.Clone());
+            safeErrorMessage,
+            CreateSafeTurnSnapshot(turnId, wireStatus, safeErrorMessage))
+        {
+            ErrorDiagnosticClassification = errorDiagnostic?.Classification,
+            ErrorDiagnosticRedactions = errorDiagnostic?.Redactions ?? default,
+        };
+    }
+
+    private static JsonElement CreateSafeTurnSnapshot(
+        string turnId,
+        string status,
+        string? errorMessage)
+    {
+        var snapshot = new Dictionary<string, object?>
+        {
+            ["id"] = turnId,
+            ["status"] = status,
+        };
+        if (errorMessage is not null)
+        {
+            snapshot["error"] = new Dictionary<string, string>
+            {
+                ["message"] = errorMessage,
+            };
+        }
+
+        return JsonSerializer.SerializeToElement(snapshot);
     }
 
     private static JsonElement RequiredParams(AppServerNotification notification)

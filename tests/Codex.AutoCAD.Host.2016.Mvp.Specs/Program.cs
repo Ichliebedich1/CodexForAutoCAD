@@ -131,13 +131,29 @@ var specs = new[]
         "A failing Palette status observer cannot prevent AgentHost cleanup",
         StatusCallbackCannotBlockStop),
     new SpecCase(
+        "HOST2016_STOP_CANCELS_INFLIGHT_START",
+        "STOP cancels an in-flight AgentHost startup and commits only the stopped terminal state",
+        StopCancelsInFlightStart),
+    new SpecCase(
         "HOST2016_BRIDGE_FAULT_TRANSITIONS_OFFLINE",
         "A Bridge fault terminates the active turn and rejects later ASK calls before transport reuse",
         BridgeFaultTransitionsOffline),
     new SpecCase(
+        "HOST2016_BRIDGE_EXCEPTION_PUBLIC_DIAGNOSTIC_IS_SANITIZED",
+        "Bridge client exceptions expose only bounded sanitized diagnostics and discard raw inner exceptions",
+        BridgeClientExceptionPublicDiagnosticIsSanitized),
+    new SpecCase(
         "HOST2016_FAILURE_FORMATTER_SANITIZES_BOOTSTRAP",
         "AgentHost startup failures expose stable structured fields without local exception details",
         FailureFormatterSanitizesBootstrap),
+    new SpecCase(
+        "HOST2016_FAILURE_FORMATTER_ENFORCES_PUBLIC_BOUNDARY",
+        "Host UI errors apply one bounded sanitizer after structured formatting",
+        FailureFormatterEnforcesPublicBoundary),
+    new SpecCase(
+        "HOST2016_COMMAND_FAILURES_ARE_STRUCTURED_AND_SANITIZED",
+        "Host command failures expose stable diagnostics without CLR types or raw exception graphs",
+        HostCommandFailuresAreStructuredAndSanitized),
     new SpecCase(
         "HOST2016_RESOURCE_LIMIT_FAILURES_STRUCTURED",
         "all AgentHost resource limits map to stable non-retryable runtime failures",
@@ -146,6 +162,10 @@ var specs = new[]
         "HOST2016_RESOURCE_LIMIT_WINS_BRIDGE_FAULT_RACE",
         "an authoritative AgentHost resource limit wins the Bridge disconnect terminal-state race",
         ResourceLimitWinsBridgeFaultRace),
+    new SpecCase(
+        "HOST2016_AGENTHOST_EXIT_WINS_BRIDGE_FAULT_RACE",
+        "an unexpected AgentHost exit wins the Bridge disconnect race and commits one terminal",
+        UnexpectedAgentHostExitWinsBridgeFaultRace),
     new SpecCase(
         "HOST2016_TURN_FAILURE_IS_STRUCTURED_AND_SANITIZED",
         "A failed Codex turn publishes stable fields without raw Provider error text",
@@ -1152,6 +1172,70 @@ static async Task CompletedStopIsIdempotent()
     Equal(1, agentHostStopCount, "Idempotent AgentHost stop count");
 }
 
+static async Task StopCancelsInFlightStart()
+{
+    var startupEntered = new TaskCompletionSource<bool>();
+    var startupCancellationObserved = new TaskCompletionSource<bool>();
+    var stoppedStatusCount = 0;
+    var errors = new List<string>();
+    var client = new MvpAgentClient(async cancellationToken =>
+    {
+        startupEntered.TrySetResult(true);
+        try
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            startupCancellationObserved.TrySetResult(true);
+            throw;
+        }
+    });
+    client.StatusChanged += status =>
+    {
+        if (status.IndexOf("AgentHost 已停止", StringComparison.Ordinal) >= 0)
+        {
+            stoppedStatusCount++;
+        }
+    };
+    client.ErrorChanged += errors.Add;
+
+    try
+    {
+        var startup = client.StartAsync(CancellationToken.None);
+        await startupEntered.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+
+        await client.StopAsync(CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(2))
+            .ConfigureAwait(false);
+        await startupCancellationObserved.Task
+            .WaitAsync(TimeSpan.FromSeconds(2))
+            .ConfigureAwait(false);
+
+        var startupWasCancelled = false;
+        try
+        {
+            await startup.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            startupWasCancelled = true;
+        }
+
+        True(startupWasCancelled, "STOP did not cancel the in-flight startup task.");
+        True(!client.IsStarted, "A cancelled startup incorrectly transitioned online.");
+        Equal(0, errors.Count, "Expected STOP during startup error count");
+        Equal(1, stoppedStatusCount, "Expected stopped terminal status count");
+
+        await client.StopAsync(CancellationToken.None).ConfigureAwait(false);
+        Equal(1, stoppedStatusCount, "Repeated STOP changed the terminal status count");
+    }
+    finally
+    {
+        client.Dispose();
+    }
+}
+
 static async Task StatusCallbackCannotBlockStop()
 {
     var callbackCount = 0;
@@ -1283,8 +1367,202 @@ static Task FailureFormatterSanitizesBootstrap()
             isolationFailure.ErrorCode,
             StringComparison.Ordinal)
         && !isolationFailure.Retryable
-        && !isolationFailure.UserMessage.Contains(sensitiveDetail, StringComparison.Ordinal),
+            && !isolationFailure.UserMessage.Contains(sensitiveDetail, StringComparison.Ordinal),
         "Process isolation failure did not remain structured and sanitized.");
+
+    var policyBlockedFailure = MvpAgentFailureFormatter.FromException(
+        new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.ProcessStartBlocked,
+            sensitiveDetail,
+            new InvalidOperationException(sensitiveDetail)),
+        MvpAgentFailureStages.StartingAgentHost);
+    True(
+        string.Equals(
+            MvpAgentErrorCodes.AgentHostProcessStartBlocked,
+            policyBlockedFailure.ErrorCode,
+            StringComparison.Ordinal)
+        && !policyBlockedFailure.Retryable
+        && policyBlockedFailure.UserMessage.Contains(
+            "Windows 或企业策略",
+            StringComparison.Ordinal)
+        && !policyBlockedFailure.UserMessage.Contains(
+            sensitiveDetail,
+            StringComparison.Ordinal),
+        "Policy-blocked process start did not remain structured, actionable, and sanitized.");
+
+    var nestedJobFailure = MvpAgentFailureFormatter.FromException(
+        new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.NestedJobAssignmentFailed,
+            sensitiveDetail,
+            new InvalidOperationException(sensitiveDetail)),
+        MvpAgentFailureStages.StartingAgentHost);
+    True(
+        string.Equals(
+            MvpAgentErrorCodes.AgentHostNestedJobAssignmentFailed,
+            nestedJobFailure.ErrorCode,
+            StringComparison.Ordinal)
+        && !nestedJobFailure.Retryable
+        && nestedJobFailure.UserMessage.Contains(
+            "嵌套 Job",
+            StringComparison.Ordinal)
+        && !nestedJobFailure.UserMessage.Contains(
+            sensitiveDetail,
+            StringComparison.Ordinal),
+        "Nested Job assignment failure did not remain structured, actionable, and sanitized.");
+    return Task.CompletedTask;
+}
+
+static Task BridgeClientExceptionPublicDiagnosticIsSanitized()
+{
+    var bearerMarker = "bridge-bearer-secret-marker";
+    var queryMarker = "bridge-query-secret-marker";
+    var jsonMarker = "bridge-json-secret-marker";
+    var innerMarker = "bridge-inner-secret-marker";
+    var unsafeMessage = string.Join(
+        " ",
+        "Bridge diagnostic",
+        "Bear" + "er " + bearerMarker,
+        @"C:\Users\bridge-user\private\bridge.log",
+        @"\\bridge-server\private\payload.json",
+        "https://bridge-user:bridge-pass@example.invalid/api?access_"
+            + "token="
+            + queryMarker
+            + "#fragment",
+        "{\"api_" + "key\":\"" + jsonMarker + "\"}",
+        @"CONTOSO\bridge-user");
+    var unsafeInner = new InvalidOperationException(
+        innerMarker + " " + @"C:\Users\bridge-user\inner.log");
+
+    var failure = new AgentBridgeClientException(
+        "diagnostic_test",
+        unsafeMessage,
+        unsafeInner);
+
+    EqualString("diagnostic_test", failure.Code, "Bridge diagnostic error code");
+    True(
+        failure.InnerException == null,
+        "Bridge diagnostic retained the raw inner exception.");
+
+    var publicDiagnostic = failure.Message + " " + failure;
+    foreach (var marker in new[]
+             {
+                 bearerMarker,
+                 queryMarker,
+                 jsonMarker,
+                 innerMarker,
+                 "bridge-user",
+                 "bridge-server",
+                 "example.invalid",
+             })
+    {
+        True(
+            publicDiagnostic.IndexOf(marker, StringComparison.OrdinalIgnoreCase) < 0,
+            "Bridge diagnostic leaked a protected marker.");
+    }
+
+    True(
+        publicDiagnostic.Contains("[redacted-token]", StringComparison.Ordinal)
+        && publicDiagnostic.Contains("[redacted-path]", StringComparison.Ordinal)
+        && publicDiagnostic.Contains("[redacted-uri]", StringComparison.Ordinal)
+        && publicDiagnostic.Contains("[redacted-identity]", StringComparison.Ordinal),
+        "Bridge diagnostic did not preserve structured redaction evidence.");
+    True(
+        failure.Message.Length <= DiagnosticSanitizer.MaximumOutputCharacters,
+        "Bridge diagnostic exceeded the public output bound.");
+
+    return Task.CompletedTask;
+}
+
+static Task FailureFormatterEnforcesPublicBoundary()
+{
+    const string tokenMarker = "host-ui-secret-token";
+    const string identityMarker = "private.user@example.invalid";
+    const string pathMarker = @"C:\Users\Private\host-ui-error.log";
+    var failure = new MvpAgentFailure(
+        MvpAgentErrorCodes.InternalError,
+        MvpAgentFailureStages.RunningTurn,
+        false,
+        "password=" + tokenMarker + " at " + pathMarker,
+        "request-" + identityMarker,
+        "state\r\n" + new string('x', 700));
+
+    var display = failure.FormatForUser(
+        "打开 "
+        + pathMarker
+        + " for "
+        + identityMarker
+        + " password="
+        + tokenMarker);
+
+    foreach (var marker in new[] { tokenMarker, identityMarker, pathMarker })
+    {
+        True(
+            !display.Contains(marker, StringComparison.OrdinalIgnoreCase),
+            "Host UI failure leaked a protected marker: " + marker);
+    }
+
+    True(
+        display.Contains("[redacted-token]", StringComparison.Ordinal)
+        && display.Contains("[redacted-path]", StringComparison.Ordinal)
+        && display.Contains("[redacted-identity]", StringComparison.Ordinal),
+        "Host UI failure omitted structured redaction placeholders.");
+    True(
+        display.Length <= DiagnosticSanitizer.MaximumOutputCharacters,
+        "Host UI failure exceeded the public diagnostic limit.");
+    True(
+        !display.Contains('\r') && !display.Contains('\n'),
+        "Host UI failure retained line-breaking control characters.");
+    return Task.CompletedTask;
+}
+
+static Task HostCommandFailuresAreStructuredAndSanitized()
+{
+    const string tokenMarker = "host-command-token-marker";
+    const string identityMarker = "host.command@example.invalid";
+    const string pathMarker = @"C:\Users\Private\host-command.log";
+    var unsafeException = new AggregateException(
+        "Bearer " + tokenMarker + " " + pathMarker,
+        new InvalidOperationException(
+            "https://"
+            + identityMarker
+            + "/diagnostic?api_key="
+            + tokenMarker));
+
+    var failure = HostCommandDiagnosticFormatter.FromUnexpectedException(
+        unsafeException,
+        HostCommandFailureStages.DrawingIndexStart);
+    var display = failure.FormatForUser(
+        "DrawingIndex 启动",
+        "图纸未修改、未保存。");
+
+    True(
+        display.Contains("error_code=internal_error", StringComparison.Ordinal)
+        && display.Contains("error_stage=drawing_index_start", StringComparison.Ordinal)
+        && display.Contains("diagnostic_classification=Exception", StringComparison.Ordinal)
+        && display.Contains("diagnostic_redactions=", StringComparison.Ordinal),
+        "Host command failure omitted stable structured diagnostics.");
+    foreach (var marker in new[]
+             {
+                 tokenMarker,
+                 identityMarker,
+                 pathMarker,
+                 nameof(AggregateException),
+                 nameof(InvalidOperationException),
+             })
+    {
+        True(
+            !display.Contains(marker, StringComparison.OrdinalIgnoreCase),
+            "Host command failure leaked a protected marker: " + marker);
+    }
+
+    True(
+        display.Length <= DiagnosticSanitizer.MaximumOutputCharacters,
+        "Host command failure exceeded the public diagnostic limit.");
+    True(
+        failure.GetType()
+            .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .All(field => !typeof(Exception).IsAssignableFrom(field.FieldType)),
+        "Host command diagnostic retained the raw exception graph.");
     return Task.CompletedTask;
 }
 
@@ -1435,6 +1713,111 @@ static async Task ResourceLimitWinsBridgeFaultRace()
             && value.Contains("state=failed", StringComparison.Ordinal)
             && value.Contains("request_id=", StringComparison.Ordinal)),
         "The resource terminal state lost the active Host request identity.");
+}
+
+static async Task UnexpectedAgentHostExitWinsBridgeFaultRace()
+{
+    var processExitCompletion =
+        new TaskCompletionSource<AgentHostProcessExitFailure>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+    var serviceSession = new AgentHostServiceSession(
+        _ => true,
+        _ => true,
+        () => null,
+        () => { },
+        Task.FromResult(new AgentHostStandardErrorCapture(0, false)),
+        CreateResourceServiceResult(),
+        AgentHostBootstrapOptions.DefaultGracefulStopTimeout,
+        workspaceLease: null,
+        processExitFailureCompletion: processExitCompletion);
+    var bridge = new FakeAgentBridgeClient();
+    using var client = new MvpAgentClient(
+        bridge,
+        "thread-agenthost-exit-race",
+        "system-session-agenthost-exit-race",
+        TimeSpan.FromSeconds(5),
+        serviceSession);
+    var errors = new List<string>();
+    var exitTerminal = new TaskCompletionSource<bool>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    client.ErrorChanged += value =>
+    {
+        lock (errors)
+        {
+            errors.Add(value);
+        }
+
+        if (value.Contains(
+                MvpAgentErrorCodes.AgentHostUnexpectedExit,
+                StringComparison.Ordinal))
+        {
+            exitTerminal.TrySetResult(true);
+        }
+    };
+    var context = new UnifiedContextState
+    {
+        Published = true,
+        Context = new CadContextJsonV2(),
+        ContextSha256 = new string('8', 64),
+    };
+
+    await client.AskAsync(
+            "unexpected AgentHost exit race",
+            context,
+            () => true,
+            CancellationToken.None)
+        .ConfigureAwait(false);
+    bridge.RaiseFault(new AgentBridgeClientException(
+        AgentBridgeErrorCodes.ConnectionLost,
+        "CODEX_AGENTHOST_EXIT_RACE_SECRET"));
+    await Task.Delay(TimeSpan.FromMilliseconds(10)).ConfigureAwait(false);
+    processExitCompletion.TrySetResult(AgentHostProcessExitFailure.UnexpectedExit);
+
+    var completed = await Task.WhenAny(
+            exitTerminal.Task,
+            Task.Delay(TimeSpan.FromSeconds(5)))
+        .ConfigureAwait(false);
+    True(
+        ReferenceEquals(completed, exitTerminal.Task),
+        "The AgentHost exit terminal did not win the Bridge fault race.");
+    True(!client.IsStarted, "The AgentHost exit did not transition the client offline.");
+
+    var rejected = await ExpectBridgeClientFailure(
+            client.AskAsync(
+                "must fail closed after AgentHost exit",
+                context,
+                () => true,
+                CancellationToken.None))
+        .ConfigureAwait(false);
+    EqualString(
+        MvpAgentErrorCodes.AgentHostUnexpectedExit,
+        rejected.Code,
+        "Rejected ASK AgentHost-exit error code");
+    Equal(1, bridge.StartTurnV2Count, "Turn start count after AgentHost exit");
+
+    List<string> snapshot;
+    lock (errors)
+    {
+        snapshot = new List<string>(errors);
+    }
+
+    Equal(
+        1,
+        snapshot.Count(value => value.Contains(
+            MvpAgentErrorCodes.AgentHostUnexpectedExit,
+            StringComparison.Ordinal)),
+        "The unexpected AgentHost exit published more than one authoritative terminal.");
+    True(
+        snapshot.All(value => !value.Contains(
+            "CODEX_AGENTHOST_EXIT_RACE_SECRET",
+            StringComparison.Ordinal)),
+        "The AgentHost exit terminal leaked the Bridge diagnostic.");
+    True(
+        snapshot.Exists(value =>
+            value.Contains("error_stage=agenthost_runtime", StringComparison.Ordinal)
+            && value.Contains("state=failed", StringComparison.Ordinal)
+            && value.Contains("request_id=", StringComparison.Ordinal)),
+        "The AgentHost exit terminal lost the active Host request identity.");
 }
 
 static AgentBootstrapDoctorResult CreateResourceServiceResult()

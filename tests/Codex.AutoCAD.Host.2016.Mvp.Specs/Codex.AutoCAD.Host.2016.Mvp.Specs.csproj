@@ -24,6 +24,8 @@
              Link="DrawingIndexPerformanceMetrics.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentFailure.cs"
              Link="MvpAgentFailure.cs" />
+    <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\HostCommandDiagnostic.cs"
+             Link="HostCommandDiagnostic.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentTurnState.cs"
              Link="MvpAgentTurnState.cs" />
     <Compile Include="..\..\src\Codex.AutoCAD.Host.2016\MvpAgentStopCoordinator.cs"

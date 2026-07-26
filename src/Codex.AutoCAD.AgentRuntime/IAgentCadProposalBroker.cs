@@ -20,6 +20,22 @@ public sealed record AgentCadProposalResult(
     string TurnId,
     string CallId)
 {
+    public override string ToString()
+        => nameof(AgentCadProposalResult)
+            + " { Outcome = "
+            + Outcome
+            + ", MessageConfigured = "
+            + AgentDiagnosticFormatting.Configured(Message)
+            + ", ProposalIdConfigured = "
+            + AgentDiagnosticFormatting.Configured(ProposalId)
+            + ", ThreadIdConfigured = "
+            + AgentDiagnosticFormatting.Configured(ThreadId)
+            + ", TurnIdConfigured = "
+            + AgentDiagnosticFormatting.Configured(TurnId)
+            + ", CallIdConfigured = "
+            + AgentDiagnosticFormatting.Configured(CallId)
+            + " }";
+
     public static AgentCadProposalResult Applied(
         AgentCadOperationBatchProposal proposal,
         string message = "The CAD proposal was applied.")

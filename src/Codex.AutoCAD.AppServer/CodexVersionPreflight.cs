@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using Codex.AutoCAD.Contracts;
 
 namespace Codex.AutoCAD.AppServer;
 
@@ -84,7 +85,7 @@ public sealed class CodexVersionPreflightException : AppServerException
     public CodexVersionPreflightException(
         CodexVersionPreflightFailure failure,
         string message)
-        : base(message)
+        : base(message, DiagnosticDataClassification.Configuration)
     {
         Failure = failure;
     }

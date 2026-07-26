@@ -2,6 +2,9 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Codex.AutoCAD.AppServer.Protocol;
+using DiagnosticDataClassification = Codex.AutoCAD.Contracts.DiagnosticDataClassification;
+using DiagnosticRedactionKinds = Codex.AutoCAD.Contracts.DiagnosticRedactionKinds;
+using DiagnosticSanitizer = Codex.AutoCAD.Contracts.DiagnosticSanitizer;
 
 namespace Codex.AutoCAD.AppServer;
 
@@ -651,7 +654,27 @@ public sealed class CodexAppServerClient : IAsyncDisposable
         => WriteMessageAsync(new RpcResultWire(id, result), cancellationToken);
 
     private Task WriteErrorAsync(JsonRpcId id, AppServerRpcError error, CancellationToken cancellationToken)
-        => WriteMessageAsync(new RpcErrorWire(id, error), cancellationToken);
+    {
+        var diagnostic = DiagnosticSanitizer.SanitizeText(
+            DiagnosticDataClassification.RemoteError,
+            error.Message);
+        JsonElement? safeData = null;
+        if (error.Data.HasValue || diagnostic.Redactions != DiagnosticRedactionKinds.None)
+        {
+            safeData = JsonSerializer.SerializeToElement(
+                new RpcErrorDiagnosticWire(
+                    diagnostic.Classification.ToString(),
+                    (int)diagnostic.Redactions,
+                    error.Data.HasValue),
+                SerializerOptions);
+        }
+
+        var safeError = new AppServerRpcError(
+            error.Code,
+            diagnostic.SafeText,
+            safeData);
+        return WriteMessageAsync(new RpcErrorWire(id, safeError), cancellationToken);
+    }
 
     private async Task WriteMessageAsync(object message, CancellationToken cancellationToken)
     {
@@ -795,7 +818,20 @@ public sealed class CodexAppServerClient : IAsyncDisposable
     }
 
     private void OnStandardErrorReceived(object? sender, AppServerStandardErrorEventArgs args)
-        => StandardErrorReceived?.Invoke(this, args);
+    {
+        if (StandardErrorReceived is null) return;
+        foreach (EventHandler<AppServerStandardErrorEventArgs> handler in StandardErrorReceived.GetInvocationList())
+        {
+            try
+            {
+                handler(this, args);
+            }
+            catch (Exception exception)
+            {
+                ReportProtocolFault(exception);
+            }
+        }
+    }
 
     private static JsonSerializerOptions CreateSerializerOptions()
     {
@@ -822,4 +858,9 @@ public sealed class CodexAppServerClient : IAsyncDisposable
     private sealed record RpcResultWire(JsonRpcId Id, object Result);
 
     private sealed record RpcErrorWire(JsonRpcId Id, AppServerRpcError Error);
+
+    private sealed record RpcErrorDiagnosticWire(
+        string DiagnosticClassification,
+        int DiagnosticRedactions,
+        bool SourceDataWasPresent);
 }

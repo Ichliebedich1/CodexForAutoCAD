@@ -28,6 +28,7 @@ if (mode != "happy"
     && mode != "oversized-frame"
     && mode != "terminal-late-event"
     && mode != "reverse-query"
+    && mode != "reverse-query-error"
     && mode != "reverse-query-before-start-response"
     && mode != "reverse-query-cancel"
     && mode != "reverse-query-stop")
@@ -62,6 +63,7 @@ try
     if (mode != "happy" && mode != "disconnect" && mode != "timeout"
         && mode != "terminal-late-event"
         && mode != "reverse-query"
+        && mode != "reverse-query-error"
         && mode != "reverse-query-before-start-response"
         && mode != "reverse-query-cancel"
         && mode != "reverse-query-stop")
@@ -204,7 +206,70 @@ try
                     },
                     PageSize = 25,
                 };
-                if (mode == "reverse-query-cancel")
+                if (mode == "reverse-query-error")
+                {
+                    try
+                    {
+                        _ = await connection.RequestAsync(
+                                AgentBridgeMethods.QueryDrawing,
+                                JsonSerializer.Serialize(drawingRequest, serializerOptions),
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                        throw new InvalidOperationException(
+                            "reverse drawing query error unexpectedly succeeded");
+                    }
+                    catch (BridgeRemoteException exception)
+                    {
+                        if (!string.Equals(
+                                exception.Code,
+                                "diagnostic_test",
+                                StringComparison.Ordinal))
+                        {
+                            throw new InvalidOperationException(
+                                "reverse drawing query error code was not preserved");
+                        }
+
+                        var publicDiagnostic = exception.Message;
+                        foreach (var marker in new[]
+                                 {
+                                     "bridge-bearer-secret-marker",
+                                     "bridge-query-secret-marker",
+                                     "bridge-json-secret-marker",
+                                     "bridge-inner-secret-marker",
+                                     "bridge-user",
+                                     "bridge-server",
+                                     "example.invalid",
+                                 })
+                        {
+                            if (publicDiagnostic.IndexOf(
+                                    marker,
+                                    StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                throw new InvalidOperationException(
+                                    "reverse drawing query error leaked a protected marker");
+                            }
+                        }
+
+                        if (!publicDiagnostic.Contains(
+                                "[redacted-token]",
+                                StringComparison.Ordinal)
+                            || !publicDiagnostic.Contains(
+                                "[redacted-path]",
+                                StringComparison.Ordinal)
+                            || !publicDiagnostic.Contains(
+                                "[redacted-uri]",
+                                StringComparison.Ordinal)
+                            || !publicDiagnostic.Contains(
+                                "[redacted-identity]",
+                                StringComparison.Ordinal)
+                            || publicDiagnostic.Length > DiagnosticSanitizer.MaximumOutputCharacters)
+                        {
+                            throw new InvalidOperationException(
+                                "reverse drawing query error was not bounded and sanitized");
+                        }
+                    }
+                }
+                else if (mode == "reverse-query-cancel")
                 {
                     using var queryCancellation = new CancellationTokenSource(
                         TimeSpan.FromSeconds(2));
@@ -323,6 +388,7 @@ try
             emitAssistantEvents = mode == "happy";
             emitTerminalLateEvents = mode == "terminal-late-event";
             emitReverseDrawingQuery = mode == "reverse-query"
+                || mode == "reverse-query-error"
                 || mode == "reverse-query-cancel"
                 || mode == "reverse-query-stop";
 

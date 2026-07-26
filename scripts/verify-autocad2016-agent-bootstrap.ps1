@@ -8,6 +8,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+. (Join-Path $PSScriptRoot "build-safety.ps1")
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $verificationScriptPath = $MyInvocation.MyCommand.Path
 $safeRepoRoot = $repoRoot.Replace("\", "/")
 $dotnetCommand = (Get-Command dotnet -ErrorAction Stop).Source
@@ -23,17 +26,25 @@ $nugetConfig = Join-Path $repoRoot "src\Codex.AutoCAD.Host.2016\NuGet.Config"
 $offlinePackage = Join-Path $repoRoot "third_party\nuget\Microsoft.NETFramework.ReferenceAssemblies.net45.1.0.3.nupkg"
 $expectedSdk = "8.0.319"
 $runId = [Guid]::NewGuid().ToString("N")
-$stageRoot = Join-Path $repoRoot ("artifacts\autocad2016-agent-bootstrap-" + $runId)
+$stageRoot = Join-Path $artifactsRoot ("autocad2016-agent-bootstrap-" + $runId)
 $evidencePath = Join-Path $stageRoot "verification.json"
 $requiredSpecIds = @(
     "REAL_AGENTHOST_SUCCESS",
     "REAL_AGENTHOST_REPEAT_5",
     "RESTRICTED_TOKEN_PRIMITIVES_FAIL_CLOSED",
     "RESTRICTED_TOKEN_BOOTSTRAP_PROBE_PORTABLE",
+    "PROCESS_POLICY_BLOCK_CLASSIFIED",
     "JOB_RESOURCE_LIMITS_APPLIED",
     "JOB_RESOURCE_LIMITS_INVALID",
     "RESOURCE_LIMIT_ERROR_CODES_STABLE",
+    "CREDENTIAL_BROKER_CONFIGURATION_FAILS_CLOSED",
+    "CREDENTIAL_MANAGER_READ_FAILS_CLOSED",
+    "CREDENTIAL_SECRET_DISPOSE_ZEROES",
+    "CREDENTIAL_DELIVERY_DISABLED",
+    "CREDENTIAL_DELIVERY_AUTHENTICATED",
+    "CREDENTIAL_DELIVERY_ATTACKS_FAIL_CLOSED",
     "NESTED_JOB_ASSIGNMENT_COMPATIBLE",
+    "NESTED_JOB_ASSIGNMENT_FAILURE_CLASSIFIED",
     "EXPERIMENTAL_IDENTITY_NOT_PUBLIC",
     "JOB_USER_TIME_TERMINATES_TREE",
     "JOB_PROCESS_LIMIT_STRUCTURED",
@@ -267,11 +278,26 @@ function Assert-SolutionMembership {
 }
 
 function Assert-SourceBoundary {
-    $launcherText = @(
+    $launcherSources = @(
         Get-ChildItem -LiteralPath (Split-Path -Parent $launcherProject) -Filter "*.cs" -File |
-            Sort-Object FullName |
+            Sort-Object FullName
+    )
+    $launcherText = @(
+        $launcherSources |
             ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8 }
     ) -join "`n"
+    $bootstrapLauncherText = @(
+        $launcherSources |
+            Where-Object { $_.Name -cne "AgentCredentialNamedPipeChannel.cs" } |
+            ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8 }
+    ) -join "`n"
+    $credentialChannelPath = Join-Path `
+        (Split-Path -Parent $launcherProject) `
+        "AgentCredentialNamedPipeChannel.cs"
+    $credentialChannelText = Get-Content `
+        -LiteralPath $credentialChannelPath `
+        -Raw `
+        -Encoding UTF8
     $agentHostText = Get-Content -LiteralPath $agentHostSource -Raw -Encoding UTF8
     $combined = $launcherText + "`n" + $agentHostText
 
@@ -332,7 +358,6 @@ function Assert-SourceBoundary {
         "原始字符串句柄入口" = "OpenReadHandle"
         "原始字符串写句柄入口" = "OpenWriteHandle"
         "环境变量交付秘密" = "SetEnvironmentVariable"
-        "命名管道交付 bootstrap" = "NamedPipe"
         "内存映射交付 bootstrap" = "MemoryMappedFile"
         "ShellExecute" = "ShellExecute"
         "AutoCAD 托管 API" = "Autodesk.AutoCAD"
@@ -341,6 +366,25 @@ function Assert-SourceBoundary {
     foreach ($entry in $forbidden.GetEnumerator()) {
         if ($combined.IndexOf([string]$entry.Value, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
             throw "Agent bootstrap 源码出现禁止边界：$($entry.Key)"
+        }
+    }
+
+    if ($bootstrapLauncherText.IndexOf("NamedPipe", [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        throw "冻结 bootstrap 核心仍禁止命名管道；仅凭据通道文件可使用认证命名管道。"
+    }
+    foreach ($requiredCredentialBoundary in @(
+        "PipeOptions.CurrentUserOnly",
+        "WindowsIdentity.GetCurrent",
+        "PipeSecurity",
+        "PipeAccessRights.ReadWrite",
+        "PipeDirection.Out",
+        "PipeDirection.In",
+        "MaximumCredentialBytes",
+        "CreateConfirmationOutboundAuthenticator",
+        "CreateConfirmationInboundGuard"
+    )) {
+        if ($combined.IndexOf($requiredCredentialBoundary, [StringComparison]::Ordinal) -lt 0) {
+            throw "凭据认证通道缺少边界：$requiredCredentialBoundary"
         }
     }
 
@@ -403,13 +447,18 @@ function Invoke-IsolatedBuild {
     $outputRoot = Join-Path $buildRoot "out"
     $packageRoot = Join-Path $buildRoot "packages"
     $cliHome = Join-Path $buildRoot "dotnet-home"
+    $net45ReferencePath = Join-Path `
+        $packageRoot `
+        "microsoft.netframework.referenceassemblies.net45\1.0.3\build\.NETFramework\v4.5"
     New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 
     $previousPathMap = $env:PathMap
     $previousCliHome = $env:DOTNET_CLI_HOME
+    $previousAddGlobalToolsToPath = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
     try {
         $env:PathMap = ($buildRoot + "=/_build/," + $repoRoot + "=/_/")
         $env:DOTNET_CLI_HOME = $cliHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "0"
 
         foreach ($restore in @(
             [pscustomobject]@{ Project = $agentHostProject; Extra = @() },
@@ -440,7 +489,8 @@ function Invoke-IsolatedBuild {
                 "-m:1", "-p:UseSharedCompilation=false",
                 "-p:UseArtifactsOutput=true",
                 ("-p:ArtifactsPath=" + $outputRoot),
-                "-p:ContinuousIntegrationBuild=true"
+                "-p:ContinuousIntegrationBuild=true",
+                ("-p:FrameworkPathOverride=" + $net45ReferencePath)
             ) + @($build.Extra)
             Invoke-Captured -FilePath $dotnetCommand -Arguments $arguments `
                 -Description ("隔离构建 " + $Name + " " + (Split-Path -Leaf $build.Project)) | Out-Null
@@ -449,6 +499,7 @@ function Invoke-IsolatedBuild {
     finally {
         $env:PathMap = $previousPathMap
         $env:DOTNET_CLI_HOME = $previousCliHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $previousAddGlobalToolsToPath
     }
 
     return [pscustomobject]@{
@@ -870,5 +921,6 @@ try {
     Write-Host ("AGENT_BOOTSTRAP_EVIDENCE=" + $evidencePath)
 }
 finally {
+    Complete-CodexBuildSafety -State $buildSafety -Stage "agent-bootstrap" | Out-Null
     $env:DOTNET_NOLOGO = $previousNoLogo
 }

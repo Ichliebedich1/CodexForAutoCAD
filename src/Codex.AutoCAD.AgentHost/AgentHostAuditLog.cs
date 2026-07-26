@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Codex.AutoCAD.AgentLauncher;
 using Codex.AutoCAD.AppServer;
 
 namespace Codex.AutoCAD.AgentHost;
@@ -210,7 +211,7 @@ public sealed class AgentHostAuditException : Exception
 
 public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
 {
-    public const string Schema = "codex.autocad.agenthost.audit/1";
+    public const string Schema = "codex.autocad.agenthost.audit/2";
     public const int DefaultMaximumRecords = 10_000;
     public const long DefaultMaximumBytes = 4L * 1024 * 1024;
 
@@ -225,14 +226,20 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
         WriteIndented = false,
     };
 
-    private readonly Stream _destination;
+    private Stream _destination;
     private readonly bool _leaveOpen;
     private readonly string _sessionId;
+    private string _segmentId;
+    private readonly IAgentHostAuditAnchorSink _anchorSink;
+    private readonly IDisposable? _ownedStore;
+    private readonly IAgentHostAuditSegmentStore? _segmentStore;
     private readonly int _maximumRecords;
     private readonly long _maximumBytes;
     private readonly object _sync = new();
+    private int _segmentNumber = 1;
     private long _sequence;
     private long _bytesWritten;
+    private string _previousRecordHash;
     private int _terminal;
     private int _faulted;
     private int _disposed;
@@ -243,14 +250,40 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
         bool leaveOpen = false,
         int maximumRecords = DefaultMaximumRecords,
         long maximumBytes = DefaultMaximumBytes)
+        : this(
+            destination,
+            sessionId,
+            "segment-000001",
+            AgentHostAuditIntegrity.GenesisHash,
+            AgentHostAuditNullAnchorSink.Instance,
+            leaveOpen,
+            maximumRecords,
+            maximumBytes)
+    {
+    }
+
+    internal AgentHostAuditLog(
+        Stream destination,
+        string sessionId,
+        string segmentId,
+        string previousRecordHash,
+        IAgentHostAuditAnchorSink anchorSink,
+        bool leaveOpen = false,
+        int maximumRecords = DefaultMaximumRecords,
+        long maximumBytes = DefaultMaximumBytes,
+        IDisposable? ownedStore = null,
+        IAgentHostAuditSegmentStore? segmentStore = null)
     {
         ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(anchorSink);
         if (!destination.CanWrite)
         {
             throw new ArgumentException("AgentHost audit destination must be writable.", nameof(destination));
         }
 
         ValidateIdentifier(sessionId, nameof(sessionId));
+        ValidateIdentifier(segmentId, nameof(segmentId));
+        AgentHostAuditIntegrity.ValidateHash(previousRecordHash, nameof(previousRecordHash));
         if (maximumRecords is < 2 or > AbsoluteMaximumRecords)
         {
             throw new ArgumentOutOfRangeException(nameof(maximumRecords));
@@ -263,6 +296,11 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
 
         _destination = destination;
         _sessionId = sessionId;
+        _segmentId = segmentId;
+        _previousRecordHash = previousRecordHash;
+        _anchorSink = anchorSink;
+        _ownedStore = ownedStore;
+        _segmentStore = segmentStore;
         _leaveOpen = leaveOpen;
         _maximumRecords = maximumRecords;
         _maximumBytes = maximumBytes;
@@ -275,37 +313,66 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
     public static AgentHostAuditLog CreateForCurrentUser(string sessionId)
     {
         ValidateBootstrapSessionId(sessionId);
-        var localApplicationData = Environment.GetFolderPath(
-            Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(localApplicationData))
+        AgentPersistentAuditStoreLease? store = null;
+        try
         {
-            throw new AgentHostAuditException("Local application data is unavailable.");
+            store = AgentPersistentAuditStoreLease.CreateForCurrentUser();
+            var audit = CreateRotatingInProtectedDirectories(
+                sessionId,
+                store.SegmentDirectory,
+                store.AnchorDirectory,
+                store);
+            store = null;
+            return audit;
         }
-
-        var auditDirectory = Path.Combine(
-            localApplicationData,
-            "OpenAI",
-            "CodexForAutoCAD",
-            "audit",
-            "agenthost");
-        return CreateInSessionDirectory(sessionId, auditDirectory);
+        catch (AgentHostAuditException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is AgentBootstrapLaunchException
+            or IOException
+            or UnauthorizedAccessException
+            or NotSupportedException
+            or ArgumentException
+            or System.Security.SecurityException)
+        {
+            throw new AgentHostAuditException(
+                "AgentHost persistent audit store could not be opened safely.",
+                exception);
+        }
+        finally
+        {
+            store?.Dispose();
+        }
     }
 
     internal static AgentHostAuditLog CreateInSessionDirectory(
         string sessionId,
         string auditDirectory)
+        => CreateInProtectedDirectories(
+            sessionId,
+            auditDirectory,
+            auditDirectory);
+
+    internal static AgentHostAuditLog CreateInProtectedDirectories(
+        string sessionId,
+        string segmentDirectory,
+        string anchorDirectory,
+        IDisposable? ownedStore = null)
     {
         ValidateBootstrapSessionId(sessionId);
-        if (string.IsNullOrWhiteSpace(auditDirectory))
+        if (string.IsNullOrWhiteSpace(segmentDirectory)
+            || string.IsNullOrWhiteSpace(anchorDirectory))
         {
             throw new AgentHostAuditException(
-                "AgentHost session audit directory is unavailable.");
+                "AgentHost persistent audit directories are unavailable.");
         }
 
-        var auditPath = Path.Combine(auditDirectory, sessionId + ".jsonl");
+        var auditPath = Path.Combine(segmentDirectory, sessionId + ".jsonl");
         try
         {
-            EnsureSafeLocalDirectory(auditDirectory);
+            EnsureSafeLocalDirectory(segmentDirectory);
+            EnsureSafeLocalDirectory(anchorDirectory);
             var stream = new FileStream(
                 auditPath,
                 FileMode.CreateNew,
@@ -313,13 +380,24 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
                 FileShare.Read,
                 4096,
                 FileOptions.SequentialScan | FileOptions.WriteThrough);
+            IAgentHostAuditAnchorSink? anchorSink = null;
             try
             {
-                EnsureSafeLocalDirectory(auditDirectory);
-                return new AgentHostAuditLog(stream, sessionId);
+                anchorSink = new AgentHostAuditFileAnchorSink(
+                    Path.Combine(anchorDirectory, sessionId + ".anchor.json"));
+                EnsureSafeLocalDirectory(segmentDirectory);
+                EnsureSafeLocalDirectory(anchorDirectory);
+                return new AgentHostAuditLog(
+                    stream,
+                    sessionId,
+                    "segment-000001",
+                    AgentHostAuditIntegrity.GenesisHash,
+                    anchorSink,
+                    ownedStore: ownedStore);
             }
             catch
             {
+                anchorSink?.Dispose();
                 stream.Dispose();
                 throw;
             }
@@ -337,6 +415,76 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
             throw new AgentHostAuditException(
                 "AgentHost audit file could not be created safely.",
                 exception);
+        }
+    }
+
+    internal static AgentHostAuditLog CreateRotatingInProtectedDirectories(
+        string sessionId,
+        string segmentDirectory,
+        string anchorDirectory,
+        IDisposable? ownedStore = null,
+        int maximumRecords = DefaultMaximumRecords,
+        long maximumBytes = DefaultMaximumBytes,
+        int maximumSegments = AgentHostAuditFileSegmentStore.DefaultMaximumSegments)
+    {
+        ValidateBootstrapSessionId(sessionId);
+        if (string.IsNullOrWhiteSpace(segmentDirectory)
+            || string.IsNullOrWhiteSpace(anchorDirectory))
+        {
+            throw new AgentHostAuditException(
+                "AgentHost persistent audit directories are unavailable.");
+        }
+
+        AgentHostAuditFileSegmentStore? segmentStore = null;
+        Stream? stream = null;
+        IAgentHostAuditAnchorSink? anchorSink = null;
+        try
+        {
+            EnsureSafeLocalDirectory(segmentDirectory);
+            EnsureSafeLocalDirectory(anchorDirectory);
+            segmentStore = new AgentHostAuditFileSegmentStore(
+                segmentDirectory,
+                sessionId,
+                maximumSegments);
+            stream = segmentStore.OpenSegment(FormatSegmentId(1));
+            anchorSink = new AgentHostAuditFileAnchorSink(
+                Path.Combine(anchorDirectory, sessionId + ".anchor.json"));
+            EnsureSafeLocalDirectory(segmentDirectory);
+            EnsureSafeLocalDirectory(anchorDirectory);
+            var audit = new AgentHostAuditLog(
+                stream,
+                sessionId,
+                FormatSegmentId(1),
+                AgentHostAuditIntegrity.GenesisHash,
+                anchorSink,
+                maximumRecords: maximumRecords,
+                maximumBytes: maximumBytes,
+                ownedStore: ownedStore,
+                segmentStore: segmentStore);
+            stream = null;
+            anchorSink = null;
+            segmentStore = null;
+            return audit;
+        }
+        catch (AgentHostAuditException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is IOException
+            or UnauthorizedAccessException
+            or NotSupportedException
+            or ArgumentException
+            or System.Security.SecurityException)
+        {
+            throw new AgentHostAuditException(
+                "AgentHost rotating audit could not be created safely.",
+                exception);
+        }
+        finally
+        {
+            anchorSink?.Dispose();
+            stream?.Dispose();
+            segmentStore?.Dispose();
         }
     }
 
@@ -420,9 +568,30 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
             finally
             {
                 _disposed = 1;
-                if (!_leaveOpen)
+                try
                 {
-                    _destination.Dispose();
+                    if (!_leaveOpen)
+                    {
+                        _destination.Dispose();
+                    }
+                }
+                finally
+                {
+                    try
+                    {
+                        _anchorSink.Dispose();
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            _segmentStore?.Dispose();
+                        }
+                        finally
+                        {
+                            _ownedStore?.Dispose();
+                        }
+                    }
                 }
             }
         }
@@ -438,14 +607,77 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
     {
         ValidateEvent(auditEvent);
         var nextSequence = checked(_sequence + 1);
+        var envelope = CreateEnvelope(auditEvent, nextSequence);
+        var bytes = SerializeEnvelope(envelope);
+        if (WouldExceedCurrentSegment(nextSequence, bytes.Length))
+        {
+            if (_segmentStore is null || _sequence == 0)
+            {
+                _faulted = 1;
+                throw new AgentHostAuditException("AgentHost audit capacity is exhausted.");
+            }
+
+            try
+            {
+                RotateSegment();
+            }
+            catch (AgentHostAuditException)
+            {
+                _faulted = 1;
+                throw;
+            }
+
+            nextSequence = 1;
+            envelope = CreateEnvelope(auditEvent, nextSequence);
+            bytes = SerializeEnvelope(envelope);
+            if (WouldExceedCurrentSegment(nextSequence, bytes.Length))
+            {
+                _faulted = 1;
+                throw new AgentHostAuditException("AgentHost audit record exceeds segment capacity.");
+            }
+        }
+
+        try
+        {
+            _destination.Write(bytes, 0, bytes.Length);
+            FlushDurably();
+            _anchorSink.Write(new AgentHostAuditAnchor
+            {
+                SystemSessionId = _sessionId,
+                SegmentId = _segmentId,
+                Sequence = nextSequence,
+                RecordHash = envelope.RecordHash,
+            });
+            _sequence = nextSequence;
+            _bytesWritten += bytes.Length;
+            _previousRecordHash = envelope.RecordHash;
+        }
+        catch (Exception exception) when (exception is IOException
+            or ObjectDisposedException
+            or NotSupportedException
+            or UnauthorizedAccessException
+            or ArgumentException
+            or System.Security.SecurityException)
+        {
+            _faulted = 1;
+            throw new AgentHostAuditException("AgentHost audit write failed.", exception);
+        }
+    }
+
+    private AgentHostAuditEnvelope CreateEnvelope(
+        AgentHostAuditEvent auditEvent,
+        long sequence)
+    {
         var envelope = new AgentHostAuditEnvelope
         {
             Schema = Schema,
-            Sequence = nextSequence,
+            Sequence = sequence,
             TimestampUtc = DateTimeOffset.UtcNow.ToString(
                 "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
                 CultureInfo.InvariantCulture),
             SystemSessionId = _sessionId,
+            SegmentId = _segmentId,
+            PreviousRecordHash = _previousRecordHash,
             EventType = auditEvent.EventType,
             SystemConversationId = auditEvent.SystemConversationId,
             SystemTurnId = auditEvent.SystemTurnId,
@@ -459,30 +691,42 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
             OutcomeCode = auditEvent.OutcomeCode,
             ErrorCode = auditEvent.ErrorCode,
         };
-        var json = JsonSerializer.Serialize(envelope, SerializerOptions);
-        var bytes = Encoding.UTF8.GetBytes(json + "\n");
-        if (nextSequence > _maximumRecords
-            || _bytesWritten > _maximumBytes - bytes.Length)
+        envelope.RecordHash = AgentHostAuditIntegrity.ComputeRecordHash(envelope);
+        return envelope;
+    }
+
+    private static byte[] SerializeEnvelope(AgentHostAuditEnvelope envelope)
+        => Encoding.UTF8.GetBytes(JsonSerializer.Serialize(envelope, SerializerOptions) + "\n");
+
+    private bool WouldExceedCurrentSegment(long nextSequence, int nextBytes)
+        => nextSequence > _maximumRecords
+            || _bytesWritten > _maximumBytes - nextBytes;
+
+    private void RotateSegment()
+    {
+        var nextSegmentNumber = checked(_segmentNumber + 1);
+        var nextSegmentId = FormatSegmentId(nextSegmentNumber);
+        var nextDestination = _segmentStore!.OpenSegment(nextSegmentId);
+        if (!_leaveOpen)
         {
-            _faulted = 1;
-            throw new AgentHostAuditException("AgentHost audit capacity is exhausted.");
+            _destination.Dispose();
         }
 
-        try
+        _destination = nextDestination;
+        _segmentNumber = nextSegmentNumber;
+        _segmentId = nextSegmentId;
+        _sequence = 0;
+        _bytesWritten = 0;
+    }
+
+    internal static string FormatSegmentId(int segmentNumber)
+    {
+        if (segmentNumber is < 1 or > AgentHostAuditFileSegmentStore.AbsoluteMaximumSegments)
         {
-            _destination.Write(bytes, 0, bytes.Length);
-            FlushDurably();
-            _sequence = nextSequence;
-            _bytesWritten += bytes.Length;
+            throw new AgentHostAuditException("AgentHost audit segment number is invalid.");
         }
-        catch (Exception exception) when (exception is IOException
-            or ObjectDisposedException
-            or NotSupportedException
-            or UnauthorizedAccessException)
-        {
-            _faulted = 1;
-            throw new AgentHostAuditException("AgentHost audit write failed.", exception);
-        }
+
+        return "segment-" + segmentNumber.ToString("D6", CultureInfo.InvariantCulture);
     }
 
     private void FlushDurably()
@@ -616,7 +860,7 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
         }
     }
 
-    private sealed class AgentHostAuditEnvelope
+    internal sealed class AgentHostAuditEnvelope
     {
         public string Schema { get; init; } = string.Empty;
 
@@ -625,6 +869,12 @@ public sealed class AgentHostAuditLog : IDisposable, IAsyncDisposable
         public string TimestampUtc { get; init; } = string.Empty;
 
         public string SystemSessionId { get; init; } = string.Empty;
+
+        public string SegmentId { get; init; } = string.Empty;
+
+        public string PreviousRecordHash { get; init; } = string.Empty;
+
+        public string RecordHash { get; set; } = string.Empty;
 
         public string EventType { get; init; } = string.Empty;
 

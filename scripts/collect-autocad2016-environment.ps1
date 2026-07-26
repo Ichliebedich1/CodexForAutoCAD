@@ -9,8 +9,10 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'build-safety.ps1')
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
-    $OutputRoot = Join-Path $repoRoot 'artifacts'
+    $OutputRoot = $buildSafety.ArtifactRoot
 }
 
 function Get-OptionalPropertyValue {
@@ -1110,3 +1112,4 @@ Write-Host ("AutoCAD 2016 R20.1 installations: {0}" -f $installations.Count)
 Write-Host ("Ready for Host.2016 compilation: {0}" -f $readyInstallationCount)
 Write-Host ("Output directory: {0}" -f $outputDirectory)
 Write-Host 'No AutoCAD process was started; TRUSTEDPATHS was not collected.'
+Complete-CodexBuildSafety -State $buildSafety -Stage 'environment-collection' | Out-Null

@@ -15,6 +15,9 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+. (Join-Path $PSScriptRoot "build-safety.ps1")
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $safeRepoRoot = $repoRoot.Replace("\", "/")
 $scriptPath = $MyInvocation.MyCommand.Path
 $dotnetCommand = (Get-Command dotnet -ErrorAction Stop).Source
@@ -288,6 +291,7 @@ function Invoke-Worker {
     New-Item -ItemType Directory -Path $nugetPackages -Force | Out-Null
 
     $previousDotnetHome = $env:DOTNET_CLI_HOME
+    $previousAddGlobalToolsToPath = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
     $previousNugetPackages = $env:NUGET_PACKAGES
     $previousTestServer = $env:CODEX_BRIDGE_TEST_SERVER_EXE
     $cadBefore = @(Get-ProcessIds -Name "acad")
@@ -297,6 +301,8 @@ function Invoke-Worker {
 
     try {
         $env:DOTNET_CLI_HOME = $dotnetHome
+        # 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "0"
         $env:NUGET_PACKAGES = $nugetPackages
         $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
         $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
@@ -415,6 +421,7 @@ function Invoke-Worker {
     finally {
         Restore-PackageLockSnapshots -Snapshots $packageLockSnapshots
         $env:DOTNET_CLI_HOME = $previousDotnetHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $previousAddGlobalToolsToPath
         $env:NUGET_PACKAGES = $previousNugetPackages
         $env:CODEX_BRIDGE_TEST_SERVER_EXE = $previousTestServer
     }
@@ -493,8 +500,8 @@ if ($Worker) {
     exit 0
 }
 
-$stageRoot = Join-Path $repoRoot (
-    "artifacts\autocad2016-bridge-client-stage-" + [Guid]::NewGuid().ToString("N"))
+$stageRoot = Join-Path $artifactsRoot (
+    "autocad2016-bridge-client-stage-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $stageRoot -Force | Out-Null
 $pwshCommand = (Get-Command pwsh -ErrorAction Stop).Source
 $windowsPowerShellCommand = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -567,3 +574,4 @@ New-Item -ItemType Directory -Path (Split-Path -Parent $resolvedFinalEvidencePat
 )
 Write-Host "Bridge Client双PowerShell阶段门禁通过。" -ForegroundColor Green
 Write-Host "BRIDGE_CLIENT_STAGE_EVIDENCE=$resolvedFinalEvidencePath"
+Complete-CodexBuildSafety -State $buildSafety -Stage "bridge-client-stage" | Out-Null

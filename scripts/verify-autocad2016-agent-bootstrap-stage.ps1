@@ -10,8 +10,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+. (Join-Path $PSScriptRoot "build-safety.ps1")
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
 $safeRepoRoot = $repoRoot.Replace("\", "/")
-$artifactsRoot = Join-Path $repoRoot "artifacts"
+$artifactsRoot = $buildSafety.ArtifactRoot
 $runId = [Guid]::NewGuid().ToString("N")
 $stageRoot = Join-Path $artifactsRoot ("autocad2016-agent-bootstrap-stage-" + $runId)
 $finalEvidencePath = Join-Path $repoRoot `
@@ -940,4 +942,7 @@ catch {
         }
     }
     throw
+}
+finally {
+    Complete-CodexBuildSafety -State $buildSafety -Stage "agent-bootstrap-stage" | Out-Null
 }

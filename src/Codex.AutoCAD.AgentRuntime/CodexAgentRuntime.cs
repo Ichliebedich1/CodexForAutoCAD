@@ -3,6 +3,10 @@ using System.Text;
 using System.Text.Json;
 using Codex.AutoCAD.AppServer;
 using Codex.AutoCAD.AppServer.Protocol;
+using AgentPolicyErrorCodes = Codex.AutoCAD.Contracts.AgentPolicyErrorCodes;
+using AgentPolicyResolver = Codex.AutoCAD.Contracts.AgentPolicyResolver;
+using DiagnosticDataClassification = Codex.AutoCAD.Contracts.DiagnosticDataClassification;
+using DiagnosticSanitizer = Codex.AutoCAD.Contracts.DiagnosticSanitizer;
 using DrawingIndexContractValidator = Codex.AutoCAD.Contracts.DrawingIndexContractValidator;
 
 namespace Codex.AutoCAD.AgentRuntime;
@@ -162,7 +166,7 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
             _options.ApprovalPolicy.ToWire(),
             _options.ApprovalsReviewer.ToWire(),
             workingDirectory,
-            options.Model ?? _options.Model,
+            ResolveModelForWire(options.Model),
             options.ModelProvider ?? _options.ModelProvider,
             options.DeveloperInstructions,
             options.ServiceTier,
@@ -198,7 +202,7 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
             _options.ApprovalPolicy.ToWire(),
             _options.ApprovalsReviewer.ToWire(),
             workingDirectory,
-            options.Model ?? _options.Model,
+            ResolveModelForWire(options.Model),
             options.ModelProvider ?? _options.ModelProvider,
             options.DeveloperInstructions,
             options.ServiceTier,
@@ -283,7 +287,7 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
             _options.ApprovalsReviewer.ToWire(),
             _options.Sandbox.ToSandboxPolicyWire(_runtimeWorkspaceRoots),
             workingDirectory,
-            options.Model ?? _options.Model,
+            ResolveModelForWire(options.Model),
             options.ClientUserMessageId,
             options.ServiceTier,
             options.OutputSchema,
@@ -573,14 +577,15 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
         }
         catch (CadProposalValidationException exception)
         {
+            var safeReason = SanitizeDynamicToolValidation(exception);
             PublishDynamicToolRejection(
                 threadId,
                 turnId,
                 callId,
                 toolNamespace,
                 tool,
-                exception.Message);
-            return DynamicToolResult(success: false, exception.Message);
+                safeReason);
+            return DynamicToolResult(success: false, safeReason);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -807,14 +812,15 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
             exception is CadDrawingQueryValidationException
             or CadProposalValidationException)
         {
+            var safeReason = SanitizeDynamicToolValidation(exception);
             PublishDynamicToolRejection(
                 threadId,
                 turnId,
                 callId,
                 toolNamespace,
                 tool,
-                exception.Message);
-            return DynamicToolResult(success: false, exception.Message);
+                safeReason);
+            return DynamicToolResult(success: false, safeReason);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1006,6 +1012,13 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
                 new[] { new DynamicToolTextContentWire("inputText", text) },
                 success));
 
+    private static string SanitizeDynamicToolValidation(Exception exception)
+        => DiagnosticSanitizer
+            .SanitizeText(
+                DiagnosticDataClassification.RemoteError,
+                exception.Message)
+            .SafeText;
+
     private void Publish(AgentEvent agentEvent)
     {
         if (Volatile.Read(ref _disposed) != 0 || EventReceived is null)
@@ -1189,6 +1202,34 @@ public sealed class CodexAgentRuntime : IAsyncDisposable
         }
 
         return NormalizeExistingDirectory(value, maximumPathCharacters, "managed workspace root");
+    }
+
+    /// <summary>
+    /// M4.1 唯一模型出站边界。所有送往 App Server 的模型标识都必须经过这里，
+    /// 使 UI 或 Agent 提交的任意字符串无法直接穿透到 AgentHost/Codex。
+    /// 配置了受信策略时按白名单、管理员锁定和默认值 fail-closed；未配置策略时仍拒绝
+    /// 危险形态（空白、引号、控制字符、路径分隔符、超长值）。返回值即实际被接受的模型。
+    /// </summary>
+    private string? ResolveModelForWire(string? requestedModel)
+    {
+        var effective = requestedModel ?? _options.Model;
+        var policy = _options.AgentPolicy;
+
+        if (policy != null)
+        {
+            var selection = AgentPolicyResolver.Select(policy, effective, null);
+            if (!selection.Accepted)
+            {
+                throw new AgentPolicyViolationException(selection.ErrorCode);
+            }
+            return selection.AcceptedModel;
+        }
+
+        if (!string.IsNullOrEmpty(effective) && !AgentPolicyResolver.IsValidModel(effective!))
+        {
+            throw new AgentPolicyViolationException(AgentPolicyErrorCodes.ModelInvalid);
+        }
+        return effective;
     }
 
     private string? ResolveWorkingDirectory(string? requestedDirectory)

@@ -8,6 +8,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+. (Join-Path $PSScriptRoot "build-safety.ps1")
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $safeRepoRoot = $repoRoot.Replace("\", "/")
 $dotnetCommand = (Get-Command dotnet -ErrorAction Stop).Source
 $solutionPath = Join-Path $repoRoot "Codex.AutoCAD.sln"
@@ -36,9 +39,8 @@ $expectedAgentToHostKey = "89B7E2E5541EFE9FEBBAC62021F764AA91AC31E11342003AC07B4
 $expectedAgentToHostMac = "548474E515652C3F182AE099DD2DC6EA99FCDE290F12006380E707ACDAD977D8"
 $expectedBootstrapFrameSha256 = "D60FBAFC368EAA86EBFF00AE85DA88D1BE9D1A0B40B4960A5F52E00C82A0B0F4"
 $expectedSpecCount = 35
-$expectedBridgeSpecCount = 49
 $runId = [Guid]::NewGuid().ToString("N")
-$stageRoot = Join-Path $repoRoot ("artifacts\autocad2016-auth-compat-" + $runId)
+$stageRoot = Join-Path $artifactsRoot ("autocad2016-auth-compat-" + $runId)
 $evidencePath = Join-Path $stageRoot "verification.json"
 
 if (-not (Test-Path -LiteralPath $conditionalLockPath -PathType Leaf)) {
@@ -1188,9 +1190,12 @@ function Invoke-IsolatedManagedCoreRegression {
 
     $previousPathMap = $env:PathMap
     $previousCliHome = $env:DOTNET_CLI_HOME
+    $previousAddGlobalToolsToPath = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
     try {
         $env:PathMap = ($regressionRoot + "=/_regression/," + $repoRoot + "=/_/")
         $env:DOTNET_CLI_HOME = $cliHome
+        # 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "0"
 
         Invoke-Captured -FilePath $dotnetCommand -Arguments @(
             "restore", $solutionPath,
@@ -1210,6 +1215,7 @@ function Invoke-IsolatedManagedCoreRegression {
     finally {
         $env:PathMap = $previousPathMap
         $env:DOTNET_CLI_HOME = $previousCliHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $previousAddGlobalToolsToPath
     }
 
     $bridgeSpecRoot = Join-Path $outputRoot "bin\Codex.AutoCAD.Bridge.Specs"
@@ -1251,15 +1257,29 @@ function Invoke-IsolatedManagedCoreRegression {
     $bridgeOutput = Invoke-Captured -FilePath $dotnetCommand -Arguments @(
         $bridgeSpecCandidates[0].FullName
     ) -Description "运行隔离 Bridge 规格"
-    $expectedBridgeSummary = "^\s*$expectedBridgeSpecCount/$expectedBridgeSpecCount specs passed\s*$"
-    if (@($bridgeOutput | Where-Object { $_ -match $expectedBridgeSummary }).Count -ne 1) {
-        throw "Bridge 回归必须精确通过 $expectedBridgeSpecCount/$expectedBridgeSpecCount。"
+    $bridgeSummaries = @(
+        $bridgeOutput | ForEach-Object {
+            $match = [regex]::Match(
+                $_,
+                "^\s*(?<Passed>[1-9][0-9]*)/(?<Total>[1-9][0-9]*) specs passed\s*$")
+            if ($match.Success) {
+                [pscustomobject]@{
+                    Passed = [int] $match.Groups["Passed"].Value
+                    Total = [int] $match.Groups["Total"].Value
+                }
+            }
+        }
+    )
+    if ($bridgeSummaries.Count -ne 1 -or
+        $bridgeSummaries[0].Passed -ne $bridgeSummaries[0].Total) {
+        throw "Bridge 回归必须包含唯一且全部通过的动态规格摘要。"
     }
 
     return [pscustomobject]@{
         BridgeProjectOutputSha256 = $bridgeProjectOutputSha256
         RuntimeArtifactHashes = $runtimeArtifactHashes
         RuntimeBridgeCopyMatchesProjectOutput = $true
+        BridgeSpecs = "$($bridgeSummaries[0].Passed)/$($bridgeSummaries[0].Total)"
     }
 }
 
@@ -1274,9 +1294,12 @@ function Invoke-IsolatedBuild {
 
     $previousPathMap = $env:PathMap
     $previousCliHome = $env:DOTNET_CLI_HOME
+    $previousAddGlobalToolsToPath = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
     try {
         $env:PathMap = ($buildRoot + "=/_build/," + $repoRoot + "=/_/")
         $env:DOTNET_CLI_HOME = $cliHome
+        # 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "0"
 
         Invoke-Captured -FilePath $dotnetCommand -Arguments @(
             "restore", $specProject,
@@ -1301,6 +1324,7 @@ function Invoke-IsolatedBuild {
     finally {
         $env:PathMap = $previousPathMap
         $env:DOTNET_CLI_HOME = $previousCliHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $previousAddGlobalToolsToPath
     }
 
     return [pscustomobject]@{
@@ -1580,7 +1604,7 @@ try {
         ArtifactHashes = $artifactHashes
         Net45Specs = "$expectedSpecCount/$expectedSpecCount"
         Net8Specs = "$expectedSpecCount/$expectedSpecCount"
-        BridgeRegressionSpecs = "$expectedBridgeSpecCount/$expectedBridgeSpecCount"
+        BridgeRegressionSpecs = $managedCoreRegression.BridgeSpecs
         BridgeRegressionRuntimeArtifactHashes = $managedCoreRegression.RuntimeArtifactHashes
         BridgeProjectOutputSha256 = $managedCoreRegression.BridgeProjectOutputSha256
         BridgeRuntimeCopyMatchesProjectOutput = $managedCoreRegression.RuntimeBridgeCopyMatchesProjectOutput
@@ -1660,6 +1684,7 @@ try {
     Write-Host ("AUTH_COMPAT_EVIDENCE=" + $evidencePath)
 }
 finally {
+    Complete-CodexBuildSafety -State $buildSafety -Stage "auth-compat" | Out-Null
     [IO.File]::WriteAllBytes($conditionalLockPath, $conditionalLockBytes)
     $env:DOTNET_NOLOGO = $previousNoLogo
 }

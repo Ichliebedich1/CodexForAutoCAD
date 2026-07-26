@@ -14,10 +14,12 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+. (Join-Path $PSScriptRoot "build-safety.ps1")
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
 $baseVerifier = Join-Path $PSScriptRoot "verify-autocad2016-v2-api-surface.ps1"
 $defaultEvidenceDir = [IO.Path]::GetFullPath(
     (Join-Path $repoRoot "handoff\autocad2016\evidence"))
-$artifactsRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot "artifacts"))
+$artifactsRoot = $buildSafety.ArtifactRoot
 $evidenceDir = if ([string]::IsNullOrWhiteSpace($EvidenceDirectory)) {
     $defaultEvidenceDir
 }
@@ -239,7 +241,7 @@ Write-Host ""
 $cadBefore = @(Get-ProcessIds -Name "acad")
 
 # --- Prepare stage root ---
-$stageRoot = Join-Path $repoRoot ("artifacts\v2api-probe-stage-" + [Guid]::NewGuid().ToString("N"))
+$stageRoot = Join-Path $artifactsRoot ("v2api-probe-stage-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $stageRoot -Force | Out-Null
 
 $ps7EvidencePath = Join-Path $stageRoot "ps7\evidence.json"
@@ -430,3 +432,4 @@ Write-Host "PS51 evidence: $ps51FinalPath"
 Write-Host "Cross-shell evidence: $crossShellEvidencePath"
 Write-Host "DLL SHA-256: $($ps7Evidence.dllSha256)"
 Write-Host "Runtime: passed=$($ps7Evidence.runtimeChecksPassed), failed=$($ps7Evidence.runtimeChecksFailed)"
+Complete-CodexBuildSafety -State $buildSafety -Stage "v2-api-surface-stage" | Out-Null

@@ -39,6 +39,9 @@ namespace Codex.AutoCAD.Host2016
     {
         internal const string AgentHostInvalidConfiguration = "agenthost_invalid_configuration";
         internal const string AgentHostProcessStartFailed = "agenthost_process_start_failed";
+        internal const string AgentHostProcessStartBlocked = "agenthost_process_start_blocked";
+        internal const string AgentHostNestedJobAssignmentFailed =
+            "agenthost_nested_job_assignment_failed";
         internal const string AgentHostBootstrapWriteFailed = "agenthost_bootstrap_write_failed";
         internal const string AgentHostConfirmationInvalid = "agenthost_confirmation_invalid";
         internal const string AgentHostIdentityMismatch = "agenthost_identity_mismatch";
@@ -52,6 +55,7 @@ namespace Codex.AutoCAD.Host2016
         internal const string AgentHostUserTimeLimitExceeded = "agenthost_user_time_limit_exceeded";
         internal const string AgentHostSessionRuntimeLimitExceeded =
             "agenthost_session_runtime_limit_exceeded";
+        internal const string AgentHostUnexpectedExit = "agenthost_unexpected_exit";
         internal const string AgentHostCleanupFailed = "agenthost_cleanup_failed";
         internal const string AgentHostStopFailed = "agenthost_stop_failed";
         internal const string InvalidRequest = "invalid_request";
@@ -106,7 +110,7 @@ namespace Codex.AutoCAD.Host2016
             var operation = string.IsNullOrWhiteSpace(operationName)
                 ? "Agent 操作"
                 : operationName.Trim();
-            return operation
+            var formatted = operation
                 + "失败（error_code="
                 + ErrorCode
                 + ", error_stage="
@@ -121,6 +125,11 @@ namespace Codex.AutoCAD.Host2016
                     : ", state=" + TurnState)
                 + "）："
                 + UserMessage;
+            return DiagnosticSanitizer
+                .SanitizeText(
+                    DiagnosticDataClassification.Exception,
+                    formatted)
+                .SafeText;
         }
     }
 
@@ -142,6 +151,11 @@ namespace Codex.AutoCAD.Host2016
             if (exception is AgentHostResourceLimitException resourceLimit)
             {
                 return FromResourceLimitFailure(resourceLimit.Failure, errorStage);
+            }
+
+            if (exception is AgentHostProcessExitException processExit)
+            {
+                return FromProcessExitFailure(processExit.Failure, errorStage);
             }
 
             if (exception is AgentBridgeClientException bridge)
@@ -224,6 +238,18 @@ namespace Codex.AutoCAD.Host2016
                     "AgentHost 已触发受控资源限制；不会自动重试，请检查任务规模和管理员资源策略。");
             }
 
+            if (string.Equals(
+                    code,
+                    MvpAgentErrorCodes.AgentHostUnexpectedExit,
+                    StringComparison.Ordinal))
+            {
+                return new MvpAgentFailure(
+                    code,
+                    NormalizeStage(errorStage),
+                    false,
+                    "AgentHost 已意外退出；后续请求已拒绝。请手动停止并重新启动 AgentHost，不会自动重试。");
+            }
+
             var retryable = string.Equals(code, AgentBridgeErrorCodes.Offline, StringComparison.Ordinal)
                 || string.Equals(code, AgentBridgeErrorCodes.AgentUnavailable, StringComparison.Ordinal)
                 || string.Equals(code, AgentBridgeErrorCodes.ConnectionLost, StringComparison.Ordinal)
@@ -259,6 +285,26 @@ namespace Codex.AutoCAD.Host2016
                 "AgentHost 已触发受控资源限制；不会自动重试，请检查任务规模和管理员资源策略。");
         }
 
+        internal static MvpAgentFailure FromProcessExitFailure(
+            AgentHostProcessExitFailure failure,
+            string errorStage)
+        {
+            if (failure == AgentHostProcessExitFailure.None)
+            {
+                return new MvpAgentFailure(
+                    MvpAgentErrorCodes.InternalError,
+                    NormalizeStage(errorStage),
+                    false,
+                    "AgentHost 进程退出终态无效；原始详情已隐藏。");
+            }
+
+            return new MvpAgentFailure(
+                AgentHostProcessExitFailurePolicy.GetErrorCode(failure),
+                NormalizeStage(errorStage),
+                false,
+                "AgentHost 已意外退出；后续请求已拒绝。请手动停止并重新启动 AgentHost，不会自动重试。");
+        }
+
         internal static string NormalizeBridgeErrorCode(AgentBridgeClientException exception)
         {
             var code = exception == null ? null : exception.Code;
@@ -289,6 +335,14 @@ namespace Codex.AutoCAD.Host2016
                 case AgentBootstrapLaunchFailure.ProcessStartFailed:
                     code = MvpAgentErrorCodes.AgentHostProcessStartFailed;
                     retryable = true;
+                    break;
+                case AgentBootstrapLaunchFailure.ProcessStartBlocked:
+                    code = MvpAgentErrorCodes.AgentHostProcessStartBlocked;
+                    retryable = false;
+                    break;
+                case AgentBootstrapLaunchFailure.NestedJobAssignmentFailed:
+                    code = MvpAgentErrorCodes.AgentHostNestedJobAssignmentFailed;
+                    retryable = false;
                     break;
                 case AgentBootstrapLaunchFailure.ProcessIsolationFailed:
                     code = MvpAgentErrorCodes.AgentHostProcessIsolationFailed;
@@ -332,9 +386,25 @@ namespace Codex.AutoCAD.Host2016
                     break;
             }
 
-            var message = failure == AgentBootstrapLaunchFailure.InvalidConfiguration
-                ? "检查 AgentHost 配置、候选包完整性和可执行文件哈希。"
-                : "AgentHost 启动未完成；本地路径、标准错误和内部异常详情已隐藏。";
+            string message;
+            if (failure == AgentBootstrapLaunchFailure.InvalidConfiguration)
+            {
+                message = "检查 AgentHost 配置、候选包完整性和可执行文件哈希。";
+            }
+            else if (failure == AgentBootstrapLaunchFailure.ProcessStartBlocked)
+            {
+                message =
+                    "Windows 或企业策略已阻止 AgentHost 启动；请让管理员检查 AppLocker、WDAC、杀毒/EDR 和代码签名策略。";
+            }
+            else if (failure == AgentBootstrapLaunchFailure.NestedJobAssignmentFailed)
+            {
+                message =
+                    "AgentHost 无法加入受控嵌套 Job；请让管理员检查父进程 Job 和进程隔离策略。";
+            }
+            else
+            {
+                message = "AgentHost 启动未完成；本地路径、标准错误和内部异常详情已隐藏。";
+            }
             return new MvpAgentFailure(
                 code,
                 NormalizeStage(errorStage),
@@ -352,6 +422,10 @@ namespace Codex.AutoCAD.Host2016
         private static bool IsKnownBridgeErrorCode(string code)
         {
             return IsResourceLimitErrorCode(code)
+                || string.Equals(
+                    code,
+                    MvpAgentErrorCodes.AgentHostUnexpectedExit,
+                    StringComparison.Ordinal)
                 || string.Equals(code, AgentBridgeErrorCodes.Offline, StringComparison.Ordinal)
                 || string.Equals(code, AgentBridgeErrorCodes.ContractMismatch, StringComparison.Ordinal)
                 || string.Equals(code, AgentBridgeErrorCodes.AuthenticationFailed, StringComparison.Ordinal)

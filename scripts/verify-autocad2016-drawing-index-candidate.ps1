@@ -13,6 +13,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+. (Join-Path $PSScriptRoot 'build-safety.ps1')
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $dotnet = (Get-Command dotnet -ErrorAction Stop).Source
 $git = (Get-Command git -ErrorAction Stop).Source
 $powerShell = (Get-Process -Id $PID).Path
@@ -41,7 +44,7 @@ else {
         UsesM3CoreFixture = $true
     }
 }
-$stageRoot = Join-Path $repoRoot ('artifacts\' + $candidateProfile.ArtifactPrefix + '-' + $runId)
+$stageRoot = Join-Path $artifactsRoot ($candidateProfile.ArtifactPrefix + '-' + $runId)
 $packageRoot = Join-Path $stageRoot 'packages'
 $publishRoot = Join-Path $stageRoot 'agenthost-publish'
 $net45ReferencePath = Join-Path $packageRoot 'microsoft.netframework.referenceassemblies.net45\1.0.3\build\.NETFramework\v4.5'
@@ -561,6 +564,8 @@ foreach ($lockFile in @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src') -
 
 New-Item -ItemType Directory -Path $stageRoot,$packageRoot,$publishRoot -Force | Out-Null
 $env:DOTNET_CLI_HOME = Join-Path $stageRoot 'dotnet-cli-home'
+# 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
+$env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
 $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 $env:DOTNET_CLI_USE_MSBUILD_SERVER = '0'
@@ -822,7 +827,7 @@ try {
         $hostSha.Substring(0,8).ToLowerInvariant() + '-' +
         $agentSha.Substring(0,8).ToLowerInvariant() + '-' +
         $runId.Substring(0,8)
-    $candidateRoot = Join-Path $repoRoot ('artifacts\' + $candidateId)
+    $candidateRoot = Join-Path $artifactsRoot $candidateId
     if (Test-Path -LiteralPath $candidateRoot) {
         throw "候选目录已存在，拒绝覆盖：$candidateRoot"
     }
@@ -1024,3 +1029,4 @@ $finalCommit = (
 if ($LASTEXITCODE -ne 0 -or $finalCommit -cne $sourceCommit) {
     throw '候选构建期间源码提交发生变化。'
 }
+Complete-CodexBuildSafety -State $buildSafety -Stage 'drawing-index-candidate' | Out-Null

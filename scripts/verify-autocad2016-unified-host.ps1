@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$AutoCad2016Dir,
@@ -13,6 +13,9 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'build-safety.ps1')
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $projectRoot = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016'
 $projectPath = Join-Path $projectRoot 'Codex.AutoCAD.Host.2016.csproj'
 $solutionPath = Join-Path $repoRoot 'Codex.AutoCAD.2016.sln'
@@ -23,7 +26,7 @@ $offlinePackagePath = Join-Path $repoRoot 'third_party\nuget\Microsoft.NETFramew
 $phase2Script = Join-Path $repoRoot 'scripts\verify-phase2.ps1'
 $readOnlyContextScript = Join-Path $repoRoot 'scripts\verify-autocad2016-readonly-context.ps1'
 $AutoCad2016Dir = [IO.Path]::GetFullPath($AutoCad2016Dir)
-$stageRoot = Join-Path $repoRoot ('artifacts\u16-' + [Guid]::NewGuid().ToString('N').Substring(0, 12))
+$stageRoot = Join-Path $artifactsRoot ('u16-' + [Guid]::NewGuid().ToString('N').Substring(0, 12))
 $lf = [string][char]10
 $cr = [string][char]13
 
@@ -522,6 +525,7 @@ function Invoke-HostBuild {
     New-Item -ItemType Directory -Force -Path $out, $objBase, $obj, $objExt, $packages, $cliHome, $httpCache | Out-Null
     $saved = @{
         DOTNET_CLI_HOME = $env:DOTNET_CLI_HOME
+        DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
         NUGET_PACKAGES = $env:NUGET_PACKAGES
         NUGET_HTTP_CACHE_PATH = $env:NUGET_HTTP_CACHE_PATH
         DOTNET_SKIP_FIRST_TIME_EXPERIENCE = $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE
@@ -530,6 +534,8 @@ function Invoke-HostBuild {
     }
     try {
         $env:DOTNET_CLI_HOME = $cliHome
+        # 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
         $env:NUGET_PACKAGES = $packages
         $env:NUGET_HTTP_CACHE_PATH = $httpCache
         $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
@@ -641,9 +647,12 @@ function Invoke-ContractSpecs {
     $cliHome = Join-Path $root 'dotnet-home'
     New-Item -ItemType Directory -Force -Path $root, $out, $packages, $cliHome | Out-Null
     $savedHome = $env:DOTNET_CLI_HOME
+    $savedAddGlobalToolsToPath = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
     $savedPathMap = $env:PathMap
     try {
         $env:DOTNET_CLI_HOME = $cliHome
+        # 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
         $env:PathMap = ($root + '=/_unified_contract/,' + $repoRoot + '=/_/')
         Invoke-Captured -FilePath $DotNetPath -Arguments @(
             'restore', $specProjectPath, '--configfile', $nuGetConfigPath,
@@ -660,6 +669,7 @@ function Invoke-ContractSpecs {
     }
     finally {
         $env:DOTNET_CLI_HOME = $savedHome
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $savedAddGlobalToolsToPath
         $env:PathMap = $savedPathMap
     }
     $net45 = Join-Path $out 'bin\Codex.AutoCAD.Contracts.Specs\release_net45\Codex.AutoCAD.Contracts.Specs.exe'
@@ -759,12 +769,15 @@ try {
     New-Item -ItemType Directory -Force -Path $subGateHome | Out-Null
     $savedSubGateEnvironment = @{
         DOTNET_CLI_HOME = $env:DOTNET_CLI_HOME
+        DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
         DOTNET_SKIP_FIRST_TIME_EXPERIENCE = $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE
         DOTNET_CLI_TELEMETRY_OPTOUT = $env:DOTNET_CLI_TELEMETRY_OPTOUT
         DOTNET_NOLOGO = $env:DOTNET_NOLOGO
     }
     try {
         $env:DOTNET_CLI_HOME = $subGateHome
+        # 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
+        $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
         $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
         $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
         $env:DOTNET_NOLOGO = '1'
@@ -899,5 +912,6 @@ try {
     Write-Host '--- End Verification ---'
 }
 finally {
+    Complete-CodexBuildSafety -State $buildSafety -Stage 'unified-host' | Out-Null
     Pop-Location
 }

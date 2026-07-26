@@ -13,9 +13,21 @@ using CadQueryEntity = Codex.AutoCAD.Contracts.CadQueryEntity;
 using CadQueryReadStatuses = Codex.AutoCAD.Contracts.CadQueryReadStatuses;
 using CadQueryResponse = Codex.AutoCAD.Contracts.CadQueryResponse;
 using CadQueryStatuses = Codex.AutoCAD.Contracts.CadQueryStatuses;
+using AgentPolicyErrorCodes = Codex.AutoCAD.Contracts.AgentPolicyErrorCodes;
+using AgentPolicyLayerDocument = Codex.AutoCAD.Contracts.AgentPolicyLayerDocument;
+using AgentPolicyLayers = Codex.AutoCAD.Contracts.AgentPolicyLayers;
+using AgentPolicyResolver = Codex.AutoCAD.Contracts.AgentPolicyResolver;
+using AgentReasoningEfforts = Codex.AutoCAD.Contracts.AgentReasoningEfforts;
+using DiagnosticDataClassification = Codex.AutoCAD.Contracts.DiagnosticDataClassification;
+using DiagnosticRedactionKinds = Codex.AutoCAD.Contracts.DiagnosticRedactionKinds;
+using ResolvedAgentPolicy = Codex.AutoCAD.Contracts.ResolvedAgentPolicy;
 
 var specs = new (string Name, Func<Task> Run)[]
 {
+    ("POLICY-M41-020 未配置策略时危险模型字符串不出站", PolicyBlocksUnsafeModelStringWithoutPolicy),
+    ("POLICY-M41-021 白名单外模型在出站前被拒绝", PolicyBlocksModelOutsideAllowList),
+    ("POLICY-M41-022 管理员锁定后偏离默认值的模型被拒绝", PolicyBlocksDivergentModelWhenLocked),
+    ("POLICY-M41-023 实际下发到wire的是策略接受值", PolicyAcceptedModelIsWhatReachesTheWire),
     ("新建与恢复线程使用安全默认值", ThreadRequestsUseSafeDefaults),
     ("启动轮次生成0.144.5输入结构", TurnStartUsesExpectedWireShape),
     ("中断轮次生成精确请求", InterruptUsesExpectedWireShape),
@@ -41,15 +53,20 @@ var specs = new (string Name, Func<Task> Run)[]
     ("cad动态工具终态清理注册表并拒绝旧callId重放", CadCallRegistryClearsOnlyAtTurnTerminal),
     ("cad动态工具拒绝文档绑定字段", CadDynamicToolRejectsDocumentBinding),
     ("cad动态工具畸形参数被隔离", MalformedCadDynamicToolIsIsolated),
+    ("cad动态工具校验诊断出站前脱敏", CadDynamicToolValidationDiagnosticsAreSanitized),
     ("工作区写权限必须绑定受信根", WorkspaceWriteRequiresManagedRoot),
     ("受信工作区拒绝越界和ADS路径", ManagedWorkspaceRejectsEscapeAndAds),
     ("本地文件输入默认关闭", LocalFileInputsAreDisabledByDefault),
     ("消息与item通知投影为强类型事件", MessageAndItemNotificationsAreProjected),
     ("工具进度通知投影为强类型事件", ToolProgressNotificationsAreProjected),
     ("轮次状态通知投影完整终态", TurnStateNotificationsAreProjected),
+    ("失败轮次公共事件不泄露Provider诊断", FailedTurnPublicEventDoesNotLeakProviderDiagnostics),
     ("审批请求投影并转发决定", ApprovalRequestsAreProjectedAndForwarded),
     ("畸形通知被隔离", MalformedNotificationIsIsolated),
     ("事件观察者故障被隔离", EventObserverFailureIsIsolated),
+    ("运行时诊断事件不保留原始异常图", RuntimeDiagnosticEventsDoNotRetainRawExceptions),
+    ("观察者故障诊断不保留原始Agent事件", ObserverFailureDiagnosticsDoNotRetainRawAgentEvent),
+    ("运行时公开记录字符串不泄露路径提示词或Provider标识", RuntimePublicRecordStringsAreSafe),
 };
 
 var failures = 0;
@@ -981,6 +998,231 @@ static async Task MalformedCadDynamicToolIsIsolated()
     Equal(0, broker.CallCount);
 }
 
+static Task RuntimePublicRecordStringsAreSafe()
+{
+    var pathMarker = "runtime-path-user-marker";
+    var promptMarker = "runtime-prompt-secret-marker";
+    var providerMarker = "runtime-provider-thread-marker";
+    var coordinateMarker = "123456.789";
+    using var outputSchema = JsonDocument.Parse(
+        $$"""{"credential":"{{promptMarker}}","path":"C:\\Users\\{{pathMarker}}\\schema.json"}""");
+    using var eventPayload = JsonDocument.Parse(
+        $$"""{"credential":"{{promptMarker}}","path":"C:\\Users\\{{pathMarker}}\\event.json"}""");
+    var item = new AgentItemSnapshot(
+        providerMarker,
+        AgentItemKind.AgentMessage,
+        promptMarker,
+        promptMarker,
+        promptMarker,
+        eventPayload.RootElement.Clone());
+    var lineProposal = new AgentCadCreateLineProposal(
+        new AgentCadPoint3d(123456.789, 0, 0),
+        new AgentCadPoint3d(1, 1, 0),
+        promptMarker);
+    var proposal = new AgentCadOperationBatchProposal(
+        providerMarker,
+        providerMarker,
+        providerMarker,
+        providerMarker,
+        new AgentCadOperationProposal[]
+        {
+            lineProposal,
+        });
+    var commandApproval = new CommandApprovalRequest(
+        providerMarker,
+        1,
+        providerMarker,
+        providerMarker,
+        Command: "cmd /c " + promptMarker,
+        WorkingDirectory: $@"C:\Users\{pathMarker}\approval",
+        Reason: promptMarker);
+    var fileApproval = new FileChangeApprovalRequest(
+        providerMarker,
+        2,
+        providerMarker,
+        providerMarker,
+        $@"C:\Users\{pathMarker}\grant",
+        promptMarker);
+    var permissionsApproval = new PermissionsApprovalRequest(
+        $@"C:\Users\{pathMarker}\permissions",
+        providerMarker,
+        new PermissionProfile(),
+        3,
+        providerMarker,
+        providerMarker,
+        Reason: promptMarker);
+    var cadApproval = new CadApprovalRequest(
+        providerMarker,
+        providerMarker,
+        providerMarker,
+        new CadDocumentIdentity(providerMarker, providerMarker, 4, providerMarker),
+        providerMarker,
+        promptMarker,
+        5,
+        new CadChangeSummary(1, 0, 0, promptMarker),
+        eventPayload.RootElement.Clone());
+    object[] values =
+    {
+        new AgentRuntimeOptions
+        {
+            WorkingDirectory = $@"C:\Users\{pathMarker}\workspace",
+            ManagedWorkspaceRoot = $@"C:\Users\{pathMarker}\managed",
+            Model = promptMarker,
+            ModelProvider = promptMarker,
+        },
+        new AgentThreadOptions
+        {
+            WorkingDirectory = $@"C:\Users\{pathMarker}\thread",
+            Model = promptMarker,
+            ModelProvider = promptMarker,
+            DeveloperInstructions = "Bear" + "er " + promptMarker,
+            ServiceTier = promptMarker,
+        },
+        new AgentTurnOptions
+        {
+            WorkingDirectory = $@"C:\Users\{pathMarker}\turn",
+            Model = promptMarker,
+            ClientUserMessageId = promptMarker,
+            ServiceTier = promptMarker,
+            OutputSchema = outputSchema.RootElement.Clone(),
+        },
+        new AgentThreadHandle(
+            providerMarker,
+            $@"C:\Users\{pathMarker}\handle",
+            promptMarker,
+            promptMarker),
+        new AgentTurnHandle(providerMarker, providerMarker, AgentTurnStatus.InProgress),
+        new AgentTextInput("Bear" + "er " + promptMarker),
+        new AgentLocalImageInput($@"C:\Users\{pathMarker}\private.png"),
+        new AgentMentionInput(promptMarker, $@"C:\Users\{pathMarker}\private.txt"),
+        lineProposal.Start,
+        lineProposal,
+        proposal,
+        new AgentCadProposalResult(
+            AgentCadProposalOutcome.Failed,
+            promptMarker,
+            providerMarker,
+            providerMarker,
+            providerMarker,
+            providerMarker),
+        new AgentEventDiagnosticSnapshot(promptMarker),
+        item,
+        new AgentMessageDeltaEvent(providerMarker, providerMarker, providerMarker, promptMarker),
+        new AgentItemStateChangedEvent(
+            providerMarker,
+            providerMarker,
+            AgentItemLifecycle.Started,
+            6,
+            item),
+        new AgentToolStateChangedEvent(
+            providerMarker,
+            providerMarker,
+            AgentItemLifecycle.Started,
+            7,
+            AgentToolKind.CommandExecution,
+            AgentToolStatus.InProgress,
+            item),
+        new AgentToolProgressEvent(
+            providerMarker,
+            providerMarker,
+            providerMarker,
+            AgentToolKind.CommandExecution,
+            promptMarker,
+            eventPayload.RootElement.Clone()),
+        new AgentCadProposalCreatedEvent(
+            providerMarker,
+            providerMarker,
+            providerMarker,
+            proposal),
+        new AgentDynamicToolRejectedEvent(
+            providerMarker,
+            providerMarker,
+            providerMarker,
+            promptMarker,
+            promptMarker,
+            promptMarker),
+        new AgentTurnStateChangedEvent(
+            providerMarker,
+            providerMarker,
+            AgentTurnStatus.Failed,
+            promptMarker,
+            eventPayload.RootElement.Clone()),
+        new AgentApprovalReviewStateChangedEvent(
+            providerMarker,
+            providerMarker,
+            providerMarker,
+            providerMarker,
+            AgentApprovalReviewLifecycle.Started,
+            8,
+            eventPayload.RootElement.Clone()),
+        new AgentCommandApprovalRequestedEvent(commandApproval),
+        new AgentFileChangeApprovalRequestedEvent(fileApproval),
+        new AgentPermissionsApprovalRequestedEvent(permissionsApproval),
+        new AgentCadApprovalRequestedEvent(cadApproval),
+    };
+
+    foreach (var value in values)
+    {
+        var diagnostic = value.ToString() ?? string.Empty;
+        True(
+            diagnostic.StartsWith(value.GetType().Name, StringComparison.Ordinal),
+            "Runtime record string projection omitted its stable type name.");
+        foreach (var marker in new[] { pathMarker, promptMarker, providerMarker, coordinateMarker })
+        {
+            True(
+                diagnostic.IndexOf(marker, StringComparison.OrdinalIgnoreCase) < 0,
+                "Runtime record string projection leaked a protected marker.");
+        }
+
+        True(
+            diagnostic.IndexOf(@"C:\Users\", StringComparison.OrdinalIgnoreCase) < 0,
+            "Runtime record string projection leaked an absolute path.");
+    }
+
+    return Task.CompletedTask;
+}
+
+static async Task CadDynamicToolValidationDiagnosticsAreSanitized()
+{
+    await using var server = new FakeAgentAppServer();
+    await using var runtime = new CodexAgentRuntime(server);
+    var events = new List<AgentEvent>();
+    runtime.EventReceived += (_, agentEvent) => events.Add(agentEvent);
+    await PrepareActiveTurnAsync(server, runtime);
+
+    var marker = "dynamic-tool-secret-marker";
+    var unsafeProperty = "Authorization=Bearer " + marker + " " + @"C:\Users\tool-user\secret.txt";
+    var request = JsonSerializer.Serialize(new
+    {
+        threadId = "thread-1",
+        turnId = "turn-1",
+        callId = "call-sanitized-validation",
+        @namespace = "cad",
+        tool = "query_drawing",
+        arguments = new Dictionary<string, object?>
+        {
+            [unsafeProperty] = true,
+        },
+    });
+
+    var resolution = await server.RequestServerAsync("item/tool/call", request);
+    var response = ResolutionResult(resolution!);
+    Equal(false, response.GetProperty("success").GetBoolean());
+    var rejected = Single(events.OfType<AgentDynamicToolRejectedEvent>().ToArray());
+    var publicText = response.GetRawText() + " " + rejected.Reason;
+    foreach (var protectedValue in new[] { marker, "tool-user", "secret.txt" })
+    {
+        True(
+            publicText.IndexOf(protectedValue, StringComparison.OrdinalIgnoreCase) < 0,
+            "Dynamic tool validation diagnostics leaked a protected value.");
+    }
+
+    True(
+        publicText.Contains("[redacted-token]", StringComparison.Ordinal)
+        && publicText.Contains("[redacted-path]", StringComparison.Ordinal),
+        "Dynamic tool validation diagnostics did not preserve bounded redaction placeholders.");
+}
+
 static async Task WorkspaceWriteRequiresManagedRoot()
 {
     await using var server = new FakeAgentAppServer();
@@ -1198,6 +1440,65 @@ static Task TurnStateNotificationsAreProjected()
     return DisposeAsync(runtime, server);
 }
 
+static Task FailedTurnPublicEventDoesNotLeakProviderDiagnostics()
+{
+    var server = new FakeAgentAppServer();
+    var runtime = new CodexAgentRuntime(server);
+    var events = new List<AgentEvent>();
+    runtime.EventReceived += (_, agentEvent) => events.Add(agentEvent);
+    var tokenMarker = "failed-turn-token-marker";
+    var payloadMarker = "failed-turn-payload-marker";
+
+    server.EmitNotification(
+        "turn/completed",
+        JsonSerializer.Serialize(new
+        {
+            threadId = "thread-1",
+            turn = new
+            {
+                id = "turn-1",
+                status = "failed",
+                items = Array.Empty<object>(),
+                error = new
+                {
+                    message = "Authorization=Bearer " + tokenMarker
+                        + " "
+                        + @"C:\Users\turn-user\failure.log",
+                },
+                providerDebugPayload = payloadMarker,
+            },
+        }));
+
+    var failed = IsType<AgentTurnStateChangedEvent>(Single(events.ToArray()));
+    Equal(AgentTurnStatus.Failed, failed.Status);
+    var publicText = failed.ErrorMessage + " " + failed.Turn.GetRawText();
+    foreach (var protectedValue in new[]
+             {
+                 tokenMarker,
+                 payloadMarker,
+                 "turn-user",
+                 "failure.log",
+             })
+    {
+        True(
+            publicText.IndexOf(protectedValue, StringComparison.OrdinalIgnoreCase) < 0,
+            "Failed turn public event leaked Provider diagnostics.");
+    }
+
+    True(
+        publicText.Contains("[redacted-token]", StringComparison.Ordinal)
+        && publicText.Contains("[redacted-path]", StringComparison.Ordinal),
+        "Failed turn public event did not preserve bounded redaction placeholders.");
+    Equal(
+        DiagnosticDataClassification.RemoteError,
+        failed.ErrorDiagnosticClassification);
+    True(
+        (failed.ErrorDiagnosticRedactions & DiagnosticRedactionKinds.Token) != 0
+        && (failed.ErrorDiagnosticRedactions & DiagnosticRedactionKinds.Path) != 0,
+        "Failed turn public event did not expose numeric redaction evidence.");
+    return DisposeAsync(runtime, server);
+}
+
 static async Task ApprovalRequestsAreProjectedAndForwarded()
 {
     await using var server = new FakeAgentAppServer();
@@ -1284,6 +1585,210 @@ static Task EventObserverFailureIsIsolated()
     Equal(1, delivered);
     Equal(1, observerFailures);
     return DisposeAsync(runtime, server);
+}
+
+static Task RuntimeDiagnosticEventsDoNotRetainRawExceptions()
+{
+    var server = new FakeAgentAppServer();
+    var runtime = new CodexAgentRuntime(server);
+    AgentEventProjectionFailedEventArgs? projectionFailure = null;
+    AgentEventObserverFailedEventArgs? observerFailure = null;
+    var messageMarker = "runtime-observer-message-marker";
+    var innerMarker = "runtime-observer-inner-marker";
+    var dataMarker = "runtime-observer-data-marker";
+    var sourceFailure = new InvalidOperationException(
+        "Bear" + "er " + messageMarker + " " + @"C:\Users\runtime-user\fault.log",
+        new InvalidDataException(innerMarker));
+    sourceFailure.Data["credential"] = dataMarker;
+
+    runtime.ProjectionFailed += (_, args) => projectionFailure = args;
+    runtime.EventReceived += (_, _) => throw sourceFailure;
+    runtime.EventObserverFailed += (_, args) => observerFailure = args;
+
+    server.EmitNotification("item/agentMessage/delta", """
+        {"threadId":"thread-1","turnId":"turn-1","itemId":"message-1"}
+        """);
+    NotNull(projectionFailure);
+    AssertSafeRuntimeDiagnostic(
+        projectionFailure!.Exception,
+        projectionFailure.DiagnosticClassification,
+        projectionFailure.DiagnosticRedactions,
+        Array.Empty<string>());
+
+    server.EmitNotification("item/agentMessage/delta", """
+        {"threadId":"thread-1","turnId":"turn-1","itemId":"message-1","delta":"x"}
+        """);
+    NotNull(observerFailure);
+    AssertSafeRuntimeDiagnostic(
+        observerFailure!.Exception,
+        observerFailure.DiagnosticClassification,
+        observerFailure.DiagnosticRedactions,
+        new[] { messageMarker, innerMarker, dataMarker, "runtime-user" });
+    True(
+        !ReferenceEquals(sourceFailure, observerFailure.Exception),
+        "Runtime observer diagnostics retained the original exception.");
+    True(
+        (observerFailure.DiagnosticRedactions & DiagnosticRedactionKinds.Token) != 0
+        && (observerFailure.DiagnosticRedactions & DiagnosticRedactionKinds.Path) != 0,
+        "Runtime observer diagnostics did not retain numeric redaction evidence.");
+
+    return DisposeAsync(runtime, server);
+}
+
+static Task ObserverFailureDiagnosticsDoNotRetainRawAgentEvent()
+{
+    var server = new FakeAgentAppServer();
+    var runtime = new CodexAgentRuntime(server);
+    AgentEvent? sourceEvent = null;
+    AgentEventObserverFailedEventArgs? observerFailure = null;
+    var payloadMarker = "observer-event-payload-marker";
+    runtime.EventReceived += (_, agentEvent) =>
+    {
+        sourceEvent = agentEvent;
+        throw new InvalidOperationException("observer failed");
+    };
+    runtime.EventObserverFailed += (_, args) => observerFailure = args;
+
+    server.EmitNotification(
+        "item/agentMessage/delta",
+        JsonSerializer.Serialize(new
+        {
+            threadId = "thread-" + payloadMarker,
+            turnId = "turn-" + payloadMarker,
+            itemId = "item-" + payloadMarker,
+            delta = "Authorization=Bearer " + payloadMarker,
+        }));
+
+    NotNull(sourceEvent);
+    NotNull(observerFailure);
+    True(
+        !ReferenceEquals(sourceEvent, observerFailure!.AgentEvent),
+        "Observer failure diagnostics retained the original Agent event object.");
+    True(
+        observerFailure.AgentEvent
+            .ToString()
+            .IndexOf(payloadMarker, StringComparison.OrdinalIgnoreCase) < 0,
+        "Observer failure diagnostics retained the original Agent event payload.");
+    return DisposeAsync(runtime, server);
+}
+
+static void AssertSafeRuntimeDiagnostic(
+    Exception exception,
+    DiagnosticDataClassification classification,
+    DiagnosticRedactionKinds redactions,
+    IReadOnlyList<string> protectedMarkers)
+{
+    True(
+        exception.InnerException is null
+        && exception.Data.Count == 0
+        && string.IsNullOrEmpty(exception.StackTrace),
+        "Runtime diagnostics retained a raw exception graph.");
+    var publicDiagnostic = exception.Message + " " + exception;
+    foreach (var marker in protectedMarkers)
+    {
+        True(
+            publicDiagnostic.IndexOf(marker, StringComparison.OrdinalIgnoreCase) < 0,
+            "Runtime diagnostics leaked a protected marker.");
+    }
+
+    True(
+        Enum.IsDefined(classification)
+        && redactions >= DiagnosticRedactionKinds.None,
+        "Runtime diagnostics did not expose stable structured metadata.");
+}
+
+// ---------------- M4.1 策略接入（真实调用链） ----------------
+
+static ResolvedAgentPolicy BuildTestPolicy(bool lockModel = false)
+{
+    var machine = new AgentPolicyLayerDocument
+    {
+        Layer = AgentPolicyLayers.MachinePolicy,
+        AllowedModels = new[] { "gpt-test", "gpt-test-mini" },
+        DefaultModel = "gpt-test",
+        AllowedReasoningEfforts = new[] { AgentReasoningEfforts.Medium, AgentReasoningEfforts.High },
+        DefaultReasoningEffort = AgentReasoningEfforts.Medium,
+        LockModel = lockModel,
+    };
+    var resolution = AgentPolicyResolver.Resolve(machine, null, null);
+    True(resolution.Accepted && resolution.Policy is not null, "test policy must resolve");
+    return resolution.Policy!;
+}
+
+static async Task<string> CaptureThreadStartFailure(AgentRuntimeOptions options)
+{
+    await using var server = new FakeAgentAppServer();
+    server.QueueResponse("thread/start", """
+        {"thread":{"id":"thread-1"}}
+        """);
+    await using var runtime = new CodexAgentRuntime(server, options);
+
+    var code = string.Empty;
+    try
+    {
+        _ = await runtime.CreateThreadAsync();
+    }
+    catch (AgentPolicyViolationException exception)
+    {
+        code = exception.ErrorCode;
+    }
+
+    // 最重要的断言：被拒绝的值绝不会产生任何出站请求。
+    Equal(0, server.Requests.Count);
+    return code;
+}
+
+static async Task PolicyBlocksUnsafeModelStringWithoutPolicy()
+{
+    // 未配置策略时也必须拒绝危险形态，否则任意字符串会进入 Codex 进程参数。
+    foreach (var hostile in new[] { "model with space", "model\"quote", "..\\..\\escape", "a;rm -rf" })
+    {
+        var code = await CaptureThreadStartFailure(new AgentRuntimeOptions { Model = hostile });
+        Equal(AgentPolicyErrorCodes.ModelInvalid, code);
+    }
+}
+
+static async Task PolicyBlocksModelOutsideAllowList()
+{
+    var code = await CaptureThreadStartFailure(new AgentRuntimeOptions
+    {
+        Model = "gpt-not-allowed",
+        AgentPolicy = BuildTestPolicy(),
+    });
+    Equal(AgentPolicyErrorCodes.ModelNotAllowed, code);
+}
+
+static async Task PolicyBlocksDivergentModelWhenLocked()
+{
+    // 白名单内但偏离受信默认值，在管理员锁定下同样拒绝。
+    var code = await CaptureThreadStartFailure(new AgentRuntimeOptions
+    {
+        Model = "gpt-test-mini",
+        AgentPolicy = BuildTestPolicy(lockModel: true),
+    });
+    Equal(AgentPolicyErrorCodes.LockedByHigherLayer, code);
+}
+
+static async Task PolicyAcceptedModelIsWhatReachesTheWire()
+{
+    await using var server = new FakeAgentAppServer();
+    server.QueueResponse("thread/start", """
+        {"thread":{"id":"thread-1"}}
+        """);
+    server.QueueResponse("turn/start", """
+        {"turn":{"id":"turn-1","status":"inProgress","items":[]}}
+        """);
+    // 未显式指定模型：策略默认值必须成为真正下发的值。
+    await using var runtime = new CodexAgentRuntime(
+        server,
+        new AgentRuntimeOptions { AgentPolicy = BuildTestPolicy() });
+
+    _ = await runtime.CreateThreadAsync();
+    _ = await runtime.StartTurnAsync("thread-1", "绘制一条直线");
+
+    Equal(2, server.Requests.Count);
+    Equal("gpt-test", String(server.Requests[0].Params, "model"));
+    Equal("gpt-test", String(server.Requests[1].Params, "model"));
 }
 
 static void AssertSafeThreadRequest(SentRequest request, string method, string? expectedThreadId)

@@ -41,6 +41,41 @@ public sealed record AppServerClientOptions
 
     internal CodexExecutableLease? ExecutableLease { get; init; }
 
+    /// <summary>
+    /// Returns a bounded configuration summary without executable paths, arguments, environment
+    /// names or values, client metadata, or capability payloads.
+    /// </summary>
+    public override string ToString()
+        => nameof(AppServerClientOptions)
+            + " { CodexExecutableConfigured = "
+            + FormatConfigured(CodexExecutablePath)
+            + ", WorkingDirectoryConfigured = "
+            + FormatConfigured(WorkingDirectory)
+            + ", AdditionalArgumentCount = "
+            + (AdditionalArguments?.Count ?? 0).ToString(
+                System.Globalization.CultureInfo.InvariantCulture)
+            + ", EnvironmentEntryCount = "
+            + (Environment?.Count ?? 0).ToString(
+                System.Globalization.CultureInfo.InvariantCulture)
+            + ", InheritParentEnvironment = "
+            + FormatBoolean(InheritParentEnvironment)
+            + ", MaximumStandardErrorBytes = "
+            + MaximumStandardErrorBytes.ToString(
+                System.Globalization.CultureInfo.InvariantCulture)
+            + ", MaximumFrameBytes = "
+            + MaximumFrameBytes.ToString(
+                System.Globalization.CultureInfo.InvariantCulture)
+            + ", MaximumJsonDepth = "
+            + MaximumJsonDepth.ToString(
+                System.Globalization.CultureInfo.InvariantCulture)
+            + ", ShutdownTimeoutSeconds = "
+            + ShutdownTimeout.TotalSeconds.ToString(
+                "0.###",
+                System.Globalization.CultureInfo.InvariantCulture)
+            + ", ExecutableLeaseConfigured = "
+            + FormatBoolean(ExecutableLease is not null)
+            + " }";
+
     internal void Validate()
     {
         if (string.IsNullOrWhiteSpace(CodexExecutablePath))
@@ -96,4 +131,10 @@ public sealed record AppServerClientOptions
             }
         }
     }
+
+    private static string FormatConfigured(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "False" : "True";
+
+    private static string FormatBoolean(bool value)
+        => value ? "True" : "False";
 }

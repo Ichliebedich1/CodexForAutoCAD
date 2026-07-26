@@ -13,11 +13,106 @@ using Codex.AutoCAD.Bridge;
 using Codex.AutoCAD.Bridge.Client;
 using Codex.AutoCAD.Contracts;
 using Codex.AutoCAD.Ipc;
+using Codex.AutoCAD.AgentLauncher;
+
+if (args.Length > 0
+    && string.Equals(
+        args[0],
+        "audit-retention-crash-worker",
+        StringComparison.Ordinal))
+{
+    return AgentHostBridgeSessionSpecs.RunAuditRetentionCrashWorker(args);
+}
+
+if (args.Length >= 2
+    && string.Equals(args[0], "login", StringComparison.Ordinal)
+    && string.Equals(args[1], "--with-access-token", StringComparison.Ordinal))
+{
+    return RunFakeCodexLogin();
+}
 
 var specs = new (string Name, Func<Task> Run)[]
 {
+    ("POLICY-M41-030 缺失全部策略层fail-closed",
+        AgentHostPolicyStoreSpecs.MissingEveryLayerFailsClosed),
+    ("POLICY-M41-031 仅机器策略即可解析并如实报告层存在性",
+        AgentHostPolicyStoreSpecs.MachinePolicyAloneResolves),
+    ("POLICY-M41-032 用户层可收窄但不能扩大白名单",
+        AgentHostPolicyStoreSpecs.UserLayerNarrowsButCannotWiden),
+    ("POLICY-M41-033 管理员锁定阻止用户层覆盖",
+        AgentHostPolicyStoreSpecs.AdministratorLockBlocksUserLayer),
+    ("POLICY-M41-034 损坏JSON未知字段和伪造层声明fail-closed",
+        AgentHostPolicyStoreSpecs.MalformedAndUnknownFieldsFailClosed),
+    ("POLICY-M41-035 旧schema版本fail-closed",
+        AgentHostPolicyStoreSpecs.OutdatedSchemaVersionFailsClosed),
+    ("POLICY-M41-036 超限策略文件fail-closed",
+        AgentHostPolicyStoreSpecs.OversizedPolicyFileFailsClosed),
+    ("POLICY-M41-037 相对路径UNC和设备路径被拒绝",
+        AgentHostPolicyStoreSpecs.UnsafePolicyPathsAreRejected),
+    ("POLICY-M41-038 产品入口使用固定且互异的策略位置",
+        AgentHostPolicyStoreSpecs.ProductEntryPointUsesFixedLocations),
+    ("POLICY-M41-039 启动失败脱敏且区分未配置与配置损坏",
+        AgentHostPolicyStoreSpecs.StartupFailureIsRedactedAndDistinguishesUnconfigured),
     ("AgentHost审计日志为有界内容脱敏JSONL",
         AgentHostBridgeSessionSpecs.AuditLogIsBoundedContentFreeJsonl),
+    ("AgentHost并发审计写入保持完整JSONL和单调序号",
+        AgentHostBridgeSessionSpecs.AuditConcurrentWritesAreSequentialAndComplete),
+    ("AgentHost部分写入失败后保持截断可检测且永久失败关闭",
+        AgentHostBridgeSessionSpecs.AuditPartialWriteFailsClosedAndCannotResume),
+    ("AgentHost锚点持久化失败后保持链不一致可检测且永久失败关闭",
+        AgentHostBridgeSessionSpecs.AuditAnchorPersistenceFailureFailsClosedAndIsDetectable),
+    ("AgentHost审计哈希链检测删除插入修改截断锚点和跨段重排",
+        AgentHostBridgeSessionSpecs.AuditHashChainDetectsTamperingAcrossSegments),
+    ("AgentHost生产审计目录持久化独立链锚点",
+        AgentHostBridgeSessionSpecs.AuditFileAnchorTracksDurableChainHead),
+    ("AgentHost脱敏导出先验链且省略Provider身份和payload",
+        AgentHostBridgeSessionSpecs.AuditRedactedExportVerifiesChainAndOmitsProviderIdentity),
+    ("AgentHost受控审计导出仅输出完整链且失败不泄漏半份JSON",
+        AgentHostBridgeSessionSpecs.AuditExportServiceBuffersVerifiedOutput),
+    ("AgentHost只读审计保留规划保护非完整证据且无文件副作用",
+        AgentHostBridgeSessionSpecs.AuditRetentionPlannerIsReadOnlyAndConservative),
+    ("AgentHost审计保留控制区未知或恶意artifact明确转人工复核并拒绝清理",
+        AgentHostBridgeSessionSpecs.AuditRetentionControlStatusFailsClosedForUnknownArtifacts),
+    ("AgentHost审计保留CLI拒绝非法参数并返回稳定错误",
+        AgentHostBridgeSessionSpecs.AuditRetentionPlanCliRejectsInvalidArguments),
+    ("AgentHost审计CLI未预期失败统一脱敏",
+        AgentHostBridgeSessionSpecs.AuditCliUnexpectedFailureIsStructuredAndSanitized),
+    ("AgentHost未知命令诊断先分类脱敏再输出",
+        AgentHostBridgeSessionSpecs.UnknownCommandDiagnosticIsSanitized),
+    ("AgentHost通用CLI失败返回稳定阶段和脱敏元数据",
+        AgentHostBridgeSessionSpecs.AgentHostCliFailureIsStructuredAndSanitized),
+    ("AgentHost协议故障stderr只输出稳定分类和数值元数据",
+        AgentHostBridgeSessionSpecs.ProtocolFaultStandardErrorIsStructuredAndSanitized),
+    ("AgentHost bootstrap CLI失败不输出CLR类型名",
+        AgentHostBridgeSessionSpecs.BootstrapCliFailureIsStructuredAndSanitized),
+    ("AgentHost doctor成功响应不公开原始环境指纹",
+        AgentHostBridgeSessionSpecs.DoctorStatusOmitsRawEnvironmentFingerprint),
+    ("AgentHost受控审计清理只删除已确认候选且重复执行幂等",
+        AgentHostBridgeSessionSpecs.AuditRetentionApplyDeletesOnlyApprovedAndIsIdempotent),
+    ("AgentHost审计清理receipt收敛到有界检查点",
+        AgentHostBridgeSessionSpecs.AuditRetentionReceiptsConvergeToBoundedCheckpoint),
+    ("AgentHost审计清理receipt检查点恢复不重复累计",
+        AgentHostBridgeSessionSpecs.AuditRetentionReceiptCheckpointRecoveryDoesNotDoubleCount),
+    ("AgentHost审计清理receipt检查点先于删除耐久提交",
+        AgentHostBridgeSessionSpecs.AuditRetentionReceiptCheckpointCommitsBeforeDeletion),
+    ("AgentHost审计清理收敛已完成计划的冗余receipt临时文件",
+        AgentHostBridgeSessionSpecs.AuditRetentionRemovesRedundantForeignReceiptTemporaryFile),
+    ("AgentHost受控审计清理可从耐久日志恢复中断",
+        AgentHostBridgeSessionSpecs.AuditRetentionApplyRecoversInterruptedJournal),
+    ("AgentHost审计保留持久化I/O故障保持可恢复且重试只收敛一次",
+        AgentHostBridgeSessionSpecs.AuditRetentionPersistenceIoFailuresConvergeOnce),
+    ("AgentHost受控审计清理拒绝变化计划和篡改恢复",
+        AgentHostBridgeSessionSpecs.AuditRetentionApplyRejectsChangedPlanAndTamperedRecovery),
+    ("AgentHost受控审计清理串行化并发执行器",
+        AgentHostBridgeSessionSpecs.AuditRetentionApplySerializesConcurrentExecutors),
+    ("AgentHost受控审计清理在子进程强杀后由耐久日志恢复",
+        AgentHostBridgeSessionSpecs.AuditRetentionApplyRecoversAfterProcessKill),
+    ("AgentHost生产审计达到单段上限后自动轮转且链连续",
+        AgentHostBridgeSessionSpecs.AuditAutomaticallyRotatesWithContinuousChain),
+    ("AgentHost工作区清理后持久审计和独立锚点仍可验证",
+        AgentHostBridgeSessionSpecs.AuditPersistsAfterSessionWorkspaceCleanup),
+    ("AgentHost只读审计目录分类完整、不完整、损坏和锚点不匹配",
+        AgentHostBridgeSessionSpecs.AuditCatalogClassifiesPersistentArtifacts),
     ("AgentHost审计不可继续时会终止Bridge会话",
         AgentHostBridgeSessionSpecs.AuditFailureTerminatesBridgeSession),
     ("AgentHost失败请求只记录稳定错误码",
@@ -28,6 +123,10 @@ var specs = new (string Name, Func<Task> Run)[]
         AgentHostBridgeSessionSpecs.CodexHealthTimeoutCancelsUnderlyingStart),
     ("AgentHost会话CodexHome生成最小配置并按租约清理",
         AgentHostCodexSessionHomeSpecs.CreatesMinimalHomeAndCleansOnDispose),
+    ("AgentHost凭据登录只经stdin并使用隔离home",
+        AgentHostCodexSessionHomeSpecs.CodexAccessTokenLoginUsesStdin),
+    ("AgentHost凭据登录失败、超时和取消均失败关闭且不泄露秘密",
+        AgentHostCodexSessionHomeSpecs.CodexAccessTokenLoginFailuresFailClosed),
     ("AgentHost会话CodexHome拒绝非法身份和重复占用",
         AgentHostCodexSessionHomeSpecs.RejectsInvalidIdentityAndConcurrentOwner),
     ("AgentHost会话CodexHome失败映射稳定审计码",
@@ -46,8 +145,12 @@ var specs = new (string Name, Func<Task> Run)[]
     ("当前用户命名管道可完成请求响应", RequestResponseWorks),
     ("bootstrap方向密钥可完成具体Client到服务端认证", BootstrapDirectionKeysAuthenticateConcreteClient),
     ("通知可单向投递", NotificationWorks),
+    ("Bridge请求与通知字符串投影不泄露JSON载荷", BridgeMessageStringProjectionsAreSafe),
     ("取消消息会取消远端请求", CancellationPropagates),
     ("远端错误被结构化返回", RemoteErrorPropagates),
+    ("远端错误公共异常会分类脱敏且不保留原始诊断", RemoteErrorExceptionIsSanitized),
+    ("Bridge Client公共异常会归一错误码并保留数值脱敏证据",
+        BridgeClientExceptionIsSanitized),
     ("坏MAC被拒绝", BadMacIsRejected),
     ("重复序号被拒绝", ReplayedSequenceIsRejected),
     ("重复nonce被拒绝", ReplayedNonceIsRejected),
@@ -110,6 +213,112 @@ foreach (var spec in selectedSpecs)
 
 Console.WriteLine($"{selectedSpecs.Length - failed}/{selectedSpecs.Length} specs passed");
 return failed == 0 ? 0 : 1;
+
+static int RunFakeCodexLogin()
+{
+    var home = Environment.GetEnvironmentVariable("CODEX_HOME");
+    if (string.IsNullOrWhiteSpace(home) || !Directory.Exists(home))
+    {
+        return 2;
+    }
+
+    var modePath = Path.Combine(home, ".fake-login-mode");
+    var mode = File.Exists(modePath)
+        ? File.ReadAllText(modePath, Encoding.UTF8).Trim()
+        : "success";
+    using var input = Console.OpenStandardInput();
+    using var buffer = new MemoryStream();
+    var chunk = new byte[1024];
+    try
+    {
+        while (true)
+        {
+            var read = input.Read(chunk, 0, chunk.Length);
+            if (read == 0)
+            {
+                break;
+            }
+
+            if (buffer.Length + read > 4 * 1024)
+            {
+                return 3;
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        var bytes = buffer.ToArray();
+        try
+        {
+            if (bytes.Length > 0 && bytes[^1] == (byte)'\n')
+            {
+                Array.Resize(ref bytes, bytes.Length - 1);
+            }
+
+            var digest = SHA256.HashData(bytes);
+            try
+            {
+                var token = Encoding.UTF8.GetString(bytes);
+                try
+                {
+                    var argumentsContainToken = Environment.GetCommandLineArgs()
+                        .Any(argument => argument.Contains(token, StringComparison.Ordinal));
+                    var environmentContainsToken = Environment.GetEnvironmentVariables()
+                        .Cast<System.Collections.DictionaryEntry>()
+                        .Any(entry => (entry.Value as string)?.Contains(
+                            token,
+                            StringComparison.Ordinal) == true);
+                    File.WriteAllText(
+                        Path.Combine(home, ".fake-login-observation"),
+                        "argv=" + argumentsContainToken + ";env=" + environmentContainsToken,
+                        new UTF8Encoding(false));
+                }
+                finally
+                {
+                    token = string.Empty;
+                }
+
+                File.WriteAllText(
+                    Path.Combine(home, ".fake-login-sha256"),
+                    Convert.ToHexString(digest),
+                    new UTF8Encoding(false));
+            }
+            finally
+            {
+                Array.Clear(digest, 0, digest.Length);
+            }
+        }
+        finally
+        {
+            Array.Clear(bytes, 0, bytes.Length);
+        }
+    }
+    finally
+    {
+        Array.Clear(chunk, 0, chunk.Length);
+    }
+
+    if (string.Equals(mode, "fail", StringComparison.Ordinal))
+    {
+        return 17;
+    }
+
+    if (string.Equals(mode, "auth", StringComparison.Ordinal))
+    {
+        File.WriteAllText(
+            Path.Combine(home, "auth.json"),
+            "{\"unexpected\":true}",
+            new UTF8Encoding(false));
+        return 0;
+    }
+
+    if (string.Equals(mode, "hang", StringComparison.Ordinal))
+    {
+        Thread.Sleep(Timeout.Infinite);
+    }
+
+    return 0;
+}
 
 static async Task RequestResponseWorks()
 {
@@ -320,6 +529,50 @@ static async Task NotificationWorks()
     Equal("{\"count\":2}", notification.BodyJson);
 }
 
+static Task BridgeMessageStringProjectionsAreSafe()
+{
+    var requestIdMarker = "bridge-request-id-secret-marker";
+    var notificationIdMarker = "bridge-notification-id-secret-marker";
+    var methodMarker = "bridge-method-secret-marker";
+    var bodyMarker = "bridge-body-secret-marker";
+    object[] messages =
+    {
+        new BridgeRequest(
+            requestIdMarker,
+            methodMarker,
+            $$"""{"credential":"{{bodyMarker}}","path":"C:\\Users\\bridge-user\\private.json"}"""),
+        new BridgeNotification(
+            notificationIdMarker,
+            methodMarker,
+            $$"""{"accessToken":"{{bodyMarker}}","path":"\\\\server\\private"}"""),
+    };
+
+    foreach (var message in messages)
+    {
+        var diagnostic = message.ToString() ?? string.Empty;
+        True(diagnostic.StartsWith(message.GetType().Name, StringComparison.Ordinal));
+        foreach (var marker in new[]
+                 {
+                     requestIdMarker,
+                     notificationIdMarker,
+                     methodMarker,
+                     bodyMarker,
+                     "bridge-user",
+                 })
+        {
+            False(diagnostic.Contains(marker, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    Equal(
+        "BridgeRequest { RequestIdConfigured = True, MethodConfigured = True, BodyJsonConfigured = True }",
+        messages[0].ToString());
+    Equal(
+        "BridgeNotification { NotificationIdConfigured = True, MethodConfigured = True, BodyJsonConfigured = True }",
+        messages[1].ToString());
+    return Task.CompletedTask;
+}
+
 static async Task CancellationPropagates()
 {
     var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -368,6 +621,45 @@ static async Task RemoteErrorPropagates()
     Equal("handler_error", exception.Code);
     Equal("远端请求处理失败。", exception.Message);
     False(exception.Message.Contains("模拟处理失败", StringComparison.Ordinal));
+}
+
+static Task RemoteErrorExceptionIsSanitized()
+{
+    const string secret =
+        "Bearer bridge-secret C:\\Users\\Sensitive\\agent.json user@example.com";
+    var exception = new BridgeRemoteException(
+        "handler_error:C:\\Users\\Sensitive\\code",
+        secret);
+
+    Equal("remote_error", exception.Code);
+    False(exception.Code.Contains("Sensitive", StringComparison.Ordinal));
+    False(exception.Message.Contains("bridge-secret", StringComparison.Ordinal));
+    False(exception.Message.Contains("Sensitive", StringComparison.Ordinal));
+    False(exception.Message.Contains("user@example.com", StringComparison.Ordinal));
+    Equal(DiagnosticDataClassification.RemoteError, exception.DiagnosticClassification);
+    True(exception.DiagnosticRedactions != DiagnosticRedactionKinds.None);
+    True(exception.InnerException is null);
+    return Task.CompletedTask;
+}
+
+static Task BridgeClientExceptionIsSanitized()
+{
+    const string secret =
+        "Bearer client-secret C:\\Users\\Sensitive\\client.json user@example.com";
+    var source = new InvalidOperationException("token=inner-secret");
+    var exception = new AgentBridgeClientException(
+        "bad code:C:\\Users\\Sensitive",
+        secret,
+        source);
+
+    Equal(AgentBridgeErrorCodes.InternalError, exception.Code);
+    False(exception.Message.Contains("client-secret", StringComparison.Ordinal));
+    False(exception.Message.Contains("Sensitive", StringComparison.Ordinal));
+    False(exception.Message.Contains("user@example.com", StringComparison.Ordinal));
+    Equal(DiagnosticDataClassification.Exception, exception.DiagnosticClassification);
+    True(exception.DiagnosticRedactions != DiagnosticRedactionKinds.None);
+    True(exception.InnerException is null);
+    return Task.CompletedTask;
 }
 
 static Task BadMacIsRejected()
@@ -774,7 +1066,12 @@ static async Task LateHandlerFaultIsObservedAndDiagnosable()
 {
     var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var lateHandler = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-    var lateException = new InvalidOperationException("模拟关闭超时后的迟到handler fault。");
+    var marker = "late-handler-secret-marker";
+    var lateException = new InvalidOperationException(
+        "Authorization=Bearer "
+        + marker
+        + " "
+        + @"C:\Users\late-handler-user\fault.log");
     var unobservedLateFault = false;
     void OnUnobservedTaskException(object? _, UnobservedTaskExceptionEventArgs eventArgs)
     {
@@ -808,8 +1105,19 @@ static async Task LateHandlerFaultIsObservedAndDiagnosable()
         lateHandler.TrySetException(lateException);
 
         await WaitUntilAsync(
-            () => ReferenceEquals(server.TerminalError, lateException),
+            () => server.TerminalError is not null,
             TimeSpan.FromSeconds(2));
+        var terminal = server.TerminalError as BridgeTerminalException
+            ?? throw new InvalidOperationException("Expected a safe Bridge terminal snapshot.");
+        True(!ReferenceEquals(terminal, lateException));
+        True(terminal.InnerException is null);
+        Equal(DiagnosticDataClassification.Exception, terminal.DiagnosticClassification);
+        True(
+            (terminal.DiagnosticRedactions & DiagnosticRedactionKinds.Token) != 0
+            && (terminal.DiagnosticRedactions & DiagnosticRedactionKinds.Path) != 0);
+        True(
+            (terminal.Message + " " + terminal)
+                .IndexOf(marker, StringComparison.OrdinalIgnoreCase) < 0);
         await server.DisposeAsync();
 
         GC.Collect();
@@ -998,14 +1306,35 @@ static async Task NotificationHandlerFailureAbortsConnection()
     var pair = await CreatePairAsync();
     await using var server = pair.Server;
     await using var client = pair.Client;
+    var marker = "bridge-handler-secret-marker";
+    var sourceFailure = new InvalidOperationException(
+        "Authorization=Bearer "
+        + marker
+        + " "
+        + @"C:\Users\bridge-user\handler.log",
+        new InvalidDataException("bridge-handler-inner-marker"));
     server.Start(notificationHandler: (_, _) =>
-        throw new InvalidOperationException("模拟通知handler失败。"));
+        throw sourceFailure);
     client.Start();
 
     await client.NotifyAsync("cad.notification.fail", "{}");
-    var exception = await ThrowsAsync<InvalidOperationException>(
+    var exception = await ThrowsAsync<Exception>(
         () => server.Completion.WaitAsync(TimeSpan.FromSeconds(5)));
-    Equal("模拟通知handler失败。", exception.Message);
+    True(!ReferenceEquals(sourceFailure, exception));
+    True(exception.InnerException is null);
+    var publicDiagnostic = exception.Message + " " + server.TerminalError;
+    foreach (var protectedValue in new[]
+             {
+                 marker,
+                 "bridge-user",
+                 "handler.log",
+                 "bridge-handler-inner-marker",
+             })
+    {
+        True(
+            publicDiagnostic.IndexOf(protectedValue, StringComparison.OrdinalIgnoreCase) < 0);
+    }
+
     await client.Completion.WaitAsync(TimeSpan.FromSeconds(5));
     await ThrowsAsync<EndOfStreamException>(
         () => client.NotifyAsync("cad.after_handler_failure", "{}"));

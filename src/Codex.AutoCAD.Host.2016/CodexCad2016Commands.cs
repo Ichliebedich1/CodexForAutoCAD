@@ -203,9 +203,14 @@ namespace Codex.AutoCAD.Host2016
             }
             catch (System.Exception exception)
             {
+                var failure = HostCommandDiagnosticFormatter.FromUnexpectedException(
+                    exception,
+                    HostCommandFailureStages.DrawingIndexStart);
                 editor.WriteMessage(
-                    "\nDrawingIndex 启动失败：{0}。图纸未修改、未保存。\n",
-                    exception.GetType().Name);
+                    "\n{0}\n",
+                    failure.FormatForUser(
+                        "DrawingIndex 启动",
+                        "图纸未修改、未保存。"));
             }
         }
 
@@ -288,13 +293,22 @@ namespace Codex.AutoCAD.Host2016
                 editor.WriteMessage(
                     "\nCadQuery 被拒绝：code={0}, message={1}\n",
                     exception.Code,
-                    exception.Message);
+                    DiagnosticSanitizer
+                        .SanitizeText(
+                            DiagnosticDataClassification.Exception,
+                            exception.Message)
+                        .SafeText);
             }
             catch (System.Exception exception)
             {
+                var failure = HostCommandDiagnosticFormatter.FromUnexpectedException(
+                    exception,
+                    HostCommandFailureStages.DrawingQuery);
                 editor.WriteMessage(
-                    "\nCadQuery 失败：{0}。未修改图纸。\n",
-                    exception.GetType().Name);
+                    "\n{0}\n",
+                    failure.FormatForUser(
+                        "CadQuery",
+                        "未修改图纸。"));
             }
         }
 
@@ -317,13 +331,22 @@ namespace Codex.AutoCAD.Host2016
                 editor.WriteMessage(
                     "\nCadQuery 下一页被拒绝：code={0}, message={1}\n",
                     exception.Code,
-                    exception.Message);
+                    DiagnosticSanitizer
+                        .SanitizeText(
+                            DiagnosticDataClassification.Exception,
+                            exception.Message)
+                        .SafeText);
             }
             catch (System.Exception exception)
             {
+                var failure = HostCommandDiagnosticFormatter.FromUnexpectedException(
+                    exception,
+                    HostCommandFailureStages.DrawingQueryNext);
                 editor.WriteMessage(
-                    "\nCadQuery 下一页失败：{0}。未修改图纸。\n",
-                    exception.GetType().Name);
+                    "\n{0}\n",
+                    failure.FormatForUser(
+                        "CadQuery 下一页",
+                        "未修改图纸。"));
             }
         }
 

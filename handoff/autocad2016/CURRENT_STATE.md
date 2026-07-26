@@ -1,6 +1,6 @@
 # AutoCAD 2016 当前状态索引
 
-最后更新：2026-07-24（北京时间）
+最后更新：2026-07-26（北京时间）
 
 本文件是项目的长期“当前状态索引”。它不替代 `README_FIRST.md`、
 `COMPANY_PC_RUNBOOK.md`、测试报告、证据 JSON 或 Git 历史；只把当前成立的结论、
@@ -16,7 +16,7 @@
 若摘要与原始证据冲突，以更具体、更新且可复现的原始证据为准。没有真实编译和
 NETLOAD 证据的能力一律视为未支持。
 
-## 当前活动快照（2026-07-24）
+## 当前活动快照（2026-07-26）
 
 - P0 `codex/bridge-client-net45` 的 0.3.2 停止生命周期候选已由用户在 AutoCAD 2016
   中完成人工启停、重复 STOP、DBMOD 和残留检查；独立提交为 `8a4ee57`，实机证据为
@@ -243,8 +243,9 @@ NETLOAD 证据的能力一律视为未支持。
   切口已完成，但 M4.11 凭据 Broker 完成前仍不得复制或解析全局 profile。详见
   `M4_3_CODEX_SESSION_HOME_BASELINE_20260724.md`。
 - M4 第三进程树边界已接入真实 AgentHost 启动链：校验后的 AgentHost 会在恢复前进入具有
-  `KILL_ON_JOB_CLOSE` 的未命名 Windows Job Object；普通后代由该 Job 统一回收。当前未提交
-  M4.6 切口新增分配前任意 Job 成员检测、分配后目标 Job 成员反查和结构化隔离失败；本机
+  `KILL_ON_JOB_CLOSE` 的未命名 Windows Job Object；普通后代由该 Job 统一回收。
+  M4.6–M4.9 自动化检查点已提交为 `15352ff`，包含分配前任意 Job 成员检测、分配后目标 Job
+  成员反查和结构化隔离失败；本机
   Windows 已真实验证外层/内层嵌套 Job 分配。Stop、AgentHost 异常退出和拥有 Job 的启动器
   退出后进程树回收、资源限制、累计用户时间终止和连续 `500` 次 service 启停回收均进入
   net45/net8 专项门禁。企业组策略、Windows 版本和宿主 Job 组合矩阵仍未验证，不能据此
@@ -256,7 +257,7 @@ NETLOAD 证据的能力一律视为未支持。
   移动/替换，不同 session 可并发；STOP 在进程、stderr 和 I/O 全部收口后删除工作区，失败可由
   后续 STOP 重试。默认过期阈值 `24 h`、单次最多扫描 `64` 个候选，只清理带合法 marker、
   合法 ACL、已过期且 `.active` 可独占打开的目录；无 marker legacy 目录和活动 lease 保留。
-  自动化切口已完成，企业/AutoCAD 实机矩阵和独立 Git 提交仍缺；`codex-home` 已创建但 M4.11
+  自动化切口已完成并包含在 `15352ff`，企业/AutoCAD 实机矩阵仍缺；`codex-home` 已创建但 M4.11
   凭据 Broker 完成前不得作为生产隔离登录入口。
 - M4.9 当前自动化切口已进入真实默认启动路径：Job 默认限制为最多 `16` 个进程、总提交内存
   `4 GiB`、CPU hard cap `75%`、累计用户时间 `8 h`，认证服务墙钟上限为 `24 h`；停止前自然
@@ -271,17 +272,222 @@ NETLOAD 证据的能力一律视为未支持。
   提交内存继续作为硬边界，working set 只作为外部性能 telemetry 和发布预算。真实
   Codex/AutoCAD 耗尽矩阵和企业配置策略仍未完成，因此 M4.9 仍是进行中。技术说明见
   `M4_9_RESOURCE_LIMIT_TERMINALS_20260724.md`。
+- M4.11 当前未提交切口已完成默认禁用凭据配置、产品专属 Windows Credential Manager
+  target 校验、Generic Credential 的 `4 KiB` 有界二进制读取、稳定
+  `agenthost_credential_unavailable`、幂等 Dispose 原位清零、认证一次性凭据帧以及
+  AgentHost 的隔离 `CODEX_HOME` + stdin 登录调用链。fake Codex 已覆盖成功、非零退出、
+  `auth.json`、超时、取消和 argv/环境不含 token；Bridge 为 `53/53`，AgentLauncher
+  net45/net8 各 `63/63`，完整 bootstrap 门禁为 `63/63`。真实 Credential Manager、
+  Codex/keyring、RestrictedToken 全链和 AutoCAD/企业矩阵仍缺，因此不能称为生产 Broker
+  完成。详见 `M4_11_CREDENTIAL_BROKER_BOUNDARY_20260725.md`。
+- M4.12 bounded JSONL 已升级为 `codex.autocad.agenthost.audit/2`：并发记录保持完整、
+  部分写入留下可检测截断尾部并永久 fail-closed；CAD 写入事件仍等 M5 调用链接入。
+- M4.13 当前未提交切口已进入真实 `bootstrap-serve`：生产审计不再位于会被 STOP 删除的
+  session workspace，而是写入当前用户独立持久根的受保护 `segments` 与 `anchors` 子目录。
+  JSONL 和 anchor 分目录、CreateNew、耐久更新；session workspace 删除后仍可验证。单段达到
+  `10,000` 条或 `4 MiB` 时自动轮转，新段继承上一段 hash，默认最多 `64` 段。删除、
+  插入、修改、截断、anchor 篡改、跨段重排、旧文件防覆盖和 STOP 后保留均有规格。新增只读
+  `AgentHostAuditCatalog`，仅在真实受保护审计根上枚举并分类 `complete`、`incomplete`、
+  `corrupt`、`anchor_mismatch`；只有 `session_stopped/session_failed` 终态链才是 `complete`，
+  强杀留下的哈希/anchor 一致但无终态前缀标为 `incomplete/session_not_terminal` 并禁止导出。
+  临时 anchor、缺段、缺 anchor、链损坏和身份/锚点不一致均不自动修复、删除或覆盖。Bridge Specs `73/73`，双 Shell Phase 2 `392/392`，
+  bootstrap net8/net45 各 `63/63`，Release `0 warning / 0 error`，残留 AgentHost/FakeAgentHost
+  为 `0`。受控 `audit-export --session <system-session-id>` 已接入 AgentHost：不接受任意路径或
+  `--output`，固定读取当前用户受保护审计根，只导出 Catalog 的 `complete` 会话；先在内存中
+  完成验链和脱敏 JSON，再写标准输出，失败只返回稳定错误码且不产生半份 JSON。完整、缺
+  anchor、链损坏、anchor mismatch、无终态崩溃前缀、非法 session ID 和不可写目标均有规格。
+  新增只读 `audit-retention-plan`：策略参数必须显式提供，固定读取受保护根，只计算年龄/容量
+  候选且不删除文件；最低完整会话保留集不可覆盖，非终态/损坏/anchor mismatch 固定人工复核，
+  未识别文件计入容量但不成为候选，计划不输出路径。规格还验证规划前后 artifact 数量、长度、
+  时间和哈希不变，以及越界、非 UTC 和超大 artifact 被拒绝。`audit-retention-apply` 已接入
+  AgentHost：要求显式策略和只读计划返回的 64 位小写 plan ID，执行前重新验链和重算计划；
+  独立受保护 `retention-control` 目录保存排他锁、全计划耐久 journal 和完成 receipt。journal 在
+  首个删除前原子提交，绑定每个会话的精确段数及各 artifact 的长度、UTC 时间和 SHA-256；恢复
+  会重新哈希剩余文件。计划变化、文件变化、日志损坏、不同计划遗留日志和并发 apply 均失败关闭；
+  中断可用同一 plan ID 恢复，完成后重复 apply 返回 `already_applied`。Bridge Specs 专用子进程
+  现已执行真实 `Apply`，在 journal 耐久提交并删除首个 anchor 后由父进程强杀；新租约使用原
+  plan ID 完成恢复，保留最低会话、清除 journal，且无残留工作器。已知 control artifact 现在
+  有界收敛：最多保留最近 `256` 份 receipt；更旧 receipt 在删除前逐份耐久折叠到固定
+  `audit-retention-receipt-checkpoint/1` 累计链，检查点记录最后 receipt 哈希和严格游标。检查点
+  已提交但 receipt 尚未删除时可恢复且不重复累计；已有有效 final receipt 的 foreign temp 会被
+  清除，没有 final 的 foreign temp 保持冲突并要求原计划恢复。当前仍不是后台自动清理或自动
+  修复；企业默认策略、系统断电、真实生产 AgentHost/AutoCAD 异常退出、未知/恶意 control
+  artifact 的企业归档流程、签名/HMAC 强化和企业/AutoCAD 实机仍缺，因此 M4.13 继续为进行中。
+- M4.13 受控清理的命令、journal/receipt 协议、故障恢复和未完成边界见
+  `M4_13_AUDIT_RETENTION_CLEANUP_20260725.md`。
+- M4.14 已完成多个真实纵切：Contracts 新增按来源分类的有界 `DiagnosticSanitizer`，统一
+  清除 Bearer/敏感键值、带引号 JSON secret、Windows/UNC 路径、URI、域账号/邮箱身份、
+  控制字符和双向格式字符；输入上限 `4096`、公开输出上限 `512`，正则超时返回固定安全
+  fallback。Bridge 服务端 `BridgeRemoteException`、客户端 `AgentBridgeClientException` 与
+  `AgentBridgeRemoteException` 已接入该边界：合法稳定错误码保持兼容，非法远端码分别归一为
+  `remote_error`/`internal_error`，消息、错误码和嵌套异常只贡献分类与数值脱敏证据，不再
+  保留可能含 argv、环境、路径或凭据的原始 inner exception。反向整图查询
+  的真实跨进程响应已证明只回传清洗后错误文本。AppServer stderr 原本即为只含字节数和截断位
+  的无文本摘要；其 RPC 异常现在不再保留原始 JSON data，只公开 `DataWasPresent`、脱敏标志与
+  清洗后消息，所有公开 AppServer 异常也不再保留任意原始 inner exception。AppServer 公开异常
+  已显式携带诊断分类与数值脱敏计数：配置/版本预检为 `Configuration`、RPC 为 `RemoteError`、
+  通用/协议异常为 `Exception`。AgentHost 未知命令不再原样回显任意首参数，只输出分类后的清洗
+  命令、数值脱敏计数和固定 usage。Contracts 进一步覆盖设备命名空间路径、带空格/引号路径、
+  转义 JSON secret、完整 URI 变体，以及最多 `16` 节点/深度 `8` 的嵌套与聚合异常图。
+  `AgentBootstrapLaunchException` 已按配置/凭据、进程环境、stderr 和通用异常映射稳定分类，
+  直接诊断和异常图只贡献数值脱敏证据，不保存原文、inner exception、堆栈或 `Data`。
+  `doctor`/`run` 成功状态已改为最小公共 DTO，不再公开 App Server 原始 `userAgent`、
+  `platformOs`、`platformFamily` 或 `codexHome`。AppServer `ProtocolFaulted` 事件也不再
+  保留任意观察者原始异常、StackTrace、`Data` 或 inner graph，只公开固定消息安全快照、
+  稳定分类和数值脱敏标志。AppServer 的服务端请求失败响应也已在唯一
+  `WriteErrorAsync` 出站边界收口：JSON-RPC 数值 code 保留，message 按 `RemoteError`
+  分类执行有界脱敏，处理器提供的任意原始 JSON data 不再写回本机 Codex 子进程，只保留
+  `diagnosticClassification`、数值 `diagnosticRedactions` 和 `sourceDataWasPresent`。
+  真实传输规格先 RED `36/37`，后 GREEN `37/37`。三个 AgentHost 审计 CLI 命令现在统一经过
+  最外层失败边界；未预期异常只输出固定 `agenthost_audit_failure`、稳定 error code、
+  `errorStage=agenthost_audit`、分类和数值脱敏标志，不再由 .NET 主机泄露异常类型、消息或堆栈，
+  已有 `invalid_arguments`、`audit_*_rejected` 和闭集 ReasonCode 保持不变。Contracts
+  `99/99`、AppServer `44/44`、Bridge `80/80`、AgentLauncher net8/net45 各 `63/63`、
+  Bridge.Client `31/31`、AgentRuntime `39/39`、Host.2016 MVP `59/59`，双 Shell Phase 2
+  `415/415`，
+  Release `0 warning / 0 error`；禁用 API、doctor、敏感信息扫描和差异检查通过，相关进程残留
+  为 `0`。Host.2016 Palette/Bridge 断线与 `CODEX16QUERY`/`CODEX16QUERYNEXT` 命令行错误
+  已在最外层统一脱敏；邮箱或域账号紧邻中文时也不会绕过身份脱敏。AgentHost `doctor/run`
+  通用 CLI 失败现在返回稳定 `agenthost_cli_failure`、`errorStage=agenthost_cli`、分类和数值
+  脱敏标志；协议故障 stderr 与 `bootstrap-doctor/bootstrap-serve` CLI 失败也不再输出 CLR
+  类型名。AppServer Client 与底层 transport 的 stderr 摘要观察者已逐项隔离，观察者异常不能
+  中断 stderr 排空、退出传播或后续观察者；Client 只经固定安全 `ProtocolFaulted` 快照报告。
+  AgentRuntime 的 projection/observer 公共诊断也不再保留原始异常图，动态工具校验失败原因在
+  进入事件或回传 Codex 前按 `RemoteError` 脱敏；失败 turn 只保留 `id`、`status` 和脱敏后的
+  `error.message`，observer 失败只保留事件类型安全快照，不再持有原始 Agent 事件。Bridge
+  公共 `Completion`/`TerminalError` 也已改为固定 `BridgeTerminalException` 安全快照。
+  DrawingIndex 启动、CadQuery 和 CadQuery 下一页三个 Host.2016 通用 catch 分支统一输出稳定
+  code/stage、分类和数值脱敏标志，不再输出 CLR 类型名；目标 net45/x64 产品构建为
+  `0 warning / 0 error`。配置请求和 AppServer 启动配置的 record 字符串不再展开路径、
+  完整 PATH、参数或环境；AgentRuntime options/handle/input 不再展开路径、提示词、Provider
+  标识或 schema；Bridge request/notification 不再展开完整 `BodyJson`。AppServer initialize
+  response、notification、server request、RPC error、request resolution、turn interrupt 和
+  approval event 包装器也只报告存在性、成功状态或数值错误码，不再递归输出 CodexHome、
+  Provider ID、method、JSON、错误正文、任意 result 或审批 payload；wire JSON 与处理器字段
+  保持不变。AgentRuntime 的 turn handle、item snapshot，以及消息增量、工具进度、turn、
+  review、CAD proposal/rejection 和四类审批事件的字符串也已收敛为类型、枚举和存在性摘要，
+  不再展开 Provider IDs、回复内容、工具 JSON、错误正文或审批 payload；真实事件字段、投影与
+  审批转发保持不变。AppServer 的四类审批请求、嵌套权限/网络/文件系统模型、响应、CAD 文档
+  身份、变更摘要和预览对象也只报告类型、存在性、枚举和数量，不再展开命令、工作目录、授权
+  路径、Provider ID、理由、策略修订或预览 JSON；wire JSON 和审批决策保持不变。
+  AppServer initialize 请求侧的 client info、capabilities 和 params 也只输出配置存在性、
+  布尔能力与数量，不再展开任意客户端名称、标题、版本或方法列表；initialize wire JSON 不变。
+  AgentRuntime 的 CAD 点、`create_line` 提案、提案批次与 Broker 结果 record 字符串也已收口，
+  不再展开坐标、图层、Provider IDs 或结果正文；强类型属性、解析与 Broker 语义不变，CAD 写入
+  仍禁用。
+  `AgentHostAuditException`
+  已追踪到生产 Bridge/CLI/导出/UI 边界，当前没有 raw inner 外逃路径，未做机械重构。
+  当前 `Replace`/`Sanitize` 静态复核未发现另一套诊断清洗器，CAD
+  文字摘要、cursor、命令行引用、哈希和原子文件替换保持原语义。
+  AgentRuntime、Bridge、Host、AgentHost 审计导出/保留、CLI JSON、Doctor/Run、
+  Host BuildInfo、DrawingIndex/CadQuery 和剩余公共 record/EventArgs 字符串出口已完成静态
+  复核，未发现新的可复现公共泄漏。M4.14 的代码、自动化和静态公共出口审计已收口；真实
+  Codex、AutoCAD、组策略、EDR、受限账户和系统断电故障验证转入 M4.15。详见
+  `M4_14_DIAGNOSTIC_SANITIZATION_20260725.md`。
+- M4.15.1 已把 Windows/企业策略阻止 AgentHost 启动接入正式失败链：当前用户
+  `ERROR_ACCESS_DENIED`（5）、`ERROR_INVALID_IMAGE_HASH`（577）、
+  `ERROR_ACCESS_DISABLED_BY_POLICY`（1260）和应用阻止错误 4551–4557 映射为稳定
+  `agenthost_process_start_blocked`；RestrictedToken 的普通访问拒绝仍保持
+  `process_isolation_failed`。Host UI 返回脱敏、不可自动重试的管理员检查提示，不公开原始
+  Win32 正文、路径或异常图。该纵切只证明分类和调用链，不代表真实 AppLocker、WDAC、
+  EDR/杀毒或企业组策略机器已验证。详见
+  `M4_15_ENTERPRISE_POLICY_FAILURE_20260726.md`。
+- M4.15.2a 已把嵌套 Job 分配拒绝从泛化隔离失败中分离：正式
+  `AssignProcessToJobObject` 失败链在目标进程已属于父 Job 时返回不可自动重试的
+  `agenthost_nested_job_assignment_failed`，Host 提示管理员检查父 Job 和进程隔离策略；
+  原始 Win32 正文、路径和异常图仍不可见。既有本机正向嵌套 Job 运行规格继续通过，失败后
+  挂起 AgentHost 由原启动清理链终止，绝不无 Job 回退。真实不可嵌套父 Job、企业启动器、
+  EDR 和受限账户尚未验证。详见 `M4_15_NESTED_JOB_FAILURE_20260726.md`。
+- M4.15.3a 已把 AgentHost 根进程意外退出接入独立结构化终态：正常 STOP 和资源限制保持
+  `ProcessExit=None`，只有没有资源终态的自行退出才发布不可自动重试的
+  `agenthost_unexpected_exit`。Host 在 Bridge fault 归因窗口内保持资源终态优先，再由进程
+  退出胜过泛化断线；活动请求只进入一次 `failed`，后续 ASK fail-closed，原始 Bridge 诊断、
+  stderr、路径和异常图不可见。真实 Codex/AgentHost/AutoCAD 强杀仍未验证。详见
+  `M4_15_AGENTHOST_UNEXPECTED_EXIT_20260726.md`。
+- M4.15.3b 已把进行中的 AgentHost 启动令牌纳入 Host STOP/退出生命周期：STOP 在后台先取消
+  bootstrap/Bridge/thread 启动，再等待并清理已建立资源；预期中断不误报“启动失败”，不能在
+  STOP 后上线，重复 STOP 不增加第二终态。真实 AutoCAD/Codex 分阶段启动中断仍未验证。详见
+  `M4_15_STARTUP_INTERRUPTION_20260726.md`。
+- M4.15.5a 已把 `retention-control` 顶层 inventory 纳入只读计划状态：合法中断文件报告
+  `recovery_required`；未知文件/目录、reparse、超限/不可读或严格 schema 无效的控制 artifact
+  报告 `manual_review_required`。计划只输出计数、闭集原因和必要 plan hash，不输出文件名、路径
+  或内容；执行器持锁后重新检查，未知/危险/inventory 不完整时使用同名稳定原因码拒绝且不删除
+  原证据。真实磁盘满、系统断电、企业归档和保留策略仍未验证。详见
+  `M4_15_RETENTION_CONTROL_REVIEW_20260726.md`。
+- M4.15.5b 已增加明确标注为 synthetic 的持久化 I/O 故障夹具：审计流写入或独立锚点提交失败
+  后永久 fail-closed，Bridge 会话终止且不补写第二终态；retention 在 journal/receipt/checkpoint
+  原子提交边界统一返回稳定 `cleanup_failed`。journal 提交前不删除 artifact，提交后保留
+  `recovery_required`；同一 plan ID 重试只收敛一次，再次执行固定 `already_applied`。公共错误只
+  输出稳定码、阶段、环境分类和数值脱敏标志。它不等同于真实磁盘满、卷离线或断电。详见
+  `M4_15_PERSISTENCE_IO_FAILURE_20260726.md`。
+- M4.15.6 自动化收口证据已完成：Phase 2 新增可选脱敏 JSON 输出并继续动态统计九个规格项目；
+  新增 R20.1/.NET Framework 4.5/x64 Host 双隔离构建门禁；新增严格 fail-closed 的 readiness
+  汇总器，绑定双 Shell Phase 2、Agent bootstrap、认证原语、R20.1 Host、源码 manifest、锁文件、
+  用户 PATH 长度/哈希、秘密/API 扫描和相关进程残留。PowerShell 7 与 Windows PowerShell 5.1
+  均通过汇总器自检和正式汇总，输出语义等价；状态固定为 `automated_readiness_only`，
+  `M4Complete=false`、`M416Frozen=false`。真实凭据、受限身份、磁盘满、断电、异常退出、企业
+  执行控制和企业归档全部保持未验证。详见 `M4_15_AUTOMATED_READINESS_20260726.md`。
+- M4.1 分层策略模型已补齐并接入真实调用链（本轮新增，未提交）。Contracts 新增
+  `AgentPolicyContracts.cs` 与 `AgentPolicyResolver.cs`：机器策略 > 管理员 > 用户三层合并，
+  低优先级层只能收窄白名单不能扩大，被高层锁定的项低层不得改动，未知/损坏/旧版本/缺省缺失/
+  白名单为空/超限/默认值越界全部 fail-closed 且不返回部分策略，错误码为稳定闭集。
+  `CodexAgentRuntime` 的三处 `options.Model ?? _options.Model` 直接穿透已全部改走唯一出站边界
+  `ResolveModelForWire`：配置策略时按白名单、锁定和默认值校验，未配置策略时仍拒绝危险形态
+  （空白、引号、控制字符、路径分隔符、超长值），返回值即实际被下发的模型。
+  AgentHost 新增 `AgentHostPolicyStore.cs` 从固定位置读取三层配置（ProgramData 机器/管理员、
+  LocalAppData 用户），产品入口不接受任意源路径，拒绝相对路径、UNC、设备命名空间、非固定盘，
+  并逐段检查路径链 reparse point，有界读取 `64 KiB`，未知字段与自行声明 `layer` 均 fail-closed。
+  生产 `bootstrap-serve` 已在启动 Agent 运行时前加载策略：三层皆缺失表示管理员未部署策略，
+  保留仅形态校验的兼容行为；任一层存在却不可用则以 `AgentHostPolicyConfigurationException`
+  拒绝启动，绝不静默降级为无白名单。规格由 `421` 增至 `454`（Contracts `118`、
+  AgentRuntime `43`、Bridge `93`），双 Shell Phase 2 均为 `454/454`。真实企业策略分发、
+  组策略锁定和 AutoCAD 实机仍未验证。
+- M4.16 完成条件的自动化保证已补上（本轮新增，未提交）。原 `Assert-NoForbiddenHostApi` 只扫描
+  `src\Codex.AutoCAD.Host.2025`，而 M4.16 要求硬禁用的是生产宿主 Host.2016，该 Host 此前不在
+  任何禁用 API 门禁覆盖内。新增 `Assert-NoCadWriteInHost2016` 并接入 Phase 2 主流程：不照搬
+  Host.2025 全套规则（Host.2016 作为真实只读实现合法需要 Autodesk 类型、文件 IO 和
+  `Assembly.Location`），只精确禁止 CAD 数据库写入、图纸保存导出、命令字符串执行和 LISP/脚本
+  四类，按方法调用形态匹配并跳过纯注释行，避免把 `AppendEntitySummary` 这类文本格式化方法误判。
+  门禁内建双向自检：`10` 个写入样例必须识别，`6` 个只读样例不得误报。端到端负向验证以临时探针
+  精确报出 `5` 处写入（仅文件名与行号，不含绝对路径），双 Shell 消息一致，探针已移除。
+  当前结论：Host.2016 `OpenMode` 全部为 `ForRead`，扫描 `31` 个源文件 `0` 处写入调用。
+  M4.16 仍未完成——尚缺从已提交源码构建的候选、回滚点和资源/身份 evidence 绑定。
 - M4.4/M4.5 已在当前集成分支提交为 `0763022`：产品公共配置、导出类型和公开结果不再
   暴露实验身份选择；RestrictedToken 只保留为 internal-only 可移植能力探针，且任何结果
   都禁止回退 CurrentUser。本机 net45/net8 原语均为 `available`，受限 FakeAgentHost
   均在认证前以 `child_exited` 退出；这不是生产受限身份成功。详情见
   `M4_4_M4_5_RESTRICTED_IDENTITY_PROBE_20260724.md`。
-- 当前 `codex/m4-integration@4233b024` 加未提交 M4.6/M4.8/M4.9 切口的专项 AgentLauncher
-  net45/net8 各为 `57/57`，Host MVP 为 `56/56`；
-  PowerShell 7 与 Windows PowerShell 5.1 的完整 Phase 2 均为 `360/360`，Bridge 为
-  `49/49`，认证兼容 net45/net8 各为 `35/35`，Release 为 `0 warning / 0 error`。
+- 当前 `codex/m4-credential-broker` 基于已提交检查点 `15352ff`，叠加未提交 M4.11–M4.15.6
+  切口；AgentLauncher net45/net8 各为 `65/65`，Bridge 为 `83/83`，Host MVP 为 `61/61`，完整
+  bootstrap 门禁 net45/net8 各为 `65/65`；PowerShell 7 与 Windows PowerShell 5.1 的完整 Phase 2 均为
+  `421/421`，AppServer 为 `45/45`，Release 为 `0 warning / 0 error`。本轮 bootstrap evidence 为
+  `artifacts/autocad2016-agent-bootstrap-10953306bc014e74bd2d2d6f5b6de8af/verification.json`，
+  AgentHost DLL SHA-256 为
+  `780D3CD57786CC624D8A033B2069E41095F7119EE4E695110D7E94E8CCB399D2`。
+- 叠加 M4.1 与 M4.16 门禁切口后的最新自动化状态（2026-07-26，仍未提交）：双 Shell Phase 2 均为
+  `454/454`，Bridge 为 `93/93`，Contracts 为 `118/118`，AgentRuntime 为 `43/43`，Release 为
+  `0 warning / 0 error`；`agent-bootstrap`、`auth-compat`、R20.1 Host 构建与 readiness 汇总器
+  六项门禁全部通过、`0` 失败。Host DLL SHA-256 保持
+  `9827DC321B7D458594B007085C78C54505CBE09CEF1BDEFB616D2ABFDFCFB5E8`，AgentHost DLL 因策略接入
+  更新为 `7C8817385E8877D2…`，源码 manifest 为 `5E03A66F8A53A417…`（`350` 个文件）。
+  用户 PATH 保持 `661` 字符、`13` 项、`0` 污染项，UTF-8 SHA-256
+  `05DF0D2FFC86D41186216560D37CC16FA0159ED5CEF9A89F61042964C196BE59` 全程不变，
+  相关残留进程为 `0`。readiness 仍固定 `automated_readiness_only`、`M4Complete=false`、
+  `M416Frozen=false`、`AutoCadStartedOrCommanded=false`、`CadWriteEnabled=false`。
+- 构建产物根已由 `<Worktree>\artifacts` 迁至 `E:\cxb\<Worktree>\`。历史产物迁移共
+  `17` 个 Worktree、`249,268` 个文件、`44.465 GiB`，逐个校验文件数、总字节数、逐文件相对路径与
+  长度，以及 `26,878` 个关键文件（`verification.json`、`manifest*.json`、`Codex.AutoCAD*.dll`）
+  的 SHA-256 后才删除精确源目录；C 盘可用空间由 `26.45 GiB` 增至约 `71.4 GiB`。
+  `C:\tmp\CodexForAutoCAD-docsync` 是指向 D 盘主仓库的 junction，已排除且全程未触碰。
+  产物根路径长度现由 `Resolve-CodexArtifactRoot` 以 `60` 字符上限 fail-closed 预检：迁移初期
+  使用较长基目录曾使 net45 隔离构建路径达到 `267` 字符，超过 MAX_PATH `260`
+  （本机 `LongPathsEnabled=0`），导致 `agent-bootstrap` 与 `auth-compat` 以 `MSB3030` 失败。
   R20.1 双 Shell API Probe 为
   `29 passed / 8 expected failed`、Autodesk DLL 复制数 `0`。
+  本轮 R20.1/.NET Framework 4.5/x64 Host A/B 重建也逐字节一致，Host SHA-256 为
+  `9827DC321B7D458594B007085C78C54505CBE09CEF1BDEFB616D2ABFDFCFB5E8`。
+  当前自动化 readiness 输入位于 `artifacts/m4-readiness-inputs/`，汇总状态为
+  `automated_readiness_only`；这些 artifacts 未提交，也不替代真实机器或企业 evidence。
 - M4 阶段编排器已升级为 bootstrap schema 16、九项目 Phase 2 冻结矩阵和条件锁文件异常
   路径恢复；Bridge Client 反向查询取消测试不再依赖负载敏感的 200 ms 调度窗口。PowerShell 7
   与 Windows PowerShell 5.1 最终阶段门禁均通过，正式 evidence 为
@@ -301,10 +507,11 @@ NETLOAD 证据的能力一律视为未支持。
   正式 M3 候选，也不是 M4.16 安全候选；未启动 AutoCAD、未取得 NETLOAD 或真实 Codex
   进程树证据。脱敏边界见 `evidence/m4-integration-checkpoint-20260724.json`。
 - 当前 M4.1 配置、M4.2 版本/健康预检和 M4.3 环境/session-home 基础均已进入代码；
-  M4.4/M4.5 已完成代码、自动化和当前分支受控提交。M4.2/M4.3 仍缺正式候选实机和生产
-  隔离登录；M4.6/M4.8 当前切口已通过自动化和双 Shell 阶段门禁，但尚未提交，且企业/
-  AutoCAD 实机矩阵仍缺。M4.7 生产身份隔离仍未完成。
-  M4.11 凭据 Broker、组合/实机配额矩阵、磁盘硬配额、JSONL 哈希链审计、统一脱敏和
+  M4.4/M4.5 已受控提交，M4.6–M4.9 自动化检查点已提交为 `15352ff`。M4.2/M4.3 仍缺正式
+  候选实机和生产隔离登录；M4.6/M4.8/M4.9 的企业/AutoCAD 实机矩阵仍缺。M4.7 生产身份
+  隔离仍未完成。M4.10 固定容量卷只完成未提交的边界预检，M4.11 已完成未提交的自动化
+  传输/登录纵切，但真实凭据、keyring、受限身份和实机验证仍缺。
+  M4.11 后续组合/实机配额矩阵、磁盘硬配额、JSONL 哈希链审计、统一脱敏和
   故障/企业实机矩阵仍未完成，因此 M5 CAD 写入继续禁用。
 - 冻结构建哈希：AgentHost EXE `8C39315A...CE2823A`，AgentHost DLL
   `8E0C3617...6797CF`，net45 Launcher `0DD7DA71...B1B8B`，net8 Launcher
@@ -554,8 +761,27 @@ P0 与 P1 happy path 已通过，不再重复请求相同测试。M1 仍使用 `
    冻结 `0.4.0.0` 候选；等待实机/性能 evidence 后冻结验收预算。
 6. M2 实机/性能 evidence 仍是 M2 完成前提；M3 已开始只读对象语义纵切，但不替代 M2
    验收，也不启用 CAD 写入。随后关闭 M4 沙箱与审计；M4 完成前不启用 M5 CAD 写入。
-7. M4.9 组合耗尽和 working-set 决策已完成自动化；下一切口是真实 Codex/AutoCAD 与企业资源
-   矩阵。M4.10 磁盘硬配额、M4.11 凭据 Broker、M4.12/M4.13 审计和脱敏仍按权威目标顺序推进。
+7. M4.14 的 Contracts、Bridge 公开异常、AppServer RPC/data/通用异常及显式分类、AppServer
+   服务端请求失败响应出站边界、AgentHost
+   未知命令、诊断变体/异常图、AgentLauncher bootstrap 失败边界、`doctor`/`run` 成功状态
+   最小化、通用 CLI 失败、协议故障 stderr、bootstrap CLI 错误，以及 Host.2016
+   Palette/Bridge 断线/CadQuery 命令行公共错误、AgentHost 审计 CLI 最外层失败、AppServer
+   stderr 观察者隔离、AgentRuntime 公共诊断/失败 turn/observer 快照、动态工具校验出站、
+   Bridge terminal 安全快照、远端异常错误码归一与数值脱敏证据、Host.2016
+   DrawingIndex/CadQuery 通用命令 catch，以及
+   AppServer/AgentRuntime/Bridge 敏感 record 字符串和审批 payload 投影纵切已完成；
+   剩余公共出口静态审计亦已收口，M4.14 完成。M4.15.1 已完成企业策略阻止进程启动的稳定
+   分类、脱敏 Host 提示和正式调用链接线；M4.15.2a 已增加嵌套 Job 分配拒绝的独立稳定错误、
+   无 Job 回退禁令和 Host 提示；M4.15.3a 已增加 AgentHost 意外退出的独立稳定终态、资源优先
+   竞态和 Host fail-closed 路径；M4.15.3b 已让 STOP/退出主动取消进行中的 AgentHost 启动并
+   保持唯一停止终态；M4.15.5a 已让未知/恶意 retention control artifact 显式转人工复核并
+   阻止清理；M4.15.5b 已证明受控持久化 I/O 故障的 fail-closed、可恢复和单次收敛边界；
+   M4.15.6 已把双 Shell、R20.1 候选哈希、认证/bootstrap、PATH 指纹、秘密/API 扫描和进程残留
+   绑定为仅自动化就绪 evidence；真实
+   AppLocker/WDAC/EDR、不可嵌套父 Job、真实进程强杀、启动中断、磁盘满、
+   系统断电和企业归档环境尚未验证；
+   M4.10 磁盘硬配额、M4.11 生产凭据 Broker、M4.13 企业保留策略，以及 M4.15 真实
+   Codex/AutoCAD 与企业故障矩阵仍按权威目标推进；M4 完成前不进入 M5 写入调用链。
 
 ## 更新纪律
 

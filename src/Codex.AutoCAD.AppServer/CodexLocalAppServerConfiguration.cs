@@ -1,3 +1,5 @@
+using Codex.AutoCAD.Contracts;
+
 namespace Codex.AutoCAD.AppServer;
 
 /// <summary>Identifies the approved local source of the Codex executable without exposing its path to callers.</summary>
@@ -28,7 +30,7 @@ public sealed class CodexLocalConfigurationException : AppServerException
     public CodexLocalConfigurationException(
         CodexLocalConfigurationFailure failure,
         string message)
-        : base(message)
+        : base(message, DiagnosticDataClassification.Configuration)
     {
         Failure = failure;
     }
@@ -69,6 +71,42 @@ public sealed record CodexLocalAppServerConfigurationRequest
     /// an environment variable, so an unreviewed local override cannot widen the accepted protocol.
     /// </summary>
     public CodexVersionCompatibility? VersionCompatibility { get; init; }
+
+    /// <summary>
+    /// Returns a path-free configuration summary suitable for diagnostics. The request contains
+    /// executable, workspace, temporary, Codex-home, and PATH values that must never be exposed by
+    /// the compiler-generated record string representation.
+    /// </summary>
+    public override string ToString()
+        => nameof(CodexLocalAppServerConfigurationRequest)
+            + " { CommandLineExecutableConfigured = "
+            + FormatConfigured(CommandLineExecutablePath)
+            + ", EnvironmentExecutableConfigured = "
+            + FormatConfigured(EnvironmentExecutablePath)
+            + ", ApplicationDataConfigured = "
+            + FormatConfigured(ApplicationDataDirectory)
+            + ", PathConfigured = "
+            + FormatConfigured(PathValue)
+            + ", WorkingDirectoryConfigured = "
+            + FormatConfigured(WorkingDirectory)
+            + ", TemporaryDirectoryConfigured = "
+            + FormatConfigured(TemporaryDirectory)
+            + ", CodexHomeConfigured = "
+            + FormatConfigured(CodexHomeDirectory)
+            + ", StartupTimeoutSeconds = "
+            + StartupTimeout.TotalSeconds.ToString(
+                "0.###",
+                System.Globalization.CultureInfo.InvariantCulture)
+            + ", ShutdownTimeoutSeconds = "
+            + ShutdownTimeout.TotalSeconds.ToString(
+                "0.###",
+                System.Globalization.CultureInfo.InvariantCulture)
+            + ", VersionCompatibilityConfigured = "
+            + (VersionCompatibility is null ? "False" : "True")
+            + " }";
+
+    private static string FormatConfigured(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "False" : "True";
 }
 
 /// <summary>
@@ -137,7 +175,8 @@ public static class CodexLocalAppServerConfigurationResolver
     public static CodexLocalAppServerConfiguration ResolveForCurrentProcess(
         string? commandLineExecutablePath,
         string workingDirectory,
-        string temporaryDirectory)
+        string temporaryDirectory,
+        string? codexHomeDirectory = null)
     {
         return Resolve(new CodexLocalAppServerConfigurationRequest
         {
@@ -147,6 +186,7 @@ public static class CodexLocalAppServerConfigurationResolver
             PathValue = Environment.GetEnvironmentVariable("PATH"),
             WorkingDirectory = workingDirectory,
             TemporaryDirectory = temporaryDirectory,
+            CodexHomeDirectory = codexHomeDirectory,
         });
     }
 

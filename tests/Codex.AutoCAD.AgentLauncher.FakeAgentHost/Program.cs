@@ -13,19 +13,19 @@ internal static class FakeAgentHostProgram
     internal static int Run(string[] args)
     {
         var mode = GetMode();
+        var serve = args.Length == 1
+            && string.Equals(args[0], "bootstrap-serve", StringComparison.Ordinal);
         if (mode.StartsWith("hang", StringComparison.Ordinal))
         {
             Thread.Sleep(Timeout.Infinite);
             return 99;
         }
 
-        if (mode == "exit42")
+        if (mode == "exit42" && !serve)
         {
             return 42;
         }
 
-        var serve = args.Length == 1
-            && string.Equals(args[0], "bootstrap-serve", StringComparison.Ordinal);
         if (!serve
             && (args.Length != 1
                 || !string.Equals(args[0], "bootstrap-doctor", StringComparison.Ordinal)))
@@ -64,8 +64,32 @@ internal static class FakeAgentHostProgram
         try
         {
             using var keys = payload.DeriveDirectionKeys();
-            using var authenticator = keys.CreateConfirmationOutboundAuthenticator();
             var identity = AgentBootstrapInheritedChannel.GetCurrentProcessIdentity();
+            if (serve)
+            {
+                using var credentialGuard = keys.CreateConfirmationInboundGuard();
+                using var credentialDelivery = AgentCredentialPipeClient.ReceiveAsync(
+                        payload.PipeName,
+                        payload.SessionId,
+                        bootstrapId,
+                        identity.ProcessId,
+                        identity.ProcessCreationFileTime,
+                        credentialGuard,
+                        TimeSpan.FromSeconds(10),
+                        CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
+                if (credentialDelivery.Mode != AgentCredentialDeliveryMode.Disabled)
+                {
+                    return 45;
+                }
+            }
+            if (mode == "exit42")
+            {
+                return 42;
+            }
+
+            using var authenticator = keys.CreateConfirmationOutboundAuthenticator();
             var processId = mode == "identity" ? checked(identity.ProcessId + 1) : identity.ProcessId;
             var confirmation = AgentBootstrapConfirmationProtocol.CreateAgentConfirmation(
                 payload.SessionId,

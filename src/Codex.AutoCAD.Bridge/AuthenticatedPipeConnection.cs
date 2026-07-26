@@ -414,7 +414,7 @@ public sealed class AuthenticatedPipeConnection : IAsyncDisposable
         catch (Exception exception)
         {
             RecordTerminalError(exception);
-            throw;
+            throw Volatile.Read(ref _terminalError)!;
         }
         finally
         {
@@ -772,7 +772,44 @@ public sealed class AuthenticatedPipeConnection : IAsyncDisposable
 
     private void RecordTerminalError(Exception exception)
     {
-        _ = Interlocked.CompareExchange(ref _terminalError, exception, null);
+        ArgumentNullException.ThrowIfNull(exception);
+        var safeException = CreateSafeTerminalError(exception);
+        _ = Interlocked.CompareExchange(ref _terminalError, safeException, null);
+    }
+
+    private static Exception CreateSafeTerminalError(Exception exception)
+    {
+        if (exception is BridgeAuthenticationException authentication)
+        {
+            return new BridgeAuthenticationException(authentication.ValidationCode);
+        }
+
+        if (exception is BridgeCapacityExceededException capacity)
+        {
+            return new BridgeCapacityExceededException(
+                capacity.CapacityKind,
+                capacity.Limit);
+        }
+
+        if (exception is BridgeProtocolException protocol)
+        {
+            return new BridgeProtocolException(
+                protocol.Message,
+                protocol.DiagnosticClassification,
+                protocol.DiagnosticRedactions);
+        }
+
+        if (exception is BridgeTerminalException terminal)
+        {
+            return terminal;
+        }
+
+        var diagnostic = DiagnosticSanitizer.SanitizeException(
+            DiagnosticDataClassification.Exception,
+            exception);
+        return new BridgeTerminalException(
+            diagnostic.Classification,
+            diagnostic.Redactions);
     }
 
     private static void TryCancel(CancellationTokenSource cancellation)

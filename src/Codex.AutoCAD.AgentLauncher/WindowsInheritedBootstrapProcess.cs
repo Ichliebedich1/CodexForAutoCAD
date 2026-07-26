@@ -413,12 +413,13 @@ internal sealed class WindowsInheritedBootstrapProcess : IDisposable
             }
             if (!created)
             {
+                var nativeErrorCode = Marshal.GetLastWin32Error();
                 throw new AgentBootstrapLaunchException(
-                    processIdentityProfile == AgentHostProcessIdentityProfile.RestrictedToken
-                        ? AgentBootstrapLaunchFailure.ProcessIsolationFailed
-                        : AgentBootstrapLaunchFailure.ProcessStartFailed,
+                    AgentBootstrapLaunchFailurePolicy.ClassifyProcessCreationFailure(
+                        nativeErrorCode,
+                        processIdentityProfile == AgentHostProcessIdentityProfile.RestrictedToken),
                     "Creating the AgentHost process failed.",
-                    new Win32Exception(Marshal.GetLastWin32Error()));
+                    new Win32Exception(nativeErrorCode));
             }
 
             processHandle = new SafeKernelHandle(processInformation.hProcess, true);
@@ -1434,7 +1435,8 @@ internal sealed class WindowsProcessTreeJob : IDisposable
         if (!WindowsNative.AssignProcessToJobObject(handle, process))
         {
             throw new AgentBootstrapLaunchException(
-                AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+                AgentBootstrapLaunchFailurePolicy.ClassifyJobAssignmentFailure(
+                    wasAlreadyInJob),
                 wasAlreadyInJob
                     ? "Assigning AgentHost to the nested process-tree job failed."
                     : "Assigning AgentHost to the process-tree job failed.",

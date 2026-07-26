@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$AutoCad2016Dir,
@@ -15,6 +15,9 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'build-safety.ps1')
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $projectPath = Join-Path $repoRoot 'src\Codex.AutoCAD.Host.2016.Palette\Codex.AutoCAD.Host.2016.Palette.csproj'
 $solutionPath = Join-Path $repoRoot 'Codex.AutoCAD.2016.Palette.sln'
 $mainSolutionPath = Join-Path $repoRoot 'Codex.AutoCAD.sln'
@@ -225,7 +228,7 @@ $expectedCommandAttributes = [ordered]@{
     '06000006' = "Autodesk.AutoCAD.Runtime.CommandMethodAttribute::.ctor(string, valuetype [accoremgd]Autodesk.AutoCAD.Runtime.CommandFlags) = {string('CODEX16PALRESET') int32(0)}"
 }
 
-$verificationRoot = Join-Path $repoRoot ("artifacts\autocad2016-palette-verify-{0}" -f [Guid]::NewGuid().ToString('N'))
+$verificationRoot = Join-Path $artifactsRoot ("autocad2016-palette-verify-{0}" -f [Guid]::NewGuid().ToString('N'))
 $outputDirectory = Join-Path $verificationRoot 'bin'
 $baseIntermediateDirectory = Join-Path $verificationRoot 'obj-base'
 $intermediateDirectory = Join-Path $verificationRoot 'obj-compile'
@@ -284,6 +287,8 @@ function Invoke-DotNetIsolated {
 
     $isolatedEnvironment = [ordered]@{
         DOTNET_CLI_HOME = $script:dotnetCliHome
+        # 与 DOTNET_CLI_HOME 同作用域禁止 .NET CLI 把临时工具目录写入用户 PATH。
+        DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
         NUGET_PACKAGES = $script:dotnetNuGetPackages
         NUGET_HTTP_CACHE_PATH = $script:dotnetHttpCache
         DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
@@ -1374,7 +1379,7 @@ if ($copiedAutodeskFiles.Count -ne 0) {
     throw "Autodesk managed assemblies were copied to the Palette output:`n$($copiedAutodeskFiles -join [Environment]::NewLine)"
 }
 
-$rebuildRoot = Join-Path $repoRoot ("artifacts\autocad2016-palette-rebuild-{0}" -f [Guid]::NewGuid().ToString('N'))
+$rebuildRoot = Join-Path $artifactsRoot ("autocad2016-palette-rebuild-{0}" -f [Guid]::NewGuid().ToString('N'))
 $rebuildOutputDirectory = Join-Path $rebuildRoot 'bin'
 $rebuildBaseIntermediateDirectory = Join-Path $rebuildRoot 'obj-base'
 $rebuildIntermediateDirectory = Join-Path $rebuildRoot 'obj-compile'
@@ -1512,3 +1517,4 @@ $customAttributeEvidence = [pscustomobject]@{
     NetLoadVerified = $false
     RuntimeToCandidateBindingVerified = $false
 } | ConvertTo-Json -Depth 8
+Complete-CodexBuildSafety -State $buildSafety -Stage 'palette-verifier' | Out-Null

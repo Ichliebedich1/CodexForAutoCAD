@@ -21,6 +21,7 @@ namespace Codex.AutoCAD.Host2016
             TimeSpan.FromSeconds(1);
         private readonly object sync = new object();
         private readonly TimeSpan turnTimeout;
+        private readonly Func<CancellationToken, Task> startupCheckpoint;
         private AgentHostServiceSession serviceSession;
         private IAgentBridgeClient bridge;
         private string threadId = string.Empty;
@@ -30,6 +31,7 @@ namespace Codex.AutoCAD.Host2016
         private DrawingQueryTurnBinding activeDrawingQueryBinding;
         private string terminalBridgeErrorCode = string.Empty;
         private Task startTask;
+        private CancellationTokenSource startCancellation;
         private Task stopTask;
         private MvpAgentStopCoordinator stopCoordinator;
         private bool online;
@@ -47,6 +49,17 @@ namespace Codex.AutoCAD.Host2016
 
         internal MvpAgentClient()
         {
+            turnTimeout = DefaultTurnTimeout;
+        }
+
+        internal MvpAgentClient(Func<CancellationToken, Task> startupCheckpoint)
+        {
+            if (startupCheckpoint == null)
+            {
+                throw new ArgumentNullException(nameof(startupCheckpoint));
+            }
+
+            this.startupCheckpoint = startupCheckpoint;
             turnTimeout = DefaultTurnTimeout;
         }
 
@@ -93,6 +106,9 @@ namespace Codex.AutoCAD.Host2016
                 _ = MonitorAgentHostResourceLimitAsync(
                     establishedServiceSession,
                     establishedBridge);
+                _ = MonitorAgentHostProcessExitAsync(
+                    establishedServiceSession,
+                    establishedBridge);
             }
         }
 
@@ -124,8 +140,11 @@ namespace Codex.AutoCAD.Host2016
 
                 if (startTask == null)
                 {
+                    var newStartCancellation =
+                        CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    startCancellation = newStartCancellation;
                     startTask = Task.Run(
-                        () => StartCoreAsync(cancellationToken),
+                        () => StartCoreAsync(newStartCancellation),
                         CancellationToken.None);
                 }
 
@@ -910,11 +929,14 @@ namespace Codex.AutoCAD.Host2016
         private async Task StopCoreAsync()
         {
             Task currentStart;
+            CancellationTokenSource currentStartCancellation;
             lock (sync)
             {
                 currentStart = startTask;
+                currentStartCancellation = startCancellation;
             }
 
+            RequestStartupCancellation(currentStartCancellation);
             if (currentStart != null)
             {
                 try
@@ -961,6 +983,7 @@ namespace Codex.AutoCAD.Host2016
 
             MvpAgentTurnState stoppedTurn;
             TaskCompletionSource<bool> turnCancellationCompletion;
+            CancellationTokenSource completedStartCancellation;
             lock (sync)
             {
                 if (currentCoordinator != null && !currentCoordinator.IsComplete)
@@ -970,6 +993,8 @@ namespace Codex.AutoCAD.Host2016
 
                 bridge = null;
                 serviceSession = null;
+                completedStartCancellation = startCancellation;
+                startCancellation = null;
                 stopCoordinator = null;
                 online = false;
                 stoppedTurn = activeTurn;
@@ -979,6 +1004,11 @@ namespace Codex.AutoCAD.Host2016
                 activeDrawingQueryBinding = null;
                 terminalBridgeErrorCode = string.Empty;
                 stopCompleted = true;
+            }
+
+            if (completedStartCancellation != null)
+            {
+                completedStartCancellation.Dispose();
             }
 
             if (stoppedTurn != null)
@@ -992,6 +1022,31 @@ namespace Codex.AutoCAD.Host2016
             }
 
             PublishSafely(StatusChanged, "AgentHost 已停止；CAD 写入仍禁用。");
+        }
+
+        private static void RequestStartupCancellation(
+            CancellationTokenSource startupCancellation)
+        {
+            if (startupCancellation == null || startupCancellation.IsCancellationRequested)
+            {
+                return;
+            }
+
+            try
+            {
+                startupCancellation.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // A concurrently completed startup may already have released the source. STOP still
+                // owns the established Bridge and AgentHost resources through the normal coordinator.
+            }
+            catch (AggregateException)
+            {
+                // Cancellation callbacks cannot be allowed to skip process cleanup. The source is
+                // already cancelled, so StopCore continues by awaiting startup and reclaiming every
+                // resource that reached the Host boundary.
+            }
         }
 
         private MvpAgentStopCoordinator CreateStopCoordinator(
@@ -1152,12 +1207,20 @@ namespace Codex.AutoCAD.Host2016
             });
         }
 
-        private async Task StartCoreAsync(CancellationToken cancellationToken)
+        private async Task StartCoreAsync(
+            CancellationTokenSource startupCancellationSource)
         {
+            var cancellationToken = startupCancellationSource.Token;
             AgentHostServiceSession newServiceSession = null;
             AgentBridgeClient newBridge = null;
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (startupCheckpoint != null)
+                {
+                    await startupCheckpoint(cancellationToken).ConfigureAwait(false);
+                }
+
                 string executablePath;
                 string executableSha256;
                 ResolveAgentHostConfiguration(out executablePath, out executableSha256);
@@ -1231,6 +1294,9 @@ namespace Codex.AutoCAD.Host2016
                 _ = MonitorAgentHostResourceLimitAsync(
                     monitoredServiceSession,
                     monitoredBridge);
+                _ = MonitorAgentHostProcessExitAsync(
+                    monitoredServiceSession,
+                    monitoredBridge);
 
                 lock (sync)
                 {
@@ -1287,22 +1353,43 @@ namespace Codex.AutoCAD.Host2016
                     throw new AggregateException(exception, cleanupFailure);
                 }
 
+                CancellationTokenSource completedStartCancellation = null;
+                bool suppressStartupFailure;
                 lock (sync)
                 {
                     online = false;
+                    suppressStartupFailure =
+                        stopRequested
+                        && cancellationToken.IsCancellationRequested
+                        && exception is OperationCanceledException;
                     if (!stopRequested)
                     {
                         startTask = null;
+                        if (ReferenceEquals(
+                            startCancellation,
+                            startupCancellationSource))
+                        {
+                            completedStartCancellation = startCancellation;
+                            startCancellation = null;
+                        }
                     }
                 }
 
-                PublishSafely(
-                    ErrorChanged,
-                    MvpAgentFailureFormatter
-                        .FromException(
-                            exception,
-                            MvpAgentFailureStages.StartingAgentHost)
-                        .FormatForUser("启动 AgentHost"));
+                if (completedStartCancellation != null)
+                {
+                    completedStartCancellation.Dispose();
+                }
+
+                if (!suppressStartupFailure)
+                {
+                    PublishSafely(
+                        ErrorChanged,
+                        MvpAgentFailureFormatter
+                            .FromException(
+                                exception,
+                                MvpAgentFailureStages.StartingAgentHost)
+                            .FormatForUser("启动 AgentHost"));
+                }
                 throw;
             }
         }
@@ -1374,6 +1461,40 @@ namespace Codex.AutoCAD.Host2016
             }
         }
 
+        private async Task MonitorAgentHostProcessExitAsync(
+            AgentHostServiceSession monitoredServiceSession,
+            IAgentBridgeClient monitoredBridge)
+        {
+            try
+            {
+                var failure = await monitoredServiceSession.ProcessExitFailureTask
+                    .ConfigureAwait(false);
+                if (failure == AgentHostProcessExitFailure.None)
+                {
+                    return;
+                }
+
+                var exception = new AgentHostProcessExitException(failure);
+                TransitionOfflineForAgentHostFailure(
+                    monitoredServiceSession,
+                    monitoredBridge,
+                    exception,
+                    MvpAgentFailureFormatter.FromProcessExitFailure(
+                        failure,
+                        MvpAgentFailureStages.AgentHostRuntime));
+            }
+            catch (Exception exception)
+            {
+                TransitionOfflineForAgentHostFailure(
+                    monitoredServiceSession,
+                    monitoredBridge,
+                    exception,
+                    MvpAgentFailureFormatter.FromException(
+                        exception,
+                        MvpAgentFailureStages.AgentHostRuntime));
+            }
+        }
+
         private void TransitionOfflineForAgentHostFailure(
             AgentHostServiceSession monitoredServiceSession,
             IAgentBridgeClient monitoredBridge,
@@ -1426,7 +1547,7 @@ namespace Codex.AutoCAD.Host2016
                 ErrorChanged,
                 failure
                     .WithRequest(requestId, currentState)
-                    .FormatForUser("AgentHost 资源限制"));
+                    .FormatForUser("AgentHost 运行"));
         }
 
         private void OnBridgeEvent(object sender, AgentBridgeEventReceivedEventArgs args)
@@ -1678,16 +1799,20 @@ namespace Codex.AutoCAD.Host2016
             IAgentBridgeClient faultedBridge,
             AgentBridgeClientException exception)
         {
+            var resourceFailureTask = monitoredServiceSession.ResourceLimitFailureTask;
+            var processExitFailureTask = monitoredServiceSession.ProcessExitFailureTask;
+            if (!resourceFailureTask.IsCompleted && !processExitFailureTask.IsCompleted)
+            {
+                await Task.WhenAny(
+                        resourceFailureTask,
+                        processExitFailureTask,
+                        Task.Delay(AgentHostResourceAttributionWindow))
+                    .ConfigureAwait(false);
+            }
+
             try
             {
-                var resourceFailureTask = monitoredServiceSession.ResourceLimitFailureTask;
-                var completed = resourceFailureTask.IsCompleted
-                    ? resourceFailureTask
-                    : await Task.WhenAny(
-                            resourceFailureTask,
-                            Task.Delay(AgentHostResourceAttributionWindow))
-                        .ConfigureAwait(false);
-                if (ReferenceEquals(completed, resourceFailureTask))
+                if (resourceFailureTask.IsCompleted)
                 {
                     var failure = await resourceFailureTask.ConfigureAwait(false);
                     if (failure != AgentHostResourceLimitFailure.None)
@@ -1712,6 +1837,38 @@ namespace Codex.AutoCAD.Host2016
                     resourceMonitorException,
                     MvpAgentFailureFormatter.FromException(
                         resourceMonitorException,
+                        MvpAgentFailureStages.AgentHostRuntime));
+                return;
+            }
+
+            try
+            {
+                if (processExitFailureTask.IsCompleted)
+                {
+                    var failure = await processExitFailureTask.ConfigureAwait(false);
+                    if (failure != AgentHostProcessExitFailure.None)
+                    {
+                        var processExitException =
+                            new AgentHostProcessExitException(failure);
+                        TransitionOfflineForAgentHostFailure(
+                            monitoredServiceSession,
+                            faultedBridge,
+                            processExitException,
+                            MvpAgentFailureFormatter.FromProcessExitFailure(
+                                failure,
+                                MvpAgentFailureStages.AgentHostRuntime));
+                        return;
+                    }
+                }
+            }
+            catch (Exception processExitMonitorException)
+            {
+                TransitionOfflineForAgentHostFailure(
+                    monitoredServiceSession,
+                    faultedBridge,
+                    processExitMonitorException,
+                    MvpAgentFailureFormatter.FromException(
+                        processExitMonitorException,
                         MvpAgentFailureStages.AgentHostRuntime));
                 return;
             }
@@ -1768,8 +1925,7 @@ namespace Codex.AutoCAD.Host2016
                             "Agent Bridge 已断开。")));
             }
 
-            PublishSafely(
-                ErrorChanged,
+            var disconnectedMessage =
                 "Agent Bridge 已断开（error_code="
                 + errorCode
                 + "）；"
@@ -1780,7 +1936,14 @@ namespace Codex.AutoCAD.Host2016
                         + ", state="
                         + currentState
                         + "）；")
-                + "后续问题已拒绝。请先停止并重新启动 AgentHost。");
+                + "后续问题已拒绝。请先停止并重新启动 AgentHost。";
+            PublishSafely(
+                ErrorChanged,
+                DiagnosticSanitizer
+                    .SanitizeText(
+                        DiagnosticDataClassification.Exception,
+                        disconnectedMessage)
+                    .SafeText);
         }
 
         private void EnsureOnlineForAskLocked()

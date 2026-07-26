@@ -30,6 +30,8 @@ const string trailingJsonSpecId = "bridge-client-trailing-json-fail-closed";
 const string invalidUtf8SpecId = "bridge-client-invalid-utf8-fail-closed";
 const string oversizedFrameSpecId = "bridge-client-oversized-frame-fail-closed";
 const string reverseDrawingQuerySpecId = "bridge-client-reverse-drawing-query-cross-runtime";
+const string reverseDrawingQueryErrorSanitizedSpecId =
+    "bridge-client-reverse-drawing-query-error-sanitized";
 const string reverseDrawingQueryBeforeStartResponseSpecId =
     "bridge-client-reverse-drawing-query-before-start-response";
 const string reverseDrawingQueryCancelSpecId = "bridge-client-reverse-drawing-query-cancel";
@@ -58,6 +60,7 @@ Process? badMacServer = null;
 Process? sequenceGapServer = null;
 Process? nonceReplayServer = null;
 Process? reverseDrawingQueryServer = null;
+Process? reverseDrawingQueryErrorServer = null;
 Process? reverseDrawingQueryBeforeStartResponseServer = null;
 Process? reverseDrawingQueryCancelServer = null;
 Process? reverseDrawingQueryStopServer = null;
@@ -305,6 +308,78 @@ try
         throw new InvalidOperationException("Reverse drawing query test server failed.");
     }
     Console.WriteLine("[PASS] " + reverseDrawingQuerySpecId);
+
+    currentSpecId = reverseDrawingQueryErrorSanitizedSpecId;
+    var reverseErrorPipe = "codex-bridge-reverse-query-error-" + Guid.NewGuid().ToString("N");
+    var reverseErrorSession = "reverse-query-error-session-" + Guid.NewGuid().ToString("N");
+    reverseDrawingQueryErrorServer = StartTestServer(
+        serverExe,
+        reverseErrorPipe,
+        reverseErrorSession,
+        secretHex,
+        "reverse-query-error");
+    var reverseErrorCalls = 0;
+    using (var reverseErrorClient = new AgentBridgeClient(new AgentBridgeClientOptions
+    {
+        PipeName = reverseErrorPipe,
+        SessionId = reverseErrorSession,
+        SessionSecret = secret,
+        ConnectTimeout = TimeSpan.FromSeconds(5),
+        RequestTimeout = TimeSpan.FromSeconds(5),
+        DrawingQueryHandler = (_, cancellationToken) =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Interlocked.Increment(ref reverseErrorCalls);
+            var unsafeMessage = string.Join(
+                " ",
+                "Bear" + "er bridge-bearer-secret-marker",
+                @"C:\Users\bridge-user\private\bridge.log",
+                @"\\bridge-server\private\payload.json",
+                "https://bridge-user:bridge-pass@example.invalid/api?access_"
+                    + "token=bridge-query-secret-marker#fragment",
+                "{\"api_" + "key\":\"bridge-json-secret-marker\"}",
+                @"CONTOSO\bridge-user");
+            return Task.FromException<AgentDrawingQueryResponse>(
+                new AgentBridgeClientException(
+                    "diagnostic_test",
+                    unsafeMessage,
+                    new InvalidOperationException("bridge-inner-secret-marker")));
+        },
+    }))
+    {
+        reverseErrorClient.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+        _ = RequestCapabilities(reverseErrorClient);
+        var reverseErrorThread = reverseErrorClient.StartThreadAsync(
+                new AgentThreadStartRequest { ConversationId = "conversation-reverse-query-error" },
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        var reverseErrorContext = CreateCadContext();
+        var reverseErrorContextHash = CadContextJsonV1Codec.ComputeCanonicalSha256(
+            reverseErrorContext);
+        _ = reverseErrorClient.StartTurnAsync(
+                new AgentTurnStartRequest
+                {
+                    ThreadId = reverseErrorThread.ThreadId,
+                    ClientTurnId = "client-turn-reverse-query-error",
+                    Prompt = "触发结构化只读查询错误。",
+                    Context = reverseErrorContext,
+                    ContextSha256 = reverseErrorContextHash,
+                },
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+
+        _ = RequestCapabilities(reverseErrorClient);
+        Require(reverseErrorCalls == 1, "reverse drawing query error handler count");
+        reverseErrorClient.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    Require(reverseDrawingQueryErrorServer.WaitForExit(5000),
+        "reverse drawing query error server exit");
+    Require(reverseDrawingQueryErrorServer.ExitCode == 0,
+        "reverse drawing query error server result");
+    Console.WriteLine("[PASS] " + reverseDrawingQueryErrorSanitizedSpecId);
 
     currentSpecId = reverseDrawingQueryBeforeStartResponseSpecId;
     var earlyReversePipe = "codex-bridge-early-reverse-query-" + Guid.NewGuid().ToString("N");
@@ -1019,7 +1094,7 @@ try
         "oversized-frame",
         oversizedFrameSpecId);
 
-    Console.WriteLine("30/30 specs passed");
+    Console.WriteLine("31/31 specs passed");
     return 0;
 }
 catch (Exception exception)
@@ -1040,6 +1115,7 @@ finally
     DisposeTestServer(sequenceGapServer);
     DisposeTestServer(nonceReplayServer);
     DisposeTestServer(reverseDrawingQueryServer);
+    DisposeTestServer(reverseDrawingQueryErrorServer);
     DisposeTestServer(reverseDrawingQueryBeforeStartResponseServer);
     DisposeTestServer(reverseDrawingQueryCancelServer);
     DisposeTestServer(reverseDrawingQueryStopServer);

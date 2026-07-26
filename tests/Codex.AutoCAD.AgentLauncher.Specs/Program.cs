@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Microsoft.Win32.SafeHandles;
 using Codex.AutoCAD.AgentLauncher;
+using Codex.AutoCAD.Contracts;
 
 if (args.Length > 0
     && string.Equals(args[0], "--job-owner-helper", StringComparison.Ordinal))
@@ -27,10 +28,18 @@ try
         new SpecCase("REAL_AGENTHOST_REPEAT_5", "连续五次真实引导均成功且无残留", () => RepeatedRealAgentHostSucceeds(arguments.AgentHostPath)),
         new SpecCase("RESTRICTED_TOKEN_PRIMITIVES_FAIL_CLOSED", "受限token与私有desktop原语成功或结构化失败关闭", RestrictedTokenPrimitivesFailClosed),
         new SpecCase("RESTRICTED_TOKEN_BOOTSTRAP_PROBE_PORTABLE", "受限身份探针接受结构化能力结果、禁止回退且无残留", () => RestrictedTokenBootstrapProbeIsPortable(fixture)),
+        new SpecCase("PROCESS_POLICY_BLOCK_CLASSIFIED", "Windows与企业策略阻止进程启动时返回稳定脱敏终态", ProcessPolicyBlockIsClassified),
         new SpecCase("JOB_RESOURCE_LIMITS_APPLIED", "Job Object应用进程数、内存、CPU与累计用户时间硬限制", ProcessTreeResourceLimitsAreApplied),
         new SpecCase("JOB_RESOURCE_LIMITS_INVALID", "无效进程树与会话运行限制在启动前失败关闭", ProcessTreeResourceLimitsFailClosed),
         new SpecCase("RESOURCE_LIMIT_ERROR_CODES_STABLE", "资源限制终态使用稳定脱敏错误码", ResourceLimitErrorCodesAreStable),
+        new SpecCase("CREDENTIAL_BROKER_CONFIGURATION_FAILS_CLOSED", "凭据Broker默认禁用且只接受产品专属Windows凭据目标", CredentialBrokerConfigurationFailsClosed),
+        new SpecCase("CREDENTIAL_MANAGER_READ_FAILS_CLOSED", "Windows凭据缺失、类型错误、空值与超限均失败关闭", CredentialManagerReadFailuresFailClosed),
+        new SpecCase("CREDENTIAL_SECRET_DISPOSE_ZEROES", "Windows凭据读取后释放原生记录且Dispose原位清零秘密", CredentialSecretDisposeZeroes),
+        new SpecCase("CREDENTIAL_DELIVERY_DISABLED", "凭据Broker默认禁用时仅发送认证禁用帧且不携带秘密", CredentialDeliveryProtocolSpecs.DisabledRoundTrips),
+        new SpecCase("CREDENTIAL_DELIVERY_AUTHENTICATED", "access token二进制单次交付且发送端和接收端缓冲区清零", CredentialDeliveryProtocolSpecs.AccessTokenRoundTripsAndZeroes),
+        new SpecCase("CREDENTIAL_DELIVERY_ATTACKS_FAIL_CLOSED", "凭据帧篡改、重放、截断、尾随与身份错配均失败关闭", CredentialDeliveryProtocolSpecs.AttacksFailClosed),
         new SpecCase("NESTED_JOB_ASSIGNMENT_COMPATIBLE", "已有Job中的进程可检测并进入受控嵌套Job", () => NestedJobAssignmentIsCompatible(fixture)),
+        new SpecCase("NESTED_JOB_ASSIGNMENT_FAILURE_CLASSIFIED", "企业父Job拒绝嵌套分配时返回稳定脱敏终态且不回退", NestedJobAssignmentFailureIsClassified),
         new SpecCase("EXPERIMENTAL_IDENTITY_NOT_PUBLIC", "产品公共配置与结果不暴露实验身份选择或遥测", ExperimentalProcessIdentityIsNotPublic),
         new SpecCase("JOB_USER_TIME_TERMINATES_TREE", "累计Job用户时间耗尽会终止忙碌进程树", () => JobUserTimeTerminatesBusyTree(fixture)),
         new SpecCase("JOB_PROCESS_LIMIT_STRUCTURED", "Job进程数耗尽产生结构化终态并清理进程树", () => JobProcessLimitIsStructured(fixture)),
@@ -423,6 +432,33 @@ static void NestedJobAssignmentIsCompatible(FakeAgentHostFixture fixture)
     }
 }
 
+static void NestedJobAssignmentFailureIsClassified()
+{
+    Equal(
+        AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+        AgentBootstrapLaunchFailurePolicy.ClassifyJobAssignmentFailure(
+            processAlreadyInJob: false));
+    Equal(
+        AgentBootstrapLaunchFailure.NestedJobAssignmentFailed,
+        AgentBootstrapLaunchFailurePolicy.ClassifyJobAssignmentFailure(
+            processAlreadyInJob: true));
+
+    const string marker = "M4-15-NESTED-JOB-C:\\private\\agenthost.exe";
+    var failure = new AgentBootstrapLaunchException(
+        AgentBootstrapLaunchFailure.NestedJobAssignmentFailed,
+        marker,
+        new System.ComponentModel.Win32Exception(5, marker));
+    Equal("agenthost_nested_job_assignment_failed", failure.ErrorCode);
+    Equal(
+        "The AgentHost process could not join the required nested Job Object.",
+        failure.Message);
+    Equal(DiagnosticDataClassification.Environment, failure.DiagnosticClassification);
+    True(
+        failure.InnerException == null
+        && failure.ToString().IndexOf(marker, StringComparison.Ordinal) < 0,
+        "Nested Job assignment failure leaked native diagnostics.");
+}
+
 static void ExperimentalProcessIdentityIsNotPublic()
 {
     var optionsType = typeof(AgentHostBootstrapOptions);
@@ -518,6 +554,173 @@ static void ResourceLimitErrorCodesAreStable()
         "agenthost_resource_limit_unknown",
         AgentHostResourceLimitFailurePolicy.GetErrorCode(
             AgentHostResourceLimitFailure.None));
+
+    Equal(
+        "agenthost_unexpected_exit",
+        AgentHostProcessExitFailurePolicy.GetErrorCode(
+            AgentHostProcessExitFailure.UnexpectedExit));
+    var processExitMessage = AgentHostProcessExitFailurePolicy.GetSafeMessage(
+        AgentHostProcessExitFailure.UnexpectedExit);
+    True(
+        !string.IsNullOrWhiteSpace(processExitMessage),
+        "The unexpected-exit terminal state did not provide a safe message.");
+    True(
+        processExitMessage.IndexOf(secretMarker, StringComparison.Ordinal) < 0,
+        "The unexpected-exit safe message leaked the secret marker.");
+
+    var processExitException = new AgentHostProcessExitException(
+        AgentHostProcessExitFailure.UnexpectedExit);
+    Equal(AgentHostProcessExitFailure.UnexpectedExit, processExitException.Failure);
+    Equal("agenthost_unexpected_exit", processExitException.ErrorCode);
+    Equal(
+        nameof(AgentHostProcessExitException) + ": agenthost_unexpected_exit",
+        processExitException.ToString());
+    Equal(
+        "agenthost_process_exit_unknown",
+        AgentHostProcessExitFailurePolicy.GetErrorCode(
+            AgentHostProcessExitFailure.None));
+}
+
+static void CredentialBrokerConfigurationFailsClosed()
+{
+    var defaults = new AgentHostBootstrapOptions("relative.exe", new string('0', 64));
+    Equal(AgentHostCredentialMode.Disabled, defaults.Credential.Mode);
+    Equal(string.Empty, defaults.Credential.CredentialTargetName);
+
+    var disabledWithTarget = new AgentHostCredentialOptions
+    {
+        Mode = AgentHostCredentialMode.Disabled,
+        CredentialTargetName = "OpenAI/CodexForAutoCAD/credential/default",
+    };
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => disabledWithTarget.Validate());
+
+    var foreignTarget = new AgentHostCredentialOptions
+    {
+        Mode = AgentHostCredentialMode.WindowsCredentialManagerAccessToken,
+        CredentialTargetName = "ForeignProduct/credential/default",
+    };
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.InvalidConfiguration,
+        () => foreignTarget.Validate());
+
+    var accessToken = new AgentHostCredentialOptions
+    {
+        Mode = AgentHostCredentialMode.WindowsCredentialManagerAccessToken,
+        CredentialTargetName = "OpenAI/CodexForAutoCAD/credential/default",
+    };
+    var validated = accessToken.Validate();
+    Equal(AgentHostCredentialMode.WindowsCredentialManagerAccessToken, validated.Mode);
+    Equal("OpenAI/CodexForAutoCAD/credential/default", validated.CredentialTargetName);
+}
+
+static void CredentialManagerReadFailuresFailClosed()
+{
+    var validated = new AgentHostCredentialOptions
+    {
+        Mode = AgentHostCredentialMode.WindowsCredentialManagerAccessToken,
+        CredentialTargetName = "OpenAI/CodexForAutoCAD/credential/default",
+    }.Validate();
+
+    var missing = new WindowsCredentialManagerCredentialReader(
+        new FakeWindowsCredentialNativeApi(null));
+    var missingFailure = ExpectFailure(
+        AgentBootstrapLaunchFailure.CredentialUnavailable,
+        () => missing.Read(validated));
+    Equal("agenthost_credential_unavailable", missingFailure.ErrorCode);
+
+    var wrongType = new WindowsCredentialManagerCredentialReader(
+        new FakeWindowsCredentialNativeApi(
+            new WindowsCredentialNativeRecord(
+                credentialType: 2,
+                credentialBlobPointer: IntPtr.Zero,
+                credentialBlobSize: 32,
+                release: () => { })));
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.CredentialUnavailable,
+        () => wrongType.Read(validated));
+
+    var empty = new WindowsCredentialManagerCredentialReader(
+        new FakeWindowsCredentialNativeApi(
+            new WindowsCredentialNativeRecord(
+                credentialType: WindowsCredentialManagerCredentialReader.GenericCredentialType,
+                credentialBlobPointer: IntPtr.Zero,
+                credentialBlobSize: 0,
+                release: () => { })));
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.CredentialUnavailable,
+        () => empty.Read(validated));
+
+    var oversized = new WindowsCredentialManagerCredentialReader(
+        new FakeWindowsCredentialNativeApi(
+            new WindowsCredentialNativeRecord(
+                credentialType: WindowsCredentialManagerCredentialReader.GenericCredentialType,
+                credentialBlobPointer: new IntPtr(1),
+                credentialBlobSize:
+                    WindowsCredentialManagerCredentialReader.MaximumCredentialBytes + 1,
+                release: () => { })));
+    ExpectFailure(
+        AgentBootstrapLaunchFailure.CredentialUnavailable,
+        () => oversized.Read(validated));
+}
+
+static void CredentialSecretDisposeZeroes()
+{
+    var validated = new AgentHostCredentialOptions
+    {
+        Mode = AgentHostCredentialMode.WindowsCredentialManagerAccessToken,
+        CredentialTargetName = "OpenAI/CodexForAutoCAD/credential/default",
+    }.Validate();
+    var sourceBytes = new byte[] { 7, 19, 31, 43, 59, 71 };
+    var credentialPointer = Marshal.AllocHGlobal(sourceBytes.Length);
+    var nativeReleased = false;
+    AgentHostCredentialSecret? secret = null;
+    try
+    {
+        Marshal.Copy(sourceBytes, 0, credentialPointer, sourceBytes.Length);
+        var reader = new WindowsCredentialManagerCredentialReader(
+            new FakeWindowsCredentialNativeApi(
+                new WindowsCredentialNativeRecord(
+                    credentialType: WindowsCredentialManagerCredentialReader.GenericCredentialType,
+                    credentialBlobPointer: credentialPointer,
+                    credentialBlobSize: sourceBytes.Length,
+                    release: () =>
+                    {
+                        nativeReleased = true;
+                        Marshal.FreeHGlobal(credentialPointer);
+                    })));
+
+        secret = reader.Read(validated);
+        True(nativeReleased, "The native credential record was not released after the bounded copy.");
+        Equal(sourceBytes.Length, secret.Length);
+        Equal(false, secret.IsDisposed);
+
+        var bufferField = typeof(AgentHostCredentialSecret).GetField(
+            "credentialBytes",
+            BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("Credential secret buffer field not found.");
+        var ownedBytes = (byte[]?)bufferField.GetValue(secret)
+            ?? throw new InvalidOperationException("Credential secret buffer is unavailable.");
+        True(
+            sourceBytes.SequenceEqual(ownedBytes),
+            "The bounded credential copy did not preserve the binary payload.");
+
+        secret.Dispose();
+        True(ownedBytes.All(value => value == 0), "Credential bytes were not cleared in place.");
+        Equal(0, secret.Length);
+        Equal(true, secret.IsDisposed);
+        secret.Dispose();
+    }
+    finally
+    {
+        Array.Clear(sourceBytes, 0, sourceBytes.Length);
+        secret?.Dispose();
+        if (!nativeReleased)
+        {
+            Marshal.FreeHGlobal(credentialPointer);
+        }
+    }
 }
 
 static void JobUserTimeTerminatesBusyTree(FakeAgentHostFixture fixture)
@@ -680,6 +883,9 @@ static void SessionRuntimeTerminatesTree(FakeAgentHostFixture fixture)
         Equal(
             AgentHostResourceLimitFailure.SessionRuntimeExceeded,
             session.ResourceLimitFailureTask.GetAwaiter().GetResult());
+        Equal(
+            AgentHostProcessExitFailure.None,
+            session.ProcessExitFailureTask.GetAwaiter().GetResult());
         session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
         session.Dispose();
         session = null;
@@ -752,6 +958,9 @@ static void SessionStopPreventsRuntimeExpiry()
         Equal(
             AgentHostResourceLimitFailure.None,
             session.ResourceLimitFailureTask.GetAwaiter().GetResult());
+        Equal(
+            AgentHostProcessExitFailure.None,
+            session.ProcessExitFailureTask.GetAwaiter().GetResult());
         Equal(1, Volatile.Read(ref terminateCount));
         Equal(1, Volatile.Read(ref abortIoCount));
         Equal(1, Volatile.Read(ref disposeCount));
@@ -1342,8 +1551,17 @@ static void AgentHostUnexpectedExitKillsProcessTree(FakeAgentHostFixture fixture
             WaitForProcessToExit(session.ProcessId, TimeSpan.FromSeconds(3));
             // The watcher, rather than an explicit STOP, must close the retained Job handle.
             WaitForProcessToExit(descendantProcessId, TimeSpan.FromSeconds(3));
+            True(
+                session.ProcessExitFailureTask.Wait(TimeSpan.FromSeconds(3)),
+                "The unexpected AgentHost exit did not publish a structured terminal.");
+            Equal(
+                AgentHostProcessExitFailure.UnexpectedExit,
+                session.ProcessExitFailureTask.GetAwaiter().GetResult());
 
             session.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+            Equal(
+                AgentHostProcessExitFailure.UnexpectedExit,
+                session.ProcessExitFailureTask.GetAwaiter().GetResult());
             session.Dispose();
             session = null;
         }
@@ -2221,6 +2439,12 @@ static void BootstrapFailureDiagnosticsAreSanitized()
             AgentBootstrapLaunchFailurePolicy.GetSafeMessage(failure),
             exception.Message);
         True(
+            Enum.IsDefined(typeof(DiagnosticDataClassification), exception.DiagnosticClassification),
+            "Bootstrap failure did not expose a closed diagnostic classification.");
+        True(
+            (exception.DiagnosticRedactions & DiagnosticRedactionKinds.Path) != 0,
+            "Bootstrap failure did not preserve path-redaction evidence.");
+        True(
             exception.InnerException == null
             && exception.ToString().IndexOf(marker, StringComparison.Ordinal) < 0,
             "Bootstrap failure leaked an unsafe diagnostic.");
@@ -2239,6 +2463,110 @@ static void BootstrapFailureDiagnosticsAreSanitized()
     True(
         unknown.ToString().IndexOf(marker, StringComparison.Ordinal) < 0,
         "Unknown bootstrap failure leaked an unsafe diagnostic.");
+
+    var nested = new AgentBootstrapLaunchException(
+        AgentBootstrapLaunchFailure.ProcessStartFailed,
+        "client_secret=LAUNCH-SECRET-731",
+        new AggregateException(
+            new InvalidOperationException(
+                "Bearer INNER-TOKEN-732 at \\\\?\\C:\\Users\\alice\\agent.exe"),
+            new Exception("x://alice:password@example.invalid/private")));
+    Equal(
+        DiagnosticDataClassification.Environment,
+        nested.DiagnosticClassification);
+    True(
+        (nested.DiagnosticRedactions & DiagnosticRedactionKinds.Token) != 0
+        && (nested.DiagnosticRedactions & DiagnosticRedactionKinds.Path) != 0
+        && (nested.DiagnosticRedactions & DiagnosticRedactionKinds.Uri) != 0,
+        "Nested bootstrap failure did not preserve bounded redaction evidence.");
+    Equal(null, nested.InnerException);
+    True(
+        nested.ToString().IndexOf("LAUNCH-SECRET-731", StringComparison.Ordinal) < 0
+        && nested.ToString().IndexOf("INNER-TOKEN-732", StringComparison.Ordinal) < 0
+        && nested.ToString().IndexOf("example.invalid", StringComparison.Ordinal) < 0,
+        "Nested bootstrap failure leaked an unsafe diagnostic.");
+    Equal(
+        DiagnosticDataClassification.Configuration,
+        new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.InvalidConfiguration,
+            marker).DiagnosticClassification);
+    Equal(
+        DiagnosticDataClassification.Configuration,
+        new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.CredentialUnavailable,
+            marker).DiagnosticClassification);
+    Equal(
+        DiagnosticDataClassification.StandardError,
+        new AgentBootstrapLaunchException(
+            AgentBootstrapLaunchFailure.ChildExitedWithError,
+            marker).DiagnosticClassification);
+}
+
+static void ProcessPolicyBlockIsClassified()
+{
+    var explicitPolicyErrors = new[]
+    {
+        577,
+        1260,
+        4551,
+        4552,
+        4553,
+        4554,
+        4555,
+        4556,
+        4557,
+    };
+    foreach (var nativeError in explicitPolicyErrors)
+    {
+        Equal(
+            AgentBootstrapLaunchFailure.ProcessStartBlocked,
+            AgentBootstrapLaunchFailurePolicy.ClassifyProcessCreationFailure(
+                nativeError,
+                restrictedIdentity: false));
+        Equal(
+            AgentBootstrapLaunchFailure.ProcessStartBlocked,
+            AgentBootstrapLaunchFailurePolicy.ClassifyProcessCreationFailure(
+                nativeError,
+                restrictedIdentity: true));
+    }
+
+    Equal(
+        AgentBootstrapLaunchFailure.ProcessStartBlocked,
+        AgentBootstrapLaunchFailurePolicy.ClassifyProcessCreationFailure(
+            5,
+            restrictedIdentity: false));
+    Equal(
+        AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+        AgentBootstrapLaunchFailurePolicy.ClassifyProcessCreationFailure(
+            5,
+            restrictedIdentity: true));
+    Equal(
+        AgentBootstrapLaunchFailure.ProcessStartFailed,
+        AgentBootstrapLaunchFailurePolicy.ClassifyProcessCreationFailure(
+            193,
+            restrictedIdentity: false));
+    Equal(
+        AgentBootstrapLaunchFailure.ProcessIsolationFailed,
+        AgentBootstrapLaunchFailurePolicy.ClassifyProcessCreationFailure(
+            193,
+            restrictedIdentity: true));
+
+    const string marker = "M4-15-POLICY-C:\\private\\blocked-agenthost.exe";
+    var exception = new AgentBootstrapLaunchException(
+        AgentBootstrapLaunchFailure.ProcessStartBlocked,
+        marker,
+        new System.ComponentModel.Win32Exception(1260, marker));
+    Equal("agenthost_process_start_blocked", exception.ErrorCode);
+    Equal(
+        "The AgentHost process start was blocked by Windows or enterprise policy.",
+        exception.Message);
+    Equal(
+        DiagnosticDataClassification.Environment,
+        exception.DiagnosticClassification);
+    True(
+        exception.InnerException == null
+        && exception.ToString().IndexOf(marker, StringComparison.Ordinal) < 0,
+        "Policy-blocked process start leaked native diagnostics.");
 }
 
 static AgentHostBootstrapOptions CreateOptions(string executablePath)
@@ -2849,6 +3177,21 @@ sealed class Arguments
     internal string AgentHostPath { get; }
 
     internal string FakeAgentHostPath { get; }
+}
+
+sealed class FakeWindowsCredentialNativeApi : IWindowsCredentialNativeApi
+{
+    private readonly WindowsCredentialNativeRecord? record;
+
+    internal FakeWindowsCredentialNativeApi(WindowsCredentialNativeRecord? record)
+    {
+        this.record = record;
+    }
+
+    public WindowsCredentialNativeRecord? Read(string credentialTargetName)
+    {
+        return record;
+    }
 }
 
 sealed class SpecCase

@@ -5,7 +5,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$doctorWorkspace = Join-Path $repoRoot "artifacts\doctor-workspace"
+. (Join-Path $PSScriptRoot "build-safety.ps1")
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$doctorWorkspace = Join-Path $buildSafety.ArtifactRoot "doctor-workspace"
 
 Push-Location $repoRoot
 try {
@@ -41,5 +43,6 @@ try {
     Write-Host "Phase 1 verification passed: build, 29 specs, safety scan, and live App Server handshake."
 }
 finally {
+    Complete-CodexBuildSafety -State $buildSafety -Stage "phase1" | Out-Null
     Pop-Location
 }

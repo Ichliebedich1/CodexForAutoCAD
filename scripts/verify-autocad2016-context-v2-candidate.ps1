@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet('Release')]
     [string] $Configuration = 'Release',
@@ -10,11 +10,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+. (Join-Path $PSScriptRoot 'build-safety.ps1')
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$artifactsRoot = $buildSafety.ArtifactRoot
 $dotnet = (Get-Command dotnet -ErrorAction Stop).Source
 $powerShell = (Get-Process -Id $PID).Path
 $net45ReferencePath = Join-Path $env:USERPROFILE '.nuget\packages\microsoft.netframework.referenceassemblies.net45\1.0.3\build\.NETFramework\v4.5'
 $runId = [Guid]::NewGuid().ToString('N')
-$stageRoot = Join-Path $repoRoot ("artifacts\autocad2016-context-v2-candidate-" + $runId)
+$stageRoot = Join-Path $artifactsRoot ("autocad2016-context-v2-candidate-" + $runId)
 $publishRoot = Join-Path $stageRoot 'agenthost-publish'
 $candidateStage = Join-Path $stageRoot 'candidate'
 $evidenceDirectory = Join-Path $repoRoot 'handoff\autocad2016\evidence'
@@ -276,7 +279,7 @@ if ($null -eq $candidateDoctor -or -not $candidateDoctor.ok -or
     throw '候选 AgentHost doctor 未返回 ok=true/state=Running。'
 }
 $candidateId = 'autocad2016-m1-readonly-' + $versionTag + '-' + $hostSha.Substring(0,8).ToLowerInvariant() + '-' + $agentSha.Substring(0,8).ToLowerInvariant() + '-' + $runId.Substring(0,8)
-$candidateRoot = Join-Path $repoRoot ("artifacts\" + $candidateId)
+$candidateRoot = Join-Path $artifactsRoot $candidateId
 if (Test-Path -LiteralPath $candidateRoot) { throw "候选目录已存在，拒绝覆盖：$candidateRoot" }
 New-Item -ItemType Directory -Path $candidateRoot -Force | Out-Null
 
@@ -355,3 +358,4 @@ Write-Host "HOST_SHA256=$hostSha"
 Write-Host "AGENTHOST_SHA256=$agentSha"
 Write-Host "MANIFEST_SHA256=$(Get-Sha256 $manifestPath)"
 Write-Host "EVIDENCE=$evidencePath"
+Complete-CodexBuildSafety -State $buildSafety -Stage 'context-v2-candidate' | Out-Null

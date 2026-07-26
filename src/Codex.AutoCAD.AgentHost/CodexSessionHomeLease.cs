@@ -27,13 +27,14 @@ internal sealed class CodexSessionHomeException : Exception
 }
 
 /// <summary>
-/// Owns an empty, session-bound Codex home. The lease is not enabled by production bootstrap until
-/// M4.11 can provision authentication through a supported broker instead of copying user profile files.
+/// Owns a session-bound Codex home. The home contains only non-secret configuration and is
+/// provisioned before the optional one-use credential login.
 /// </summary>
 internal sealed class CodexSessionHomeLease : IDisposable
 {
     private const string ConfigurationText =
-        "mcp_servers = {}\r\n\r\n[features]\r\nplugins = false\r\n";
+        "cli_auth_credentials_store = \"keyring\"\r\n"
+        + "mcp_servers = {}\r\n\r\n[features]\r\nplugins = false\r\n";
     private FileStream? _activeLease;
     private int _disposed;
 

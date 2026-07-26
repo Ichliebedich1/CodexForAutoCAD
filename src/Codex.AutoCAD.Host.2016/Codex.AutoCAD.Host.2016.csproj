@@ -114,6 +114,7 @@
     <Compile Include="CadReadTypeStatistics.cs" />
     <Compile Include="DrawingIndexEntityReader.cs" />
     <Compile Include="DrawingIndexRuntime.cs" />
+    <Compile Include="HostCommandDiagnostic.cs" />
     <Compile Include="UnifiedReadOnlyContextRuntime.cs" />
     <Compile Include="UnifiedPaletteRuntime.cs" />
     <Compile Include="UnifiedPaletteController.cs" />
