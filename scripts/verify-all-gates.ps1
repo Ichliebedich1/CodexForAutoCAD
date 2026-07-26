@@ -241,6 +241,12 @@ $coreShell = $pwshPath.Source
 $desktopShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 
 $baselinePath = Get-CodexUserPathState
+# 启动前拒绝已在运行的 AutoCAD 之外，还要记下集合本身：AutoCAD 在套件运行**期间**启动
+# 同样会让 auth-compat 和 R20.1 失败，而那两条错误信息说的是「进程集合发生变化」，
+# 读起来很像代码坏了。结束时比对一次，就能把「你中途开了 AutoCAD」和「真的有回归」
+# 区分开——门禁照样算失败，只是不让人误判原因。
+$autoCadBaseline = @(Get-Process -Name acad -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty Id | Sort-Object) -join ","
 $results = New-Object System.Collections.ArrayList
 
 try {
@@ -330,6 +336,9 @@ finally {
 $summary = Get-CodexGateSuiteSummary $results
 $residual = Get-CodexRelevantResidualProcessCount
 $finalPath = Get-CodexUserPathState
+$autoCadFinal = @(Get-Process -Name acad -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty Id | Sort-Object) -join ","
+$autoCadChanged = ($autoCadFinal -cne $autoCadBaseline)
 
 $suiteEvidence = [ordered]@{
     SchemaVersion = 1
@@ -353,6 +362,9 @@ $suiteEvidence = [ordered]@{
     UserPathSha256 = $finalPath.Sha256
     UserPathUnchanged = ($finalPath.Sha256 -ceq $baselinePath.Sha256)
     RelevantResidualProcessCount = $residual
+    # 这不是"失败可以忽略"的开关，只是原因标注：为 true 时 auth-compat 与 R20.1 的
+    # 「进程集合发生变化」几乎必然由此而来，而不是代码回归。门禁结论不因此改变。
+    AutoCadProcessSetChangedDuringRun = $autoCadChanged
     AutoCadStartedOrCommanded = $false
     EvidenceBoundary = "This evidence records which must-pass gates ran in one correlated suite invocation, their exit codes, a hashed user-PATH fingerprint and the residual process count. Gate totals are counted at run time and never hardcoded. It does not start or command AutoCAD, enable CAD writes or saves, prove any real-machine or enterprise matrix, or freeze any candidate."
 }
@@ -376,8 +388,15 @@ Write-Host ("ALL_GATES_RESIDUAL_PROCESSES=" + $residual)
 Write-Host ("ALL_GATES_USER_PATH_UNCHANGED=" + $suiteEvidence.UserPathUnchanged)
 Write-Host ("ALL_GATES_EVIDENCE=" + $suiteEvidencePath)
 
+Write-Host ("ALL_GATES_AUTOCAD_PROCESS_SET_CHANGED=" + $autoCadChanged)
+
 if (-not $summary.Success -or $residual -ne 0) {
     Write-Host "`n必过门禁套件未通过。" -ForegroundColor Yellow
+    if ($autoCadChanged) {
+        Write-Host ("提示：本次运行期间 AutoCAD 进程集合发生了变化。auth-compat 与 R20.1 " +
+            "会在构建前后比对该集合，因此它们的失败很可能来自这一点而不是代码回归；" +
+            "其余门禁的结论不受影响。关闭 AutoCAD 后重跑即可区分。") -ForegroundColor Yellow
+    }
     Write-Host "ALL_GATES=failed"
     exit 1
 }
