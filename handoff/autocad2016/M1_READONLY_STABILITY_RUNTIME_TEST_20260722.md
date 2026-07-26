@@ -1,12 +1,15 @@
 # AutoCAD 2016 M1 只读稳定化实机测试
 
 状态：`0.3.3.0` 代码、自动化和候选冻结已完成；本文件是当前唯一的 M1 实机验收入口。
+2026-07-26 已在集成分支 `4667a48` 重新验真并重建候选（Phase 2 `276/276`、Host MVP
+`41/41`、R20.1 A/B 逐字节一致）；旧候选目录 `…-4b602965-561c6af3` 已不存在，实机必须
+使用下方当前候选。
 
 ## 1. 候选身份与加载文件
 
 ```text
 Candidate directory:
-C:\tmp\CodexForAutoCAD-m1-integration\artifacts\autocad2016-m1-readonly-v033-e6701a77-4b602965-561c6af3
+C:\tmp\CodexForAutoCAD-m1-integration\artifacts\autocad2016-m1-readonly-v033-e6701a77-8e6b26fd-7e69cb73
 
 NETLOAD only:
 Codex.AutoCAD.Host.2016.dll
@@ -18,11 +21,16 @@ AgentHost:
 AgentHost\Codex.AutoCAD.AgentHost.exe
 
 AgentHost SHA-256:
-4B60296581224ADCDF1E8B0C8F1C766AE896796DA2DCF0B73E5EEFE6BBFE6966
+8E6B26FD7B20925A1CE53CAB0DBEE093C58B9AF0935219DF75FC8A7CB5C4FA2A
 
 Manifest SHA-256:
-B081B93A6BE99D8D16304A3A1B2EABD93D352E92613F370C5450E448E8507E40
+49E6DAE400DDC25DDBB538FD1CD36858325A9A866114E43A81B14AEE48A2E2CE
 ```
+
+Host `E6701A77…` 与 2026-07-22 冻结的 v033 候选逐字节一致，R20.1/net45 构建可复现。
+AgentHost 哈希随 .NET 8 SDK 版本变化（`7A3ABCEA` 初版 → `4B602965` 集成冻结 →
+`8E6B26FD` 当前，与 M2/M3 候选一致），属可解释的 framework-dependent 发布差异，
+不是篡改信号；实机 evidence 必须绑定本节当前哈希。
 
 只对 `Codex.AutoCAD.Host.2016.dll` 执行 `NETLOAD`。不要 NETLOAD 其他依赖 DLL，也不要
 直接运行 AgentHost；其余根目录 DLL、`AgentHost` 子目录和 `.sha256` sidecar 必须保持原
