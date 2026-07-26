@@ -493,6 +493,15 @@ NETLOAD 证据的能力一律视为未支持。
   至此 M4.13 的 MAC 写入与验证在生产读写两侧均已接入，Bridge 为 `108/108`。
   尚缺：同用户篡改边界不变（见上），企业默认保留策略、系统断电与 AutoCAD 实机矩阵未验证，
   因此 M4.13 继续为进行中。
+- M4.7 self-contained 尝试已回退（2026-07-26，用户决策暂缓）。`SelfContained=true` 本地
+  构建通过（202 文件 / 71.9 MiB，候选必需 11 文件齐全，runtimeconfig 切换为固定 8.0.22 的
+  `includedFrameworks`），但隔离构建门禁以 NU1101 失败：离线 feed 是刻意的供应链边界
+  （`<clear />`、`signatureValidationMode=require`、单一受信签名者、单一已审查包），
+  self-contained 需要的三个运行时包（NETCore/WindowsDesktop/AspNetCore App.Runtime.win-x64，
+  约 80 MB）不在 feed 内且签名者不在信任列表。备选为扩充 feed（影响仓库体积与 M9.8
+  SBOM/许可证）或暂缓；因 M4.7 即使完成 self-contained 仍被 M4.11 真实环境验证阻塞，
+  用户选择暂缓，csproj 保持 `SelfContained=false`。回退后 agent-bootstrap 门禁已重新
+  通过（EXIT=0）。重新启用前必须先决策离线 feed 扩充。
 - M4.4/M4.5 已在当前集成分支提交为 `0763022`：产品公共配置、导出类型和公开结果不再
   暴露实验身份选择；RestrictedToken 只保留为 internal-only 可移植能力探针，且任何结果
   都禁止回退 CurrentUser。本机 net45/net8 原语均为 `available`，受限 FakeAgentHost
