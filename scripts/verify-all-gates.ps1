@@ -93,6 +93,27 @@ function Get-CodexGateDefinitions {
     )
 }
 
+function Get-CodexGateParameterNames {
+    <#
+    .SYNOPSIS
+        读取门禁脚本自己声明的参数名。
+    .DESCRIPTION
+        用 AST 解析而不是 Get-Command：Get-Command 会加载并绑定脚本，对一个只是想知道
+        「你接不接受这个参数」的调用方来说副作用太大。解析失败时返回空集合，调用方
+        因此只传最保守的参数，不会因为反射失败而整套门禁跑不起来。
+    #>
+    param([Parameter(Mandatory = $true)][string] $ScriptPath)
+
+    $tokens = $null
+    $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+        $ScriptPath, [ref] $tokens, [ref] $errors)
+    if ($null -eq $ast -or $null -eq $ast.ParamBlock) {
+        return @()
+    }
+    return @($ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
+}
+
 function Get-CodexRelevantResidualProcessCount {
     $count = 0
     foreach ($name in @(
@@ -255,18 +276,20 @@ try {
                 "-R201HostEvidencePath", (Join-Path $EvidenceDirectory "r201-host-build.json"),
                 "-RequireRunCorrelation"))
         }
-        elseif ($definition.Name -eq "r201-host-build") {
-            if (-not [string]::IsNullOrWhiteSpace($AutoCad2016Dir)) {
+        else {
+            # 按脚本自己声明的参数决定传什么，而不是在这里维护一张「谁接受哪个参数」的表。
+            # 那张表迟早会和脚本脱节：2026-07-26 首次在 main 上运行时，就因为把
+            # -CodexExecutable 传给了不接受它的 bootstrap 和 auth 门禁而误报两项失败。
+            $accepted = Get-CodexGateParameterNames -ScriptPath (Join-Path $repoRoot $definition.Script)
+            if ($accepted -contains "AutoCad2016Dir" -and
+                -not [string]::IsNullOrWhiteSpace($AutoCad2016Dir)) {
                 $null = $gateArguments.AddRange(@("-AutoCad2016Dir", $AutoCad2016Dir))
             }
-            $null = $gateArguments.AddRange(@("-Configuration", $Configuration))
-        }
-        elseif ($definition.Name -eq "m9-sbom-licenses") {
-            # 该门禁不接受 -Configuration。
-        }
-        else {
-            $null = $gateArguments.AddRange(@("-Configuration", $Configuration))
-            if (-not [string]::IsNullOrWhiteSpace($CodexExecutable)) {
+            if ($accepted -contains "Configuration") {
+                $null = $gateArguments.AddRange(@("-Configuration", $Configuration))
+            }
+            if ($accepted -contains "CodexExecutable" -and
+                -not [string]::IsNullOrWhiteSpace($CodexExecutable)) {
                 $null = $gateArguments.AddRange(@("-CodexExecutable", $CodexExecutable))
             }
         }
