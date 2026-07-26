@@ -121,6 +121,7 @@
     <Compile Include="UnifiedPalettePanel.cs" />
     <Compile Include="MvpAgentProtocolIdentity.cs" />
     <Compile Include="MvpAgentCapabilityPolicy.cs" />
+    <Compile Include="MvpAgentCredentialConfig.cs" />
     <Compile Include="MvpAgentFailure.cs" />
     <Compile Include="MvpAgentTurnState.cs" />
     <Compile Include="MvpAgentClient.cs" />
