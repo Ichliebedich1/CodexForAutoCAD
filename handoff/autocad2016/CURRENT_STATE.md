@@ -59,7 +59,7 @@ AgentHost SHA-256 EF079C01EF7AEE7482E5F0ED3203C4B45A8EC0FBF857705F9ADC64C3129F7A
 
 `main` 现在同时包含 M0、M1、M2、M3 和 M4 沙箱线：
 
-- `eb23d17` 吸收 `codex/m1-integration`（M1，实机矩阵已由用户完成）。
+- `eb23d17` 吸收 `codex/m1-integration`（M1 代码）。**实机矩阵未验证** 〔2026-07-26 撤回：该实机结论未实际执行，详见 M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md 第 15 节顶部〕。
 - `77a6cdf` 吸收 `codex/m4-credential-broker`（43 个提交，含最新 M2 DrawingIndex/
   CadQuery、最新 M3 读取语义和整条 M4 沙箱/配置/资源限制/审计线）。
 - `f3ff925`、`72ddf77` 是两次合并前保留工作区既有文件的提交，不是新功能。
@@ -942,12 +942,12 @@ M1 实机矩阵已于 2026-07-26 由用户在真实 AutoCAD 2016 上完成（run
 > 因此可能出现多组候选哈希——**它们全部早于本次汇合，均已失效，不得用于实机**；
 > 汇合后必须重新构建候选并重新绑定 evidence。架构与语义描述仍然有效。
 
-4. M1 代码、自动化、`0.3.3.0` 候选冻结和实机矩阵均已完成，并已受控吸收进 `main`。
+4. M1 代码、自动化与 `0.3.3.0` 候选冻结已完成并吸收进 `main`；**实机矩阵未验证** 〔2026-07-26 撤回：该实机结论未实际执行，详见 M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md 第 15 节顶部〕。
 5. M2/M3/M4 线已于 2026-07-26 直接吸收进 `main`；早先「9 个提交无主线归属」的判断是 patch-id 假象，实际内容早已在 M4 线上。历史分析见
    `codex/m3-highvalue-limited`（不是名字更像的 `codex/m3-integration`），其中 9 个提交
    不在任何主线分支上；详见 `M2_M3_CONVERGENCE_AUDIT_20260726.md`。
 6. M4 沙箱与审计基础完成前，不启用 M5 CAD 写入。
-4. M1 代码、自动化、`0.3.3.0` 候选冻结和实机矩阵均已完成，并已受控吸收进 `main`。
+4. M1 代码、自动化与 `0.3.3.0` 候选冻结已完成并吸收进 `main`；**实机矩阵未验证** 〔2026-07-26 撤回：该实机结论未实际执行，详见 M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md 第 15 节顶部〕。
 5. M2-A 图纸索引、M2-B `cad.query_drawing`、三档 fixture、性能遥测和脱敏记录器已完成并
    冻结 `0.4.0.0` 候选；等待实机/性能 evidence 后冻结验收预算。
 6. M2 实机/性能 evidence 仍是 M2 完成前提；M3 已开始只读对象语义纵切，但不替代 M2

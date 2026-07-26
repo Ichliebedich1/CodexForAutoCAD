@@ -160,7 +160,7 @@ Host.2025 原型和未跟踪辅助文件仍保留且未纳入提交。远端推�
 - [x] 对话按图纸隔离，图 A 的 CAD 上下文、可见回答或 Provider thread 不得混入图 B。
 - [x] Provider turn 启动阶段纳入 Host 总超时；未绑定 turn ID 时也 fail-closed。
 
-实机矩阵已由用户在真实 AutoCAD 2016 上完成（2026-07-26）：
+~~实机矩阵已由用户在真实 AutoCAD 2016 上完成（2026-07-26）：~~ **已撤回，未实际执行** 〔2026-07-26 撤回：该实机结论未实际执行，详见 M1_READONLY_STABILITY_RUNTIME_TEST_20260722.md 第 15 节顶部〕。下列勾选一律不作数：
 
 - [x] 按精确 `0.3.3.0` Host/AgentHost 哈希人工 `NETLOAD`，`DBMOD` 前后未变。
 - [x] 新建对话、只清 CAD 上下文、清除全部和图 A/图 B 对话隔离。
