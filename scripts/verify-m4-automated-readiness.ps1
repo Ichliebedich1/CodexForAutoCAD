@@ -58,6 +58,11 @@ function Get-TextSha256 {
     }
 }
 
+# 目标文件 M4.15「实机矩阵处置」把这一项定为 M5 的硬前置，不得延后：它验证真实强杀
+# AutoCAD/AgentHost/Codex 之后终态唯一、无孤儿进程、后续请求 fail-closed，也就是 M5
+# 写入过程中崩溃时唯一的保护。
+$MandatoryLiveMatrixFlagName = "RealAbnormalExitMatrixVerified"
+
 $LiveMatrixFlagNames = @(
     "RealCredentialManagerVerified",
     "RealCodexLoginAndKeyringVerified",
@@ -101,6 +106,10 @@ function Resolve-LiveMatrixResults {
             Flags = $flags
             Mode = "no_live_results"
             VerifiedCount = 0
+            VerifiedNames = @()
+            DeferredNames = @()
+            UnresolvedNames = @($LiveMatrixFlagNames)
+            MandatoryVerified = $false
             Detail = "未提供实机矩阵结果文件。"
         }
     }
@@ -123,14 +132,23 @@ function Resolve-LiveMatrixResults {
             Flags = $flags
             Mode = "candidate_mismatch"
             VerifiedCount = 0
+            VerifiedNames = @()
+            DeferredNames = @()
+            UnresolvedNames = @($LiveMatrixFlagNames)
+            MandatoryVerified = $false
             Detail = "实机结果绑定的候选与当前候选不一致，全部结论作废。"
         }
     }
 
-    $verified = 0
+    # 目标文件要求 9 项逐项记录明确处置，且 verified 与 deferred 必须分组呈现，
+    # 不得合并为单一布尔结论。因此这里分别累计，而不是只数一个通过数。
+    $verifiedNames = New-Object System.Collections.ArrayList
+    $deferredNames = New-Object System.Collections.ArrayList
+    $unresolvedNames = New-Object System.Collections.ArrayList
     if ($document.PSObject.Properties.Name -contains "matrices") {
         foreach ($name in $LiveMatrixFlagNames) {
             if (-not ($document.matrices.PSObject.Properties.Name -contains $name)) {
+                $null = $unresolvedNames.Add($name)
                 continue
             }
             $entry = $document.matrices.$name
@@ -138,17 +156,51 @@ function Resolve-LiveMatrixResults {
             if ($null -ne $entry -and ($entry.PSObject.Properties.Name -contains "status")) {
                 $status = ([string] $entry.status).Trim()
             }
+
             if ($status -ceq "verified") {
                 $flags[$name] = $true
-                $verified++
+                $null = $verifiedNames.Add($name)
+                continue
             }
+            if ($status -ceq "deferred") {
+                # 目标文件要求延后必须「写明延后理由与重新评估时点」。缺任何一项就不算
+                # 明确处置——否则 `deferred` 会退化成一个不用负责的万能状态。
+                $reason = ""
+                $reEvaluateBy = ""
+                if ($null -ne $entry) {
+                    if ($entry.PSObject.Properties.Name -contains "note") {
+                        $reason = ([string] $entry.note).Trim()
+                    }
+                    if ($entry.PSObject.Properties.Name -contains "reEvaluateBy") {
+                        $reEvaluateBy = ([string] $entry.reEvaluateBy).Trim()
+                    }
+                }
+                if ($reason.Length -eq 0 -or $reEvaluateBy.Length -eq 0) {
+                    $null = $unresolvedNames.Add($name)
+                }
+                else {
+                    $null = $deferredNames.Add($name)
+                }
+                continue
+            }
+
+            $null = $unresolvedNames.Add($name)
+        }
+    }
+    else {
+        foreach ($name in $LiveMatrixFlagNames) {
+            $null = $unresolvedNames.Add($name)
         }
     }
 
     return [pscustomobject]@{
         Flags = $flags
         Mode = "candidate_bound"
-        VerifiedCount = $verified
+        VerifiedCount = $verifiedNames.Count
+        VerifiedNames = @($verifiedNames)
+        DeferredNames = @($deferredNames)
+        UnresolvedNames = @($unresolvedNames)
+        MandatoryVerified = [bool] $flags[$MandatoryLiveMatrixFlagName]
         Detail = "实机结果已绑定当前候选。"
     }
 }
@@ -675,6 +727,80 @@ if ($SelfTestOnly) {
         if ($fullResult.VerifiedCount -ne $LiveMatrixFlagNames.Count) {
             throw "自检失败：9 项全部 verified 时计数不正确。"
         }
+
+        # --- 目标文件 2026-07-26 修订：deferred 的规则 ---
+        function Write-DispositionProbe {
+            param([string] $File, [hashtable] $Entries)
+            $matrices = [ordered]@{}
+            foreach ($name in $LiveMatrixFlagNames) {
+                $matrices[$name] = if ($Entries.ContainsKey($name)) {
+                    $Entries[$name]
+                }
+                else {
+                    [ordered]@{ status = "not_run" }
+                }
+            }
+            $document = [ordered]@{
+                schemaVersion = 1
+                boundCandidate = [ordered]@{ hostSha256 = $hostSha; agentHostSha256 = $agentSha }
+                matrices = $matrices
+            }
+            $path = Join-Path $liveTestRoot $File
+            [IO.File]::WriteAllText($path, ($document | ConvertTo-Json -Depth 6),
+                (New-Object Text.UTF8Encoding($false)))
+            return $path
+        }
+
+        $goodDeferral = [ordered]@{
+            status = "deferred"
+            note = "环境不具备"
+            reEvaluateBy = "M10"
+        }
+        $accepted = @{}
+        foreach ($name in $LiveMatrixFlagNames) { $accepted[$name] = $goodDeferral }
+        $accepted[$MandatoryLiveMatrixFlagName] = [ordered]@{ status = "verified" }
+        $acceptedResult = Resolve-LiveMatrixResults `
+            -Path (Write-DispositionProbe -File "accepted.json" -Entries $accepted) `
+            -HostSha256 $hostSha -AgentHostSha256 $agentSha
+        if ($acceptedResult.UnresolvedNames.Count -ne 0 -or
+            -not $acceptedResult.MandatoryVerified -or
+            $acceptedResult.DeferredNames.Count -ne ($LiveMatrixFlagNames.Count - 1)) {
+            throw "自检失败：一项 verified 加八项合规 deferred 没有被判为处置完整。"
+        }
+
+        # 硬前置项被延后必须使处置不完整——那一项不允许 deferred。
+        $mandatoryDeferred = @{}
+        foreach ($name in $LiveMatrixFlagNames) { $mandatoryDeferred[$name] = $goodDeferral }
+        $mandatoryResult = Resolve-LiveMatrixResults `
+            -Path (Write-DispositionProbe -File "mandatory.json" -Entries $mandatoryDeferred) `
+            -HostSha256 $hostSha -AgentHostSha256 $agentSha
+        if ($mandatoryResult.MandatoryVerified) {
+            throw "自检失败：硬前置矩阵被延后却仍判为已验证。"
+        }
+
+        # 缺理由或缺重评时点的 deferred 不算明确处置，否则 deferred 会变成免责状态。
+        foreach ($bad in @(
+                [ordered]@{ status = "deferred"; reEvaluateBy = "M10" },
+                [ordered]@{ status = "deferred"; note = "环境不具备" },
+                [ordered]@{ status = "deferred"; note = " "; reEvaluateBy = " " })) {
+            $incomplete = @{ "RealPowerLossVerified" = $bad }
+            $incompleteResult = Resolve-LiveMatrixResults `
+                -Path (Write-DispositionProbe -File "bad.json" -Entries $incomplete) `
+                -HostSha256 $hostSha -AgentHostSha256 $agentSha
+            if ($incompleteResult.DeferredNames -contains "RealPowerLossVerified") {
+                throw "自检失败：缺少理由或重评时点的 deferred 被当成明确处置。"
+            }
+        }
+
+        # 大小写不同的 deferred 同样不算。
+        $casedDeferral = @{ "RealPowerLossVerified" = [ordered]@{
+            status = "Deferred"; note = "x"; reEvaluateBy = "M10" } }
+        $casedResult = Resolve-LiveMatrixResults `
+            -Path (Write-DispositionProbe -File "cased.json" -Entries $casedDeferral) `
+            -HostSha256 $hostSha -AgentHostSha256 $agentSha
+        if ($casedResult.DeferredNames.Count -ne 0) {
+            throw "自检失败：status 的 deferred 按大小写不敏感匹配。"
+        }
     }
     finally {
         if (Test-Path -LiteralPath $liveTestRoot) {
@@ -904,14 +1030,24 @@ $readiness = [ordered]@{
         $liveMatrix.Flags.EnterpriseAppLockerWacEdRMatrixVerified
     EnterpriseRetentionArchiveMatrixVerified =
         $liveMatrix.Flags.EnterpriseRetentionArchiveMatrixVerified
+    # 目标文件 M4.16 要求「冻结 evidence 必须分别列出 verified 与 deferred 两组，
+    # 不得合并为单一布尔结论」，因此这里给出名单而不只是计数。
     LiveMatrix = [ordered]@{
         Mode = $liveMatrix.Mode
-        VerifiedCount = $liveMatrix.VerifiedCount
         TotalCount = $LiveMatrixFlagNames.Count
+        VerifiedCount = $liveMatrix.VerifiedCount
+        DeferredCount = $liveMatrix.DeferredNames.Count
+        UnresolvedCount = $liveMatrix.UnresolvedNames.Count
+        Verified = @($liveMatrix.VerifiedNames)
+        Deferred = @($liveMatrix.DeferredNames)
+        Unresolved = @($liveMatrix.UnresolvedNames)
+        MandatoryFlag = $MandatoryLiveMatrixFlagName
+        MandatoryVerified = $liveMatrix.MandatoryVerified
     }
-    # M4Complete 只有在 9 项全部为 verified 时才为 true。"环境不具备"不算已验证；
-    # 要把某一项正式划出范围，必须由用户修改目标文件，不能由本脚本推断。
-    M4Complete = ($liveMatrix.VerifiedCount -eq $LiveMatrixFlagNames.Count)
+    # 按目标文件 2026-07-26 修订后的 M4 必选项定义：9 项均有明确处置（verified 或
+    # 写明理由与重评时点的 deferred），且 RealAbnormalExitMatrixVerified 必须 verified。
+    # deferred 不等于 verified —— 上面的名单让两者在证据里始终可分。
+    M4Complete = ($liveMatrix.UnresolvedNames.Count -eq 0 -and $liveMatrix.MandatoryVerified)
     M416Frozen = $false
     EvidenceBoundary = "This is a machine-readable binding of automated M4 readiness. It binds dual-shell Phase 2 results, current R20.1 Host and AgentHost candidate hashes, authentication/bootstrap evidence, the current source manifest, the tracked Bridge.Client lock file, a hashed user-PATH fingerprint, secret/API checks, and an empty relevant-process state. The nine real-machine and enterprise flags are NOT produced by this gate: they are user-reported live results, admitted only when bound to these exact candidate hashes, and forced back to false the moment the candidate changes. A flag is true only for status 'verified' - an environment that could not run a matrix is recorded but never counted as verified. This gate does not start or command AutoCAD, verify NETLOAD, enable CAD writes or saves, or freeze M4.16."
 }

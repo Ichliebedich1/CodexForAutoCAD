@@ -300,6 +300,35 @@ function Invoke-CodexBuildSafetyStaticGate {
     $violations = New-Object System.Collections.ArrayList
     $cliHomeSiteCount = 0
 
+    # 含非 ASCII 的 .ps1 必须带 UTF-8 BOM。没有 BOM 时 Windows PowerShell 5.1 会用当前
+    # 代码页（本机 936）解码，中文变成乱码，脚本随即出现 ParserError——而 PowerShell 7
+    # 一切正常，于是缺陷只在双 Shell 门禁的另一半才现形。
+    # 纯 ASCII 文件不需要 BOM，因此按内容判定而不是一刀切要求。
+    # 2026-07-26 亲历：一次用 UTF8Encoding($false) 回写就把某个脚本的 BOM 抹掉了，
+    # 直到 PS5.1 跑挂才发现。这类错误应当在静态门禁里几秒内被抓住。
+    foreach ($powerShellFile in $powerShellFiles) {
+        $bytes = [IO.File]::ReadAllBytes($powerShellFile.FullName)
+        $hasBom = $bytes.Length -ge 3 -and
+            $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+        if ($hasBom) {
+            continue
+        }
+        $hasNonAscii = $false
+        foreach ($byte in $bytes) {
+            if ($byte -gt 127) {
+                $hasNonAscii = $true
+                break
+            }
+        }
+        if ($hasNonAscii) {
+            $null = $violations.Add([pscustomobject]@{
+                Rule = "PowerShellNonAsciiRequiresBom"
+                Path = $powerShellFile.FullName.Substring($resolvedRepoRoot.Length).TrimStart("\")
+                Detail = "含非 ASCII 字符的 .ps1 缺少 UTF-8 BOM，Windows PowerShell 5.1 会按代码页解码并解析失败。"
+            })
+        }
+    }
+
     function Add-CodexGateViolation {
         param(
             [Parameter(Mandatory = $true)] $Sink,
