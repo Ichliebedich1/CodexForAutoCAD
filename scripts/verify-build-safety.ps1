@@ -200,6 +200,7 @@ try {
         # 只记录指纹与计数，不记录 PATH 明文、绝对路径或环境变量内容。
         $evidence = [ordered]@{
             SchemaVersion = 2
+            RunCorrelationId = Get-CodexGateRunCorrelationId
             Scope = "codex-autocad-build-safety-gate"
             Status = "passed"
             PowerShellEdition = [string] $PSVersionTable.PSEdition

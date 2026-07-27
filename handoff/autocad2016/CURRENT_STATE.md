@@ -515,23 +515,32 @@ NETLOAD 证据的能力一律视为未支持。
   都禁止回退 CurrentUser。本机 net45/net8 原语均为 `available`，受限 FakeAgentHost
   均在认证前以 `child_exited` 退出；这不是生产受限身份成功。详情见
   `M4_4_M4_5_RESTRICTED_IDENTITY_PROBE_20260724.md`。
-- 当前 `codex/m4-credential-broker` 基于已提交检查点 `15352ff`，叠加未提交 M4.11–M4.15.6
-  切口；AgentLauncher net45/net8 各为 `65/65`，Bridge 为 `83/83`，Host MVP 为 `61/61`，完整
-  bootstrap 门禁 net45/net8 各为 `65/65`；PowerShell 7 与 Windows PowerShell 5.1 的完整 Phase 2 均为
-  `421/421`，AppServer 为 `45/45`，Release 为 `0 warning / 0 error`。本轮 bootstrap evidence 为
-  `artifacts/autocad2016-agent-bootstrap-10953306bc014e74bd2d2d6f5b6de8af/verification.json`，
-  AgentHost DLL SHA-256 为
-  `780D3CD57786CC624D8A033B2069E41095F7119EE4E695110D7E94E8CCB399D2`。
-- 叠加 M4.1 与 M4.16 门禁切口后的最新自动化状态（2026-07-26，仍未提交）：双 Shell Phase 2 均为
-  `454/454`，Bridge 为 `93/93`，Contracts 为 `118/118`，AgentRuntime 为 `43/43`，Release 为
-  `0 warning / 0 error`；`agent-bootstrap`、`auth-compat`、R20.1 Host 构建与 readiness 汇总器
-  六项门禁全部通过、`0` 失败。Host DLL SHA-256 保持
-  `9827DC321B7D458594B007085C78C54505CBE09CEF1BDEFB616D2ABFDFCFB5E8`，AgentHost DLL 因策略接入
-  更新为 `7C8817385E8877D2…`，源码 manifest 为 `5E03A66F8A53A417…`（`350` 个文件）。
-  用户 PATH 保持 `661` 字符、`13` 项、`0` 污染项，UTF-8 SHA-256
-  `05DF0D2FFC86D41186216560D37CC16FA0159ED5CEF9A89F61042964C196BE59` 全程不变，
-  相关残留进程为 `0`。readiness 仍固定 `automated_readiness_only`、`M4Complete=false`、
-  `M416Frozen=false`、`AutoCadStartedOrCommanded=false`、`CadWriteEnabled=false`。
+- 当前 `codex/m4-credential-broker` 已包含 `15352ff` 后的 M4.1、M4.11–M4.16 自动化准备、
+  审计 MAC/Catalog、M9.8 SBOM/许可证，以及统一门禁入口 `scripts/verify-all-gates.ps1` 和
+  构建安全 evidence 的 run correlation。精确提交以 `git rev-parse HEAD` 和 readiness
+  `Source.HeadCommit` 为准；未经用户授权不得继续提交、合并或推送。
+- 2026-07-27 从干净的已提交统一入口完成双 Shell 自检及一次完整 E 盘外置产物验证：
+  `build-safety` PowerShell 7/Windows PowerShell 5.1、双 Shell Phase 2、agent-bootstrap、
+  auth-compat、R20.1 Host 双构建、M9 SBOM/许可证和 M4 readiness 共 `9/9` 通过。
+  双 Shell Phase 2 均为 `469/469`；每项 evidence 均绑定同一 `RunCorrelationId` 并在
+  suite evidence 中记录独立 SHA-256。Host DLL SHA-256 为
+  `9827DC321B7D458594B007085C78C54505CBE09CEF1BDEFB616D2ABFDFCFB5E8`，AgentHost DLL
+  SHA-256 为 `762546803B688B8164D92A7CCBA0C92EAD7799342C6B29D56ADE6F5ACCF23311`。
+  readiness 记录精确源码 manifest、`Source.HeadCommit` 和
+  `Source.WorkingTreeDirty=false`；各 evidence 的当前 SHA-256 以同一次 suite JSON 为准，
+  不在本文复制易失值。
+- 统一入口现在强制使用显式、短、非系统盘产物基目录；EvidenceDirectory 只能位于该
+  Worktree 的产物根内。它不写 User/Machine 环境变量，任一门禁失败、PATH 指纹变化或
+  evidence 不匹配都会 fail-fast；bootstrap/auth evidence 不再按“最新目录”选择，而是要求
+  本次唯一 Run ID；残留检查按运行前后基线识别本次新增的 AgentHost/Fake/Bridge/Codex
+  app-server，避免误判外部既有 Codex 会话。
+- 本轮用户 PATH 保持 `661` 字符、`13` 项、`0` 污染项，UTF-8 SHA-256
+  `05DF0D2FFC86D41186216560D37CC16FA0159ED5CEF9A89F61042964C196BE59` 全程不变；
+  本次新增残留进程为 `0`，相关 `10` 份 correlated evidence 中敏感路径/用户名/秘密命中为
+  `0`。readiness 仍固定 `automated_readiness_only`、`M4Complete=false`、
+  `M416Frozen=false`、`RealAbnormalExitMatrixVerified=false`、`CadWriteEnabled=false`。
+  M9.8 的漏洞库查询和人工/IL 审查、候选 manifest/doctor、CI/干净缓存、全部实机及企业矩阵
+  明确不在这次 `9/9` 的完成声明内。
 - 构建产物根已由 `<Worktree>\artifacts` 迁至 `E:\cxb\<Worktree>\`。历史产物迁移共
   `17` 个 Worktree、`249,268` 个文件、`44.465 GiB`，逐个校验文件数、总字节数、逐文件相对路径与
   长度，以及 `26,878` 个关键文件（`verification.json`、`manifest*.json`、`Codex.AutoCAD*.dll`）

@@ -281,7 +281,9 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 完成定义：AutoCAD 或 AgentHost 异常退出后进程树可确定清理；凭据和用户配置不进入日志或
 普通工作目录。此阶段是启用 CAD 写入前置条件。
 
-当前受控集成检查点为 `codex/m4-integration@15352ff`：
+当前活动检查点为 `codex/m4-credential-broker`；`15352ff` 是 M4.6–M4.9 自动化基线，
+不再是当前 HEAD。统一门禁入口及构建安全 evidence correlation 已经复核并获得用户授权后
+提交；精确提交以 `git rev-parse HEAD` 和 readiness `Source.HeadCommit` 为准：
 
 - M4.1 代码与自动化已收口（提交 `8418962`）：本机 Codex 绝对路径、工作目录、启动/关闭
   超时此前已进入真实 AgentHost 调用链；本轮补齐允许模型、默认模型、允许思考强度和默认
@@ -425,11 +427,18 @@ M2 仍未完成，以下内容不能由自动化候选替代：
 - [x] M4.15.6 自动化收口 evidence：`verify-phase2.ps1` 增加可选机器可读 JSON；新增
   `verify-m4-r201-host-build.ps1` 对当前 Host.2016 执行两次 R20.1/net45/x64 Release 构建并
   验证位级一致、0 warning/0 error、Autodesk DLL 复制数 `0`；新增
-  `verify-m4-automated-readiness.ps1` 严格绑定双 Shell Phase 2 `421/421`、Agent bootstrap、
+  `verify-m4-automated-readiness.ps1` 严格绑定双 Shell Phase 2、Agent bootstrap、
   认证原语、Host/AgentHost 候选哈希、源码 manifest、锁文件、用户 PATH 长度/哈希、秘密/API
   扫描和残留进程 `0`。汇总器 PowerShell 7/5.1 自检和正式输出均通过，输出语义等价且不含
   本机路径或环境内容。状态固定 `automated_readiness_only`，所有真实机器和企业矩阵仍为
   `false`，不得称为 M4 完成或 M4.16 冻结。详见 `M4_15_AUTOMATED_READINESS_20260726.md`。
+- [x] 统一门禁入口已在短的非系统盘产物根上从干净的精确提交完成一次完整验证：
+  双 Shell build-safety、双 Shell Phase 2、agent-bootstrap、auth-compat、R20.1 Host、
+  M9 SBOM/许可证和 M4 readiness 共 `9/9`；双 Shell Phase 2 均为 `469/469`，PATH 指纹不变，
+  本次新增残留进程为 `0`。全部上游 evidence 以同一 Run ID 和独立 SHA-256 精确绑定，
+  不再按最新目录取旧成功文件；readiness 同时记录 `Source.WorkingTreeDirty=false`。
+- [x] 已获得用户明确授权，将 `scripts/verify-all-gates.ps1`、构建安全 correlation 及状态文档
+  作为最小检查点提交，并从精确提交重跑；未迁移先前 dirty Worktree 的 evidence。
 - [x] M4.15.4 补齐交接入口：它此前是 M4.15 中唯一没有任何交接文件的子项。新增
   `M4_15_RESTRICTED_ACCOUNT_EXECUTION_CONTROL_20260726.md`，定义标准受限账户、
   RestrictedToken 全链、AppContainer、AppLocker、WDAC/代码签名和杀毒/EDR 六个实机矩阵的
@@ -667,7 +676,11 @@ Kimi 可用为继续开发前置条件。
 - [ ] 建立 Windows CI。
 - [ ] 固定 .NET SDK、离线 net45 参考程序集和依赖锁。
 - [ ] 自动运行 Contracts、IPC、Bridge、AppServer、AgentRuntime、Host 和安全 Specs。
-- [ ] R20.1 API Probe、禁止 API、秘密扫描和包身份检查成为门禁。
+  当前统一入口已在两个 PowerShell 下动态汇总并通过 `469/469`，但脚本和证据尚未从精确
+  提交重跑，Windows CI 也未接入。
+- [ ] R20.1 API Probe、禁止 API、秘密扫描和包身份检查成为门禁。当前本地统一入口已覆盖
+  R20.1 Host 双构建、禁止 API、基础秘密扫描、离线 feed/锁文件身份、SBOM 和许可证；
+  候选 manifest/doctor 与 CI 必过策略仍缺。
 - [ ] 让完整依赖闭包的独立 R20.1 构建可位级复现。当前同一新鲜依赖闭包下 Host A/B
   输出一致；独立依赖构建仍会改变 timestamp、MVID 和 TargetFramework metadata，虽然
   归一化后的 Host IL 主体相同，不能把这一诊断当作完整可重复构建已完成。
@@ -676,7 +689,8 @@ Kimi 可用为继续开发前置条件。
 - [ ] 增加并发、断线、取消、迟到事件和重复请求压力测试。
 - [ ] 建立 1k/10k/50k 性能回归。
 - [ ] 建立 AgentHost 长运行和反复启停 soak test。
-- [ ] 生成 SBOM、第三方许可证和依赖漏洞报告。
+- [ ] 生成 SBOM、第三方许可证和依赖漏洞报告。SBOM 与许可证闭集门禁已完成并通过；
+  漏洞库查询、人工/IL 复核和冻结报告仍未完成，不得把 M9.8 整体标为完成。
 - [ ] 每个可验证阶段单独提交。
 
 ## 15. M10：.bundle、签名和企业部署

@@ -10,9 +10,12 @@
 - 预览、一次性 CAD 审批、`DocumentLock` 内重校验、单事务和单次 Undo；
 - 不自动保存，Shell、文件、网络和 CAD 写入默认拒绝。
 
-以上是目标边界，不代表当前全部能力已经接通。实际完成状态和真机证据以 `handoff/autocad2016/CURRENT_STATE.md`、`handoff/autocad2016/README_FIRST.md` 及对应阶段证据为准。
+以上是目标边界，不代表当前全部能力已经接通。唯一权威目标计划是
+`docs/goal-objective.md`；实际完成状态和真机证据以
+`handoff/autocad2016/CURRENT_STATE.md`、`handoff/autocad2016/README_FIRST.md`
+及对应阶段证据为准。
 
-## 当前状态（2026-07-24）
+## 当前状态（2026-07-26）
 
 当前已在原版 AutoCAD 2016 R20.1 中建立 `0.3.2.0` 的 CadContextJson v2 只读 AI
 实机基线，并已完成 M1 `0.3.3.0`、M2 `0.4.0.0` 和 M3 `0.4.2.0` 的源码/自动化候选冻结；
@@ -48,14 +51,17 @@ M4 的本机 Codex 配置、诊断脱敏和 Job Object 进程树回收已进入�
   R20.1/net45/x64 Host A/B 输出逐字节一致，Host SHA-256 为
   `467BC9711F6BD9598D7E788CB211A39D8DEE47428748CB0BDB3AF81F6322428D`，Autodesk DLL
   复制数为 `0`。这些是自动化候选证据，不是 AutoCAD 实机证据。
-- M4 受控集成分支 `codex/m4-integration@0763022` 已接入有界无内容 stderr 诊断、固定本地
-  `codex.exe` 版本/健康预检、可选每会话 `CODEX_HOME`、显式环境白名单、
-  `KILL_ON_JOB_CLOSE` 进程树边界和 internal-only RestrictedToken 能力探针。
-  M4.4/M4.5 已收回公共实验身份入口且禁止 CurrentUser 回退；本机探针结果
-  `available/child_exited` 不是生产身份成功。专项 AgentLauncher net45/net8 各
-  `41/41`，双 Shell Phase 2 均为 `358/358`，Bridge `49/49`，Release
-  `0 warning / 0 error`。这不是 M4.16 安全候选；生产受限身份、凭据、资源和磁盘配额、
-  ACL、审计链及企业/真实 Codex 实机矩阵仍未完成。
+- M4 活动 Worktree `codex/m4-credential-broker` 已接入分层配置、诊断脱敏、
+  Job Object 进程树/资源限制、受保护会话目录、凭据 Broker 自动化边界、审计哈希链/MAC、
+  retention 恢复以及 M4.15 自动化准备。统一门禁入口已作为独立检查点提交，并从干净的精确
+  提交在短的非系统盘产物根上完成双 Shell `9/9` 验证；Phase 2 为 `469/469`，PATH 不变且本次
+  新增残留进程为 `0`。所有上游 evidence 都绑定同一 Run ID、独立 SHA-256 和 readiness 中的
+  `Source.HeadCommit`，`Source.WorkingTreeDirty=false`。
+- 上述结果只是已提交自动化候选证据；readiness 仍明确
+  `M4Complete=false`、`M416Frozen=false`、`RealAbnormalExitMatrixVerified=false` 和
+  `CadWriteEnabled=false`。真实 Credential Manager/Codex keyring/RestrictedToken 全链、
+  固定容量卷写满、真实异常退出、断电、AppLocker/WDAC/EDR、企业保留/归档，以及 M9.8
+  漏洞库与人工/IL 审查仍未完成。M5 CAD 写入继续硬禁用。
 - 显式 CAD 上下文清除和文档激活清除旧缓存通过；CAD 写入和插件保存仍禁用。
 - P0 停止生命周期已有独立实机证据：重复 STOP、DBMOD 不变和 AgentHost 残留为零。
 - M1 已实现 Bridge 断线 fail-closed、结构化脱敏错误、request_id/唯一终态、幂等取消、
@@ -120,13 +126,24 @@ Provider-neutral 抽象、Direct API Provider 和自研 Agent Loop 已冻结，�
 
 ## 本地构建
 
+所有长期或全量构建必须使用短的非系统盘产物根；只允许进程级环境，不得用 `setx`，也不得
+写 User/Machine PATH：
+
 ```powershell
-dotnet build Codex.AutoCAD.sln
-dotnet run --project tests/Codex.AutoCAD.Contracts.Specs
-.\scripts\verify-autocad2016-drawing-index-benchmarks.ps1
+$env:CODEX_AUTOCAD_ARTIFACT_BASE = 'E:\cfa'
+$env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
+
+.\scripts\verify-build-safety.ps1 -SelfTestOnly -ArtifactBase 'E:\cfa'
+
+.\scripts\verify-all-gates.ps1 `
+  -Configuration Release `
+  -AutoCad2016Dir 'D:\AutoCAD 2016' `
+  -ArtifactBase 'E:\cfa'
 ```
 
-主解决方案默认构建托管核心、AgentHost、Bridge、AgentRuntime 和全部 Specs；两个进程内 CAD Host 都按目标版本独立构建，避免某一版本未安装时破坏核心构建。
+统一入口不会启动或控制 AutoCAD；它会动态运行当前已实现的双 Shell 构建、安全和 M4
+readiness 门禁，并在首个失败、PATH 指纹变化、evidence 关联不一致或本次新增残留进程时
+fail-fast。它不证明 M9.8 漏洞/人工 IL、候选冻结或任何 AutoCAD/企业实机矩阵。
 
 AutoCAD 2025 Host 保留在主解决方案中但不参与默认 Build。目标机提供原版托管程序集后，直接构建项目并传入 `AutoCad2025Dir`。
 
