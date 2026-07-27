@@ -151,6 +151,39 @@ $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
 readiness 门禁，并在首个失败、PATH 指纹变化、evidence 关联不一致或本次新增残留进程时
 fail-fast。它不证明 M9.8 漏洞/人工 IL、候选冻结或任何 AutoCAD/企业实机矩阵。
 
+M4.15.3 实机异常退出矩阵必须使用完整候选包，不能手工拼接统一门禁的零散 Host/AgentHost
+输出。在上述 `9/9` 通过、当前提交与 `m4-readiness.json` 精确一致且工作树干净后运行：
+
+```powershell
+.\scripts\verify-autocad2016-context-v2-candidate.ps1 `
+  -CandidateProfile m4-live `
+  -Configuration Release `
+  -AutoCad2016Dir 'D:\AutoCAD 2016'
+```
+
+M4 模式会先验证 `all-gates.json` 的 `9/9` 与 readiness SHA-256 绑定，再复建并核对 R20.1
+Host，复用同一 Run ID 且 evidence 哈希一致的已验证 AgentHost bootstrap 输出；readiness、
+suite 和 bootstrap JSON 均以同一次加锁读取的字节完成解析与哈希，AgentHost 的双构建完整
+输出树也会再次按相对路径和 SHA-256 比对。随后把提交、suite/readiness、Host/AgentHost
+哈希写入候选 manifest。候选和 evidence
+只写入 `E:\cfa` 对应 Worktree 产物根；源码 dirty、哈希漂移、旧 Run ID、多个匹配输出或
+CAD 写入/保存状态异常都会 fail-closed。该命令不启动 AutoCAD、不创建回滚 ref，也不表示
+M4 已完成。
+
+提交前可在两个 Shell 中运行候选打包器自测；它只在统一 E 盘产物根创建随机自有目录并在
+结束时精确清理，不要求或启动 AutoCAD：
+
+```powershell
+.\scripts\verify-autocad2016-context-v2-candidate.ps1 -SelfTestOnly
+powershell.exe -NoProfile -File `
+  .\scripts\verify-autocad2016-context-v2-candidate.ps1 -SelfTestOnly
+```
+
+M4.16 冻结校验器对 readiness 和 live matrix 均使用加锁单次字节读取、严格 UTF-8 与有界
+JSON 解析；关键开关只接受真实 JSON boolean，不接受 `"true"`/`"false"` 字符串。冻结
+evidence 同时记录 `ReadinessSha256` 与 `LiveMatrixSha256`，但校验器仍不会创建回滚 ref、
+启动 AutoCAD、启用 CAD 写入或把 `M416Frozen` 写成 true。
+
 AutoCAD 2025 Host 保留在主解决方案中但不参与默认 Build。目标机提供原版托管程序集后，直接构建项目并传入 `AutoCad2025Dir`。
 
 AutoCAD 2016 Host 位于独立解决方案 `Codex.AutoCAD.2016.sln`。下列 M2 候选脚本只能在

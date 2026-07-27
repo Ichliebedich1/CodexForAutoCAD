@@ -548,7 +548,8 @@ NETLOAD 证据的能力一律视为未支持。
   双 Shell Phase 2 均为 `469/469`；每项 evidence 均绑定同一 `RunCorrelationId` 并在
   suite evidence 中记录独立 SHA-256。Host DLL SHA-256 为
   `9827DC321B7D458594B007085C78C54505CBE09CEF1BDEFB616D2ABFDFCFB5E8`，AgentHost DLL
-  SHA-256 为 `762546803B688B8164D92A7CCBA0C92EAD7799342C6B29D56ADE6F5ACCF23311`。
+  SHA-256 在当前精确提交 `4657aa7091c6a938bca28997acb9ef8a73f86e1f` 重跑后为
+  `483E4CB438EB3436FB8C503920372D3001D0570C9D041F71896F2B5D0F26F52F`。
   readiness 记录精确源码 manifest、`Source.HeadCommit` 和
   `Source.WorkingTreeDirty=false`；各 evidence 的当前 SHA-256 以同一次 suite JSON 为准，
   不在本文复制易失值。
@@ -564,6 +565,33 @@ NETLOAD 证据的能力一律视为未支持。
   `M416Frozen=false`、`RealAbnormalExitMatrixVerified=false`、`CadWriteEnabled=false`。
   M9.8 的漏洞库查询和人工/IL 审查、候选 manifest/doctor、CI/干净缓存、全部实机及企业矩阵
   明确不在这次 `9/9` 的完成声明内。
+- 当前继续审查发现统一门禁只分别产生已验证 Host 和 AgentHost 输出，没有形成可直接
+  `NETLOAD` 且 manifest 绑定提交/readiness 的完整 M4 实机候选。旧 M1 候选脚本的公共回归
+  虽通过 Phase 2 `469/469`、R20.1 Host A/B、AgentHost doctor 和 manifest，但普通 publish
+  得到的 AgentHost DLL 哈希为 `7FEDEF9A...FA11AE1`，与 readiness 的隔离构建哈希
+  `483E4CB4...F26F52F` 不一致，故不能用于 M4 实机 evidence。当前未提交修正增加
+  `CandidateProfile=m4-live`：干净提交、suite/readiness/Run ID、Host/AgentHost 哈希和 correlated
+  bootstrap evidence 任一不一致都 fail-closed；M4 候选直接复制该次已验证 AgentHost 完整
+  runnable 输出并生成 schema 2 manifest，候选/evidence 只写统一 E 盘产物根。该路径仍需
+  进入新提交、从新提交重跑 `9/9` 后完成正向打包，当前不得开始实机矩阵。
+- 后续安全复核已把 readiness、suite、bootstrap evidence 改为同一次加锁读取的字节同时用于
+  严格 UTF-8 JSON 解析与 SHA-256，避免解析内容和绑定哈希来自两次读取；并按 bootstrap
+  evidence 的真实口径重新比对 `out/bin` 双构建完整 `129` 文件树，再逐文件复制、复核其中
+  AgentHost 的 `20` 文件 runnable 子树。基于当前正式 readiness 的辅助路径验证已唯一命中
+  correlated bootstrap，`20/20` 文件复制一致；M1 兼容回归再次通过 Phase 2 `469/469`、
+  Host A/B 和 AgentHost doctor，PATH 不变且 AutoCAD/AgentHost 前后均为 `0`。这些仅验证
+  未提交脚本及旧模式，不替代修正提交后的正式 M4 正向候选，更不替代 AutoCAD 实机矩阵。
+- 候选打包器现增加双 Shell `-SelfTestOnly`：在统一 E 盘产物根使用随机自有目录验证严格
+  UTF-8、单次字节解析/哈希、大小限制、产物根逃逸、递归文件树复制、bootstrap A/B 完整树
+  漂移和多个 correlated 输出均 fail-closed；PowerShell 7 与 Windows PowerShell 5.1 均通过，
+  自测目录结束后精确清理。它不依赖或启动 AutoCAD，也不把 synthetic 数据写入 Git。
+- 实机结果与冻结入口的一致性复核又发现 readiness 仍由普通 `Get-Content` 读取，且
+  `AutomatedGatesPassed="false"` 等字符串存在被 PowerShell 强制转换为真值的风险。当前
+  未提交修正使 readiness 与 live matrix 都采用普通非 reparse 文件、单次加锁字节、严格
+  UTF-8 和有界 JSON；关键 readiness 开关必须是精确 JSON boolean，且要求有效 correlated
+  Run ID。冻结 evidence 增加 `ReadinessSha256`。双 Shell自检通过；基于当前真实 readiness
+  的缺矩阵/回滚点拒绝路径仍精确得到 `freeze_refused`、5 个 blocker、
+  `M4Complete=false`、`M416Frozen=false`，PATH 不变且未启动 AutoCAD。
 - 构建产物根已由 `<Worktree>\artifacts` 迁至 `E:\cxb\<Worktree>\`。历史产物迁移共
   `17` 个 Worktree、`249,268` 个文件、`44.465 GiB`，逐个校验文件数、总字节数、逐文件相对路径与
   长度，以及 `26,878` 个关键文件（`verification.json`、`manifest*.json`、`Codex.AutoCAD*.dll`）

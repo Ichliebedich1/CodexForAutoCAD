@@ -134,6 +134,10 @@ pwsh -NoProfile -NonInteractive -File .\scripts\verify-m4-16-freeze-precondition
 
 脚本只读 Git ref，不创建、移动或删除 ref；不启动 AutoCAD，不启用 CAD 写入或插件保存。输出
 schema 2 会分别列出 `Verified` 与 `Deferred`，并以 `LiveMatrixSha256` 绑定原始处置文件。
+readiness 同样必须是普通非 reparse、严格 UTF-8 的有界 JSON；校验器使用同一次加锁读取的
+字节完成解析与 SHA-256，并在输出中记录 `ReadinessSha256`。`AutomatedGatesPassed`、
+`Source.WorkingTreeDirty`、CAD 写入/保存状态、`M4Complete` 和 `M416Frozen` 只接受真实
+JSON boolean，字符串值或缺少 `RunCorrelation.Id` 均 fail-closed。
 `EvidencePath` 必须是 build-safety 已选定 Worktree 产物根下的 `.json`，不能写入系统盘任意目录、
 仓库或其他 Worktree。
 

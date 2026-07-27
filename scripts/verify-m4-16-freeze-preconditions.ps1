@@ -105,11 +105,16 @@ function Test-JsonZeroInteger {
     return (($Value -is [int] -or $Value -is [long]) -and [long] $Value -eq 0)
 }
 
-function Convert-M4LiveMatrixBytes {
-    param([Parameter(Mandatory = $true)][byte[]] $Bytes)
+function Convert-M4JsonEvidenceBytes {
+    param(
+        [Parameter(Mandatory = $true)][byte[]] $Bytes,
+        [Parameter(Mandatory = $true)][string] $Label,
+        [Parameter(Mandatory = $true)][int] $MaximumBytes
+    )
 
-    if ($null -eq $Bytes -or $Bytes.Length -lt 2 -or $Bytes.Length -gt 65536) {
-        throw "live matrix 字节长度必须为 2–65536。"
+    if ($null -eq $Bytes -or $Bytes.Length -lt 2 -or
+        $Bytes.Length -gt $MaximumBytes) {
+        throw "$Label 字节长度必须为 2–$MaximumBytes。"
     }
 
     $utf8 = New-Object Text.UTF8Encoding($false, $true)
@@ -117,7 +122,7 @@ function Convert-M4LiveMatrixBytes {
         $jsonText = $utf8.GetString($Bytes)
     }
     catch {
-        throw "live matrix 不是严格 UTF-8。"
+        throw "$Label 不是严格 UTF-8。"
     }
     if ($jsonText.Length -gt 0 -and $jsonText[0] -eq [char] 0xFEFF) {
         $jsonText = $jsonText.Substring(1)
@@ -127,7 +132,7 @@ function Convert-M4LiveMatrixBytes {
         $json = $jsonText | ConvertFrom-Json -ErrorAction Stop
     }
     catch {
-        throw "live matrix 不是有效 JSON。"
+        throw "$Label 不是有效 JSON。"
     }
 
     $sha = [Security.Cryptography.SHA256]::Create()
@@ -143,12 +148,22 @@ function Convert-M4LiveMatrixBytes {
     }
 }
 
-function Read-M4LiveMatrixEvidence {
-    param([Parameter(Mandatory = $true)][string] $Path)
+function Convert-M4LiveMatrixBytes {
+    param([Parameter(Mandatory = $true)][byte[]] $Bytes)
 
+    return Convert-M4JsonEvidenceBytes -Bytes $Bytes `
+        -Label "live matrix" -MaximumBytes 65536
+}
+
+function Read-M4JsonEvidence {
+    param(
+        [Parameter(Mandatory = $true)][string] $Path,
+        [Parameter(Mandatory = $true)][string] $Label,
+        [Parameter(Mandatory = $true)][int] $MaximumBytes
+    )
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
     if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw "live matrix 不能是 reparse point。"
+        throw "$Label 不能是 reparse point。"
     }
 
     $stream = New-Object IO.FileStream(
@@ -156,24 +171,43 @@ function Read-M4LiveMatrixEvidence {
         [IO.FileMode]::Open,
         [IO.FileAccess]::Read,
         [IO.FileShare]::Read)
+    $bytes = $null
     try {
-        if ($stream.Length -lt 2 -or $stream.Length -gt 65536) {
-            throw "live matrix 字节长度必须为 2–65536。"
+        if ($stream.Length -lt 2 -or $stream.Length -gt $MaximumBytes) {
+            throw "$Label 字节长度必须为 2–$MaximumBytes。"
         }
         $bytes = New-Object byte[] ([int] $stream.Length)
         $offset = 0
         while ($offset -lt $bytes.Length) {
             $read = $stream.Read($bytes, $offset, $bytes.Length - $offset)
             if ($read -le 0) {
-                throw "live matrix 读取未完整结束。"
+                throw "$Label 读取未完整结束。"
             }
             $offset += $read
         }
-        return Convert-M4LiveMatrixBytes -Bytes $bytes
+        return Convert-M4JsonEvidenceBytes -Bytes $bytes `
+            -Label $Label -MaximumBytes $MaximumBytes
     }
     finally {
+        if ($null -ne $bytes) {
+            [Array]::Clear($bytes, 0, $bytes.Length)
+        }
         $stream.Dispose()
     }
+}
+
+function Read-M4LiveMatrixEvidence {
+    param([Parameter(Mandatory = $true)][string] $Path)
+
+    return Read-M4JsonEvidence -Path $Path `
+        -Label "live matrix" -MaximumBytes 65536
+}
+
+function Read-M4ReadinessEvidence {
+    param([Parameter(Mandatory = $true)][string] $Path)
+
+    return Read-M4JsonEvidence -Path $Path `
+        -Label "readiness evidence" -MaximumBytes 4194304
 }
 
 function Resolve-M4FreezeEvidenceOutputPath {
@@ -538,26 +572,35 @@ function Test-FreezePrecondition {
     }
 
     if (-not (Test-Property "Source") -or
-        -not ($Evidence.Source.PSObject.Properties.Name -contains "HeadCommit") -or
+        -not (Test-ObjectProperty $Evidence.Source "HeadCommit") -or
         [string] $Evidence.Source.HeadCommit -cne $ExpectedHeadCommit) {
         $null = $blockers.Add("readiness evidence 绑定的 HeadCommit 与当前 HEAD 不一致。")
     }
-    elseif (($Evidence.Source.PSObject.Properties.Name -contains "WorkingTreeDirty") -and
-        [bool] $Evidence.Source.WorkingTreeDirty) {
-        $null = $blockers.Add("readiness evidence 记录当时工作树不干净。")
+    if (-not (Test-Property "Source") -or
+        -not (Test-ObjectProperty $Evidence.Source "WorkingTreeDirty") -or
+        -not (Test-JsonBooleanValue `
+            -Value $Evidence.Source.WorkingTreeDirty -Expected $false)) {
+        $null = $blockers.Add(
+            "readiness evidence 的 Source.WorkingTreeDirty 必须是 JSON boolean false。")
     }
 
     # 冻结不能建立在弱保证上：FreshnessOnly 只证明五份 evidence 时间接近，
     # 证明不了它们来自同一次运行，而失败的门禁恰恰不写 evidence。
     if (-not (Test-Property "RunCorrelation") -or
-        -not ($Evidence.RunCorrelation.PSObject.Properties.Name -contains "Mode") -or
-        [string] $Evidence.RunCorrelation.Mode -cne "Correlated") {
-        $null = $blockers.Add("readiness evidence 的 RunCorrelation.Mode 不是 Correlated。")
+        -not (Test-ObjectProperty $Evidence.RunCorrelation "Mode") -or
+        [string] $Evidence.RunCorrelation.Mode -cne "Correlated" -or
+        -not (Test-ObjectProperty $Evidence.RunCorrelation "Id") -or
+        [string] $Evidence.RunCorrelation.Id -cnotmatch "^run-[0-9a-f]{32}$") {
+        $null = $blockers.Add(
+            "readiness evidence 必须包含 Correlated 模式和有效 RunCorrelation.Id。")
     }
 
     foreach ($mustBeTrue in @("AutomatedGatesPassed")) {
-        if (-not (Test-Property $mustBeTrue) -or -not [bool] $Evidence.$mustBeTrue) {
-            $null = $blockers.Add("readiness evidence 的 $mustBeTrue 不为 true。")
+        if (-not (Test-Property $mustBeTrue) -or
+            -not (Test-JsonBooleanValue `
+                -Value $Evidence.$mustBeTrue -Expected $true)) {
+            $null = $blockers.Add(
+                "readiness evidence 的 $mustBeTrue 必须是 JSON boolean true。")
         }
     }
 
@@ -565,9 +608,14 @@ function Test-FreezePrecondition {
     foreach ($mustBeFalse in @(
             "CadWriteEnabled",
             "PluginInitiatedSaveEnabled",
-            "AutoCadStartedOrCommanded")) {
-        if (-not (Test-Property $mustBeFalse) -or [bool] $Evidence.$mustBeFalse) {
-            $null = $blockers.Add("readiness evidence 的 $mustBeFalse 不为 false。")
+            "AutoCadStartedOrCommanded",
+            "M4Complete",
+            "M416Frozen")) {
+        if (-not (Test-Property $mustBeFalse) -or
+            -not (Test-JsonBooleanValue `
+                -Value $Evidence.$mustBeFalse -Expected $false)) {
+            $null = $blockers.Add(
+                "readiness evidence 的 $mustBeFalse 必须是 JSON boolean false。")
         }
     }
 
@@ -608,9 +656,13 @@ function New-FreezeSelfTestEvidence {
             HeadCommit = ("a" * 40)
             WorkingTreeDirty = $false
         }
-        RunCorrelation = [pscustomobject]@{ Mode = "Correlated" }
+        RunCorrelation = [pscustomobject]@{
+            Mode = "Correlated"
+            Id = "run-" + ("1" * 32)
+        }
         AutomatedGatesPassed = $true
-        M4Complete = [bool] $Complete
+        M4Complete = $false
+        M416Frozen = $false
         CadWriteEnabled = $false
         PluginInitiatedSaveEnabled = $false
         AutoCadStartedOrCommanded = $false
@@ -651,6 +703,14 @@ if ($SelfTestOnly) {
     if (-not (Test-ObjectProperty $minimalMatrix "Json") -or
         -not (Test-ObjectProperty $minimalMatrix "Sha256")) {
         throw "自检失败：有界 live matrix 字节解析器未返回 JSON 与 SHA-256。"
+    }
+    $minimalReadiness = Convert-M4JsonEvidenceBytes `
+        -Bytes ([Text.Encoding]::UTF8.GetBytes('{"AutomatedGatesPassed":true}')) `
+        -Label "readiness evidence" -MaximumBytes 4194304
+    if (-not (Test-ObjectProperty $minimalReadiness "Json") -or
+        -not (Test-ObjectProperty $minimalReadiness "Sha256") -or
+        $minimalReadiness.Json.AutomatedGatesPassed -isnot [bool]) {
+        throw "自检失败：readiness 单次字节解析器未返回强类型 JSON 与 SHA-256。"
     }
     $oversizedMatrixRejected = $false
     try {
@@ -701,6 +761,39 @@ if ($SelfTestOnly) {
             "verified=$($goalDisposition.Verified.Count)，" +
             "deferred=$($goalDisposition.Deferred.Count)，" +
             "errors=" + ($goalDisposition.Errors -join " / "))
+    }
+    $stringReady = New-FreezeSelfTestEvidence
+    $stringReady.AutomatedGatesPassed = "false"
+    $stringReadyResult = Test-FreezePrecondition -Evidence $stringReady `
+        -ExpectedHeadCommit $head -WorkingTreeClean $true `
+        -RollbackRefResolvesToHead $true -CandidateCommitChainValid $true `
+        -LiveMatrixDisposition $goalDisposition
+    if (@($stringReadyResult | Where-Object {
+                $_ -match "AutomatedGatesPassed 必须是 JSON boolean true"
+            }).Count -ne 1) {
+        throw "自检失败：字符串 AutomatedGatesPassed 被当作 JSON boolean true。"
+    }
+    $missingDirty = New-FreezeSelfTestEvidence
+    $missingDirty.Source.PSObject.Properties.Remove("WorkingTreeDirty")
+    $missingDirtyResult = Test-FreezePrecondition -Evidence $missingDirty `
+        -ExpectedHeadCommit $head -WorkingTreeClean $true `
+        -RollbackRefResolvesToHead $true -CandidateCommitChainValid $true `
+        -LiveMatrixDisposition $goalDisposition
+    if (@($missingDirtyResult | Where-Object {
+                $_ -match "Source.WorkingTreeDirty 必须是 JSON boolean false"
+            }).Count -ne 1) {
+        throw "自检失败：缺少 Source.WorkingTreeDirty 时未失败关闭。"
+    }
+    $missingRunId = New-FreezeSelfTestEvidence
+    $missingRunId.RunCorrelation.PSObject.Properties.Remove("Id")
+    $missingRunIdResult = Test-FreezePrecondition -Evidence $missingRunId `
+        -ExpectedHeadCommit $head -WorkingTreeClean $true `
+        -RollbackRefResolvesToHead $true -CandidateCommitChainValid $true `
+        -LiveMatrixDisposition $goalDisposition
+    if (@($missingRunIdResult | Where-Object {
+                $_ -match "有效 RunCorrelation.Id"
+            }).Count -ne 1) {
+        throw "自检失败：缺少 RunCorrelation.Id 时未失败关闭。"
     }
     $deferredAbnormal = $goalMatrix | ConvertTo-Json -Depth 12 | ConvertFrom-Json
     $deferredAbnormalItem = @($deferredAbnormal.Items | Where-Object {
@@ -908,7 +1001,9 @@ else {
 if (-not (Test-Path -LiteralPath $resolvedReadiness -PathType Leaf)) {
     throw "readiness evidence 不存在。"
 }
-$readinessJson = Get-Content -LiteralPath $resolvedReadiness -Raw -Encoding UTF8 | ConvertFrom-Json
+$readinessRead = Read-M4ReadinessEvidence -Path $resolvedReadiness
+$readinessJson = $readinessRead.Json
+$readinessSha256 = $readinessRead.Sha256
 
 $currentHeadCommit = (& git -c "safe.directory=$safeRepoRoot" -C $repoRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $currentHeadCommit -cnotmatch "^[0-9a-f]{40}$") {
@@ -1057,6 +1152,7 @@ if (-not [string]::IsNullOrWhiteSpace($EvidencePath)) {
         CandidateCommitChainValid = $candidateCommitChainValid
         WorkingTreeClean = $workingTreeClean
         RollbackRefResolvesToHead = $rollbackResolves
+        ReadinessSha256 = $readinessSha256
         LiveMatrixSha256 = $liveMatrixSha256
         Verified = @($liveMatrixDisposition.Verified)
         Deferred = @($liveMatrixDisposition.Deferred)

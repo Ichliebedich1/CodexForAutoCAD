@@ -25,8 +25,26 @@
    - `Source.HeadCommit=C`、`Source.WorkingTreeDirty=false`；
    - Host/AgentHost SHA-256 已记录；
    - AutoCAD 未被门禁启动，新增残留为 `0`，User PATH 不变。
-2. 只加载该次 R20.1 候选 Host DLL，不混用旧版本。
-3. AutoCAD 命令行先执行：
+2. 在同一个干净提交 C 上生成完整 M4 实机候选：
+
+   ```powershell
+   $env:CODEX_AUTOCAD_ARTIFACT_BASE = 'E:\cfa'
+   $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
+   .\scripts\verify-autocad2016-context-v2-candidate.ps1 `
+     -CandidateProfile m4-live `
+     -Configuration Release `
+     -AutoCad2016Dir 'D:\AutoCAD 2016'
+   ```
+
+   该命令必须输出 `SOURCE_HEAD=C`，Host/AgentHost DLL SHA-256 必须与同一次
+   `m4-readiness.json` 一致。候选 `manifest.json` 必须为 schema 2，并包含 `m4Binding`；
+   `AgentHost` 子目录必须同时包含 EXE、DLL、runtimeconfig、deps 和 EXE `.sha256` sidecar。
+   `all-gates.json` 必须以同一 Run ID 精确绑定当前 readiness；bootstrap 的隔离 A/B 完整
+   runnable 输出树必须再次按相对路径和 SHA-256 一致。任何 dirty source、旧 Run ID、
+   hash/文件树不一致或多个 bootstrap 输出匹配都必须拒绝。
+3. 只对该完整候选根目录的 `Codex.AutoCAD.Host.2016.dll` 执行 `NETLOAD`；不要加载门禁
+   stage 目录、旧候选或任何单独依赖 DLL。
+4. AutoCAD 命令行先执行：
 
    ```text
    DBMOD
@@ -37,8 +55,8 @@
    DBMOD
    ```
 
-4. 检查 Host 仍为 AutoCAD R20.1 / .NET Framework 4.5 / x64，CAD write、插件保存均 disabled。
-5. 使用任务管理器“详细信息”页观察以下三类进程，但反馈只写计数：
+5. 检查 Host 仍为 AutoCAD R20.1 / .NET Framework 4.5 / x64，CAD write、插件保存均 disabled。
+6. 使用任务管理器“详细信息”页观察以下三类进程，但反馈只写计数：
    - `acad.exe`
    - `Codex.AutoCAD.AgentHost.exe`
    - 命令行为 `app-server` 的本机 `codex.exe`

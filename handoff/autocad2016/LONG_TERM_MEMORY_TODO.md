@@ -452,6 +452,19 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   boolean/integer 与字符串。
 - [x] M4.16 evidence 输出限制为 build-safety Worktree 产物根下的 `.json`，拒绝任意系统盘、
   仓库或其他 Worktree 写入。
+- [x] M4.16 readiness 输入改为普通非 reparse 文件、单次加锁字节、严格 UTF-8 和 4 MiB
+  上限；冻结关键开关只接受真实 JSON boolean，并要求有效 correlated Run ID。输出 evidence
+  同时绑定 `ReadinessSha256` 和 `LiveMatrixSha256`。双 Shell 自检及真实缺矩阵拒绝路径通过。
+- [ ] 补齐可直接 `NETLOAD` 的 M4 实机候选包：旧候选脚本已发现 AgentHost 普通 publish
+  DLL 哈希无法复现统一门禁的隔离构建哈希，不能用于 M4 evidence。当前未提交修正增加
+  `CandidateProfile=m4-live`，要求源码为干净提交、suite/readiness 与 HEAD/Run ID 精确绑定，
+  复建 Host 并核对哈希，同时只复用同一次 correlated bootstrap 的已验证 AgentHost 完整输出；
+  三份 JSON evidence 均使用单次加锁字节完成严格解析和哈希，bootstrap 的双构建完整 `out/bin`
+  树再次逐文件核对后才复制 AgentHost runnable 子树。manifest schema 2 绑定提交、
+  suite/readiness 和 Host/AgentHost 哈希，evidence 仅写非系统盘产物根。辅助复制验证和
+  M1 `469/469` 兼容回归已通过；新增 `-SelfTestOnly` 已在 PowerShell 7/5.1 覆盖严格
+  evidence、路径逃逸、A/B 树漂移和重复 correlated 输出拒绝并完成 E 盘自有目录清理。
+  该正向路径仍必须在修正提交后重跑统一门禁并实际生成正式 M4 候选才能勾选完成。
 - [ ] 实际 `handoff/autocad2016/live-matrix-results.json` 尚未生成；先完成绑定候选的真实
   AutoCAD/AgentHost/Codex 强杀矩阵，再由用户决定其他八项 verified 或 deferred。不得用
   FakeAgentHost、自动化规格或示例 JSON 冒充实机结果。
