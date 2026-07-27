@@ -40,6 +40,22 @@ NETLOAD 证据的能力一律视为未支持。
   自检双 Shell 均为 `18/18`；本机双 Shell 分别完成两个全新缓存的 Probe A/B 构建，AMD64
   DLL 哈希一致，并恢复 API Probe `29 passed / 8 expected failed`。该 M9.2 改动尚未提交，
   M9.1/M9.2 远端工作流也尚未运行，因此 M9.2 仍为进行中。
+- M9.3 正在独立 `codex/m9-required-gates` Worktree 实现，以 M9.2 的 15 文件源码基线
+  为输入；其中 11 文件仍逐字节一致，README、两份状态文档和 Windows CI 静态校验器已由
+  M9.3 继续扩展。Host ReadOnlyContext、Host V2 和 AgentService Specs 已接入正式
+  solution/Phase 2/Agent bootstrap 调用链；当前局部验证为 Phase 2 `510/510`、
+  AgentLauncher net8/net45 各 `65/65`、AgentService `7/7`，相关 bootstrap evidence
+  schema 为 17、构建 0 warning / 0 error、残留进程为 0。新增
+  `verify-m9-required-gates.ps1` 从 evidence 动态聚合 11 个 Phase 2 项目、双运行时
+  Launcher 与 AgentService 规格，并把 M9.1、M9.2、M4 相关联套件、候选 manifest 和
+  candidate doctor 绑定到同一干净提交。双 Shell 自检已通过；在全入口执行时与 23 个
+  待提交 Git blob 一致的临时验证提交 `515177ab374859206fe0313762218883369f2ac2`
+  已完成全量入口：
+  相关联套件 `9/9`、12 个覆盖类别、候选 manifest/doctor、动态唯一逻辑规格 `582`，
+  最终 evidence schema `codex.autocad.m9-required-gates/1`，新增残留 0、PATH 不变。
+  该提交仅在独立验证克隆，因保留的验证产物占用空间显式使用 `5 GiB` 门槛；正式
+  M9.2/M9.3 尚未提交，也未按默认 `40 GiB` 从项目分支复跑，远端 CI 仍不存在，因此
+  M9.3 仍为进行中。
 - P0 `codex/bridge-client-net45` 的 0.3.2 停止生命周期候选已由用户在 AutoCAD 2016
   中完成人工启停、重复 STOP、DBMOD 和残留检查；独立提交为 `8a4ee57`，实机证据为
   `agent-stop-live-observation-20260722.json`，该证据不继承给 P1。

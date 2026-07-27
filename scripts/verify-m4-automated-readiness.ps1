@@ -200,8 +200,31 @@ function Assert-Phase2Evidence {
         Assert-FalseProperty $Evidence $name
     }
     $projects = @($Evidence.SpecProjects)
-    if ($projects.Count -ne 9) {
-        throw "Phase 2 evidence 必须包含精确 9 个规格项目。"
+    $requiredProjectNames = @(
+        "Codex.AutoCAD.Contracts.Specs",
+        "Codex.AutoCAD.Ipc.Specs",
+        "Codex.AutoCAD.Security.Specs",
+        "Codex.AutoCAD.AppServer.Specs",
+        "Codex.AutoCAD.Bridge.Specs",
+        "Codex.AutoCAD.Bridge.Client.Specs",
+        "Codex.AutoCAD.AgentRuntime.Specs",
+        "Codex.AutoCAD.Chat.Specs",
+        "Codex.AutoCAD.Host.2016.Mvp.Specs",
+        "Codex.AutoCAD.Host.2016.ReadOnlyContext.Specs",
+        "Codex.AutoCAD.Host.2016.V2.Specs"
+    )
+    $actualProjectNames = @($projects | ForEach-Object { [string] $_.Name })
+    $duplicateNames = @(
+        $actualProjectNames | Group-Object -CaseSensitive |
+            Where-Object { $_.Count -ne 1 }
+    )
+    $projectDifference = @(
+        Compare-Object -CaseSensitive `
+            -ReferenceObject @($requiredProjectNames | Sort-Object) `
+            -DifferenceObject @($actualProjectNames | Sort-Object)
+    )
+    if ($duplicateNames.Count -ne 0 -or $projectDifference.Count -ne 0) {
+        throw "Phase 2 evidence 规格项目集合与必过清单不一致。"
     }
     $total = 0
     foreach ($project in $projects) {
@@ -222,7 +245,7 @@ function Assert-Phase2Evidence {
 
 function Assert-BootstrapEvidence {
     param([Parameter(Mandatory = $true)] $Evidence)
-    Assert-PropertyEquals $Evidence "SchemaVersion" 16
+    Assert-PropertyEquals $Evidence "SchemaVersion" 17
     Assert-PropertyEquals $Evidence "Scope" "autocad2016-live-agenthost-inherited-handle-bootstrap-doctor"
     Assert-PropertyEquals $Evidence "Status" "live-agenthost-bootstrap-doctor-gate-passed"
     Assert-PropertyEquals $Evidence "Configuration" "Release"
@@ -230,7 +253,8 @@ function Assert-BootstrapEvidence {
         "BitForBitMatch",
         "RunnableOutputTreesRecheckedAfterSpecs",
         "NoNewResidualAgentProcesses",
-        "BootstrapPrimitiveSourceUnchanged"
+        "BootstrapPrimitiveSourceUnchanged",
+        "BootstrapServeLifecycleVerified"
     )) {
         Assert-TrueProperty $Evidence $name
     }
@@ -250,6 +274,7 @@ function Assert-BootstrapEvidence {
     }
     Assert-SpecSummary ([string] $Evidence.Net45Specs)
     Assert-SpecSummary ([string] $Evidence.Net8Specs)
+    Assert-SpecSummary ([string] $Evidence.AgentServiceSpecs)
     if ([string] $Evidence.Net45Specs -cne [string] $Evidence.Net8Specs) {
         throw "Agent bootstrap net45/net8 规格摘要不一致。"
     }

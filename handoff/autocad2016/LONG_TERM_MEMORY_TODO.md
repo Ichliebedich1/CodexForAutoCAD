@@ -723,13 +723,18 @@ Kimi 可用为继续开发前置条件。
   当前批准的 4 个 Autodesk 二进制；双 Shell 18 项负向自检、无 Autodesk CI 模式和本机
   两次全新缓存 A/B Probe 均通过。该改动尚未提交且远端未运行，M9.2 仍不得标为完成。
 - [~] 自动运行 Contracts、IPC、Bridge、AppServer、AgentRuntime、Host 和安全 Specs。
-  当前统一入口与 CI-only Phase 2 都动态汇总 `469/469`；CI 工作流已接线，但远端 run
-  尚未验证。CI 明确不冒充本机 Codex doctor、R20.1 Host 构建或 AutoCAD 实机门禁。
-- [ ] R20.1 API Probe、禁止 API、秘密扫描和包身份检查成为门禁。当前本地统一入口已覆盖
+  M9.3 Worktree 已把 Host ReadOnlyContext、Host V2 和 AgentService Specs 接入真实
+  solution/Phase 2/bootstrap 调用链；当前 Phase 2 动态汇总 `510/510`，Launcher 在
+  net8/net45 各 `65/65`，AgentService `7/7`。新增最终本地聚合器从 evidence 动态求和，
+  不依赖陈旧硬编码总数；与当前 23 个待提交 Git blob 一致的临时验证提交已通过相关联
+  `9/9`、候选 manifest/doctor 和最终 `582` 项动态汇总。正式 M9.2/M9.3 项目提交、
+  默认 `40 GiB` 全入口复跑和远端 CI 仍未验证。
+- [~] R20.1 API Probe、禁止 API、秘密扫描和包身份检查成为门禁。当前本地统一入口已覆盖
   R20.1 Host 双构建、禁止 API、基础秘密扫描、离线 feed/锁文件身份、SBOM 和许可证；
   M9.2 Worktree 还把旧 API Probe 从机器上最新 Visual Studio MSBuild 改为精确
-  `dotnet msbuild`，并在 restore 前验证 R20.1 二进制哈希/签名。候选 manifest/doctor、
-  远端 run 与 CI 必过策略仍缺。
+  `dotnet msbuild`，并在 restore 前验证 R20.1 二进制哈希/签名。M9.3 汇总器已接线候选
+  manifest/doctor 并严格验证源码、suite、readiness 和候选哈希绑定；尚待 M9.2/M9.3
+  干净提交后的全入口验证及远端必过策略。
 - [ ] 让完整依赖闭包的独立 R20.1 构建可位级复现。当前同一新鲜依赖闭包下 Host A/B
   输出一致；M9.2 已证明 V2ApiProbe 在两个独立全新缓存中的 AMD64 输出逐字节一致。
   完整 Host 独立依赖构建仍会改变 timestamp、MVID 和 TargetFramework metadata，虽然
