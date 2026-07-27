@@ -1,6 +1,6 @@
 # AutoCAD 2016 项目长期记忆与完整待办
 
-最后更新：2026-07-26（北京时间）
+最后更新：2026-07-27（北京时间）
 
 本文件是项目长期“固定目标、已验证基线、M0-M12 未完成队列和阶段纪律”的权威入口。
 运行状态细节见 `CURRENT_STATE.md`，人工测试入口见 `README_FIRST.md`，脱敏证据见
@@ -708,11 +708,19 @@ Kimi 可用为继续开发前置条件。
 
 完成定义：任何提交都不能绕过关键构建、安全和回归门禁。
 
-- [ ] 建立 Windows CI。
-- [ ] 固定 .NET SDK、离线 net45 参考程序集和依赖锁。
-- [ ] 自动运行 Contracts、IPC、Bridge、AppServer、AgentRuntime、Host 和安全 Specs。
-  当前统一入口已在两个 PowerShell 下动态汇总并通过 `469/469`，但脚本和证据尚未从精确
-  提交重跑，Windows CI 也未接入。
+- [~] 建立 Windows CI。已从 M4.16 候选 C 建立独立 M9.1 Worktree，新增
+  `windows-2022` 的 PowerShell 7/Windows PowerShell 5.1 双矩阵工作流和本地定义门禁；
+  第三方 Action 固定精确提交、最小只读权限、checkout 不持久化凭据、产物使用 Runner
+  临时目录。标准 Runner 显式使用 5 GiB 门槛，本机默认仍为 40 GiB；17 类危险工作流变异
+  在双 Shell 均被拒绝。CI-only Phase 2 双 Shell本地均通过 `469/469`，额外 net45/x64
+  门禁双 Shell 均构建 4 个 AMD64 程序集、0 warning / 0 error，默认真实 Codex doctor
+  仍通过；尚未提交、推送或取得远端绿色 run，因此不得标为完成。
+- [~] 固定 .NET SDK、离线 net45 参考程序集和依赖锁。SDK 与离线 net45 包已固定，Phase 2
+  和 net45/x64 门禁显式使用 `<clear />` 离线 NuGet 配置并隔离缓存/临时 lock；完整 M9.2
+  还缺 NuGet 工具版本和 R20.1 API Probe 输入锁。
+- [~] 自动运行 Contracts、IPC、Bridge、AppServer、AgentRuntime、Host 和安全 Specs。
+  当前统一入口与 CI-only Phase 2 都动态汇总 `469/469`；CI 工作流已接线，但远端 run
+  尚未验证。CI 明确不冒充本机 Codex doctor、R20.1 Host 构建或 AutoCAD 实机门禁。
 - [ ] R20.1 API Probe、禁止 API、秘密扫描和包身份检查成为门禁。当前本地统一入口已覆盖
   R20.1 Host 双构建、禁止 API、基础秘密扫描、离线 feed/锁文件身份、SBOM 和许可证；
   候选 manifest/doctor 与 CI 必过策略仍缺。

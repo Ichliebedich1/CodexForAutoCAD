@@ -151,6 +151,36 @@ $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
 readiness 门禁，并在首个失败、PATH 指纹变化、evidence 关联不一致或本次新增残留进程时
 fail-fast。它不证明 M9.8 漏洞/人工 IL、候选冻结或任何 AutoCAD/企业实机矩阵。
 
+### Windows 托管核心 CI
+
+`.github/workflows/windows-core.yml` 在 `windows-2022` 上分别使用 PowerShell 7 和
+Windows PowerShell 5.1 运行托管核心构建、动态规格、AutoCAD 兼容核心的 `net45/x64`
+隔离构建、Host 禁用 API、构建安全以及 SBOM/许可证门禁。第三方 Action 固定到精确提交，
+checkout 不持久化凭据，工作流权限只有 `contents: read`，产物根固定在 Runner 临时目录，
+并显式设置 `DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=0`。
+
+本机构建安全门槛默认保持 `40 GiB`。标准 GitHub Runner 的工作流只对该受控临时卷显式使用
+`5 GiB` 下限，避免把本机门槛错误套到总存储较小的 Runner；任何脚本都不能通过环境变量
+静默降低门槛。Phase 2 和 `net45/x64` 构建均显式传入仓库内 `<clear />` 的离线
+`NuGet.Config`，不读取 Runner 用户 NuGet 配置。
+
+GitHub 托管 Runner 没有用户的本机 Codex、凭据或 AutoCAD。工作流因此只在 Phase 2 中显式
+传入 `-SkipLiveCodexHandshake`；它不会跳过构建、469 项动态规格、`net45/x64` 托管边界、
+禁用 API、Git diff 或秘密扫描。默认 Phase 2 和 `verify-all-gates.ps1` 仍必须执行本机
+AgentHost/Codex doctor，且 `scripts/verify-m9-windows-ci.ps1` 会拒绝统一正式门禁引用该
+CI-only 开关。
+
+本地检查工作流定义：
+
+```powershell
+.\scripts\verify-m9-windows-ci.ps1 -SelfTestOnly
+powershell.exe -NoProfile -File `
+  .\scripts\verify-m9-windows-ci.ps1 -SelfTestOnly
+```
+
+本地双 Shell 通过只证明工作流定义与 CI 模式可运行；在分支推送并取得两个远端绿色 job 前，
+M9.1 仍为进行中，也不能替代本机 Codex doctor、R20.1 Host 构建或 AutoCAD 实机证据。
+
 M4.15.3 实机异常退出矩阵必须使用完整候选包，不能手工拼接统一门禁的零散 Host/AgentHost
 输出。在上述 `9/9` 通过、当前提交与 `m4-readiness.json` 精确一致且工作树干净后运行：
 

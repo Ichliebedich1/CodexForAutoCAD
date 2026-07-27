@@ -1,6 +1,6 @@
 # AutoCAD 2016 当前状态索引
 
-最后更新：2026-07-26（北京时间）
+最后更新：2026-07-27（北京时间）
 
 本文件是项目的长期“当前状态索引”。它不替代 `README_FIRST.md`、
 `COMPANY_PC_RUNBOOK.md`、测试报告、证据 JSON 或 Git 历史；只把当前成立的结论、
@@ -16,8 +16,22 @@
 若摘要与原始证据冲突，以更具体、更新且可复现的原始证据为准。没有真实编译和
 NETLOAD 证据的能力一律视为未支持。
 
-## 当前活动快照（2026-07-26）
+## 当前活动快照（2026-07-27）
 
+- M4.16 正式实机候选已绑定干净候选提交
+  `cef82772bbafebd161f5c9d3af0c3aa32ddd0084`，统一门禁 `9/9`、双 Shell Phase 2
+  `469/469`，候选 ID 为
+  `autocad2016-m4-live-v042-9827dc32-a3334d72-f41e24ee`。真实异常退出 A–E 尚未执行，
+  `live-matrix-results.json` 和回滚点均不存在，因此 `M4Complete=false`、
+  `M416Frozen=false`，M5 继续硬阻断。
+- M9.1 已在候选 C 的独立后继 Worktree 开始 Windows CI 切口：新增
+  `windows-2022`、PowerShell 7/Windows PowerShell 5.1 双矩阵工作流，第三方 Action 绑定
+  精确提交、权限只读、checkout 不保留凭据、产物只进 Runner 临时目录。标准 Runner 显式
+  使用 `5 GiB` 门槛，本机默认仍为 `40 GiB`；Phase 2 显式使用仓库离线 NuGet 配置，
+  不读取用户配置。CI-only Phase 2 双 Shell 保持 `469/469`，额外 net45/x64 门禁在双 Shell
+  均构建 4 个 AMD64 托管程序集、0 warning / 0 error；默认 Phase 2 的真实本机 Codex
+  `0.144.4` doctor 已单独回归通过。工作流尚未提交、推送或取得远端 run，故 M9.1 仍为
+  进行中，不得把本地验证写成 CI 已通过。
 - P0 `codex/bridge-client-net45` 的 0.3.2 停止生命周期候选已由用户在 AutoCAD 2016
   中完成人工启停、重复 STOP、DBMOD 和残留检查；独立提交为 `8a4ee57`，实机证据为
   `agent-stop-live-observation-20260722.json`，该证据不继承给 P1。

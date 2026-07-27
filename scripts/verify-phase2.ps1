@@ -7,7 +7,16 @@ param(
 
     [string] $EvidencePath,
 
-    [switch] $NoRestore
+    [switch] $NoRestore,
+
+    # GitHub-hosted CI does not have the user's local Codex installation or credentials.
+    # This switch skips only the live AgentHost doctor handshake; every managed build,
+    # specification, forbidden-API, Git and secret gate below still runs. The default
+    # remains fail-closed and verify-all-gates.ps1 never passes this switch.
+    [switch] $SkipLiveCodexHandshake,
+
+    [ValidateRange(0, 40)]
+    [double] $MinimumFreeGiB = 40
 )
 
 Set-StrictMode -Version Latest
@@ -15,7 +24,8 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 . (Join-Path $PSScriptRoot "build-safety.ps1")
-$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot `
+    -MinimumFreeGiB $MinimumFreeGiB
 $artifactsRoot = $buildSafety.ArtifactRoot
 $safeRepoRoot = $repoRoot.Replace("\", "/")
 $solutionPath = Join-Path $repoRoot "Codex.AutoCAD.sln"
@@ -23,6 +33,7 @@ $doctorWorkspace = Join-Path $artifactsRoot "phase2-doctor-workspace"
 $dotnetHome = Join-Path $artifactsRoot "dotnet-cli-home"
 $nugetPackages = Join-Path $artifactsRoot "nuget-packages"
 $nugetHttpCache = Join-Path $artifactsRoot "nuget-http-cache"
+$nugetConfigPath = Join-Path $repoRoot "src\Codex.AutoCAD.Host.2016\NuGet.Config"
 $conditionalLockPath = Join-Path $repoRoot "src\Codex.AutoCAD.Bridge.Client\packages.lock.json"
 
 $env:DOTNET_CLI_HOME = $dotnetHome
@@ -37,6 +48,9 @@ $dotnetCommand = (Get-Command dotnet -ErrorAction Stop).Source
 # file so this verification does not erase the net45 graph required by the AutoCAD host gate.
 if (-not (Test-Path -LiteralPath $conditionalLockPath -PathType Leaf)) {
     throw "缺少 Bridge.Client 条件化锁文件：$conditionalLockPath"
+}
+if (-not (Test-Path -LiteralPath $nugetConfigPath -PathType Leaf)) {
+    throw "缺少显式离线 NuGet 配置。"
 }
 $conditionalLockBytes = [IO.File]::ReadAllBytes($conditionalLockPath)
 
@@ -621,12 +635,20 @@ try {
     Assert-HostProjectsExcludedFromCoreBuild
 
     Assert-PinnedSdk
-    $resolvedCodexExecutable = Resolve-CodexExecutablePath -RequestedPath $CodexExecutable
+    if ($SkipLiveCodexHandshake -and
+        -not [string]::IsNullOrWhiteSpace($CodexExecutable)) {
+        throw "-SkipLiveCodexHandshake 不能与 -CodexExecutable 同时使用。"
+    }
+    $resolvedCodexExecutable = $null
+    if (-not $SkipLiveCodexHandshake) {
+        $resolvedCodexExecutable = Resolve-CodexExecutablePath -RequestedPath $CodexExecutable
+    }
 
     $solutionBuildArguments = @(
         "build", $solutionPath,
         "--configuration", $Configuration,
-        "--nologo", "--disable-build-servers", "-m:1"
+        "--nologo", "--disable-build-servers", "-m:1",
+        ("-p:RestoreConfigFile=" + $nugetConfigPath)
     )
     if ($NoRestore) {
         $solutionBuildArguments += "--no-restore"
@@ -678,23 +700,28 @@ try {
     Write-Host "`n==> 校验 Host.2016 CAD 写入硬禁用" -ForegroundColor Cyan
     Assert-NoCadWriteInHost2016
 
-    New-Item -ItemType Directory -Path $doctorWorkspace -Force | Out-Null
-    $doctorArguments = @(
-        "run",
-        "--project", "src\Codex.AutoCAD.AgentHost\Codex.AutoCAD.AgentHost.csproj",
-        "--configuration", $Configuration,
-        "--no-build",
-        "--",
-        "doctor",
-        "--workspace", $doctorWorkspace,
-        "--codex", $resolvedCodexExecutable
-    )
+    if ($SkipLiveCodexHandshake) {
+        Write-Warning "M9 Windows CI 模式未执行本机 Codex/AgentHost doctor；该结果不能替代 verify-all-gates.ps1 或任何候选实机证据。"
+    }
+    else {
+        New-Item -ItemType Directory -Path $doctorWorkspace -Force | Out-Null
+        $doctorArguments = @(
+            "run",
+            "--project", "src\Codex.AutoCAD.AgentHost\Codex.AutoCAD.AgentHost.csproj",
+            "--configuration", $Configuration,
+            "--no-build",
+            "--",
+            "doctor",
+            "--workspace", $doctorWorkspace,
+            "--codex", $resolvedCodexExecutable
+        )
 
-    Invoke-CheckedCommand `
-        -FilePath $dotnetCommand `
-        -ArgumentList $doctorArguments `
-        -Description "执行 AgentHost doctor 活体握手"
-    Write-Warning "doctor 仅证明本机 app-server 活体握手；子进程环境白名单已启用，但每会话 CODEX_HOME、空 MCP/插件和凭据隔离尚未进入生产默认。"
+        Invoke-CheckedCommand `
+            -FilePath $dotnetCommand `
+            -ArgumentList $doctorArguments `
+            -Description "执行 AgentHost doctor 活体握手"
+        Write-Warning "doctor 仅证明本机 app-server 活体握手；子进程环境白名单已启用，但每会话 CODEX_HOME、空 MCP/插件和凭据隔离尚未进入生产默认。"
+    }
 
     Invoke-CheckedCommand `
         -FilePath "git" `
@@ -725,7 +752,12 @@ try {
             SchemaVersion = 1
             RecordedAtLocal = [DateTimeOffset]::Now.ToString("o")
             RunCorrelationId = Get-CodexGateRunCorrelationId
-            Scope = "phase2-managed-core-gate"
+            Scope = if ($SkipLiveCodexHandshake) {
+                "phase2-managed-core-ci-gate"
+            }
+            else {
+                "phase2-managed-core-gate"
+            }
             Status = "automated-gate-passed"
             PowerShellEdition = [string] $PSVersionTable.PSEdition
             PowerShellVersion = $PSVersionTable.PSVersion.ToString()
@@ -742,8 +774,12 @@ try {
             )
             TotalSpecs = $totalSpecs
             SolutionBuildPassed = $true
+            ExplicitOfflineNuGetConfigPassed = $true
+            UserNuGetConfigRead = $false
             HostForbiddenApiScanPassed = $true
-            AgentHostDoctorPassed = $true
+            AgentHostDoctorPassed = (-not $SkipLiveCodexHandshake)
+            AgentHostDoctorRequired = (-not $SkipLiveCodexHandshake)
+            LocalCodexAvailableInGate = (-not $SkipLiveCodexHandshake)
             GitDiffCheckPassed = $true
             BasicSecretScanPassed = $true
             ConditionalLockFileRestored = $true
@@ -752,7 +788,12 @@ try {
             PluginInitiatedSaveEnabled = $false
             EnterpriseMatrixVerified = $false
             RealMachinePolicyMatrixVerified = $false
-            EvidenceBoundary = "This evidence proves the managed-core Release build, dynamically counted specification projects, the lexical forbidden-API gate for the AutoCAD host boundary, a local AgentHost doctor handshake, Git diff checks, and the bounded basic secret scan. It does not start or command AutoCAD, enable CAD writes or plugin saves, verify enterprise policy behavior, prove real-machine failure matrices, or freeze M4.16."
+            EvidenceBoundary = if ($SkipLiveCodexHandshake) {
+                "This CI evidence proves the managed-core Release build, dynamically counted specification projects, the lexical forbidden-API gates, Git diff checks, and the bounded basic secret scan. It explicitly does not prove a local Codex or AgentHost doctor handshake, start or command AutoCAD, enable CAD writes or plugin saves, verify enterprise policy behavior, prove real-machine failure matrices, satisfy M4 readiness, or freeze M4.16."
+            }
+            else {
+                "This evidence proves the managed-core Release build, dynamically counted specification projects, the lexical forbidden-API gate for the AutoCAD host boundary, a local AgentHost doctor handshake, Git diff checks, and the bounded basic secret scan. It does not start or command AutoCAD, enable CAD writes or plugin saves, verify enterprise policy behavior, prove real-machine failure matrices, or freeze M4.16."
+            }
         }
         $encoding = New-Object Text.UTF8Encoding($false)
         [IO.File]::WriteAllText(
@@ -762,7 +803,19 @@ try {
         Write-Host ("PHASE2_EVIDENCE=" + $resolvedEvidencePath)
     }
 
-    Write-Host "`n阶段 2 托管核心门禁通过：$Configuration 构建、$($specProjects.Count) 个规格项目（动态汇总 $totalSpecs/$totalSpecs）、Host 禁用 API、AgentHost 活体握手、Git 差异及敏感信息检查均通过。" -ForegroundColor Green
+    $doctorSummary = if ($SkipLiveCodexHandshake) {
+        "AgentHost 活体握手明确未执行"
+    }
+    else {
+        "AgentHost 活体握手通过"
+    }
+    $successPrefix = if ($SkipLiveCodexHandshake) {
+        "M9 CI 托管核心子集通过"
+    }
+    else {
+        "阶段 2 托管核心门禁通过"
+    }
+    Write-Host "`n${successPrefix}：$Configuration 构建、$($specProjects.Count) 个规格项目（动态汇总 $totalSpecs/$totalSpecs）、显式离线 NuGet 配置、Host 禁用 API、$doctorSummary、Git 差异及敏感信息检查均通过。" -ForegroundColor Green
     Write-Warning "该门禁不验证 AutoCAD 2016/2025 Host 实机能力，也不表示每会话 Agent 隔离已经完成。"
 }
 finally {

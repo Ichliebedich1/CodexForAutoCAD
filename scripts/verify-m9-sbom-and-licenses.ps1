@@ -1,7 +1,9 @@
 ﻿[CmdletBinding()]
 param(
     [string] $EvidencePath,
-    [switch] $SelfTestOnly
+    [switch] $SelfTestOnly,
+    [ValidateRange(0, 40)]
+    [double] $MinimumFreeGiB = 40
 )
 
 # 本文件必须保存为 UTF-8 with BOM，原因见 build-safety.ps1 顶部说明。
@@ -21,7 +23,8 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 . (Join-Path $PSScriptRoot "build-safety.ps1")
-$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot
+$buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot `
+    -MinimumFreeGiB $MinimumFreeGiB
 $feedRoot = Join-Path $repoRoot "third_party\nuget"
 
 try {

@@ -7,7 +7,9 @@
 param(
     [switch] $SelfTestOnly,
     [string] $EvidencePath,
-    [string] $ArtifactBase
+    [string] $ArtifactBase,
+    [ValidateRange(0, 40)]
+    [double] $MinimumFreeGiB = 40
 )
 
 Set-StrictMode -Version Latest
@@ -59,8 +61,10 @@ $pathBefore = Get-CodexUserPathState
 Assert-True ($pathBefore.PollutingEntryCount -eq 0) `
     "自检失败：当前用户 PATH 已存在项目临时工具污染。"
 
-# 先按生产默认门槛解析真实产物根目录，同时证明配置的产物卷可用且空间达标。
-$productionArtifactRoot = Resolve-CodexArtifactRoot -RepoRoot $repoRoot
+# 本地默认仍为 40 GiB。标准 GitHub Runner 由工作流显式传入受控的 5 GiB 下限；
+# 不允许通过环境变量静默降低门槛。
+$productionArtifactRoot = Resolve-CodexArtifactRoot -RepoRoot $repoRoot `
+    -MinimumFreeGiB $MinimumFreeGiB
 $artifactVolume = [IO.Path]::GetPathRoot($productionArtifactRoot)
 $repoVolume = [IO.Path]::GetPathRoot($repoRoot)
 $systemVolume = [IO.Path]::GetPathRoot([Environment]::GetFolderPath("Windows"))

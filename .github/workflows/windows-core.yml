@@ -1,0 +1,64 @@
+name: Windows core CI
+
+on:
+  push:
+    branches:
+      - main
+      - "codex/**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-core-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  managed-core:
+    name: Managed core (${{ matrix.shell }})
+    runs-on: windows-2022
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [pwsh, powershell]
+    env:
+      DOTNET_ADD_GLOBAL_TOOLS_TO_PATH: '0'
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      CODEX_AUTOCAD_ARTIFACT_BASE: ${{ runner.temp }}\cfa-artifacts
+
+    steps:
+      - name: Checkout frozen source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install pinned .NET SDK
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          global-json-file: global.json
+          cache: false
+
+      - name: Validate workflow safety contract
+        shell: ${{ matrix.shell }}
+        run: .\scripts\verify-m9-windows-ci.ps1 -SelfTestOnly -MinimumFreeGiB 5
+
+      - name: Validate build environment safety
+        shell: ${{ matrix.shell }}
+        run: .\scripts\verify-build-safety.ps1 -ArtifactBase $env:CODEX_AUTOCAD_ARTIFACT_BASE -MinimumFreeGiB 5
+
+      - name: Build and run managed core gates
+        shell: ${{ matrix.shell }}
+        run: .\scripts\verify-phase2.ps1 -Configuration Release -SkipLiveCodexHandshake -MinimumFreeGiB 5
+
+      - name: Build AutoCAD 2016 compatible core as net45 x64
+        shell: ${{ matrix.shell }}
+        run: .\scripts\verify-m9-net45-x64.ps1 -Configuration Release -MinimumFreeGiB 5
+
+      - name: Validate SBOM and licenses
+        shell: ${{ matrix.shell }}
+        run: .\scripts\verify-m9-sbom-and-licenses.ps1 -MinimumFreeGiB 5
