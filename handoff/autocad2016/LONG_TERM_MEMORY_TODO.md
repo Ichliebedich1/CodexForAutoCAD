@@ -439,6 +439,28 @@ M2 仍未完成，以下内容不能由自动化候选替代：
   不再按最新目录取旧成功文件；readiness 同时记录 `Source.WorkingTreeDirty=false`。
 - [x] 已获得用户明确授权，将 `scripts/verify-all-gates.ps1`、构建安全 correlation 及状态文档
   作为最小检查点提交，并从精确提交重跑；未迁移先前 dirty Worktree 的 evidence。
+- [x] 修正 M4.16 冻结判定与权威目标的冲突：不再要求九项实机矩阵全部为 true；新增固定
+  `live-matrix-results.json` 契约，只有真实异常退出不可 deferred，其余八项必须写明理由并
+  同时在 M9/M10 重评。冻结 evidence schema 2 分列 verified/deferred，候选绑定不一致、
+  缺项、重复项、无理由延期和假异常退出结果均 fail-closed。
+- [x] 消除实机结果文件的 Git 自引用：候选提交 C 先生成 readiness 并接受实机测试，随后
+  evidence-only 提交 E 只能保存 `live-matrix-results.json`；冻结脚本验证 C 是 E 的祖先、
+  `C..E` 没有其他差异，回滚 ref 指向 C。任何夹带修改均 fail-closed。
+- [x] live matrix 使用严格字段白名单并阻止 evidence 泄漏：未知字段、路径/UNC/URI/邮件/
+  环境变量/secret 形态的延期理由和全相同字符占位 SHA-256 均拒绝；输入限普通非 reparse
+  文件、严格 UTF-8、64 KiB，并对同一次加锁读取做 JSON 解析和 SHA-256，严格区分 JSON
+  boolean/integer 与字符串。
+- [x] M4.16 evidence 输出限制为 build-safety Worktree 产物根下的 `.json`，拒绝任意系统盘、
+  仓库或其他 Worktree 写入。
+- [ ] 实际 `handoff/autocad2016/live-matrix-results.json` 尚未生成；先完成绑定候选的真实
+  AutoCAD/AgentHost/Codex 强杀矩阵，再由用户决定其他八项 verified 或 deferred。不得用
+  FakeAgentHost、自动化规格或示例 JSON 冒充实机结果。
+- [x] 真实异常退出矩阵已有唯一实机入口
+  `M4_15_REAL_ABNORMAL_EXIT_RUNTIME_TEST.md`：正常 STOP、Codex 强杀、AgentHost 强杀、启动
+  握手中断、AutoCAD 强杀分别记录唯一终态、fail-closed、残留 0、DBMOD 和脱敏结果。
+- [x] 在独立临时 Git 仓库完成 M4.16 正向契约演练：候选 C、仅矩阵提交 E、回滚 ref 指向 C、
+  1 verified + 8 deferred 可得到 `preconditions_met`/阻塞 0，且不会误把前置条件通过写成
+  `M416Frozen=true`。该演练是 synthetic，不替代真实异常退出矩阵。
 - [x] M4.15.4 补齐交接入口：它此前是 M4.15 中唯一没有任何交接文件的子项。新增
   `M4_15_RESTRICTED_ACCOUNT_EXECUTION_CONTROL_20260726.md`，定义标准受限账户、
   RestrictedToken 全链、AppContainer、AppLocker、WDAC/代码签名和杀毒/EDR 六个实机矩阵的

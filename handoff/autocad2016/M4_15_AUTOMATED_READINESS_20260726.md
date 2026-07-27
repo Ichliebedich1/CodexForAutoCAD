@@ -88,3 +88,13 @@ $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
 
 任何输入缺失、schema/status 不符、规格未全通过、候选哈希非法、锁文件不一致、相关进程残留，
 或把未验证矩阵错误设为 `true`，都必须失败关闭且不生成 readiness 输出。
+
+## 与实机处置的边界
+
+automated readiness 继续只描述自动化事实，其九个真实环境布尔字段保持 `false`，不得由人工
+直接改写。真实矩阵使用独立的
+`handoff/autocad2016/live-matrix-results.json`，由
+`verify-m4-16-freeze-preconditions.ps1` 绑定同一 HEAD、Host 和 AgentHost 候选哈希后验证。
+冻结 evidence schema 2 分别列出 verified/deferred；`RealAbnormalExitMatrixVerified` 只能
+verified，其余八项 deferred 时必须写明理由并在 M9/M10 重评。详细 schema 见
+`M4_15_LIVE_MATRIX_RESULTS_CONTRACT.md`。

@@ -460,6 +460,29 @@ NETLOAD 证据的能力一律视为未支持。
   精确报出 `5` 处写入（仅文件名与行号，不含绝对路径），双 Shell 消息一致，探针已移除。
   当前结论：Host.2016 `OpenMode` 全部为 `ForRead`，扫描 `31` 个源文件 `0` 处写入调用。
   M4.16 仍未完成——尚缺从已提交源码构建的候选、回滚点和资源/身份 evidence 绑定。
+- 2026-07-27 审计发现冻结脚本仍使用过期规则，要求九项实机矩阵全部为 `true`，与权威目标
+  “真实异常退出必须 verified、其余八项允许有理由 deferred”冲突。当前未提交修正引入固定
+  `handoff/autocad2016/live-matrix-results.json` 契约：九项必须精确处置并绑定 readiness 的
+  HEAD/Host/AgentHost 哈希；deferred 必须同时标注 M9/M10 重评；真实异常退出必须验证
+  AutoCAD、AgentHost、Codex 强杀、唯一终态、残留 0、后续请求 fail-closed 和无敏感泄漏。
+  冻结 evidence schema 2 分别列出 `Verified`/`Deferred`。双 Shell 自检通过；在当前缺少实际
+  live matrix、回滚点且工作树 dirty 的状态下，真实拒绝检查正确输出 `freeze_refused`，
+  `M4Complete=false`、`M416Frozen=false`，User PATH 不变。详见
+  `M4_15_LIVE_MATRIX_RESULTS_CONTRACT.md`。
+  为避免结果文件自引用自己的提交哈希，冻结采用两提交模型：候选提交 C 生成 readiness 并接受
+  实机测试，随后 evidence-only 提交 E 只保存 `live-matrix-results.json`；脚本验证 C 是 E 的
+  祖先且 `C..E` 没有任何其他差异，回滚 ref 仍指向 C。夹带源码、脚本或其他文档会拒绝冻结。
+  live matrix 采用严格字段白名单；未知字段、路径/URI/邮件/环境变量/secret 形态的延期理由和
+  全相同字符占位哈希均拒绝，避免 evidence-only 提交把原始事件或本机信息带入 Git。输入限制
+  为普通非 reparse 文件、严格 UTF-8 和 64 KiB；解析与 SHA-256 绑定同一份加锁字节，JSON
+  boolean/integer 类型严格校验，字符串 `"false"`/`"0"` 不能冒充真实结果。
+  冻结 evidence 输出也只能位于 build-safety 的 Worktree 产物根内且必须为 `.json`，防止误写
+  系统盘、仓库或其他 Worktree。
+  用户实机入口已整理为 `M4_15_REAL_ABNORMAL_EXIT_RUNTIME_TEST.md`，覆盖正常 STOP、流式回答中
+  强杀 Codex、流式回答中强杀 AgentHost、启动握手中断和强杀 AutoCAD；本轮没有执行这些场景。
+  独立临时 Git 仓库中的正向契约演练已通过：候选 C、只新增矩阵的 E、回滚 ref 指向 C、
+  1 verified + 8 deferred 得到 `preconditions_met`、阻塞 0、`M4Complete=true` 且
+  `M416Frozen=false`。这是 synthetic 判定路径证据，不是 AutoCAD/Codex 实机通过。
 - M4.12 CAD 执行事件 schema 已冻结（本轮新增）。目标文件已按受控拆分修订：M4.12 负责
   审计基础设施与全部事件 schema，CAD 执行事件的真实接线归 M5.13，从而解除"M4.12 需要 M5
   写入链、而 M4 又是 M5 硬前置"的死锁；该拆分不放松安全要求，写入链启用时若未按已冻结

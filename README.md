@@ -62,6 +62,12 @@ M4 的本机 Codex 配置、诊断脱敏和 Job Object 进程树回收已进入�
   `CadWriteEnabled=false`。真实 Credential Manager/Codex keyring/RestrictedToken 全链、
   固定容量卷写满、真实异常退出、断电、AppLocker/WDAC/EDR、企业保留/归档，以及 M9.8
   漏洞库与人工/IL 审查仍未完成。M5 CAD 写入继续硬禁用。
+- M4.16 的实机处置契约位于
+  `handoff/autocad2016/M4_15_LIVE_MATRIX_RESULTS_CONTRACT.md`。除真实异常退出外的八项可明确
+  `deferred` 并在 M9/M10 重评；真实异常退出必须绑定当前候选并 `verified`。实际
+  `live-matrix-results.json` 尚不存在，禁止用自动化结果或示例值伪造。
+  真实强杀场景的唯一测试入口为
+  `handoff/autocad2016/M4_15_REAL_ABNORMAL_EXIT_RUNTIME_TEST.md`。
 - 显式 CAD 上下文清除和文档激活清除旧缓存通过；CAD 写入和插件保存仍禁用。
 - P0 停止生命周期已有独立实机证据：重复 STOP、DBMOD 不变和 AgentHost 残留为零。
 - M1 已实现 Bridge 断线 fail-closed、结构化脱敏错误、request_id/唯一终态、幂等取消、
