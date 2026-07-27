@@ -43,6 +43,7 @@ function Assert-Rejected {
 
 $previousArtifactBase = $env:CODEX_AUTOCAD_ARTIFACT_BASE
 $previousAddGlobalTools = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
+$previousGenerateAspNetCertificate = $env:DOTNET_GENERATE_ASPNET_CERTIFICATE
 
 if (-not [string]::IsNullOrWhiteSpace($ArtifactBase)) {
     $env:CODEX_AUTOCAD_ARTIFACT_BASE = $ArtifactBase
@@ -91,6 +92,8 @@ try {
         "自检失败：产物目录没有按 Worktree 名称隔离。"
     Assert-True ($env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH -ceq "0") `
         "自检失败：未禁用 .NET 全局工具 PATH 自动写入。"
+    Assert-True ($env:DOTNET_GENERATE_ASPNET_CERTIFICATE -ceq "false") `
+        "自检失败：未禁用隔离构建的 ASP.NET 开发证书生成。"
     Complete-CodexBuildSafety -State $state -Stage "self-test" | Out-Null
 
     # fail-closed：空间不足必须在写入前拒绝。
@@ -247,6 +250,7 @@ try {
 finally {
     $env:CODEX_AUTOCAD_ARTIFACT_BASE = $previousArtifactBase
     $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $previousAddGlobalTools
+    $env:DOTNET_GENERATE_ASPNET_CERTIFICATE = $previousGenerateAspNetCertificate
     if (Test-Path -LiteralPath $selfTestBase -PathType Container) {
         Remove-Item -LiteralPath $selfTestBase -Recurse -Force -ErrorAction SilentlyContinue
     }

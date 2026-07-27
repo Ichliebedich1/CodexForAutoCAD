@@ -106,6 +106,7 @@ function Get-CodexDotnetIsolationGuard {
     # 供各验证脚本在构造隔离环境字典时展开，确保防护变量与 DOTNET_CLI_HOME 同作用域。
     return [ordered]@{
         DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "0"
+        DOTNET_GENERATE_ASPNET_CERTIFICATE = "false"
     }
 }
 
@@ -216,9 +217,12 @@ function Initialize-CodexBuildSafety {
     }
 
     $previousAddGlobalToolsToPath = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
+    $previousGenerateAspNetCertificate = $env:DOTNET_GENERATE_ASPNET_CERTIFICATE
     # 进程级兜底：本进程及其全部子进程都禁止 .NET CLI 自动写入 PATH。
     # 各脚本在设置 DOTNET_CLI_HOME 时仍必须在同一作用域重复设置该变量。
     $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "0"
+    # 纯构建门禁不得因每个隔离 CLI home 的首次运行而触碰用户证书存储。
+    $env:DOTNET_GENERATE_ASPNET_CERTIFICATE = "false"
     $artifactRoot = Resolve-CodexArtifactRoot -RepoRoot $RepoRoot `
         -MinimumFreeGiB $MinimumFreeGiB `
         -MaximumArtifactRootLength $MaximumArtifactRootLength `
@@ -228,6 +232,7 @@ function Initialize-CodexBuildSafety {
         ArtifactRoot = $artifactRoot
         UserPathBefore = $pathBefore
         PreviousAddGlobalToolsToPath = $previousAddGlobalToolsToPath
+        PreviousGenerateAspNetCertificate = $previousGenerateAspNetCertificate
         MinimumFreeGiB = $MinimumFreeGiB
     }
 }
@@ -240,6 +245,9 @@ function Complete-CodexBuildSafety {
 
     if ($env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH -cne "0") {
         throw "构建安全门禁拒绝完成：DOTNET_ADD_GLOBAL_TOOLS_TO_PATH 不再为 0。"
+    }
+    if ($env:DOTNET_GENERATE_ASPNET_CERTIFICATE -cne "false") {
+        throw "构建安全门禁拒绝完成：DOTNET_GENERATE_ASPNET_CERTIFICATE 不再为 false。"
     }
     return Assert-CodexUserPathSafe -ExpectedState $State.UserPathBefore -Stage $Stage
 }

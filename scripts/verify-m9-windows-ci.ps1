@@ -22,6 +22,7 @@ $buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot `
 $workflowPath = Join-Path $repoRoot ".github\workflows\windows-core.yml"
 $globalJsonPath = Join-Path $repoRoot "global.json"
 $phase2Path = Join-Path $repoRoot "scripts\verify-phase2.ps1"
+$toolchainPath = Join-Path $repoRoot "scripts\verify-m9-toolchain-lock.ps1"
 $net45X64Path = Join-Path $repoRoot "scripts\verify-m9-net45-x64.ps1"
 $allGatesPath = Join-Path $repoRoot "scripts\verify-all-gates.ps1"
 
@@ -33,6 +34,7 @@ $expectedActions = [ordered]@{
 $expectedRunCommands = @(
     '.\scripts\verify-m9-windows-ci.ps1 -SelfTestOnly -MinimumFreeGiB 5',
     '.\scripts\verify-build-safety.ps1 -ArtifactBase $env:CODEX_AUTOCAD_ARTIFACT_BASE -MinimumFreeGiB 5',
+    '.\scripts\verify-m9-toolchain-lock.ps1 -SkipR201BinaryProbe -MinimumFreeGiB 5',
     '.\scripts\verify-phase2.ps1 -Configuration Release -SkipLiveCodexHandshake -MinimumFreeGiB 5',
     '.\scripts\verify-m9-net45-x64.ps1 -Configuration Release -MinimumFreeGiB 5',
     '.\scripts\verify-m9-sbom-and-licenses.ps1 -MinimumFreeGiB 5'
@@ -143,6 +145,7 @@ function Assert-ExactWorkflowShape {
         "      DOTNET_ADD_GLOBAL_TOOLS_TO_PATH: '0'",
         "      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'",
         "      DOTNET_CLI_TELEMETRY_OPTOUT: '1'",
+        "      DOTNET_GENERATE_ASPNET_CERTIFICATE: 'false'",
         '      CODEX_AUTOCAD_ARTIFACT_BASE: ${{ runner.temp }}\cfa-artifacts'
     )
     if ($envIndexes.Count -ne 1) {
@@ -420,6 +423,8 @@ try {
         "M9 Windows CI 必须覆盖 PowerShell 7 与 Windows PowerShell 5.1。"
     Assert-RegexMatch $workflow "(?im)^\s*DOTNET_ADD_GLOBAL_TOOLS_TO_PATH\s*:\s*['""]0['""]\s*$" `
         "M9 Windows CI 缺少 DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=0。"
+    Assert-RegexMatch $workflow "(?im)^\s*DOTNET_GENERATE_ASPNET_CERTIFICATE\s*:\s*['""]false['""]\s*$" `
+        "M9 Windows CI 缺少开发证书副作用禁用开关。"
     Assert-RegexMatch $workflow "(?im)^\s*CODEX_AUTOCAD_ARTIFACT_BASE\s*:\s*\$\{\{\s*runner\.temp\s*\}\}[\\/][^\r\n]+\s*$" `
         "M9 Windows CI 产物根必须位于 runner.temp。"
     Assert-RegexMatch $workflow "(?im)^\s*global-json-file\s*:\s*global\.json\s*$" `
@@ -428,6 +433,7 @@ try {
         "checkout 必须禁用持久化凭据。"
 
     $phase2Script = Read-StrictUtf8Text -Path $phase2Path -MaximumBytes 131072
+    $toolchainScript = Read-StrictUtf8Text -Path $toolchainPath -MaximumBytes 131072
     $net45X64Script = Read-StrictUtf8Text -Path $net45X64Path -MaximumBytes 131072
     $allGatesScript = Read-StrictUtf8Text -Path $allGatesPath -MaximumBytes 131072
     Assert-WorkflowSecurityRules -Workflow $workflow -AllGatesScript $allGatesScript
@@ -439,6 +445,12 @@ try {
         "Phase 2 CI evidence 未与正式 readiness evidence 分离。"
     Assert-RegexMatch $phase2Script "(?im)RestoreConfigFile" `
         "Phase 2 未显式隔离用户 NuGet 配置。"
+    Assert-RegexMatch $toolchainScript "(?im)toolchain-lock\.json" `
+        "M9 工具链门禁没有消费版本化输入锁。"
+    Assert-RegexMatch $toolchainScript "(?im)NuGetVersion" `
+        "M9 工具链门禁没有验证 NuGet 版本。"
+    Assert-RegexMatch $toolchainScript "(?im)RestoreLockedMode=true" `
+        "M9 工具链门禁没有执行 locked clean-cache restore。"
     Assert-RegexMatch $net45X64Script "(?im)TargetFramework\s*=\s*""net45""" `
         "M9 net45/x64 门禁缺少 net45 evidence。"
     Assert-RegexMatch $net45X64Script "(?im)Architecture\s*=\s*""x64""" `
@@ -456,6 +468,7 @@ try {
     $globalJson = Get-Content -LiteralPath $globalJsonPath -Raw -Encoding UTF8 |
         ConvertFrom-Json -ErrorAction Stop
     if ([string] $globalJson.sdk.version -cne "8.0.319" -or
+        [string] $globalJson.sdk.rollForward -cne "disable" -or
         [bool] $globalJson.sdk.allowPrerelease) {
         throw "global.json 未锁定受控 .NET SDK 8.0.319。"
     }
@@ -492,7 +505,7 @@ try {
         New-Item -ItemType Directory -Path (Split-Path -Parent $resolvedEvidence) -Force |
             Out-Null
         $report = [ordered]@{
-            Schema = "codex.autocad.m9-windows-ci-definition/2"
+            Schema = "codex.autocad.m9-windows-ci-definition/3"
             Status = "definition_verified"
             Runner = "windows-2022"
             Shells = @("pwsh", "powershell")
@@ -503,6 +516,7 @@ try {
             ExactJobCount = 1
             ExactRunStepCount = $expectedRunCommands.Count
             ExplicitOfflineNuGetConfig = $true
+            ToolchainLockGate = $true
             Net45X64ManagedCoreGate = $true
             LocalCodexHandshakeInCi = $false
             AutoCadStartedOrCommanded = $false

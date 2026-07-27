@@ -1,0 +1,122 @@
+{
+  "Schema": "codex.autocad.toolchain-lock/1",
+  "DotNet": {
+    "SdkVersion": "8.0.319",
+    "RollForward": "disable",
+    "AllowPrerelease": false,
+    "NuGetVersion": "6.10.2.8",
+    "MsBuildVersion": "17.10.46.46604"
+  },
+  "OfflinePackage": {
+    "Path": "third_party/nuget/Microsoft.NETFramework.ReferenceAssemblies.net45.1.0.3.nupkg",
+    "Id": "Microsoft.NETFramework.ReferenceAssemblies.net45",
+    "Version": "1.0.3",
+    "Bytes": 19820444,
+    "Sha256": "23A9F94EA3E2CB88CD8341AF75B811C6FB5CB82516FC696E95ED4620279128E3",
+    "AuthorCertificateSha256": "AA12DA22A49BCE7D5C1AE64CC1F3D892F150DA76140F210ABD2CBFFCA2C18A27",
+    "RepositoryCertificateSha256": "5A2901D6ADA3D18260B9C6DFE2133C95D74B9EEF6AE0E5DC334C8454D1477DF4"
+  },
+  "NuGet": {
+    "Inputs": [
+      {
+        "Path": "src/Codex.AutoCAD.Bridge.Client/packages.lock.json",
+        "Bytes": 299,
+        "Sha256": "F1EA52A6319A076CA34577E51D5433E0899D6904E2ED66C4C35924903425179C"
+      },
+      {
+        "Path": "src/Codex.AutoCAD.Host.2016.Palette/NuGet.Config",
+        "Bytes": 578,
+        "Sha256": "0EBA29224D5029A836C794F90C8A26CDF34F358EDAC0BFD92AE8AED3053347D6"
+      },
+      {
+        "Path": "src/Codex.AutoCAD.Host.2016.Palette/packages.lock.json",
+        "Bytes": 561,
+        "Sha256": "1DB305BC7AAFBF0C8873457DDA8950688DC30923C373DC4CDA209016449A59C6"
+      },
+      {
+        "Path": "src/Codex.AutoCAD.Host.2016.ReadOnlyContext/NuGet.Config",
+        "Bytes": 570,
+        "Sha256": "26299200D114FA22041CFC6F17EC31099989244638FACCFE342B8B75D7523E50"
+      },
+      {
+        "Path": "src/Codex.AutoCAD.Host.2016.ReadOnlyContext/packages.lock.json",
+        "Bytes": 561,
+        "Sha256": "1DB305BC7AAFBF0C8873457DDA8950688DC30923C373DC4CDA209016449A59C6"
+      },
+      {
+        "Path": "src/Codex.AutoCAD.Host.2016/NuGet.Config",
+        "Bytes": 570,
+        "Sha256": "26299200D114FA22041CFC6F17EC31099989244638FACCFE342B8B75D7523E50"
+      },
+      {
+        "Path": "src/Codex.AutoCAD.Host.2016/packages.lock.json",
+        "Bytes": 1212,
+        "Sha256": "DC8307D8FBDC1A0F9C92BDF8208491C359E0412B8963F07C8D0BB637E4885025"
+      },
+      {
+        "Path": "tests/Codex.AutoCAD.Host.2016.V2ApiProbe/NuGet.Config",
+        "Bytes": 571,
+        "Sha256": "D4698BEC90D83EDE04E94ADD8C28687BD328E192173552BB6349282B2FCB6F47"
+      },
+      {
+        "Path": "tests/Codex.AutoCAD.Host.2016.V2ApiProbe/packages.lock.json",
+      "Bytes": 375,
+      "Sha256": "9902C0F069719AB5C1460CE2EE6EA68E8D3DD6CCE670569913A1D80325C75522"
+      }
+    ]
+  },
+  "R201Probe": {
+    "Target": "AutoCAD 2016 R20.1 / managed 20.1.0.0 / net45 / x64",
+    "SourceInputs": [
+      {
+        "Path": "tests/Codex.AutoCAD.Host.2016.V2ApiProbe/Codex.AutoCAD.Host.2016.V2ApiProbe.csproj",
+        "Bytes": 4774,
+        "Sha256": "FE0D53DA85215FE13A2B6CCEA3EBF7FEBDA4A890B4705060BC41D11507C3394C"
+      },
+      {
+        "Path": "tests/Codex.AutoCAD.Host.2016.V2ApiProbe/Properties/AssemblyInfo.cs",
+        "Bytes": 584,
+        "Sha256": "7B605BF85DEBA5DF0688ED3135833362A594534ABE05B25CFEAA9D6699A37D5C"
+      },
+      {
+        "Path": "tests/Codex.AutoCAD.Host.2016.V2ApiProbe/V2ApiSurfaceProbe.cs",
+        "Bytes": 15751,
+        "Sha256": "B2C70CC4CFCFA228763363A440713AE0C978BA3EC2F1F3EEC636991A9E1A5F81"
+      }
+    ],
+    "BinaryInputs": [
+      {
+        "Name": "acad.exe",
+        "Bytes": 5908776,
+        "Sha256": "0BEDEE78AF75BAABCC6731DDDA853F76E3053D270ACE9A87BACDABFF5D0A0187",
+        "AssemblyFullName": "",
+        "AuthenticodeStatus": "Valid",
+        "SignerThumbprint": "10A02451F761A2A3F6AD7E87D19DE863AB231A25"
+      },
+      {
+        "Name": "accoremgd.dll",
+        "Bytes": 906680,
+        "Sha256": "80860722FB2D40209D63E4720BE9D5018A5A4F27FE23F844DFE2951CA35E30B0",
+        "AssemblyFullName": "accoremgd, Version=20.1.0.0, Culture=neutral, PublicKeyToken=null",
+        "AuthenticodeStatus": "Valid",
+        "SignerThumbprint": "10A02451F761A2A3F6AD7E87D19DE863AB231A25"
+      },
+      {
+        "Name": "acdbmgd.dll",
+        "Bytes": 6436792,
+        "Sha256": "9C27F4A71E4DFAEC393B53AB15A657FA37CA9F8A7B09E0522894AB3B354603BB",
+        "AssemblyFullName": "Acdbmgd, Version=20.1.0.0, Culture=neutral, PublicKeyToken=null",
+        "AuthenticodeStatus": "Valid",
+        "SignerThumbprint": "10A02451F761A2A3F6AD7E87D19DE863AB231A25"
+      },
+      {
+        "Name": "acmgd.dll",
+        "Bytes": 2601400,
+        "Sha256": "CCE13839886E827C392637D4F6B670E4CA7780E1A02B660E41D049E9C492B97F",
+        "AssemblyFullName": "Acmgd, Version=20.1.0.0, Culture=neutral, PublicKeyToken=null",
+        "AuthenticodeStatus": "Valid",
+        "SignerThumbprint": "10A02451F761A2A3F6AD7E87D19DE863AB231A25"
+      }
+    ]
+  }
+}

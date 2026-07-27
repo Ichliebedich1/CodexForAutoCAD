@@ -28,6 +28,7 @@ jobs:
       DOTNET_ADD_GLOBAL_TOOLS_TO_PATH: '0'
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_GENERATE_ASPNET_CERTIFICATE: 'false'
       CODEX_AUTOCAD_ARTIFACT_BASE: ${{ runner.temp }}\cfa-artifacts
 
     steps:
@@ -50,6 +51,10 @@ jobs:
       - name: Validate build environment safety
         shell: ${{ matrix.shell }}
         run: .\scripts\verify-build-safety.ps1 -ArtifactBase $env:CODEX_AUTOCAD_ARTIFACT_BASE -MinimumFreeGiB 5
+
+      - name: Validate pinned toolchain and offline inputs
+        shell: ${{ matrix.shell }}
+        run: .\scripts\verify-m9-toolchain-lock.ps1 -SkipR201BinaryProbe -MinimumFreeGiB 5
 
       - name: Build and run managed core gates
         shell: ${{ matrix.shell }}

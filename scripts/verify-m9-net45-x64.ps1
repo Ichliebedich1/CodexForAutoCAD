@@ -23,11 +23,15 @@ $buildSafety = Initialize-CodexBuildSafety -RepoRoot $repoRoot `
 $artifactRoot = $buildSafety.ArtifactRoot
 $dotnetCommand = (Get-Command dotnet -ErrorAction Stop).Source
 $globalJsonPath = Join-Path $repoRoot "global.json"
+$toolchainLockPath = Join-Path $repoRoot "eng\toolchain-lock.json"
+$toolchainVerifierPath = Join-Path $repoRoot "scripts\verify-m9-toolchain-lock.ps1"
 $nugetConfigPath = Join-Path $repoRoot "src\Codex.AutoCAD.Host.2016\NuGet.Config"
 $offlinePackagePath = Join-Path $repoRoot `
     "third_party\nuget\Microsoft.NETFramework.ReferenceAssemblies.net45.1.0.3.nupkg"
+$toolchainLock = Get-Content -LiteralPath $toolchainLockPath -Raw -Encoding UTF8 |
+    ConvertFrom-Json -ErrorAction Stop
 $expectedOfflinePackageSha256 = `
-    "23A9F94EA3E2CB88CD8341AF75B811C6FB5CB82516FC696E95ED4620279128E3"
+    [string] $toolchainLock.OfflinePackage.Sha256
 $stageRoot = Join-Path $artifactRoot ("m9-net45-x64-" + [Guid]::NewGuid().ToString("N"))
 $packagesRoot = Join-Path $stageRoot "packages"
 $httpCacheRoot = Join-Path $stageRoot "nuget-http-cache"
@@ -152,6 +156,8 @@ function Resolve-EvidencePath {
 
 $requiredInputs = @(
     $globalJsonPath,
+    $toolchainLockPath,
+    $toolchainVerifierPath,
     $nugetConfigPath,
     $offlinePackagePath
 ) + @($projects.Values | ForEach-Object { Join-Path $repoRoot $_ })
@@ -160,6 +166,11 @@ foreach ($requiredInput in $requiredInputs) {
         throw "A required net45/x64 CI input is missing."
     }
 }
+
+& $toolchainVerifierPath `
+    -SkipR201BinaryProbe `
+    -ValidationOnly `
+    -MinimumFreeGiB $MinimumFreeGiB
 
 $expectedSdk = [string] (
     (Get-Content -LiteralPath $globalJsonPath -Raw -Encoding UTF8 |
@@ -284,6 +295,7 @@ try {
         TargetFramework = "net45"
         Architecture = "x64"
         ExplicitOfflineNuGetConfig = $true
+        ToolchainLockVerified = $true
         UserNuGetConfigRead = $false
         LockFilesIsolatedToArtifactRoot = $true
         OfflinePackageSha256 = $expectedOfflinePackageSha256

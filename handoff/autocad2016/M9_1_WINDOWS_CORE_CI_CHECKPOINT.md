@@ -70,9 +70,17 @@ GitHub `windows-2022` Runner 上同时接受 PowerShell 7 与 Windows PowerShell
   - 双 Shell 通过。
   - 外部组件 `1`、内部项目 `4`、锁文件 `5`。
 
+## 提交后状态
+
+- 本检查点已按精确 10 文件边界提交为
+  `9afaaafcdf24028d984bd1b3ca81a5ea013e59ba`。
+- 提交后双 Shell 工作流定义自检和 build-safety 复核通过，Worktree 干净。
+- 后继 M9.2 Worktree 对工作流增加工具链锁步骤；这属于新的未提交检查点，不回写为
+  M9.1 提交当时已经具备的能力。
+
 ## 明确未验证
 
-- 当前改动尚未提交或推送。
+- 当前提交尚未推送。
 - GitHub Actions 远端 workflow run 尚不存在。
 - CI 没有执行本机 Codex doctor、R20.1 Host 构建、候选打包或 AutoCAD 实机。
 - M9.3 尚缺 AgentLauncher Specs、manifest 和候选 doctor 的远端汇总；当前 469 项不能冒充
@@ -82,7 +90,6 @@ GitHub `windows-2022` Runner 上同时接受 PowerShell 7 与 Windows PowerShell
 
 ## 下一步
 
-1. 完成 source diff、双 Shell定义门禁、`git diff --check` 和秘密扫描。
-2. 经用户授权后提交这一最小 M9.1 检查点。
-3. 推送分支并观察两个远端 job；没有远端 run 不得把 M9.1 标成完成。
-4. 远端通过后再设计 M9.4 覆盖率门禁，避免把现有 console specs 误当作 VSTest 覆盖率。
+1. 经用户授权后推送分支并观察两个远端 job；没有远端 run 不得把 M9.1 标成完成。
+2. 先完成独立 M9.2 工具链锁检查点，再设计 M9.3 动态汇总和 M9.4 覆盖率门禁，避免把
+   现有 console specs 误当作 VSTest 覆盖率。

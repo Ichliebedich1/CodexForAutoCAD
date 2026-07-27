@@ -157,12 +157,32 @@ fail-fast。它不证明 M9.8 漏洞/人工 IL、候选冻结或任何 AutoCAD/�
 Windows PowerShell 5.1 运行托管核心构建、动态规格、AutoCAD 兼容核心的 `net45/x64`
 隔离构建、Host 禁用 API、构建安全以及 SBOM/许可证门禁。第三方 Action 固定到精确提交，
 checkout 不持久化凭据，工作流权限只有 `contents: read`，产物根固定在 Runner 临时目录，
-并显式设置 `DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=0`。
+并显式设置 `DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=0` 和
+`DOTNET_GENERATE_ASPNET_CERTIFICATE=false`，避免隔离 CLI home 污染 PATH 或触碰用户
+证书存储。
 
 本机构建安全门槛默认保持 `40 GiB`。标准 GitHub Runner 的工作流只对该受控临时卷显式使用
 `5 GiB` 下限，避免把本机门槛错误套到总存储较小的 Runner；任何脚本都不能通过环境变量
 静默降低门槛。Phase 2 和 `net45/x64` 构建均显式传入仓库内 `<clear />` 的离线
 `NuGet.Config`，不读取 Runner 用户 NuGet 配置。
+
+M9.2 工具链锁位于 `eng/toolchain-lock.json`。它把 `.NET SDK 8.0.319`
+的 `rollForward` 固定为 `disable`，同时锁定随 SDK 提供的 NuGet `6.10.2.8`、
+MSBuild `17.10.46.46604`、离线 net45 reference package 的文件哈希和两个签名证书、
+全部受控 `NuGet.Config`/`packages.lock.json`、R20.1 V2ApiProbe 源输入，以及当前批准的
+`acad.exe`、`accoremgd.dll`、`acdbmgd.dll`、`acmgd.dll` 哈希、程序集身份和
+Authenticode 签名。CI 没有 Autodesk 安装，只验证前半部分；本机正式门禁还会在两个全新
+缓存中构建两次 R20.1 Probe 并要求 AMD64 输出逐字节一致。其他 AutoCAD 2016 补丁级别
+不会被静默接受，必须先单独审查并更新锁。
+
+```powershell
+# GitHub Runner 等无 Autodesk 环境
+.\scripts\verify-m9-toolchain-lock.ps1 -SkipR201BinaryProbe
+
+# 当前批准的 R20.1 安装；只读程序集，不启动 AutoCAD
+.\scripts\verify-m9-toolchain-lock.ps1 `
+  -AutoCad2016Dir 'D:\AutoCAD 2016'
+```
 
 GitHub 托管 Runner 没有用户的本机 Codex、凭据或 AutoCAD。工作流因此只在 Phase 2 中显式
 传入 `-SkipLiveCodexHandshake`；它不会跳过构建、469 项动态规格、`net45/x64` 托管边界、

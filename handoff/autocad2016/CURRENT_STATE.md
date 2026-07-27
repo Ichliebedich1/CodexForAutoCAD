@@ -24,14 +24,22 @@ NETLOAD 证据的能力一律视为未支持。
   `autocad2016-m4-live-v042-9827dc32-a3334d72-f41e24ee`。真实异常退出 A–E 尚未执行，
   `live-matrix-results.json` 和回滚点均不存在，因此 `M4Complete=false`、
   `M416Frozen=false`，M5 继续硬阻断。
-- M9.1 已在候选 C 的独立后继 Worktree 开始 Windows CI 切口：新增
+- M9.1 已在候选 C 的独立后继 Worktree 建立 Windows CI 切口，并于提交
+  `9afaaafcdf24028d984bd1b3ca81a5ea013e59ba` 形成独立检查点：新增
   `windows-2022`、PowerShell 7/Windows PowerShell 5.1 双矩阵工作流，第三方 Action 绑定
   精确提交、权限只读、checkout 不保留凭据、产物只进 Runner 临时目录。标准 Runner 显式
   使用 `5 GiB` 门槛，本机默认仍为 `40 GiB`；Phase 2 显式使用仓库离线 NuGet 配置，
   不读取用户配置。CI-only Phase 2 双 Shell 保持 `469/469`，额外 net45/x64 门禁在双 Shell
   均构建 4 个 AMD64 托管程序集、0 warning / 0 error；默认 Phase 2 的真实本机 Codex
-  `0.144.4` doctor 已单独回归通过。工作流尚未提交、推送或取得远端 run，故 M9.1 仍为
+  `0.144.4` doctor 已单独回归通过。工作流尚未推送或取得远端 run，故 M9.1 仍为
   进行中，不得把本地验证写成 CI 已通过。
+- M9.2 正在独立 `codex/m9-toolchain-locks` Worktree 实现：`global.json` 已改为禁止
+  SDK 补丁滚动，新增 `eng/toolchain-lock.json` 和双 Shell 工具链门禁，锁定 SDK
+  `8.0.319`、NuGet `6.10.2.8`、MSBuild `17.10.46.46604`、离线 net45 包及签名、全部
+  NuGet 配置/锁文件、R20.1 Probe 源输入和 4 个批准的 Autodesk 二进制输入。门禁负向
+  自检双 Shell 均为 `18/18`；本机双 Shell 分别完成两个全新缓存的 Probe A/B 构建，AMD64
+  DLL 哈希一致，并恢复 API Probe `29 passed / 8 expected failed`。该 M9.2 改动尚未提交，
+  M9.1/M9.2 远端工作流也尚未运行，因此 M9.2 仍为进行中。
 - P0 `codex/bridge-client-net45` 的 0.3.2 停止生命周期候选已由用户在 AutoCAD 2016
   中完成人工启停、重复 STOP、DBMOD 和残留检查；独立提交为 `8a4ee57`，实机证据为
   `agent-stop-live-observation-20260722.json`，该证据不继承给 P1。

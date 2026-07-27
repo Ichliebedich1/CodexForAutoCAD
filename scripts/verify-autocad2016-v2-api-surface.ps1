@@ -24,6 +24,7 @@ $projectPath = Join-Path $repoRoot 'tests\Codex.AutoCAD.Host.2016.V2ApiProbe\Cod
 $nuGetConfigPath = Join-Path $repoRoot 'tests\Codex.AutoCAD.Host.2016.V2ApiProbe\NuGet.Config'
 $packageLockPath = Join-Path $repoRoot 'tests\Codex.AutoCAD.Host.2016.V2ApiProbe\packages.lock.json'
 $vendoredPackagePath = Join-Path $repoRoot 'third_party\nuget\Microsoft.NETFramework.ReferenceAssemblies.net45.1.0.3.nupkg'
+$toolchainVerifierPath = Join-Path $repoRoot 'scripts\verify-m9-toolchain-lock.ps1'
 $AutoCad2016Dir = [IO.Path]::GetFullPath($AutoCad2016Dir)
 $effectiveArtifactRoot = if ([string]::IsNullOrWhiteSpace($ArtifactRoot)) {
     Join-Path $artifactsRoot ("v2api-probe-verify-{0}" -f [Guid]::NewGuid().ToString('N'))
@@ -97,6 +98,9 @@ function Invoke-DotNetIsolated {
         DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
         DOTNET_CLI_TELEMETRY_OPTOUT = '1'
         DOTNET_NOLOGO = '1'
+        NUGET_PACKAGES = $script:packageCache
+        NUGET_HTTP_CACHE_PATH = $script:dotnetHttpCache
+        NUGET_CERT_REVOCATION_MODE = 'offline'
     }
     $originalEnvironment = @{}
     try {
@@ -154,53 +158,24 @@ if (-not (Test-Path $packageLockPath)) {
     throw "packages.lock.json not found: $packageLockPath"
 }
 
-# --- Locate MSBuild ---
-$useDotNetMsbuild = $false
-if ([string]::IsNullOrWhiteSpace($MsBuildPath)) {
-    # Try VS MSBuild first
-    $vsWhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-    if (Test-Path $vsWhere) {
-        $installPath = & $vsWhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath 2>$null
-        if ($installPath) {
-            $candidate = Join-Path $installPath 'MSBuild\Current\Bin\MSBuild.exe'
-            if (Test-Path $candidate) {
-                $MsBuildPath = $candidate
-            }
-            else {
-                $candidate15 = Join-Path $installPath 'MSBuild\15.0\Bin\MSBuild.exe'
-                if (Test-Path $candidate15) {
-                    $MsBuildPath = $candidate15
-                }
-            }
-        }
-    }
-    if ([string]::IsNullOrWhiteSpace($MsBuildPath)) {
-        $fallback = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe'
-        if (Test-Path $fallback) {
-            $MsBuildPath = $fallback
-        }
-    }
-    # Fall back to dotnet msbuild
-    if ([string]::IsNullOrWhiteSpace($MsBuildPath) -or -not (Test-Path $MsBuildPath)) {
-        $dotnetPath = (Get-Command dotnet -ErrorAction SilentlyContinue | Select-Object -First 1).Source
-        if ($dotnetPath) {
-            $MsBuildPath = $dotnetPath
-            $useDotNetMsbuild = $true
-        }
-    }
-}
+# Bind the legacy R20.1 API probe to the reviewed M9.2 source, package, SDK,
+# NuGet, MSBuild, Autodesk binary hash, and Authenticode lock before restore.
+& $toolchainVerifierPath `
+    -AutoCad2016Dir $AutoCad2016Dir `
+    -ValidationOnly
 
-if ([string]::IsNullOrWhiteSpace($MsBuildPath) -or -not (Test-Path $MsBuildPath)) {
-    throw "MSBuild not found. Pass -MsBuildPath or install Visual Studio Build Tools or .NET SDK."
+# --- Resolve the locked MSBuild entry point ---
+$dotnetPath = (Get-Command dotnet -ErrorAction Stop |
+    Select-Object -First 1).Source
+if (-not [string]::IsNullOrWhiteSpace($MsBuildPath)) {
+    $requestedMsBuildPath = [IO.Path]::GetFullPath($MsBuildPath)
+    if ($requestedMsBuildPath -cne [IO.Path]::GetFullPath($dotnetPath)) {
+        throw "V2ApiProbe only accepts the global.json-pinned dotnet msbuild entry point."
+    }
 }
-
-if ($useDotNetMsbuild) {
-    Write-Host "MSBuild: dotnet msbuild ($MsBuildPath)"
-} else {
-    Write-Host "MSBuild: $MsBuildPath"
-    $msBuildInfo = Get-Item $MsBuildPath
-    Write-Host "  Version: $($msBuildInfo.VersionInfo.FileVersion)"
-}
+$MsBuildPath = $dotnetPath
+$useDotNetMsbuild = $true
+Write-Host "MSBuild: pinned dotnet msbuild ($MsBuildPath)"
 Write-Host ""
 
 # --- Restore ---
@@ -209,9 +184,13 @@ Write-Host "--- Restoring V2ApiProbe ---"
 $restoreArgs = @(
     $projectPath
     "/p:AutoCad2016Dir=$AutoCad2016Dir"
+    "/p:RestoreConfigFile=$nuGetConfigPath"
+    "/p:RestorePackagesPath=$packageCache"
+    "/p:NuGetLockFilePath=$packageLockPath"
     "/p:BaseIntermediateOutputPath=$baseIntermediateDirectory\"
     "/p:MSBuildProjectExtensionsPath=$projectExtensionsDirectory\"
-    "/p:RestoreLockedMode=false"
+    "/p:RestoreLockedMode=true"
+    "/p:RestoreNoCache=true"
     "/nologo"
     "/verbosity:minimal"
 )
@@ -243,6 +222,10 @@ if ($useDotNetMsbuild) {
         "/p:Configuration=$Configuration"
         "/p:Platform=x64"
         "/p:AutoCad2016Dir=$AutoCad2016Dir"
+        "/p:RestoreConfigFile=$nuGetConfigPath"
+        "/p:RestorePackagesPath=$packageCache"
+        "/p:NuGetLockFilePath=$packageLockPath"
+        "/p:RestoreLockedMode=true"
         "/p:OutputPath=$outputDirectory\"
         "/p:BaseIntermediateOutputPath=$baseIntermediateDirectory\"
         "/p:IntermediateOutputPath=$intermediateDirectory\"
@@ -257,6 +240,10 @@ if ($useDotNetMsbuild) {
         "/p:Configuration=$Configuration"
         "/p:Platform=x64"
         "/p:AutoCad2016Dir=$AutoCad2016Dir"
+        "/p:RestoreConfigFile=$nuGetConfigPath"
+        "/p:RestorePackagesPath=$packageCache"
+        "/p:NuGetLockFilePath=$packageLockPath"
+        "/p:RestoreLockedMode=true"
         "/p:OutputPath=$outputDirectory\"
         "/p:BaseIntermediateOutputPath=$baseIntermediateDirectory\"
         "/p:IntermediateOutputPath=$intermediateDirectory\"
@@ -454,6 +441,7 @@ $evidence = [ordered]@{
     runtimeFailedMembers = $result.runtimeMethodChecks.failed
     dllSha256 = $dllSha256
     autodeskDllsInOutput = 0
+    toolchainLockVerified = $true
     autoCadStartedOrRestarted = $false
     cadCommandsSent = $false
     netLoadVerified = $false

@@ -714,19 +714,26 @@ Kimi 可用为继续开发前置条件。
   临时目录。标准 Runner 显式使用 5 GiB 门槛，本机默认仍为 40 GiB；17 类危险工作流变异
   在双 Shell 均被拒绝。CI-only Phase 2 双 Shell本地均通过 `469/469`，额外 net45/x64
   门禁双 Shell 均构建 4 个 AMD64 程序集、0 warning / 0 error，默认真实 Codex doctor
-  仍通过；尚未提交、推送或取得远端绿色 run，因此不得标为完成。
+  仍通过；已提交为 `9afaaafcdf24028d984bd1b3ca81a5ea013e59ba`，但尚未推送或取得
+  远端绿色 run，因此不得标为完成。
 - [~] 固定 .NET SDK、离线 net45 参考程序集和依赖锁。SDK 与离线 net45 包已固定，Phase 2
-  和 net45/x64 门禁显式使用 `<clear />` 离线 NuGet 配置并隔离缓存/临时 lock；完整 M9.2
-  还缺 NuGet 工具版本和 R20.1 API Probe 输入锁。
+  和 net45/x64 门禁显式使用 `<clear />` 离线 NuGet 配置并隔离缓存/临时 lock。当前
+  M9.2 Worktree 已新增版本化工具链锁，精确绑定 SDK `8.0.319`、NuGet `6.10.2.8`、
+  MSBuild `17.10.46.46604`、离线包双签名、全部 NuGet 配置/锁、R20.1 Probe 源输入和
+  当前批准的 4 个 Autodesk 二进制；双 Shell 18 项负向自检、无 Autodesk CI 模式和本机
+  两次全新缓存 A/B Probe 均通过。该改动尚未提交且远端未运行，M9.2 仍不得标为完成。
 - [~] 自动运行 Contracts、IPC、Bridge、AppServer、AgentRuntime、Host 和安全 Specs。
   当前统一入口与 CI-only Phase 2 都动态汇总 `469/469`；CI 工作流已接线，但远端 run
   尚未验证。CI 明确不冒充本机 Codex doctor、R20.1 Host 构建或 AutoCAD 实机门禁。
 - [ ] R20.1 API Probe、禁止 API、秘密扫描和包身份检查成为门禁。当前本地统一入口已覆盖
   R20.1 Host 双构建、禁止 API、基础秘密扫描、离线 feed/锁文件身份、SBOM 和许可证；
-  候选 manifest/doctor 与 CI 必过策略仍缺。
+  M9.2 Worktree 还把旧 API Probe 从机器上最新 Visual Studio MSBuild 改为精确
+  `dotnet msbuild`，并在 restore 前验证 R20.1 二进制哈希/签名。候选 manifest/doctor、
+  远端 run 与 CI 必过策略仍缺。
 - [ ] 让完整依赖闭包的独立 R20.1 构建可位级复现。当前同一新鲜依赖闭包下 Host A/B
-  输出一致；独立依赖构建仍会改变 timestamp、MVID 和 TargetFramework metadata，虽然
-  归一化后的 Host IL 主体相同，不能把这一诊断当作完整可重复构建已完成。
+  输出一致；M9.2 已证明 V2ApiProbe 在两个独立全新缓存中的 AMD64 输出逐字节一致。
+  完整 Host 独立依赖构建仍会改变 timestamp、MVID 和 TargetFramework metadata，虽然
+  归一化后的 Host IL 主体相同，不能把 Probe 结论扩大为完整候选可重复构建已完成。
 - [ ] 增加覆盖率报告，关键状态机要求分支覆盖。
 - [ ] 对协议、JSON、游标和审批状态机进行属性或模糊测试。
 - [ ] 增加并发、断线、取消、迟到事件和重复请求压力测试。

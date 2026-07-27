@@ -8,10 +8,6 @@
         "resolved": "1.0.3",
         "contentHash": "dcSLNuUX2rfZejsyta2EWZ1W5U6ucbFt697lRg1qiTlTM5ZlYv4uAvuxE6ROy6xLWWhLhOaReCDxkhxcajRYtQ=="
       }
-    },
-    ".NETFramework,Version=v4.5/win": {},
-    ".NETFramework,Version=v4.5/win-arm64": {},
-    ".NETFramework,Version=v4.5/win-x64": {},
-    ".NETFramework,Version=v4.5/win-x86": {}
+    }
   }
 }
