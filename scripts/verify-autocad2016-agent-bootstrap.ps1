@@ -18,6 +18,7 @@ $solutionPath = Join-Path $repoRoot "Codex.AutoCAD.sln"
 $launcherProject = Join-Path $repoRoot "src\Codex.AutoCAD.AgentLauncher\Codex.AutoCAD.AgentLauncher.csproj"
 $agentHostProject = Join-Path $repoRoot "src\Codex.AutoCAD.AgentHost\Codex.AutoCAD.AgentHost.csproj"
 $specProject = Join-Path $repoRoot "tests\Codex.AutoCAD.AgentLauncher.Specs\Codex.AutoCAD.AgentLauncher.Specs.csproj"
+$serviceSpecProject = Join-Path $repoRoot "tests\Codex.AutoCAD.AgentService.Specs\Codex.AutoCAD.AgentService.Specs.csproj"
 $fakeProject = Join-Path $repoRoot "tests\Codex.AutoCAD.AgentLauncher.FakeAgentHost\Codex.AutoCAD.AgentLauncher.FakeAgentHost.csproj"
 $agentHostSource = Join-Path $repoRoot "src\Codex.AutoCAD.AgentHost\Program.cs"
 $ipcBootstrapSource = Join-Path $repoRoot "src\Codex.AutoCAD.Ipc\AgentBootstrap.cs"
@@ -94,6 +95,15 @@ $requiredSpecIds = @(
     "SERVICE_STOP_CONCURRENT_CALLERS",
     "SERVICE_STOP_CONCURRENT_FAILURE_SHARED",
     "SESSION_RUNTIME_FAILURE_POISONS_START"
+)
+$requiredServiceSpecIds = @(
+    "SERVICE_STAYS_ALIVE_AFTER_CONFIRMATION",
+    "BRIDGE_KEYS_REMAIN_CLAIMABLE_ONCE",
+    "CONCURRENT_STOP_IS_BOUNDED",
+    "DISPOSE_TERMINATES_SERVICE",
+    "STARTUP_TIMEOUT_TERMINATES_SERVICE",
+    "STARTUP_CANCELLATION_TERMINATES_SERVICE",
+    "SERVICE_STDERR_IS_BOUNDED"
 )
 
 $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
@@ -266,6 +276,7 @@ function Assert-SolutionMembership {
         "src\Codex.AutoCAD.AgentLauncher\Codex.AutoCAD.AgentLauncher.csproj",
         "src\Codex.AutoCAD.AgentHost\Codex.AutoCAD.AgentHost.csproj",
         "tests\Codex.AutoCAD.AgentLauncher.Specs\Codex.AutoCAD.AgentLauncher.Specs.csproj",
+        "tests\Codex.AutoCAD.AgentService.Specs\Codex.AutoCAD.AgentService.Specs.csproj",
         "tests\Codex.AutoCAD.AgentLauncher.FakeAgentHost\Codex.AutoCAD.AgentLauncher.FakeAgentHost.csproj"
     )
     $solutionText = Get-Content -LiteralPath $solutionPath -Raw -Encoding UTF8
@@ -463,6 +474,7 @@ function Invoke-IsolatedBuild {
         foreach ($restore in @(
             [pscustomobject]@{ Project = $agentHostProject; Extra = @() },
             [pscustomobject]@{ Project = $fakeProject; Extra = @() },
+            [pscustomobject]@{ Project = $serviceSpecProject; Extra = @() },
             [pscustomobject]@{ Project = $specProject; Extra = @("-p:EnableAutoCad2016=true") }
         )) {
             $arguments = @(
@@ -480,6 +492,7 @@ function Invoke-IsolatedBuild {
         foreach ($build in @(
             [pscustomobject]@{ Project = $agentHostProject; Extra = @() },
             [pscustomobject]@{ Project = $fakeProject; Extra = @() },
+            [pscustomobject]@{ Project = $serviceSpecProject; Extra = @() },
             [pscustomobject]@{ Project = $specProject; Extra = @("-p:EnableAutoCad2016=true") }
         )) {
             $arguments = @(
@@ -514,13 +527,15 @@ function Invoke-IsolatedBuild {
         FakeHostExe = Join-Path $outputRoot "bin\Codex.AutoCAD.AgentLauncher.FakeAgentHost\release_win-x64\Codex.AutoCAD.AgentLauncher.FakeAgentHost.exe"
         Net45Specs = Join-Path $outputRoot "bin\Codex.AutoCAD.AgentLauncher.Specs\release_net45\Codex.AutoCAD.AgentLauncher.Specs.exe"
         Net8Specs = Join-Path $outputRoot "bin\Codex.AutoCAD.AgentLauncher.Specs\release_net8.0\Codex.AutoCAD.AgentLauncher.Specs.dll"
+        ServiceSpecs = Join-Path $outputRoot "bin\Codex.AutoCAD.AgentService.Specs\release\Codex.AutoCAD.AgentService.Specs.dll"
     }
 }
 
 function Assert-SpecOutput {
     param(
         [Parameter(Mandatory = $true)][string[]] $Lines,
-        [Parameter(Mandatory = $true)][string] $RuntimeLabel
+        [Parameter(Mandatory = $true)][string] $RuntimeLabel,
+        [Parameter(Mandatory = $true)][string[]] $ExpectedIds
     )
 
     $summary = @($Lines | Where-Object { $_ -match '^\s*\d+/\d+ specs passed\s*$' })
@@ -552,13 +567,13 @@ function Assert-SpecOutput {
             ForEach-Object { $_.Name }
     )
     $missingIds = @(
-        $requiredSpecIds | Where-Object { -not ($passIds -ccontains $_) }
+        $ExpectedIds | Where-Object { -not ($passIds -ccontains $_) }
     )
     $unknownIds = @(
-        $passIds | Where-Object { -not ($requiredSpecIds -ccontains $_) } |
+        $passIds | Where-Object { -not ($ExpectedIds -ccontains $_) } |
             Sort-Object -Unique
     )
-    if ($totalCount -ne $requiredSpecIds.Count -or
+    if ($totalCount -ne $ExpectedIds.Count -or
         $passedCount -ne $totalCount -or
         $passes.Count -ne $totalCount -or
         $parsedPasses.Count -ne $passes.Count -or
@@ -566,7 +581,7 @@ function Assert-SpecOutput {
         $missingIds.Count -ne 0 -or
         $unknownIds.Count -ne 0 -or
         $failures.Count -ne 0) {
-        throw "$RuntimeLabel Specs 固定集合门禁失败；summary=$passedCount/$totalCount，required=$($requiredSpecIds.Count)，PASS=$($passes.Count)，duplicate=$($duplicateIds -join ','), missing=$($missingIds -join ','), unknown=$($unknownIds -join ','), FAIL=$($failures.Count)。"
+        throw "$RuntimeLabel Specs 固定集合门禁失败；summary=$passedCount/$totalCount，required=$($ExpectedIds.Count)，PASS=$($passes.Count)，duplicate=$($duplicateIds -join ','), missing=$($missingIds -join ','), unknown=$($unknownIds -join ','), FAIL=$($failures.Count)。"
     }
 
     return [pscustomobject]@{
@@ -613,7 +628,8 @@ function Get-ProcessSnapshot {
             Where-Object {
                 $_.ProcessName -ieq "Codex.AutoCAD.AgentHost" -or
                 $_.ProcessName -ieq "Codex.AutoCAD.AgentLauncher.FakeAgentHost" -or
-                $_.ProcessName -like "CodexLauncherFake-*"
+                $_.ProcessName -like "CodexLauncherFake-*" -or
+                $_.ProcessName -like "CodexAgentServiceFake-*"
             } |
             Select-Object @{Name="Name";Expression={$_.ProcessName}}, Id
     ) | Sort-Object Name, Id
@@ -658,7 +674,7 @@ try {
     Assert-RunnableOutputTreesEqual -Left $buildATree -Right $buildBTree
     $artifacts = @(
         "Net45Launcher", "Net8Launcher", "AgentHostDll", "AgentHostExe",
-        "FakeHostDll", "FakeHostExe", "Net45Specs", "Net8Specs"
+        "FakeHostDll", "FakeHostExe", "Net45Specs", "Net8Specs", "ServiceSpecs"
     )
     $hashes = [ordered]@{}
     foreach ($artifact in $artifacts) {
@@ -679,11 +695,22 @@ try {
     $net8Output = Invoke-Captured -FilePath $dotnetCommand `
         -Arguments (@($buildA.Net8Specs) + $specArguments) `
         -Description "运行 net8 AgentHost bootstrap Specs"
-    $net8Specs = Assert-SpecOutput -Lines $net8Output -RuntimeLabel "net8"
+    $net8Specs = Assert-SpecOutput -Lines $net8Output -RuntimeLabel "net8" `
+        -ExpectedIds $requiredSpecIds
     $net45Output = Invoke-Captured -FilePath $buildA.Net45Specs `
         -Arguments $specArguments `
         -Description "运行 net45 AgentHost bootstrap Specs"
-    $net45Specs = Assert-SpecOutput -Lines $net45Output -RuntimeLabel "net45"
+    $net45Specs = Assert-SpecOutput -Lines $net45Output -RuntimeLabel "net45" `
+        -ExpectedIds $requiredSpecIds
+    $serviceOutput = Invoke-Captured -FilePath $dotnetCommand `
+        -Arguments @(
+            $buildA.ServiceSpecs,
+            "--fake-agent-host", $buildA.FakeHostExe
+        ) `
+        -Description "运行 net8 AgentHost bootstrap-serve lifecycle Specs"
+    $serviceSpecs = Assert-SpecOutput -Lines $serviceOutput `
+        -RuntimeLabel "net8 bootstrap-serve lifecycle" `
+        -ExpectedIds $requiredServiceSpecIds
     $primitiveOutcomes = @("available", "process_isolation_failed")
     $bootstrapOutcomes = @(
         "authenticated_success",
@@ -806,7 +833,7 @@ try {
     }
 
     $evidence = [ordered]@{
-        SchemaVersion = 16
+        SchemaVersion = 17
         RecordedAtLocal = [DateTimeOffset]::Now.ToString("o")
         RunCorrelationId = Get-CodexGateRunCorrelationId
         Scope = "autocad2016-live-agenthost-inherited-handle-bootstrap-doctor"
@@ -824,8 +851,11 @@ try {
         ArtifactHashes = $hashes
         Net45Specs = "$($net45Specs.Passed)/$($net45Specs.Total)"
         Net8Specs = "$($net8Specs.Passed)/$($net8Specs.Total)"
+        AgentServiceSpecs = "$($serviceSpecs.Passed)/$($serviceSpecs.Total)"
         RequiredRuntimeSpecIds = @($requiredSpecIds)
         RuntimeSpecIds = @($net8Specs.Ids)
+        RequiredAgentServiceSpecIds = @($requiredServiceSpecIds)
+        AgentServiceSpecIds = @($serviceSpecs.Ids)
         BootstrapPrimitiveSourceUnchanged = $true
         StaticSourceObservations = $staticObservations
         RuntimeEvidence = $runtimeEvidence
@@ -854,6 +884,9 @@ try {
         ProcessTreeCleanupOnUnexpectedAgentHostExitLiveVerified =
             $runtimeEvidence.UnexpectedAgentHostExitKillsProcessTree
         ProcessTreeCleanupOnOwnerExitLiveVerified = $runtimeEvidence.ProcessOwnerExitKillsProcessTree
+        BootstrapServeLifecycleVerified = (
+            $serviceSpecs.Passed -eq $serviceSpecs.Total -and
+            $serviceSpecs.Total -eq $requiredServiceSpecIds.Count)
         ProcessTreeResourceLimitsRuntimeVerified = (
             $runtimeEvidence.ProcessTreeResourceLimitsApplied -and
             $runtimeEvidence.InvalidProcessTreeResourceLimitsFailClosed -and
@@ -914,7 +947,7 @@ try {
         NetLoadVerified = $false
         AgentHostLiveBridgeVerified = $false
         CadRuntimeIntegrated = $false
-        EvidenceBoundary = "This gate proves the exact mandatory net45/net8 Spec ID set, real out-of-process bootstrap-doctor authentication through restricted inherited standard handles, approved SHA-256 mismatch rejection, PID/creation-time confirmation rejection, startup-deadline fail-closed abort followed by bounded termination cleanup, cancellation cleanup, bounded stderr, handle-allowlist canary exclusion, service and owner process-tree cleanup, Windows-reported Job resource limits, nested Job assignment on the current Windows runtime, and authenticated-service runtime cleanup. It does not prove the required enterprise nested-Job policy matrix. The public product configuration and result surfaces do not expose the experimental process-identity selector or its raw telemetry. The internal restricted-token probe accepts only a Windows-reported restricted success, a structured process-isolation failure, or child failure after a restricted launch; it never falls back to CurrentUser, and the exact sanitized net45/net8 outcomes are recorded separately. A successful primitive or probe result is not production sandbox evidence and does not prove runtime/workspace/pipe ACLs, credentials, real Codex, bootstrap-serve, AutoCAD integration, CAD work, or complete AutoCAD 2016 support. The gate also proves reproducible runnable outputs and an empty relevant-process baseline/final state."
+        EvidenceBoundary = "This gate proves the exact mandatory net45/net8 bootstrap Spec ID set, the bounded bootstrap-serve lifecycle against the repository fake AgentHost, real out-of-process bootstrap-doctor authentication through restricted inherited standard handles, approved SHA-256 mismatch rejection, PID/creation-time confirmation rejection, startup-deadline fail-closed abort followed by bounded termination cleanup, cancellation cleanup, bounded stderr, handle-allowlist canary exclusion, service and owner process-tree cleanup, Windows-reported Job resource limits, nested Job assignment on the current Windows runtime, and authenticated-service runtime cleanup. It does not prove the required enterprise nested-Job policy matrix. The public product configuration and result surfaces do not expose the experimental process-identity selector or its raw telemetry. The internal restricted-token probe accepts only a Windows-reported restricted success, a structured process-isolation failure, or child failure after a restricted launch; it never falls back to CurrentUser, and the exact sanitized net45/net8 outcomes are recorded separately. The fake-host bootstrap-serve Specs do not prove real Codex service traffic. A successful primitive or probe result is not production sandbox evidence and does not prove runtime/workspace/pipe ACLs, credentials, AutoCAD integration, CAD work, or complete AutoCAD 2016 support. The gate also proves reproducible runnable outputs and an empty relevant-process baseline/final state."
     }
     $evidence | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $evidencePath -Encoding UTF8
 

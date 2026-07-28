@@ -1451,6 +1451,7 @@ $expectedSolutionProjectPaths = @(
     "src\Codex.AutoCAD.Security\Codex.AutoCAD.Security.csproj",
     "tests\Codex.AutoCAD.AgentLauncher.FakeAgentHost\Codex.AutoCAD.AgentLauncher.FakeAgentHost.csproj",
     "tests\Codex.AutoCAD.AgentLauncher.Specs\Codex.AutoCAD.AgentLauncher.Specs.csproj",
+    "tests\Codex.AutoCAD.AgentService.Specs\Codex.AutoCAD.AgentService.Specs.csproj",
     "tests\Codex.AutoCAD.AgentRuntime.Specs\Codex.AutoCAD.AgentRuntime.Specs.csproj",
     "tests\Codex.AutoCAD.AppServer.Specs\Codex.AutoCAD.AppServer.Specs.csproj",
     "tests\Codex.AutoCAD.Bridge.Specs\Codex.AutoCAD.Bridge.Specs.csproj",
@@ -1460,7 +1461,9 @@ $expectedSolutionProjectPaths = @(
     "tests\Codex.AutoCAD.Contracts.Specs\Codex.AutoCAD.Contracts.Specs.csproj",
     "tests\Codex.AutoCAD.Ipc.Specs\Codex.AutoCAD.Ipc.Specs.csproj",
     "tests\Codex.AutoCAD.Security.Specs\Codex.AutoCAD.Security.Specs.csproj",
-    "tests\Codex.AutoCAD.Host.2016.Mvp.Specs\Codex.AutoCAD.Host.2016.Mvp.Specs.csproj"
+    "tests\Codex.AutoCAD.Host.2016.Mvp.Specs\Codex.AutoCAD.Host.2016.Mvp.Specs.csproj",
+    "tests\Codex.AutoCAD.Host.2016.ReadOnlyContext.Specs\Codex.AutoCAD.Host.2016.ReadOnlyContext.Specs.csproj",
+    "tests\Codex.AutoCAD.Host.2016.V2.Specs\Codex.AutoCAD.Host.2016.V2.Specs.csproj"
 ) | ForEach-Object { [IO.Path]::GetFullPath((Join-Path $repoRoot $_)) } |
     Sort-Object -Unique
 $solutionProjectDifference = @(

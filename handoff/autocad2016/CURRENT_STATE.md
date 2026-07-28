@@ -33,13 +33,27 @@ NETLOAD 证据的能力一律视为未支持。
   均构建 4 个 AMD64 托管程序集、0 warning / 0 error；默认 Phase 2 的真实本机 Codex
   `0.144.4` doctor 已单独回归通过。工作流尚未推送或取得远端 run，故 M9.1 仍为
   进行中，不得把本地验证写成 CI 已通过。
-- M9.2 正在独立 `codex/m9-toolchain-locks` Worktree 实现：`global.json` 已改为禁止
-  SDK 补丁滚动，新增 `eng/toolchain-lock.json` 和双 Shell 工具链门禁，锁定 SDK
+- M9.2 已在独立提交 `1e969e2da702af459e1a76b9df0b7c58b49425cb` 冻结 15 文件工具链锁：
+  `global.json` 禁止 SDK 补丁滚动，`eng/toolchain-lock.json` 和双 Shell 门禁锁定 SDK
   `8.0.319`、NuGet `6.10.2.8`、MSBuild `17.10.46.46604`、离线 net45 包及签名、全部
   NuGet 配置/锁文件、R20.1 Probe 源输入和 4 个批准的 Autodesk 二进制输入。门禁负向
-  自检双 Shell 均为 `18/18`；本机双 Shell 分别完成两个全新缓存的 Probe A/B 构建，AMD64
-  DLL 哈希一致，并恢复 API Probe `29 passed / 8 expected failed`。该 M9.2 改动尚未提交，
-  M9.1/M9.2 远端工作流也尚未运行，因此 M9.2 仍为进行中。
+  自检双 Shell 均为 `18/18`；两个全新缓存的 Probe A/B 构建 AMD64 DLL 哈希一致，API
+  Probe 为 `29 passed / 8 expected failed`。提交后双 Shell 完整工具链锁已通过；远端
+  工作流尚未运行，因此 M9.2 的本地 Git 检查点已完成，远端完成条件仍未满足。
+- M9.3 在 `codex/m9-required-gates` Worktree 基于上述 M9.2 提交继续实现，当前精确增量为
+  10 个修改和 2 个新增，未暂存、未提交。Host ReadOnlyContext、Host V2 和 AgentService
+  Specs 已接入正式 solution/Phase 2/Agent bootstrap 调用链；Phase 2 为 `510/510`、
+  AgentLauncher net8/net45 各 `65/65`、AgentService `7/7`，相关 bootstrap evidence
+  schema 为 17、构建 0 warning / 0 error、残留进程为 0。`verify-m9-required-gates.ps1`
+  从 evidence 动态聚合 11 个 Phase 2 项目、双运行时 Launcher 与 AgentService 规格，
+  并把 M9.1、M9.2、M4 相关联套件、候选 manifest 和 candidate doctor 绑定到同一提交。
+  临时 validation 提交 `34f842dee33d447812acaeda8583d80e3c6e9214` 已按生产默认
+  `40 GiB` 门槛完成完整入口：相关联套件 `9/9`、12 个覆盖类别、候选 manifest/doctor、
+  动态唯一逻辑规格 `582`，新增残留 0、AutoCAD 未启动、PATH 不变。最终 evidence schema
+  为 `codex.autocad.m9-required-gates/1`，SHA-256 为
+  `9F2456A56BCBEE1DF504E8B6BDAD9DD784F8CB71FC66E62A06C106A89901AA25`。该验证只证明本次
+  文档刷新前的实现状态；项目分支仍未提交，正式 M9.3 提交后必须从该精确提交重新运行默认
+  `40 GiB` 完整入口。远端 CI 也尚未运行，因此 M9.3 仍为进行中。
 - P0 `codex/bridge-client-net45` 的 0.3.2 停止生命周期候选已由用户在 AutoCAD 2016
   中完成人工启停、重复 STOP、DBMOD 和残留检查；独立提交为 `8a4ee57`，实机证据为
   `agent-stop-live-observation-20260722.json`，该证据不继承给 P1。

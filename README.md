@@ -185,10 +185,10 @@ Authenticode 签名。CI 没有 Autodesk 安装，只验证前半部分；本机
 ```
 
 GitHub 托管 Runner 没有用户的本机 Codex、凭据或 AutoCAD。工作流因此只在 Phase 2 中显式
-传入 `-SkipLiveCodexHandshake`；它不会跳过构建、469 项动态规格、`net45/x64` 托管边界、
-禁用 API、Git diff 或秘密扫描。默认 Phase 2 和 `verify-all-gates.ps1` 仍必须执行本机
-AgentHost/Codex doctor，且 `scripts/verify-m9-windows-ci.ps1` 会拒绝统一正式门禁引用该
-CI-only 开关。
+传入 `-SkipLiveCodexHandshake`；它不会跳过构建、由 evidence 动态汇总的全部规格、
+`net45/x64` 托管边界、禁用 API、Git diff 或秘密扫描。默认 Phase 2 和
+`verify-all-gates.ps1` 仍必须执行本机 AgentHost/Codex doctor，且
+`scripts/verify-m9-windows-ci.ps1` 会拒绝统一正式门禁引用该 CI-only 开关。
 
 本地检查工作流定义：
 
@@ -200,6 +200,39 @@ powershell.exe -NoProfile -File `
 
 本地双 Shell 通过只证明工作流定义与 CI 模式可运行；在分支推送并取得两个远端绿色 job 前，
 M9.1 仍为进行中，也不能替代本机 Codex doctor、R20.1 Host 构建或 AutoCAD 实机证据。
+
+### M9.3 本地必过门禁汇总
+
+`scripts/verify-m9-required-gates.ps1` 是干净提交上的最终本地汇总入口。它串联 M9.1
+工作流定义、M9.2 工具链与全新缓存复现、`net45/x64`、现有相关联的 M4 `9/9` 套件，
+并重新生成只读候选后校验 manifest 和候选 AgentHost doctor。Contracts、IPC、Bridge、
+Launcher、AppServer、Runtime、Host MVP、Security、禁用 API、秘密扫描、manifest 和
+candidate doctor 必须全部出现在同一份哈希绑定的 evidence 中。
+
+Phase 2 的项目和规格数、AgentLauncher 双运行时规格以及 AgentService 生命周期规格均从
+各自 evidence 动态求和；聚合器拒绝重复项目、重复门禁、字符串伪造的 JSON boolean 和
+陈旧硬编码总数。M9.2 已在提交
+`1e969e2da702af459e1a76b9df0b7c58b49425cb` 独立冻结。M9.3 项目分支基于该提交，当前
+仅保留 10 个修改和 2 个新增的真实增量，仍未提交。
+
+为验证这些实现，临时 validation 分支提交
+`34f842dee33d447812acaeda8583d80e3c6e9214` 已按脚本生产默认 `40 GiB` 门槛完成全入口：
+Phase 2 `510/510`、AgentLauncher `65/65`（net8）与 `65/65`（net45）、AgentService
+`7/7`、相关联套件 `9/9`、12 个覆盖类别、候选 manifest/doctor 和最终证据绑定均通过，
+动态唯一逻辑规格为 `582`。最终 evidence 的 SHA-256 为
+`9F2456A56BCBEE1DF504E8B6BDAD9DD784F8CB71FC66E62A06C106A89901AA25`。该临时提交不属于
+项目分支；本次文档刷新发生在验证之后，因此只证明刷新前的实现状态，不能冒充正式 M9.3
+提交证据。M9.3 形成正式干净提交后仍须从该精确提交按默认 `40 GiB` 重新运行下列入口：
+
+```powershell
+.\scripts\verify-m9-required-gates.ps1 `
+  -Configuration Release `
+  -AutoCad2016Dir '<reviewed AutoCAD 2016 R20.1 directory>' `
+  -ArtifactBase 'E:\cfa'
+```
+
+该入口只读取 R20.1 程序集并生成候选，不启动或控制 AutoCAD。它也不证明远端 GitHub
+Actions、`NETLOAD`、M4 实机异常退出矩阵、M4.16 冻结、CAD 写入或发布就绪。
 
 M4.15.3 实机异常退出矩阵必须使用完整候选包，不能手工拼接统一门禁的零散 Host/AgentHost
 输出。在上述 `9/9` 通过、当前提交与 `m4-readiness.json` 精确一致且工作树干净后运行：

@@ -52,7 +52,7 @@ namespace Codex.AutoCAD.Host2016.ReadOnlyContext.Specs
                 Run("snapshot defensively copies entities", SnapshotDefensivelyCopiesEntities);
                 Run("hashes are lowercase sha256", HashesAreLowercaseSha256);
 
-                Console.WriteLine("ReadOnlyContext Specs: {0}/{0} passed.", Passed.Count);
+                Console.WriteLine("{0}/{0} specs passed", Passed.Count);
                 for (var index = 0; index < Passed.Count; index++)
                 {
                     Console.WriteLine("PASS {0}", Passed[index]);

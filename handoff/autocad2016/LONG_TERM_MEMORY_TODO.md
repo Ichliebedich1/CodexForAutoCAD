@@ -717,19 +717,27 @@ Kimi 可用为继续开发前置条件。
   仍通过；已提交为 `9afaaafcdf24028d984bd1b3ca81a5ea013e59ba`，但尚未推送或取得
   远端绿色 run，因此不得标为完成。
 - [~] 固定 .NET SDK、离线 net45 参考程序集和依赖锁。SDK 与离线 net45 包已固定，Phase 2
-  和 net45/x64 门禁显式使用 `<clear />` 离线 NuGet 配置并隔离缓存/临时 lock。当前
-  M9.2 Worktree 已新增版本化工具链锁，精确绑定 SDK `8.0.319`、NuGet `6.10.2.8`、
-  MSBuild `17.10.46.46604`、离线包双签名、全部 NuGet 配置/锁、R20.1 Probe 源输入和
-  当前批准的 4 个 Autodesk 二进制；双 Shell 18 项负向自检、无 Autodesk CI 模式和本机
-  两次全新缓存 A/B Probe 均通过。该改动尚未提交且远端未运行，M9.2 仍不得标为完成。
+  和 net45/x64 门禁显式使用 `<clear />` 离线 NuGet 配置并隔离缓存/临时 lock。M9.2 已在
+  独立提交 `1e969e2da702af459e1a76b9df0b7c58b49425cb` 冻结版本化工具链锁，精确绑定 SDK
+  `8.0.319`、NuGet `6.10.2.8`、MSBuild `17.10.46.46604`、离线包双签名、全部 NuGet
+  配置/锁、R20.1 Probe 源输入和当前批准的 4 个 Autodesk 二进制；双 Shell 18 项负向
+  自检、无 Autodesk CI 模式和两次全新缓存 A/B Probe 均通过。远端工作流尚未运行，故
+  M9.2 的本地检查点已完成，但整个 M9.2 仍不得标为完成。
 - [~] 自动运行 Contracts、IPC、Bridge、AppServer、AgentRuntime、Host 和安全 Specs。
-  当前统一入口与 CI-only Phase 2 都动态汇总 `469/469`；CI 工作流已接线，但远端 run
-  尚未验证。CI 明确不冒充本机 Codex doctor、R20.1 Host 构建或 AutoCAD 实机门禁。
-- [ ] R20.1 API Probe、禁止 API、秘密扫描和包身份检查成为门禁。当前本地统一入口已覆盖
+  M9.3 Worktree 已把 Host ReadOnlyContext、Host V2 和 AgentService Specs 接入真实
+  solution/Phase 2/bootstrap 调用链；Phase 2 动态汇总 `510/510`，Launcher 在
+  net8/net45 各 `65/65`，AgentService `7/7`。最终本地聚合器从 evidence 动态求和，
+  不依赖陈旧硬编码总数。临时 validation 提交
+  `34f842dee33d447812acaeda8583d80e3c6e9214` 已按默认 `40 GiB` 完成完整入口：相关联
+  `9/9`、候选 manifest/doctor、12 个覆盖类别和最终 `582` 项动态汇总均通过，evidence
+  SHA-256 为 `9F2456A56BCBEE1DF504E8B6BDAD9DD784F8CB71FC66E62A06C106A89901AA25`。M9.3
+  项目分支仍未提交；文档刷新后必须从正式精确提交重跑默认门禁，远端 CI 也仍未验证。
+- [~] R20.1 API Probe、禁止 API、秘密扫描和包身份检查成为门禁。当前本地统一入口已覆盖
   R20.1 Host 双构建、禁止 API、基础秘密扫描、离线 feed/锁文件身份、SBOM 和许可证；
-  M9.2 Worktree 还把旧 API Probe 从机器上最新 Visual Studio MSBuild 改为精确
-  `dotnet msbuild`，并在 restore 前验证 R20.1 二进制哈希/签名。候选 manifest/doctor、
-  远端 run 与 CI 必过策略仍缺。
+  M9.2 提交还把旧 API Probe 从机器上最新 Visual Studio MSBuild 改为精确
+  `dotnet msbuild`，并在 restore 前验证 R20.1 二进制哈希/签名。M9.3 汇总器已接线候选
+  manifest/doctor 并严格验证源码、suite、readiness 和候选哈希绑定；尚待 M9.3 正式
+  干净提交后的默认全入口复跑及远端必过策略。
 - [ ] 让完整依赖闭包的独立 R20.1 构建可位级复现。当前同一新鲜依赖闭包下 Host A/B
   输出一致；M9.2 已证明 V2ApiProbe 在两个独立全新缓存中的 AMD64 输出逐字节一致。
   完整 Host 独立依赖构建仍会改变 timestamp、MVID 和 TargetFramework metadata，虽然

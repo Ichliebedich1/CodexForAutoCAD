@@ -25,6 +25,7 @@ $phase2Path = Join-Path $repoRoot "scripts\verify-phase2.ps1"
 $toolchainPath = Join-Path $repoRoot "scripts\verify-m9-toolchain-lock.ps1"
 $net45X64Path = Join-Path $repoRoot "scripts\verify-m9-net45-x64.ps1"
 $allGatesPath = Join-Path $repoRoot "scripts\verify-all-gates.ps1"
+$requiredGatesPath = Join-Path $repoRoot "scripts\verify-m9-required-gates.ps1"
 
 $expectedActions = [ordered]@{
     "actions/checkout" = "11bd71901bbe5b1630ceea73d27597364c9af683" # v4.2.2
@@ -436,6 +437,7 @@ try {
     $toolchainScript = Read-StrictUtf8Text -Path $toolchainPath -MaximumBytes 131072
     $net45X64Script = Read-StrictUtf8Text -Path $net45X64Path -MaximumBytes 131072
     $allGatesScript = Read-StrictUtf8Text -Path $allGatesPath -MaximumBytes 131072
+    $requiredGatesScript = Read-StrictUtf8Text -Path $requiredGatesPath -MaximumBytes 131072
     Assert-WorkflowSecurityRules -Workflow $workflow -AllGatesScript $allGatesScript
     Assert-RegexMatch $phase2Script "(?im)^\s*\[switch\]\s*\`$SkipLiveCodexHandshake\s*,?\s*$" `
         "Phase 2 缺少显式 CI-only doctor 跳过开关。"
@@ -460,6 +462,18 @@ try {
             "(?i)\bSkipLiveCodexHandshake\b",
             [Text.RegularExpressions.RegexOptions]::CultureInvariant)) {
         throw "统一正式门禁禁止使用 SkipLiveCodexHandshake。"
+    }
+    foreach ($requiredToken in @(
+        "codex\.autocad\.m9-required-gates/1",
+        "verify-m9-toolchain-lock\.ps1",
+        "verify-m9-net45-x64\.ps1",
+        "verify-all-gates\.ps1",
+        "verify-autocad2016-context-v2-candidate\.ps1",
+        "UniqueLogicalSpecCount",
+        "DuplicateGateRerunsExcludedFromUniqueTotal\s*=\s*\`$true"
+    )) {
+        Assert-RegexMatch $requiredGatesScript ("(?im)" + $requiredToken) `
+            "M9.3 必过门禁汇总器缺少动态聚合或证据绑定契约。"
     }
 
     if (-not (Test-Path -LiteralPath $globalJsonPath -PathType Leaf)) {
